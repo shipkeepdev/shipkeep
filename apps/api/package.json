@@ -77,7 +77,10 @@
         "options": {
           "command": "vitest run --config vitest.integration.config.mts",
           "cwd": "apps/api"
-        }
+        },
+        "dependsOn": [
+          "^build"
+        ]
       }
     },
     "tags": [
