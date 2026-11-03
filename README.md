@@ -20,13 +20,27 @@ Shipkeep is a self-hosted platform to deploy applications, databases and service
 
 ## Development
 
-Prerequisites: Node.js 22 (`.nvmrc`), pnpm 11 (`corepack enable` picks the pinned version), Go 1.26+, [gitleaks](https://github.com/gitleaks/gitleaks#installing) for the pre-commit hook. Docker is needed for integration tests only.
+Prerequisites: Node.js 22 (`.nvmrc`), pnpm 11 (`corepack enable` picks the pinned version), Go 1.26+, Docker with Compose v2, and [gitleaks](https://github.com/gitleaks/gitleaks#installing) for the pre-commit hook.
+
+Two commands start everything:
 
 ```bash
-pnpm install                     # installs dependencies and the git hooks
-pnpm lint                        # ESLint + TypeScript typecheck
-pnpm test                        # TypeScript unit tests
-go test ./agent/... ./cli/... ./lib/...
+pnpm install   # dependencies and git hooks
+pnpm dev       # PostgreSQL, VictoriaLogs, VictoriaMetrics and a registry in Docker, then the API and the web UI with hot reload
 ```
 
-The local control plane stack (`pnpm dev`) arrives with task M0.5 of the plan.
+The API listens on http://localhost:3000/api/v1/health, the web UI on http://localhost:4200 (it proxies `/api` to the API). Copy `.env.example` to `.env` to change ports or credentials.
+
+Other useful commands:
+
+```bash
+pnpm dev:infra         # only the Docker services
+pnpm dev:infra:down    # stop them, keep the data
+pnpm dev:infra:reset   # stop them and delete the data volumes
+pnpm lint              # ESLint + TypeScript typecheck
+pnpm test              # TypeScript unit tests
+go test ./agent/... ./cli/... ./lib/...
+pnpm gen               # regenerate code from proto/ and shipkeep.schema.json
+```
+
+Service ports on the host: PostgreSQL 5432, VictoriaLogs 9428, VictoriaMetrics 8428, registry 5000. Data lives in named Docker volumes.
