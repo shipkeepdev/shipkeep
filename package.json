@@ -16,9 +16,9 @@
     "proto:breaking": "buf breaking --against '.git#branch=main'",
     "gen:proto": "buf generate",
     "gen:config": "node tools/gen/config-schema.mjs && tools/gen/config-go.sh",
-    "dev:infra": "docker compose -f deploy/dev/compose.yml up -d --wait",
-    "dev:infra:down": "docker compose -f deploy/dev/compose.yml down",
-    "dev:infra:reset": "docker compose -f deploy/dev/compose.yml down -v",
+    "dev:infra": "docker compose --project-directory . -f deploy/dev/compose.yml up -d --wait",
+    "dev:infra:down": "docker compose --project-directory . -f deploy/dev/compose.yml down",
+    "dev:infra:reset": "docker compose --project-directory . -f deploy/dev/compose.yml down -v",
     "semgrep:test": "semgrep --test --config .semgrep/rules .semgrep/tests --metrics=off",
     "semgrep:scan": "semgrep scan --config .semgrep/rules --exclude .semgrep/tests --metrics=off --error"
   },
