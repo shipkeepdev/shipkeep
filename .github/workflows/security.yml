@@ -45,12 +45,11 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Scan the codebase
         run: >-
-          semgrep scan --config .semgrep/shipkeep-rules.yml
+          semgrep scan --config .semgrep/rules
           --config p/owasp-top-ten --config p/golang --config p/typescript
           --exclude .semgrep/tests --metrics=off --error
       - name: Test the custom rules
-        if: ${{ hashFiles('.semgrep/tests/**') != '' }}
-        run: semgrep --test .semgrep
+        run: semgrep --test --config .semgrep/rules .semgrep/tests --metrics=off
 
   gosec:
     name: gosec

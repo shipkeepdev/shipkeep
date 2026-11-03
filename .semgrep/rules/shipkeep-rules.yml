@@ -1,0 +1,111 @@
+# Custom Semgrep rules enforcing the architecture rules of CLAUDE.md and THREAT_MODEL.
+# Every rule has a test in .semgrep/tests/shipkeep-rules.<lang> (run with `pnpm semgrep:test`).
+rules:
+  # ------------------------------------------------------------------------------------------
+  # Go (agent, cli, lib)
+  # ------------------------------------------------------------------------------------------
+  - id: go-no-shell-interpreter
+    languages: [go]
+    severity: ERROR
+    message: >-
+      Shipkeep never runs a shell. Use the Docker Engine API, the Caddy admin API,
+      or exec with a literal argv allow list (see CLAUDE.md, rule 1).
+    patterns:
+      - pattern-either:
+          - pattern: exec.Command($BIN, ...)
+          - pattern: exec.CommandContext($CTX, $BIN, ...)
+      - metavariable-regex:
+          metavariable: $BIN
+          regex: ^"(.*/)?(sh|bash|dash|ash|zsh|ksh|fish|busybox|cmd(\.exe)?|powershell(\.exe)?|pwsh)"$
+
+  - id: go-exec-non-literal-binary
+    languages: [go]
+    severity: ERROR
+    message: >-
+      The program passed to exec.Command must be a string literal from an allow list.
+    patterns:
+      - pattern-either:
+          - pattern: exec.Command($BIN, ...)
+          - pattern: exec.CommandContext($CTX, $BIN, ...)
+      - pattern-not: exec.Command("...", ...)
+      - pattern-not: exec.CommandContext($CTX, "...", ...)
+
+  - id: go-exec-dash-c
+    languages: [go]
+    severity: ERROR
+    message: >-
+      A "-c" argument hands a command string to an interpreter. Pass argv arrays only.
+    pattern-either:
+      - pattern: exec.Command("...", ..., "-c", ...)
+      - pattern: exec.CommandContext($CTX, "...", ..., "-c", ...)
+
+  - id: go-no-raw-process-spawn
+    languages: [go]
+    severity: ERROR
+    message: >-
+      Low-level process spawning bypasses the exec allow list. Processes are started only through
+      the vetted helpers (see CLAUDE.md, rule 1).
+    pattern-either:
+      - pattern: syscall.Exec(...)
+      - pattern: syscall.ForkExec(...)
+      - pattern: syscall.StartProcess(...)
+      - pattern: os.StartProcess(...)
+
+  - id: go-no-privileged-container
+    languages: [go]
+    severity: ERROR
+    message: >-
+      Containers never run privileged or in host namespaces (THREAT_MODEL E1). Reject the spec instead.
+    pattern-either:
+      - pattern: |
+          container.HostConfig{..., Privileged: true, ...}
+      - pattern: |
+          $HC.Privileged = true
+      - pattern: |
+          container.HostConfig{..., PidMode: "host", ...}
+      - pattern: |
+          container.HostConfig{..., IpcMode: "host", ...}
+      - pattern: |
+          container.HostConfig{..., NetworkMode: "host", ...}
+      - pattern: |
+          container.HostConfig{..., UsernsMode: "host", ...}
+
+  # ------------------------------------------------------------------------------------------
+  # TypeScript (api, web, packages)
+  # ------------------------------------------------------------------------------------------
+  - id: ts-no-child-process
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      Do not spawn processes from the control plane. It talks to agents through typed gRPC actions.
+    patterns:
+      - pattern-either:
+          - pattern: import $X from "$MOD"
+          - pattern: import {...} from "$MOD"
+          - pattern: import * as $X from "$MOD"
+          - pattern: require("$MOD")
+          - pattern: import("$MOD")
+      - metavariable-regex:
+          metavariable: $MOD
+          regex: ^(node:)?(child_process|execa|shelljs|zx|cross-spawn|node-pty)$
+
+  - id: ts-no-prisma-unsafe-raw
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      Use Prisma.sql tagged templates ($queryRaw / $executeRaw), never the Unsafe variants.
+    pattern-either:
+      - pattern: $P.$queryRawUnsafe(...)
+      - pattern: $P.$executeRawUnsafe(...)
+
+  - id: ts-no-dynamic-code
+    languages: [typescript]
+    severity: ERROR
+    message: >-
+      Dynamic code evaluation is forbidden: it turns any injected string into execution.
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+      - pattern: Function(...)
+      - pattern: setTimeout("...", ...)
+      - pattern: setInterval("...", ...)
