@@ -18,12 +18,12 @@ Shipkeep is a self-hosted PaaS as simple as Coolify, but secure by design, drive
 
 ## Target users
 
-| Segment | Situation | Pain today | Priority |
-| --- | --- | --- | --- |
-| Agencies and freelancers | Apps for several clients on 2 to 10 VPS | No fine isolation per client; Coolify Cloud charges one subscription per team | 1 |
-| Small SaaS teams | One product in production, 2 to 20 devs, no dedicated ops | No failover, logs and alerts to assemble, risky upgrades | 1 |
-| Sovereignty-driven companies and public sector | Mandatory local hosting, security audits | SSO only in a release candidate, CVE history hard to defend in an audit | 2 |
-| Homelab and solo devs | Personal projects | Little pain; Coolify is enough | Not a paid target |
+| Segment                                        | Situation                                                 | Pain today                                                                    | Priority          |
+| ---------------------------------------------- | --------------------------------------------------------- | ----------------------------------------------------------------------------- | ----------------- |
+| Agencies and freelancers                       | Apps for several clients on 2 to 10 VPS                   | No fine isolation per client; Coolify Cloud charges one subscription per team | 1                 |
+| Small SaaS teams                               | One product in production, 2 to 20 devs, no dedicated ops | No failover, logs and alerts to assemble, risky upgrades                      | 1                 |
+| Sovereignty-driven companies and public sector | Mandatory local hosting, security audits                  | SSO only in a release candidate, CVE history hard to defend in an audit       | 2                 |
+| Homelab and solo devs                          | Personal projects                                         | Little pain; Coolify is enough                                                | Not a paid target |
 
 ## Positioning
 
@@ -44,12 +44,12 @@ Not a goal: beating Coolify's catalog. Coolify templates are Apache-2.0 Compose 
 
 ## Business model
 
-| Offer | Shipkeep |
-| --- | --- |
-| Self-hosted | Code closed until v1, then free under Apache-2.0 with no exceptions |
+| Offer                                 | Shipkeep                                                                                                                                                                     |
+| ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Self-hosted                           | Code closed until v1, then free under Apache-2.0 with no exceptions                                                                                                          |
 | Shipkeep Cloud (hosted control plane) | Per-server price in the same range as Coolify Cloud (USD 5/month for 2 servers + 3 per server) and Dokploy Cloud (USD 4.50/server), with unlimited organizations and clients |
-| Enterprise | SAML SSO, audit export, white label, LTS channel with SLA, priority support, annual contract |
-| Services | Migration from Coolify or Heroku and security audits, fixed price |
+| Enterprise                            | SAML SSO, audit export, white label, LTS channel with SLA, priority support, annual contract                                                                                 |
+| Services                              | Migration from Coolify or Heroku and security audits, fixed price                                                                                                            |
 
 ## Success criteria
 
@@ -58,11 +58,11 @@ Not a goal: beating Coolify's catalog. Coolify templates are Apache-2.0 Compose 
 
 ## Risks
 
-| Risk | Mitigation |
-| --- | --- |
-| Coolify v5 ships real multi-server | Lead on security and GitOps, which v5 does not target |
-| Shipkeep becomes a target | External audit before v1, responsible disclosure from v0.1, fuzzing, no shell commands |
-| Small catalog | Import Coolify templates with attribution |
-| Solo founder | Structured code and documented architecture so contributors can join at v1 |
-| Low cloud price | Services revenue early; Enterprise and LTS as the real model |
-| Two languages | Agent deliberately small and stable; business logic in the control plane |
+| Risk                               | Mitigation                                                                             |
+| ---------------------------------- | -------------------------------------------------------------------------------------- |
+| Coolify v5 ships real multi-server | Lead on security and GitOps, which v5 does not target                                  |
+| Shipkeep becomes a target          | External audit before v1, responsible disclosure from v0.1, fuzzing, no shell commands |
+| Small catalog                      | Import Coolify templates with attribution                                              |
+| Solo founder                       | Structured code and documented architecture so contributors can join at v1             |
+| Low cloud price                    | Services revenue early; Enterprise and LTS as the real model                           |
+| Two languages                      | Agent deliberately small and stable; business logic in the control plane               |

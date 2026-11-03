@@ -1,0 +1,24 @@
+# Pre-commit guards (CLAUDE.md, "Never commit" and "Enforcement").
+# Installed automatically by `pnpm install` through the `prepare` script.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: secrets (gitleaks)
+      run: tools/git-hooks/gitleaks-staged.sh
+    - name: large files
+      run: tools/git-hooks/block-large-files.sh {staged_files}
+    - name: format (prettier)
+      glob: '*.{ts,mts,cts,js,mjs,cjs,json,yml,yaml,md,html,css}'
+      exclude:
+        - pnpm-lock.yaml
+      run: pnpm exec prettier --write {staged_files}
+      stage_fixed: true
+    - name: format (gofmt)
+      glob: '*.go'
+      run: gofmt -l -w {staged_files}
+      stage_fixed: true
+
+commit-msg:
+  jobs:
+    - name: conventional commit
+      run: tools/git-hooks/check-commit-message.sh {1}

@@ -4,20 +4,20 @@ Status: draft for MVP (v0.1). This document is the contract Claude Code implemen
 
 ## 1. Glossary
 
-| Term | Meaning |
-| --- | --- |
-| Organization | Tenant. Owns members, projects, servers, billing. |
-| Project | Group of environments for one product or one client. |
-| Environment | Isolated deployment target inside a project (`production`, `staging`, previews). Has its own variables, secrets, domains and policies. |
-| Node | A server running `shipkeep-agent`, enrolled in one organization. |
-| Application | A deployable unit built from git, an image or a Compose file. |
-| Service | One container definition inside a Compose application. |
-| Release | Immutable combination of an image digest and a resolved configuration. |
-| Deployment | The process that turns a release into running allocations. |
-| Allocation | One running instance of a release (or of a database) on one node. |
-| Managed database | PostgreSQL, MySQL, MariaDB, MongoDB or Redis run and backed up by Shipkeep. |
-| Action | A typed command sent from the control plane to an agent. |
-| Lease | Time-bound right of a node to run its allocations, with a fencing epoch. |
+| Term             | Meaning                                                                                                                                |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| Organization     | Tenant. Owns members, projects, servers, billing.                                                                                      |
+| Project          | Group of environments for one product or one client.                                                                                   |
+| Environment      | Isolated deployment target inside a project (`production`, `staging`, previews). Has its own variables, secrets, domains and policies. |
+| Node             | A server running `shipkeep-agent`, enrolled in one organization.                                                                       |
+| Application      | A deployable unit built from git, an image or a Compose file.                                                                          |
+| Service          | One container definition inside a Compose application.                                                                                 |
+| Release          | Immutable combination of an image digest and a resolved configuration.                                                                 |
+| Deployment       | The process that turns a release into running allocations.                                                                             |
+| Allocation       | One running instance of a release (or of a database) on one node.                                                                      |
+| Managed database | PostgreSQL, MySQL, MariaDB, MongoDB or Redis run and backed up by Shipkeep.                                                            |
+| Action           | A typed command sent from the control plane to an agent.                                                                               |
+| Lease            | Time-bound right of a node to run its allocations, with a fencing epoch.                                                               |
 
 ## 2. `shipkeep.yml`
 
@@ -28,7 +28,7 @@ version: 1
 name: billing-api
 
 build:
-  type: dockerfile            # dockerfile | railpack | nixpacks | image
+  type: dockerfile # dockerfile | railpack | nixpacks | image
   context: .
   dockerfile: Dockerfile
   args:
@@ -36,7 +36,7 @@ build:
   # image: ghcr.io/acme/billing:1.4.2   # only when type = image
 
 run:
-  command: ["node", "dist/main.js"]      # argv array only, never a shell string
+  command: ['node', 'dist/main.js'] # argv array only, never a shell string
   port: 3000
   healthcheck:
     path: /health
@@ -46,47 +46,47 @@ run:
     healthy_threshold: 2
 
 release:
-  command: ["node", "dist/migrate.js"]   # runs once per release before the switch
+  command: ['node', 'dist/migrate.js'] # runs once per release before the switch
   timeout: 10m
 
 resources:
-  cpu: "0.5"
+  cpu: '0.5'
   memory: 512Mi
 
 scale:
   replicas: 2
   placement:
-    spread: node                # node | none
+    spread: node # node | none
     labels: { region: eu }
-    nodes: []                   # optional explicit node names
+    nodes: [] # optional explicit node names
 
 domains:
   - api.acme.com
 
-env:                            # non-secret values only
+env: # non-secret values only
   LOG_LEVEL: info
 
-secrets:                        # names only; values set in UI, CLI or API
+secrets: # names only; values set in UI, CLI or API
   - DATABASE_URL
   - STRIPE_KEY
 
 volumes:
   - name: uploads
     path: /app/uploads
-    backup: { schedule: "0 3 * * *", keep: 14 }
+    backup: { schedule: '0 3 * * *', keep: 14 }
 
 databases:
-  - ref: billing-db             # managed database in the same environment
-    env: DATABASE_URL           # inject the connection string as this secret
+  - ref: billing-db # managed database in the same environment
+    env: DATABASE_URL # inject the connection string as this secret
 
 previews:
   enabled: true
   ttl: 72h
   max_active: 5
-  database: clone               # none | empty | clone
+  database: clone # none | empty | clone
 
 deploy:
-  strategy: rolling             # rolling | recreate
+  strategy: rolling # rolling | recreate
   drain_timeout: 30s
   keep_images: 5
 ```
@@ -140,26 +140,26 @@ compose:
 
 Every field below is validated again by the agent. Names are proto message names.
 
-| Action | Purpose | Key fields | Agent-side validation |
-| --- | --- | --- | --- |
-| `EnsureNetwork` | Create or confirm a Docker network for an environment | `name`, `internal` | name matches `^sk-[a-z0-9-]{1,60}$` |
-| `PullImage` | Pull an image | `image_ref` (always digest pinned), `registry_credentials` (optional, short-lived) | ref must contain `@sha256:`; tags are rejected. Built images come from the internal registry; external images (from `build.type: image`, Compose services, managed databases) come from their own registry. The control plane resolves tags to digests when it creates the release, so a release is immutable. |
-| `BuildImage` | Build with BuildKit rootless and push | `repo_url`, `commit_sha`, `git_token` (short-lived, for example a GitHub App installation token), `build_type`, `context`, `dockerfile`, `args`, `limits` | repo URL scheme `https` only; context and dockerfile are relative, no `..`; args keys `^[A-Z_][A-Z0-9_]*$`; limits enforced; token never written to disk or logs |
-| `CreateContainer` | Create a container from a typed spec | `ContainerSpec` (image digest, argv, env, secret refs, ports, mounts, resources, labels, health check, network, dns) | no privileged, no host namespaces, caps from allow list; mounts are only Shipkeep-managed named volumes (`sk-` prefix) or tmpfs; no bind mounts from the host |
-| `StartContainer` / `StopContainer` | Lifecycle | `container_id`, `stop_timeout` | container must carry the `sk.managed=true` label |
-| `RemoveContainer` | Remove a container | `container_id`, `remove_volumes=false` | `remove_volumes=true` requires a valid confirmation token (section 3.6) |
-| `EnsureVolume` / `RemoveVolume` | Shipkeep-managed named volume lifecycle | `name`, `confirmation_token` (remove only) | name matches `^sk-[a-z0-9-]{1,60}$`; removal needs a valid confirmation token |
-| `HealthCheck` | Probe an instance | `container_id`, `http_path` or `tcp_port`, thresholds | path starts with `/`, max 2048 bytes |
-| `UpsertRoute` / `RemoveRoute` | Configure Caddy | `route_id`, `hosts`, `upstreams`, `tls_mode`, `drain_timeout` | hostnames valid; upstreams are WireGuard or Docker network addresses only |
-| `RunReleaseTask` | One-off container for migrations | `ContainerSpec`, `timeout` | same as `CreateContainer` |
-| `ExecSession` | Interactive exec inside a managed container | `container_id`, `argv`, `tty`, `session_id` | container must be managed; argv array; session time limit; never the host |
-| `BackupVolume` / `RestoreVolume` | Snapshot a volume to S3 or restore it | `volume`, `s3_target` (pre-signed URLs), `encryption_key_ref` | target URLs must be pre-signed and match configured endpoints |
-| `DumpDatabase` / `RestoreDatabase` | Engine-native logical backup and restore | `engine`, `container_id`, `s3_target` | engine from enum; tool argv built by the agent from fixed templates |
-| `ConfigurePeers` | Update WireGuard peers | list of `{public_key, endpoint, allowed_ips}` | keys are 32-byte base64; allowed IPs inside the org's WireGuard CIDR |
-| `CollectFacts` | Report hardware and software facts | none | none |
-| `UpgradeAgent` | Replace the agent binary | `version`, `url`, `sha256`, `cosign_bundle` | signature verified against the embedded public key before swap |
-| `StopStatefulWorkloads` | Fencing on stale epoch | `epoch` | always allowed |
-| `UpgradeControlPlane` | Upgrade the control plane containers (control plane node only) | `version`, image digests, `cosign_bundle` | only accepted by an agent whose node has the `control-plane` role; runs the procedure of ARCHITECTURE section 5 |
+| Action                             | Purpose                                                        | Key fields                                                                                                                                                | Agent-side validation                                                                                                                                                                                                                                                                                          |
+| ---------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `EnsureNetwork`                    | Create or confirm a Docker network for an environment          | `name`, `internal`                                                                                                                                        | name matches `^sk-[a-z0-9-]{1,60}$`                                                                                                                                                                                                                                                                            |
+| `PullImage`                        | Pull an image                                                  | `image_ref` (always digest pinned), `registry_credentials` (optional, short-lived)                                                                        | ref must contain `@sha256:`; tags are rejected. Built images come from the internal registry; external images (from `build.type: image`, Compose services, managed databases) come from their own registry. The control plane resolves tags to digests when it creates the release, so a release is immutable. |
+| `BuildImage`                       | Build with BuildKit rootless and push                          | `repo_url`, `commit_sha`, `git_token` (short-lived, for example a GitHub App installation token), `build_type`, `context`, `dockerfile`, `args`, `limits` | repo URL scheme `https` only; context and dockerfile are relative, no `..`; args keys `^[A-Z_][A-Z0-9_]*$`; limits enforced; token never written to disk or logs                                                                                                                                               |
+| `CreateContainer`                  | Create a container from a typed spec                           | `ContainerSpec` (image digest, argv, env, secret refs, ports, mounts, resources, labels, health check, network, dns)                                      | no privileged, no host namespaces, caps from allow list; mounts are only Shipkeep-managed named volumes (`sk-` prefix) or tmpfs; no bind mounts from the host                                                                                                                                                  |
+| `StartContainer` / `StopContainer` | Lifecycle                                                      | `container_id`, `stop_timeout`                                                                                                                            | container must carry the `sk.managed=true` label                                                                                                                                                                                                                                                               |
+| `RemoveContainer`                  | Remove a container                                             | `container_id`, `remove_volumes=false`                                                                                                                    | `remove_volumes=true` requires a valid confirmation token (section 3.6)                                                                                                                                                                                                                                        |
+| `EnsureVolume` / `RemoveVolume`    | Shipkeep-managed named volume lifecycle                        | `name`, `confirmation_token` (remove only)                                                                                                                | name matches `^sk-[a-z0-9-]{1,60}$`; removal needs a valid confirmation token                                                                                                                                                                                                                                  |
+| `HealthCheck`                      | Probe an instance                                              | `container_id`, `http_path` or `tcp_port`, thresholds                                                                                                     | path starts with `/`, max 2048 bytes                                                                                                                                                                                                                                                                           |
+| `UpsertRoute` / `RemoveRoute`      | Configure Caddy                                                | `route_id`, `hosts`, `upstreams`, `tls_mode`, `drain_timeout`                                                                                             | hostnames valid; upstreams are WireGuard or Docker network addresses only                                                                                                                                                                                                                                      |
+| `RunReleaseTask`                   | One-off container for migrations                               | `ContainerSpec`, `timeout`                                                                                                                                | same as `CreateContainer`                                                                                                                                                                                                                                                                                      |
+| `ExecSession`                      | Interactive exec inside a managed container                    | `container_id`, `argv`, `tty`, `session_id`                                                                                                               | container must be managed; argv array; session time limit; never the host                                                                                                                                                                                                                                      |
+| `BackupVolume` / `RestoreVolume`   | Snapshot a volume to S3 or restore it                          | `volume`, `s3_target` (pre-signed URLs), `encryption_key_ref`                                                                                             | target URLs must be pre-signed and match configured endpoints                                                                                                                                                                                                                                                  |
+| `DumpDatabase` / `RestoreDatabase` | Engine-native logical backup and restore                       | `engine`, `container_id`, `s3_target`                                                                                                                     | engine from enum; tool argv built by the agent from fixed templates                                                                                                                                                                                                                                            |
+| `ConfigurePeers`                   | Update WireGuard peers                                         | list of `{public_key, endpoint, allowed_ips}`                                                                                                             | keys are 32-byte base64; allowed IPs inside the org's WireGuard CIDR                                                                                                                                                                                                                                           |
+| `CollectFacts`                     | Report hardware and software facts                             | none                                                                                                                                                      | none                                                                                                                                                                                                                                                                                                           |
+| `UpgradeAgent`                     | Replace the agent binary                                       | `version`, `url`, `sha256`, `cosign_bundle`                                                                                                               | signature verified against the embedded public key before swap                                                                                                                                                                                                                                                 |
+| `StopStatefulWorkloads`            | Fencing on stale epoch                                         | `epoch`                                                                                                                                                   | always allowed                                                                                                                                                                                                                                                                                                 |
+| `UpgradeControlPlane`              | Upgrade the control plane containers (control plane node only) | `version`, image digests, `cosign_bundle`                                                                                                                 | only accepted by an agent whose node has the `control-plane` role; runs the procedure of ARCHITECTURE section 5                                                                                                                                                                                                |
 
 Anything not in this table does not exist. There is no generic exec, shell or file-write action.
 
@@ -191,35 +191,35 @@ PostgreSQL, one schema `shipkeep`. All tables have `id uuid` (UUIDv7), `created_
 - In repositories, which always take the organization id from the request context.
 - By PostgreSQL row-level security. The API connects with a role that has RLS enforced. Each request runs its queries in a transaction that starts with `SELECT set_config('app.org_id', $1, true)`, done by a Prisma client extension. Policies compare `organization_id` with `current_setting('app.org_id')::uuid`. Cross-tenant jobs (scheduler, reconciler) use a separate role and are reviewed as security-sensitive code.
 
-| Entity | Key fields | Invariants |
-| --- | --- | --- |
-| `User` | email (unique, citext), password_hash (argon2id), totp_secret_enc, status | email verified before joining an org |
-| `Session` | user_id, token_hash, expires_at, ip, user_agent | 12 h idle timeout, 7 d absolute |
-| `ApiToken` | owner (user or project), scopes, token_hash, expires_at, last_used_at | shown once; scoped to org and optionally project and environment |
-| `Organization` | name, slug | at least one Owner at all times |
-| `Membership` | user_id, organization_id, org_role | org_role in {owner, admin, member} |
-| `RoleBinding` | membership_id, project_id, environment_id (nullable), role | role in {admin, developer, viewer} |
-| `Project` | name, slug, git_write_mode (commit, pull_request) | slug unique per org |
-| `Environment` | project_id, name, kind (standard, preview), failover_policy, protected | protected envs require Admin for deploy and exec |
-| `Node` | name, status, labels, facts, wireguard_ip, wireguard_public_key, lease_epoch, last_heartbeat_at | name unique per org |
-| `NodeCertificate` | node_id, serial, not_after, revoked_at | one active cert per node |
-| `JoinToken` | organization_id, token_hash, expires_at, used_at | single use |
-| `GitConnection` | provider, installation_id or credentials_enc, scope | per org |
-| `Application` | environment_id, name, source (git, image, compose), repo, branch, config_path, config_json, config_sha | name unique per environment |
-| `Domain` | application_id, hostname, tls_mode, verification_status | hostname unique per org |
-| `Secret` | environment_id, name, value_enc, version | value never returned by the API after creation, only masked |
-| `Release` | application_id, image_digest, config_snapshot, commit_sha | immutable |
-| `Deployment` | application_id, release_id, state, trigger, actor_id, started_at, finished_at, error | one active deployment per application |
-| `Allocation` | release_id or database_id, node_id, container_id, state, lease_epoch | stateful allocations bound to one node |
-| `Volume` | environment_id, name, node_id, size_bytes | removal needs confirmation |
-| `ManagedDatabase` | environment_id, engine, version, node_id, credentials_enc, backup_policy | |
-| `BackupTarget` | organization_id, s3_endpoint, bucket, region, credentials_enc, encryption_key_enc | tested on save |
-| `Backup` | subject (volume or database), target_id, state, size_bytes, checksum, started_at, finished_at | |
-| `Preview` | application_id, pr_number, environment_id, expires_at, state | count per app limited by `max_active` |
-| `AlertRule` | scope, expression, threshold, window, channel_ids | |
-| `NotificationChannel` | kind (email, slack, discord, telegram, webhook), config_enc | |
-| `AuditEvent` | organization_id, actor (user, token, system, node), action, target_type, target_id, metadata, ip, created_at | append-only; no update or delete path |
-| `ConfirmationToken` | organization_id, action, target_id, issued_to, expires_at, used_at | 5 min TTL, single use |
+| Entity                | Key fields                                                                                                   | Invariants                                                       |
+| --------------------- | ------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- |
+| `User`                | email (unique, citext), password_hash (argon2id), totp_secret_enc, status                                    | email verified before joining an org                             |
+| `Session`             | user_id, token_hash, expires_at, ip, user_agent                                                              | 12 h idle timeout, 7 d absolute                                  |
+| `ApiToken`            | owner (user or project), scopes, token_hash, expires_at, last_used_at                                        | shown once; scoped to org and optionally project and environment |
+| `Organization`        | name, slug                                                                                                   | at least one Owner at all times                                  |
+| `Membership`          | user_id, organization_id, org_role                                                                           | org_role in {owner, admin, member}                               |
+| `RoleBinding`         | membership_id, project_id, environment_id (nullable), role                                                   | role in {admin, developer, viewer}                               |
+| `Project`             | name, slug, git_write_mode (commit, pull_request)                                                            | slug unique per org                                              |
+| `Environment`         | project_id, name, kind (standard, preview), failover_policy, protected                                       | protected envs require Admin for deploy and exec                 |
+| `Node`                | name, status, labels, facts, wireguard_ip, wireguard_public_key, lease_epoch, last_heartbeat_at              | name unique per org                                              |
+| `NodeCertificate`     | node_id, serial, not_after, revoked_at                                                                       | one active cert per node                                         |
+| `JoinToken`           | organization_id, token_hash, expires_at, used_at                                                             | single use                                                       |
+| `GitConnection`       | provider, installation_id or credentials_enc, scope                                                          | per org                                                          |
+| `Application`         | environment_id, name, source (git, image, compose), repo, branch, config_path, config_json, config_sha       | name unique per environment                                      |
+| `Domain`              | application_id, hostname, tls_mode, verification_status                                                      | hostname unique per org                                          |
+| `Secret`              | environment_id, name, value_enc, version                                                                     | value never returned by the API after creation, only masked      |
+| `Release`             | application_id, image_digest, config_snapshot, commit_sha                                                    | immutable                                                        |
+| `Deployment`          | application_id, release_id, state, trigger, actor_id, started_at, finished_at, error                         | one active deployment per application                            |
+| `Allocation`          | release_id or database_id, node_id, container_id, state, lease_epoch                                         | stateful allocations bound to one node                           |
+| `Volume`              | environment_id, name, node_id, size_bytes                                                                    | removal needs confirmation                                       |
+| `ManagedDatabase`     | environment_id, engine, version, node_id, credentials_enc, backup_policy                                     |                                                                  |
+| `BackupTarget`        | organization_id, s3_endpoint, bucket, region, credentials_enc, encryption_key_enc                            | tested on save                                                   |
+| `Backup`              | subject (volume or database), target_id, state, size_bytes, checksum, started_at, finished_at                |                                                                  |
+| `Preview`             | application_id, pr_number, environment_id, expires_at, state                                                 | count per app limited by `max_active`                            |
+| `AlertRule`           | scope, expression, threshold, window, channel_ids                                                            |                                                                  |
+| `NotificationChannel` | kind (email, slack, discord, telegram, webhook), config_enc                                                  |                                                                  |
+| `AuditEvent`          | organization_id, actor (user, token, system, node), action, target_type, target_id, metadata, ip, created_at | append-only; no update or delete path                            |
+| `ConfirmationToken`   | organization_id, action, target_id, issued_to, expires_at, used_at                                           | 5 min TTL, single use                                            |
 
 ## 5. State machines
 
@@ -265,21 +265,21 @@ starting -> unhealthy -> (restart within policy) -> starting | failed
 
 Org roles: `owner`, `admin`, `member`. Project or environment roles for members: `admin`, `developer`, `viewer`.
 
-| Capability | Owner | Org admin | Project admin | Developer | Viewer |
-| --- | --- | --- | --- | --- | --- |
-| Billing, delete organization | yes | no | no | no | no |
-| Add or remove nodes | yes | yes | no | no | no |
-| Manage members and roles | yes | yes | project only | no | no |
-| Create or delete projects | yes | yes | no | no | no |
-| Create or delete environments | yes | yes | yes | no | no |
-| Deploy to unprotected env | yes | yes | yes | yes | no |
-| Deploy to protected env | yes | yes | yes | no | no |
-| Read secret values | no (write-only) | no | no | no | no |
-| Set secrets | yes | yes | yes | unprotected only | no |
-| Exec into containers | yes | yes | yes | unprotected only | no |
-| Delete volumes or databases | yes (confirmation) | yes (confirmation) | yes (confirmation) | no | no |
-| View logs and metrics | yes | yes | yes | yes | yes |
-| View audit log | yes | yes | project only | no | no |
+| Capability                    | Owner              | Org admin          | Project admin      | Developer        | Viewer |
+| ----------------------------- | ------------------ | ------------------ | ------------------ | ---------------- | ------ |
+| Billing, delete organization  | yes                | no                 | no                 | no               | no     |
+| Add or remove nodes           | yes                | yes                | no                 | no               | no     |
+| Manage members and roles      | yes                | yes                | project only       | no               | no     |
+| Create or delete projects     | yes                | yes                | no                 | no               | no     |
+| Create or delete environments | yes                | yes                | yes                | no               | no     |
+| Deploy to unprotected env     | yes                | yes                | yes                | yes              | no     |
+| Deploy to protected env       | yes                | yes                | yes                | no               | no     |
+| Read secret values            | no (write-only)    | no                 | no                 | no               | no     |
+| Set secrets                   | yes                | yes                | yes                | unprotected only | no     |
+| Exec into containers          | yes                | yes                | yes                | unprotected only | no     |
+| Delete volumes or databases   | yes (confirmation) | yes (confirmation) | yes (confirmation) | no               | no     |
+| View logs and metrics         | yes                | yes                | yes                | yes              | yes    |
+| View audit log                | yes                | yes                | project only       | no               | no     |
 
 API tokens carry explicit scopes that can only narrow the owner's permissions.
 
@@ -343,15 +343,15 @@ API tokens carry explicit scopes that can only narrow the owner's permissions.
 
 ## 15. Non-functional requirements
 
-| Area | Requirement |
-| --- | --- |
-| Security | No high or critical finding open in CodeQL, Semgrep, gosec, Trivy at release time |
-| Supply chain | All release artifacts signed with cosign (keyless), SBOM in SPDX published |
-| Availability | Running apps and routing unaffected by a control plane outage |
-| Performance | Targets in ARCHITECTURE "Resource targets" |
-| Compatibility | Ubuntu 22.04/24.04, Debian 12/13, Rocky/Alma 9; amd64 and arm64; Docker Engine 25+ |
-| Accessibility | Web UI meets WCAG 2.2 AA on core flows |
-| Internationalization | English only for v0.1; strings externalized for later translation |
+| Area                 | Requirement                                                                        |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| Security             | No high or critical finding open in CodeQL, Semgrep, gosec, Trivy at release time  |
+| Supply chain         | All release artifacts signed with cosign (keyless), SBOM in SPDX published         |
+| Availability         | Running apps and routing unaffected by a control plane outage                      |
+| Performance          | Targets in ARCHITECTURE "Resource targets"                                         |
+| Compatibility        | Ubuntu 22.04/24.04, Debian 12/13, Rocky/Alma 9; amd64 and arm64; Docker Engine 25+ |
+| Accessibility        | Web UI meets WCAG 2.2 AA on core flows                                             |
+| Internationalization | English only for v0.1; strings externalized for later translation                  |
 
 ## 16. Open questions
 

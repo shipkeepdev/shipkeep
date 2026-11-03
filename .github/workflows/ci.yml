@@ -28,7 +28,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - uses: nrwl/nx-set-shas@v4
-      - run: pnpm nx affected -t lint test build --parallel=3
+      - run: pnpm nx affected -t lint typecheck test build --parallel=3
 
   go:
     name: Go (lint, test)
@@ -43,16 +43,21 @@ jobs:
             agent/go.sum
             cli/go.sum
             lib/go.sum
-      # Task M0.2: pin the action and the linter version so they match .golangci.yml (config version 2).
-      - uses: golangci/golangci-lint-action@v6
+      # Task M0.2 pins this action to a commit SHA. golangci-lint v2 is required by .golangci.yml (config version 2).
+      - uses: golangci/golangci-lint-action@v8
         with:
+          version: v2.15
           working-directory: lib
-      - uses: golangci/golangci-lint-action@v6
+      - uses: golangci/golangci-lint-action@v8
         with:
+          version: v2.15
           working-directory: agent
-      - uses: golangci/golangci-lint-action@v6
+          install-mode: none
+      - uses: golangci/golangci-lint-action@v8
         with:
+          version: v2.15
           working-directory: cli
+          install-mode: none
       - run: go test -race -count=1 ./agent/... ./cli/... ./lib/...
 
   generated-code:
@@ -88,7 +93,7 @@ jobs:
           POSTGRES_USER: shipkeep
           POSTGRES_PASSWORD: shipkeep
           POSTGRES_DB: shipkeep_test
-        ports: ["5432:5432"]
+        ports: ['5432:5432']
         options: >-
           --health-cmd "pg_isready -U shipkeep"
           --health-interval 5s

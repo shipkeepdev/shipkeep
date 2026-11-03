@@ -20,4 +20,13 @@ Shipkeep is a self-hosted platform to deploy applications, databases and service
 
 ## Development
 
-Setup instructions are added in task M0.5 of the plan.
+Prerequisites: Node.js 22 (`.nvmrc`), pnpm 11 (`corepack enable` picks the pinned version), Go 1.24+, [gitleaks](https://github.com/gitleaks/gitleaks#installing) for the pre-commit hook. Docker is needed for integration tests only.
+
+```bash
+pnpm install                     # installs dependencies and the git hooks
+pnpm lint                        # ESLint + TypeScript typecheck
+pnpm test                        # TypeScript unit tests
+go test ./agent/... ./cli/... ./lib/...
+```
+
+The local control plane stack (`pnpm dev`) arrives with task M0.5 of the plan.

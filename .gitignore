@@ -74,3 +74,14 @@ logs/
 .claude/settings.local.json
 .DS_Store
 Thumbs.db
+
+test-output
+vitest.config.*.timestamp*
+.vitest
+
+.angular
+
+__screenshots__/
+
+# TypeScript build output of the Nx typescript plugin
+out-tsc/

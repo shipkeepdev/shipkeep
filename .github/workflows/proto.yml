@@ -3,9 +3,9 @@ name: proto
 on:
   pull_request:
     paths:
-      - "proto/**"
-      - "buf.yaml"
-      - "buf.gen.yaml"
+      - 'proto/**'
+      - 'buf.yaml'
+      - 'buf.gen.yaml'
 
 permissions:
   contents: read
@@ -23,5 +23,5 @@ jobs:
           lint: true
           format: true
           breaking: true
-          breaking_against: "${{ github.event.repository.clone_url }}#branch=main"
+          breaking_against: '${{ github.event.repository.clone_url }}#branch=main'
           push: false

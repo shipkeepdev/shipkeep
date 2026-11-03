@@ -15,7 +15,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 
 ## M0. Foundations
 
-- [ ] **M0.1 Repository bootstrap** (X)
+- [x] **M0.1 Repository bootstrap** (X)
   - Nx workspace with pnpm; `apps/api` (NestJS), `apps/web` (Angular), `packages/domain`, `packages/config-schema`, `packages/api-client`, `packages/proto-ts`; `go.work` with the `agent/`, `cli/` and `lib/` modules (paths in CLAUDE.md).
   - Root `package.json` with a `packageManager` field (pnpm version pinned) and the scripts from the CLAUDE.md command table (`pnpm lint`, `pnpm gen`, `pnpm dev`, `pnpm test:integration`); `test:integration` may be a no-op placeholder that exits 0 until M1.2.
   - ESLint (strict, type-aware), Prettier, `.golangci.yml` (config version 2), EditorConfig, `.nvmrc`, `.tool-versions`.
