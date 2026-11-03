@@ -1,5 +1,9 @@
 # Pre-commit guards (CLAUDE.md, "Never commit" and "Enforcement").
 # Installed automatically by `pnpm install` through the `prepare` script.
+output:
+  - failure
+  - summary
+
 pre-commit:
   parallel: true
   jobs:

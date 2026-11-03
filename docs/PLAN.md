@@ -25,7 +25,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
   - Harden the existing workflows in `.github/workflows/`: pin every third-party action to a full commit SHA (with the version in a comment) and every tool image to a digest (`semgrep/semgrep`, `gitleaks/gitleaks`); replace `securego/gosec@master` with a pinned release; pin the golangci-lint version so it matches `.golangci.yml`.
   - `release.yml` is only checked with actionlint here; its first dry run happens in M8.2.
   - Acceptance: all checks listed in GITHUB_SETUP section 5 are green on the PR; actionlint passes; no action referenced by a mutable tag.
-- [ ] **M0.3 Proto and codegen pipeline** (X). Depends: M0.1
+- [x] **M0.3 Proto and codegen pipeline** (X). Depends: M0.1
   - `buf.yaml` (lint `STANDARD`, breaking `FILE`), `buf.gen.yaml`; `proto/shipkeep/agent/v1/` with the skeleton from SPEC Appendix A and all action messages with fields from SPEC 3.3, 3.6 and the `ExecStream` frames from SPEC 3.1.
   - Generated Go code in `lib/gen`, TS code in `packages/proto-ts`. `pnpm gen` regenerates; CI fails on drift.
   - Acceptance: `buf lint` clean; `buf breaking` wired against `main`; both sides compile.

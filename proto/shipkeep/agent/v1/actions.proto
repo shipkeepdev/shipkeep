@@ -1,0 +1,491 @@
+// Closed catalogue of actions the control plane can send to an agent (SPEC section 3.3).
+//
+// Anything not defined here does not exist: there is no generic exec, shell or file-write action.
+// Adding or changing an action requires an ADR or SPEC update, agent-side validation, tests with
+// malicious inputs and the `security-review` label (CLAUDE.md, rule 2).
+//
+// Fields marked `debug_redact` carry secret material. Loggers and debug formatters must honour it.
+
+syntax = "proto3";
+
+package shipkeep.agent.v1;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/timestamp.proto";
+
+// ---------------------------------------------------------------------------------------------
+// Shared types
+// ---------------------------------------------------------------------------------------------
+
+// Non-secret environment variable.
+message EnvVar {
+  string name = 1;
+  string value = 2;
+}
+
+// Secret environment variable. The value only travels inside CreateContainer and RunReleaseTask
+// over mTLS; the agent never persists it (SPEC section 9).
+message SecretEnv {
+  string name = 1;
+  // Secret version, used for drift detection and audit.
+  uint32 version = 2;
+  bytes value = 3 [debug_redact = true];
+}
+
+// Published port of a container on the node's Docker network.
+message PortMapping {
+  // Port inside the container.
+  uint32 container_port = 1;
+  // Port on the Docker network. Zero lets Docker choose.
+  uint32 host_port = 2;
+  Protocol protocol = 3;
+
+  enum Protocol {
+    PROTOCOL_UNSPECIFIED = 0;
+    PROTOCOL_TCP = 1;
+    PROTOCOL_UDP = 2;
+  }
+}
+
+// A mount is either a Shipkeep-managed named volume (`sk-` prefix) or a tmpfs. Host bind mounts do
+// not exist (THREAT_MODEL E1).
+message Mount {
+  // Absolute path inside the container. Validated against SPEC section 2.2.
+  string container_path = 1;
+  bool read_only = 2;
+  oneof source {
+    // Name of a Shipkeep-managed Docker volume, `^sk-[a-z0-9-]{1,60}$`.
+    string volume_name = 3;
+    Tmpfs tmpfs = 4;
+  }
+
+  message Tmpfs {
+    uint64 size_bytes = 1;
+    // Octal mode, for example 0700. Zero means the Docker default.
+    uint32 mode = 2;
+  }
+}
+
+// Resource reservation and limit for one container.
+message Resources {
+  // CPU limit in thousandths of a core (500 = half a core). Zero means unlimited.
+  uint32 cpu_millis = 1;
+  // Memory limit in bytes. Zero means unlimited.
+  uint64 memory_bytes = 2;
+  // Maximum number of processes. Zero means the Docker default.
+  uint32 pids_limit = 3;
+}
+
+// Linux capabilities that may be added to a container. Everything else is rejected.
+enum Capability {
+  CAPABILITY_UNSPECIFIED = 0;
+  CAPABILITY_NET_BIND_SERVICE = 1;
+  CAPABILITY_CHOWN = 2;
+  CAPABILITY_SETUID = 3;
+  CAPABILITY_SETGID = 4;
+}
+
+// Health probe definition, mirrored from shipkeep.yml `run.healthcheck`.
+message HealthCheckSpec {
+  oneof probe {
+    // HTTP GET on this path; 2xx and 3xx are healthy. Starts with `/`, max 2048 bytes.
+    string http_path = 1;
+    // TCP connect on this container port.
+    uint32 tcp_port = 2;
+  }
+  google.protobuf.Duration interval = 3;
+  google.protobuf.Duration timeout = 4;
+  google.protobuf.Duration start_period = 5;
+  uint32 healthy_threshold = 6;
+  uint32 unhealthy_threshold = 7;
+}
+
+// Restart behaviour applied by the agent during reconciliation (SPEC section 3.5).
+message RestartPolicy {
+  Mode mode = 1;
+  // Maximum restarts within the window before the allocation is reported failed. Zero means unlimited.
+  uint32 max_restarts = 2;
+  google.protobuf.Duration window = 3;
+
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    MODE_NEVER = 1;
+    MODE_ON_FAILURE = 2;
+    MODE_ALWAYS = 3;
+  }
+}
+
+// Typed description of a container. The agent translates it to a Docker Engine API request and
+// validates every field (no privileged mode, no host namespaces, allow-listed capabilities).
+message ContainerSpec {
+  // Container name, `^sk-[a-z0-9-]{1,60}$`.
+  string name = 1;
+  // Image reference pinned by digest (`...@sha256:...`). Tags are rejected.
+  string image_ref = 2;
+  // Argv array. Never a shell string. Max 64 items of 4096 bytes each.
+  repeated string command = 3;
+  // Working directory inside the container. Optional.
+  string working_dir = 4;
+  // Non-secret environment.
+  repeated EnvVar env = 5;
+  // Secret environment. See SecretEnv.
+  repeated SecretEnv secrets = 6;
+  // When true, secrets are mounted as files on a tmpfs instead of environment variables.
+  bool secrets_as_files = 7;
+  repeated PortMapping ports = 8;
+  repeated Mount mounts = 9;
+  Resources resources = 10;
+  // Labels set on the container. The agent always adds `sk.managed=true` and the Shipkeep identity labels.
+  map<string, string> labels = 11;
+  HealthCheckSpec health_check = 12;
+  // Docker network name, `^sk-[a-z0-9-]{1,60}$`.
+  string network = 13;
+  // DNS servers for the container. Normally the node's WireGuard address (embedded DNS).
+  repeated string dns_servers = 14;
+  RestartPolicy restart_policy = 15;
+  // Capabilities to add on top of the Docker default set. Allow-listed.
+  repeated Capability cap_add = 16;
+  // Run with a read-only root filesystem.
+  bool read_only_rootfs = 17;
+  // User and group to run as, for example "1000:1000". Empty means the image default.
+  string user = 18;
+  // Stop grace period before SIGKILL.
+  google.protobuf.Duration stop_timeout = 19;
+}
+
+// Short-lived credentials for a registry pull or push.
+message RegistryCredentials {
+  // Registry host, for example `registry.internal:5000`.
+  string server = 1;
+  string username = 2;
+  string password = 3 [debug_redact = true];
+  google.protobuf.Timestamp expires_at = 4;
+}
+
+// Pre-signed S3 target for one backup or restore operation (SPEC section 10).
+message S3Target {
+  // Host of the configured S3 endpoint; pre-signed URLs must point to it.
+  string endpoint_host = 1;
+  // Pre-signed URL for upload (backup) or download (restore).
+  string presigned_url = 2 [debug_redact = true];
+  // Object key, for display and audit.
+  string object_key = 3;
+  google.protobuf.Timestamp expires_at = 4;
+  // Reference to the client-side encryption key (age recipient or identity) held by the agent.
+  string encryption_key_ref = 5;
+}
+
+// Managed database engines.
+enum DatabaseEngine {
+  DATABASE_ENGINE_UNSPECIFIED = 0;
+  DATABASE_ENGINE_POSTGRESQL = 1;
+  DATABASE_ENGINE_MYSQL = 2;
+  DATABASE_ENGINE_MARIADB = 3;
+  DATABASE_ENGINE_MONGODB = 4;
+  DATABASE_ENGINE_REDIS = 5;
+}
+
+// Build types from shipkeep.yml `build.type` (ADR 0012).
+enum BuildType {
+  BUILD_TYPE_UNSPECIFIED = 0;
+  BUILD_TYPE_DOCKERFILE = 1;
+  BUILD_TYPE_RAILPACK = 2;
+  BUILD_TYPE_NIXPACKS = 3;
+}
+
+// TLS handling for a Caddy route (ADR 0005).
+enum TlsMode {
+  TLS_MODE_UNSPECIFIED = 0;
+  // Automatic certificate through HTTP-01.
+  TLS_MODE_AUTO_HTTP = 1;
+  // Automatic certificate through DNS-01 (provider configured on the control plane).
+  TLS_MODE_AUTO_DNS = 2;
+  // Plain HTTP only (internal or behind another proxy).
+  TLS_MODE_OFF = 3;
+}
+
+// One upstream of a route: a local container or an instance on another node over WireGuard.
+message Upstream {
+  // `host:port` on the Docker network or the WireGuard network. Nothing else is accepted.
+  string address = 1;
+  // Node that runs this upstream, for diagnostics.
+  string node_id = 2;
+  // Relative weight. Zero means 1.
+  uint32 weight = 3;
+}
+
+// Routing entry pushed to agents and used by UpsertRoute.
+message Route {
+  string route_id = 1;
+  repeated string hosts = 2;
+  repeated Upstream upstreams = 3;
+  TlsMode tls_mode = 4;
+  google.protobuf.Duration drain_timeout = 5;
+}
+
+// WireGuard peer definition.
+message WireGuardPeer {
+  string node_id = 1;
+  // 32-byte key, base64 encoded.
+  string public_key = 2;
+  // `host:port` reachable endpoint. Empty when the peer is only reachable through NAT traversal.
+  string endpoint = 3;
+  // CIDRs routed to this peer, all inside the organization's WireGuard range.
+  repeated string allowed_ips = 4;
+  google.protobuf.Duration persistent_keepalive = 5;
+}
+
+// Signed cosign bundle used to verify a downloaded artifact before use.
+message CosignBundle {
+  bytes bundle_json = 1;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Actions
+// ---------------------------------------------------------------------------------------------
+
+// Create or confirm a Docker network for an environment.
+message EnsureNetwork {
+  // `^sk-[a-z0-9-]{1,60}$`
+  string name = 1;
+  // Internal networks have no outbound access.
+  bool internal = 2;
+}
+
+// Pull an image by digest.
+message PullImage {
+  // Must contain `@sha256:`.
+  string image_ref = 1;
+  RegistryCredentials registry_credentials = 2;
+}
+
+// Build an image with rootless BuildKit and push it to the internal registry (ADR 0012).
+message BuildImage {
+  // `https` only.
+  string repo_url = 1;
+  // Full 40 or 64 character commit hash.
+  string commit_sha = 2;
+  // Short-lived git token (for example a GitHub App installation token). Never written to disk or logs.
+  string git_token = 3 [debug_redact = true];
+  BuildType build_type = 4;
+  // Build context relative to the repository root. No `..`.
+  string context = 5;
+  // Dockerfile path relative to the context. No `..`. Dockerfile builds only.
+  string dockerfile = 6;
+  // Build arguments. Keys `^[A-Z_][A-Z0-9_]*$`.
+  map<string, string> args = 7;
+  // Destination reference in the internal registry (tag, resolved to a digest in the result).
+  string target_ref = 8;
+  RegistryCredentials push_credentials = 9;
+  Limits limits = 10;
+
+  message Limits {
+    uint32 cpu_millis = 1;
+    uint64 memory_bytes = 2;
+    google.protobuf.Duration timeout = 3;
+    uint64 disk_bytes = 4;
+  }
+}
+
+// Create a container from a typed spec. Does not start it.
+message CreateContainer {
+  ContainerSpec spec = 1;
+}
+
+// Start a managed container (label `sk.managed=true`).
+message StartContainer {
+  string container_id = 1;
+}
+
+// Stop a managed container.
+message StopContainer {
+  string container_id = 1;
+  google.protobuf.Duration stop_timeout = 2;
+}
+
+// Remove a managed container. Removing its anonymous volumes needs a confirmation token.
+message RemoveContainer {
+  string container_id = 1;
+  bool remove_volumes = 2;
+  // Required when remove_volumes is true (SPEC section 3.6).
+  string confirmation_token = 3 [debug_redact = true];
+}
+
+// Create or confirm a Shipkeep-managed named volume.
+message EnsureVolume {
+  // `^sk-[a-z0-9-]{1,60}$`
+  string name = 1;
+  map<string, string> labels = 2;
+}
+
+// Remove a Shipkeep-managed named volume. Destructive: needs a confirmation token.
+message RemoveVolume {
+  string name = 1;
+  string confirmation_token = 2 [debug_redact = true];
+}
+
+// Probe an instance once or until thresholds are met.
+message HealthCheck {
+  string container_id = 1;
+  HealthCheckSpec spec = 2;
+  // Give up after this duration.
+  google.protobuf.Duration deadline = 3;
+}
+
+// Add or update a Caddy route. Switch-then-drain is handled by the agent.
+message UpsertRoute {
+  Route route = 1;
+}
+
+// Remove a Caddy route after draining in-flight requests.
+message RemoveRoute {
+  string route_id = 1;
+  google.protobuf.Duration drain_timeout = 2;
+}
+
+// Run a one-off container (release command, migrations) and wait for it.
+message RunReleaseTask {
+  ContainerSpec spec = 1;
+  google.protobuf.Duration timeout = 2;
+}
+
+// Open an interactive exec session inside a managed container. Frames flow over ExecStream.
+message ExecSession {
+  string container_id = 1;
+  // Argv array, never a shell string.
+  repeated string argv = 2;
+  bool tty = 3;
+  // Correlates the ExecStream RPC with this action.
+  string session_id = 4;
+  // Hard limit on the session duration.
+  google.protobuf.Duration time_limit = 5;
+  // User to run as inside the container. Empty means the container default.
+  string user = 6;
+}
+
+// Stream a volume to S3 as an encrypted tar.
+message BackupVolume {
+  string volume = 1;
+  S3Target s3_target = 2;
+}
+
+// Restore a volume from S3.
+message RestoreVolume {
+  string volume = 1;
+  S3Target s3_target = 2;
+  // Expected SHA-256 of the encrypted archive, verified before extraction.
+  string expected_sha256 = 3;
+}
+
+// Engine-native logical dump of a managed database to S3.
+message DumpDatabase {
+  DatabaseEngine engine = 1;
+  string container_id = 2;
+  S3Target s3_target = 3;
+  // Database name inside the engine. Validated per engine.
+  string database = 4;
+}
+
+// Engine-native restore of a managed database from S3.
+message RestoreDatabase {
+  DatabaseEngine engine = 1;
+  string container_id = 2;
+  S3Target s3_target = 3;
+  string database = 4;
+  string expected_sha256 = 5;
+}
+
+// Replace the WireGuard peer set of the node.
+message ConfigurePeers {
+  repeated WireGuardPeer peers = 1;
+  // The node's own address inside the organization's WireGuard CIDR.
+  string local_address = 2;
+  // Listen port of the local WireGuard interface.
+  uint32 listen_port = 3;
+}
+
+// Report hardware and software facts.
+message CollectFacts {}
+
+// Replace the agent binary after verifying its signature.
+message UpgradeAgent {
+  string version = 1;
+  // `https` only.
+  string url = 2;
+  string sha256 = 3;
+  CosignBundle cosign_bundle = 4;
+}
+
+// Fencing: stop every stateful workload because the node's lease epoch is stale (ADR 0008).
+message StopStatefulWorkloads {
+  uint64 epoch = 1;
+}
+
+// Upgrade the control plane containers. Accepted only by the agent of the control-plane node.
+message UpgradeControlPlane {
+  string version = 1;
+  // Image references pinned by digest, keyed by component (api, postgres, registry, victorialogs, victoriametrics).
+  map<string, string> image_refs = 2;
+  CosignBundle cosign_bundle = 3;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Results
+// ---------------------------------------------------------------------------------------------
+
+// Hardware and software facts reported at enrollment, in Hello and by CollectFacts.
+message NodeFacts {
+  string hostname = 1;
+  string os = 2;
+  string os_version = 3;
+  string kernel_version = 4;
+  string architecture = 5;
+  uint32 cpu_count = 6;
+  uint64 memory_bytes = 7;
+  uint64 disk_bytes = 8;
+  uint64 disk_free_bytes = 9;
+  string docker_version = 10;
+  string caddy_version = 11;
+  string wireguard_version = 12;
+  string agent_version = 13;
+}
+
+// Result of a health probe.
+message HealthCheckResult {
+  bool healthy = 1;
+  uint32 consecutive_successes = 2;
+  uint32 consecutive_failures = 3;
+  string last_error = 4;
+}
+
+// Typed result of an action. Actions without a dedicated result leave the oneof empty.
+message ActionResult {
+  oneof result {
+    string container_id = 1;
+    BuildImageResult build_image = 2;
+    HealthCheckResult health_check = 3;
+    ReleaseTaskResult release_task = 4;
+    TransferResult transfer = 5;
+    NodeFacts facts = 6;
+    string image_digest = 7;
+  }
+
+  message BuildImageResult {
+    string image_digest = 1;
+    uint64 size_bytes = 2;
+    google.protobuf.Duration duration = 3;
+  }
+
+  message ReleaseTaskResult {
+    int32 exit_code = 1;
+    // Last lines of output, truncated by the agent.
+    string output_tail = 2;
+  }
+
+  // Backup or restore outcome.
+  message TransferResult {
+    uint64 size_bytes = 1;
+    string sha256 = 2;
+    google.protobuf.Duration duration = 3;
+  }
+}

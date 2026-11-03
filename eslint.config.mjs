@@ -15,10 +15,9 @@ export default [
       'agent/**',
       'cli/**',
       'lib/**',
-      // Generated code is never edited by hand (CLAUDE.md, rule 9).
-      'packages/proto-ts/src/gen/**',
-      'packages/config-schema/src/gen/**',
-      'packages/api-client/src/gen/**',
+      // Generated code is never edited by hand (CLAUDE.md, rule 9). Patterns are relative to the
+      // config file that imports this one, hence the leading globstar.
+      '**/src/gen/**',
     ],
   },
   {

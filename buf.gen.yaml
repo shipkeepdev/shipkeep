@@ -1,0 +1,27 @@
+# Code generation for the agent protocol (run with `pnpm gen`).
+# Generated code is committed and never edited by hand (CLAUDE.md, rule 9).
+version: v2
+clean: true
+managed:
+  enabled: true
+  override:
+    - file_option: go_package_prefix
+      value: github.com/samuelmbabhazi/shipkeep/lib/gen
+plugins:
+  # Go messages and gRPC stubs for the agent (lib/gen, shared by agent and tests).
+  - remote: buf.build/protocolbuffers/go:v1.36.12
+    out: lib/gen
+    opt: paths=source_relative
+  - remote: buf.build/grpc/go:v1.5.1
+    out: lib/gen
+    opt:
+      - paths=source_relative
+      - require_unimplemented_servers=true
+  # TypeScript messages for the control plane (packages/proto-ts).
+  - remote: buf.build/bufbuild/es:v2.16.0
+    out: packages/proto-ts/src/gen
+    opt:
+      - target=ts
+      - import_extension=js
+inputs:
+  - directory: proto

@@ -22,6 +22,16 @@ jobs:
         with:
           lint: true
           format: true
-          breaking: true
-          breaking_against: '${{ github.event.repository.clone_url }}#branch=main'
+          breaking: false
           push: false
+      # Breaking-change detection against main. Skipped only while main has no proto files yet.
+      - name: buf breaking
+        env:
+          AGAINST: '${{ github.event.repository.clone_url }}#branch=main'
+        run: |
+          git fetch --quiet origin main
+          if git ls-tree -r --name-only origin/main -- proto | grep -q '\.proto$'; then
+            buf breaking --against "$AGAINST"
+          else
+            echo "main has no .proto files yet, nothing to compare against"
+          fi
