@@ -1,27 +1,41 @@
-// Control plane entry point. Task M2.1 replaces this minimal bootstrap with the real API
-// skeleton (config validation, problem-details errors, OpenAPI, request logging).
+// Control plane entry point.
+//
+// SHIPKEEP_OPENAPI_OUT=<file> writes the OpenAPI document to that file and exits without
+// listening; `pnpm gen:openapi` uses it to keep apps/api/openapi.json and the generated client
+// in sync (CLAUDE.md, rule 9).
 
-import { Logger } from '@nestjs/common';
-import { NestFactory } from '@nestjs/core';
+import { writeFile } from 'node:fs/promises';
 
-import { AppModule } from './app/app.module';
+import { Logger } from 'nestjs-pino';
 
-const GLOBAL_PREFIX = 'api';
-const DEFAULT_PORT = 3000;
+import { createApp } from './bootstrap';
+import { AppConfig } from './platform/config/app-config';
+import { API_VERSION } from './platform/health/health.controller';
+import { API_PREFIX } from './platform/http/constants';
+import { buildOpenApiDocument, OPENAPI_JSON_PATH } from './platform/openapi/openapi';
 
-async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
-  app.setGlobalPrefix(GLOBAL_PREFIX);
+async function main(): Promise<void> {
+  const app = await createApp();
+  const logger = app.get(Logger);
 
-  const port = Number(process.env['API_PORT'] ?? DEFAULT_PORT);
+  const openApiOut = process.env['SHIPKEEP_OPENAPI_OUT'];
+  if (openApiOut) {
+    // No app.init(): lifecycle hooks (database connection) must not run in document-only mode.
+    const document = buildOpenApiDocument(app, API_VERSION);
+    await writeFile(openApiOut, `${JSON.stringify(document, null, 2)}\n`);
+    return;
+  }
+
+  const config = app.get(AppConfig);
+  const port = config.get('API_PORT');
   await app.listen(port);
-  Logger.log(`Control plane API listening on http://localhost:${String(port)}/${GLOBAL_PREFIX}`);
+  logger.log(
+    `control plane listening on http://localhost:${String(port)}${API_PREFIX}, OpenAPI at ${OPENAPI_JSON_PATH}`,
+  );
 }
 
-bootstrap().catch((error: unknown) => {
-  Logger.error(
-    'Control plane failed to start',
-    error instanceof Error ? error.stack : String(error),
-  );
+main().catch((error: unknown) => {
+  // The pino logger may not exist yet (configuration errors), so write plainly.
+  console.error('control plane failed to start:', error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });
