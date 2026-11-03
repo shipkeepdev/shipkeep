@@ -1,0 +1,38 @@
+name: Plan task
+description: A task from docs/PLAN.md
+title: "[M0.0] "
+labels: ["task"]
+body:
+  - type: input
+    id: task_id
+    attributes:
+      label: Task id
+      placeholder: M1.3
+    validations:
+      required: true
+  - type: dropdown
+    id: track
+    attributes:
+      label: Track
+      options: ["A: agent", "C: control plane", "W: web UI", "X: cross-cutting"]
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Scope
+      description: Copied from docs/PLAN.md
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Acceptance criteria
+      description: Copied from docs/PLAN.md
+    validations:
+      required: true
+  - type: input
+    id: depends
+    attributes:
+      label: Depends on
+      placeholder: "#12, #15"

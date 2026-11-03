@@ -1,0 +1,110 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: TypeScript (lint, test, build)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: nrwl/nx-set-shas@v4
+      - run: pnpm nx affected -t lint test build --parallel=3
+
+  go:
+    name: Go (lint, test)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: |
+            agent/go.sum
+            cli/go.sum
+            lib/go.sum
+      # Task M0.2: pin the action and the linter version so they match .golangci.yml (config version 2).
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: lib
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: agent
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: cli
+      - run: go test -race -count=1 ./agent/... ./cli/... ./lib/...
+
+  generated-code:
+    name: Generated code is up to date
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+      - uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm gen
+      - run: git diff --exit-code
+
+  integration:
+    name: Integration tests (Postgres, Docker)
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    needs: [typescript, go]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: shipkeep
+          POSTGRES_PASSWORD: shipkeep
+          POSTGRES_DB: shipkeep_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U shipkeep"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://shipkeep:shipkeep@localhost:5432/shipkeep_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:integration

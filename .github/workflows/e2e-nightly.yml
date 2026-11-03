@@ -1,0 +1,50 @@
+name: e2e-nightly
+
+on:
+  schedule:
+    - cron: "41 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-nightly
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    name: End-to-end on real VMs
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      HCLOUD_TOKEN: ${{ secrets.HCLOUD_TOKEN }}
+      E2E_RUN_ID: e2e-${{ github.run_id }}
+    steps:
+      - name: Skip when the VM provider token is not configured
+        if: env.HCLOUD_TOKEN == ''
+        run: echo "HCLOUD_TOKEN not set, skipping." && exit 0
+      - uses: actions/checkout@v4
+        if: env.HCLOUD_TOKEN != ''
+      - uses: pnpm/action-setup@v4
+        if: env.HCLOUD_TOKEN != ''
+      - uses: actions/setup-node@v4
+        if: env.HCLOUD_TOKEN != ''
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - uses: actions/setup-go@v5
+        if: env.HCLOUD_TOKEN != ''
+        with:
+          go-version-file: agent/go.mod
+      - if: env.HCLOUD_TOKEN != ''
+        run: pnpm install --frozen-lockfile
+      - name: Provision VMs
+        if: env.HCLOUD_TOKEN != ''
+        run: pnpm e2e:provision
+      - name: Run scenarios
+        if: env.HCLOUD_TOKEN != ''
+        run: pnpm e2e:run
+      - name: Tear down VMs (always)
+        if: always() && env.HCLOUD_TOKEN != ''
+        run: pnpm e2e:teardown

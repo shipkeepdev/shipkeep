@@ -1,0 +1,30 @@
+name: Bug report
+description: Something does not work as specified
+title: "bug: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What was expected
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Shipkeep version
+  - type: markdown
+    attributes:
+      value: "Security issues must not be reported here. See SECURITY.md."

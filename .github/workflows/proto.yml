@@ -1,0 +1,27 @@
+name: proto
+
+on:
+  pull_request:
+    paths:
+      - "proto/**"
+      - "buf.yaml"
+      - "buf.gen.yaml"
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  buf:
+    name: buf lint and breaking
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: bufbuild/buf-action@v1
+        with:
+          lint: true
+          format: true
+          breaking: true
+          breaking_against: "${{ github.event.repository.clone_url }}#branch=main"
+          push: false

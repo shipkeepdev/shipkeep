@@ -1,0 +1,10 @@
+# Every change needs the owner's review. Security-critical paths are listed explicitly
+# so that ownership survives if more maintainers are added later.
+*                       @samuelmbabhazi
+/agent/                 @samuelmbabhazi
+/proto/                 @samuelmbabhazi
+/apps/api/src/modules/identity/   @samuelmbabhazi
+/apps/api/src/modules/fleet/      @samuelmbabhazi
+/docs/THREAT_MODEL.md   @samuelmbabhazi
+/.github/               @samuelmbabhazi
+/.semgrep/              @samuelmbabhazi

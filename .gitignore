@@ -1,0 +1,76 @@
+# Keep in sync with the "Never commit" section of CLAUDE.md.
+
+# --- Secrets and credentials ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.csr
+*.p12
+*.pfx
+*.jks
+id_rsa*
+id_ed25519*
+id_ecdsa*
+*.age
+cosign.key
+cosign.pub.local
+kek
+*.kek
+wg*.conf
+/deploy/dev/secrets/
+.netrc
+.npmrc
+kubeconfig
+*.kubeconfig
+.aws/
+.docker/config.json
+*.tfstate
+*.tfstate.*
+.terraform/
+
+# --- Data ---
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.db
+*.dump
+*.sql.gz
+*.tar.gz.age
+/deploy/dev/data/
+/backups/
+*.har
+
+# --- Build output and caches ---
+node_modules/
+.pnpm-store/
+dist/
+tmp/
+coverage/
+.nx/cache/
+.nx/workspace-data/
+.angular/
+/agent/bin/
+/cli/bin/
+*.test
+*.out
+*.prof
+
+# --- E2E run state ---
+/e2e/.state/
+/e2e/inventory*
+/e2e/keys/
+
+# --- Logs ---
+*.log
+logs/
+
+# --- Editors, OS, assistants ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+.claude/settings.local.json
+.DS_Store
+Thumbs.db
