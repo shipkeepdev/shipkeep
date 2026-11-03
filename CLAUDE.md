@@ -23,9 +23,9 @@ Everything is in English: code, comments, commit messages, PR descriptions, issu
 apps/
   api/              Control plane API, NestJS (TypeScript)
   web/              Web UI, Angular (TypeScript)
-agent/              Node agent, Go module github.com/shipkeephq/shipkeep/agent (single static binary)
-cli/                CLI, Go module github.com/shipkeephq/shipkeep/cli (single static binary)
-lib/                Shared Go module github.com/shipkeephq/shipkeep/lib:
+agent/              Node agent, Go module github.com/samuelmbabhazi/shipkeep/agent (single static binary)
+cli/                CLI, Go module github.com/samuelmbabhazi/shipkeep/cli (single static binary)
+lib/                Shared Go module github.com/samuelmbabhazi/shipkeep/lib:
                       lib/gen      generated protobuf and gRPC code
                       lib/config   shipkeep.yml types (generated) and validator, shared by agent, cli and fuzz tests
 proto/              gRPC + protobuf contract between control plane and agent (single source of truth)
@@ -43,24 +43,25 @@ e2e/                End-to-end tests against real VMs
 
 ## Tooling and commands
 
-- Node.js 22 LTS, pnpm 9, Nx for the TypeScript workspace.
+- Node.js 22 LTS (`.nvmrc`), pnpm 11 (pinned in `package.json` `packageManager`, use Corepack or `pnpm@11`), Nx 24 for the TypeScript workspace.
 - Go 1.24+ for `agent/`, `cli/` and `lib/` (three modules in one Go workspace, `go.work` at repo root, no root module).
-- If the GitHub organization is not `shipkeephq`, replace that segment in every Go module path in task M0.1.
+- The repository lives under the `samuelmbabhazi` account; the `shipkeephq` organization does not exist yet. If the repository is transferred, update the Go module paths and `docs/GITHUB_SETUP.md` in one PR.
 - `buf` for protobuf lint, breaking-change checks and code generation.
 - Docker with BuildKit for local integration tests.
 
-| Task | Command |
-| --- | --- |
-| Install | `pnpm install` |
-| Generate code from proto and schema | `pnpm gen` |
-| Lint everything | `pnpm lint` |
-| Unit tests (TS, affected) | `pnpm nx affected -t test` |
-| Go tests | `go test ./agent/... ./cli/... ./lib/...` |
-| Go lint | `golangci-lint run ./agent/... ./cli/... ./lib/...` |
-| Integration tests | `pnpm test:integration` (needs Docker) |
-| Run control plane locally | `pnpm dev` (API + web + Postgres via `deploy/dev/compose.yml`) |
-| Run an agent locally | `go run ./agent/cmd/shipkeep-agent --dev` |
-| Proto checks | `buf lint && buf breaking --against '.git#branch=main'` |
+| Task                                 | Command                                                        |
+| ------------------------------------ | -------------------------------------------------------------- |
+| Install                              | `pnpm install`                                                 |
+| Generate code from proto and schema  | `pnpm gen`                                                     |
+| Lint everything (ESLint + typecheck) | `pnpm lint`                                                    |
+| Format                               | `pnpm format` (check only: `pnpm format:check`)                |
+| Unit tests (TS, affected)            | `pnpm nx affected -t test`                                     |
+| Go tests                             | `go test ./agent/... ./cli/... ./lib/...`                      |
+| Go lint                              | `golangci-lint run ./agent/... ./cli/... ./lib/...`            |
+| Integration tests                    | `pnpm test:integration` (needs Docker)                         |
+| Run control plane locally            | `pnpm dev` (API + web + Postgres via `deploy/dev/compose.yml`) |
+| Run an agent locally                 | `go run ./agent/cmd/shipkeep-agent --dev`                      |
+| Proto checks                         | `buf lint && buf breaking --against '.git#branch=main'`        |
 
 If a command in this table does not exist yet, creating it is part of the current task.
 
@@ -120,6 +121,7 @@ If a command in this table does not exist yet, creating it is part of the curren
 The repository will be public at v1 and git history is forever. Treat every commit as public from day one.
 
 **Secrets and credentials**
+
 - `.env` files of any kind (only `.env.example` with fake values is allowed).
 - Private keys and certificates: `*.pem`, `*.key`, `*.crt`, `*.p12`, `*.pfx`, `*.jks`, SSH keys (`id_*`), WireGuard keys, age or cosign keys.
 - Shipkeep runtime secrets: the KEK file, internal CA material, agent certificates, join tokens, confirmation signing keys.
@@ -127,23 +129,27 @@ The repository will be public at v1 and git history is forever. Treat every comm
 - Cloud or tool credential files: `.aws/`, `.docker/config.json`, `kubeconfig`, `.netrc`, `.npmrc` with auth tokens, `*.tfstate`.
 
 **Data**
+
 - Database files and dumps: `*.sqlite`, `*.db`, `*.dump`, `*.sql` dumps, `*.sql.gz`, backup archives, `deploy/dev/data/`.
 - Real user or customer data of any kind, including in test fixtures. Fixtures use obviously fake values (`example.com`, `sk_test_fake_...`).
 - Logs, crash dumps, HAR files, screenshots that show tokens or private dashboards.
 
 **Build output and local state**
+
 - `node_modules/`, `dist/`, `coverage/`, `.nx/` cache, `.angular/`, compiled Go binaries, `tmp/`.
 - E2E run state: VM inventories, generated SSH keys, IP lists.
 - Editor and assistant local files: `.idea/`, personal `.vscode/settings.json`, `.claude/settings.local.json`.
 
 **Private documents**
+
 - Business documents outside `docs/` (pricing negotiations, customer names, contracts, the French planning document). Only the English docs in `docs/` belong in the repository.
 
 **Exception:** generated code from `pnpm gen` (proto and schema) is committed on purpose (ADR 0001).
 
 **Enforcement**
+
 - `.gitignore` covers the patterns above; extend it when a new kind of file appears.
-- A pre-commit hook (lefthook) runs gitleaks on staged files and blocks files over 1 MB unless they are listed in `.gitattributes`. Set up in task M0.1.
+- A pre-commit hook (lefthook, installed by `pnpm install`) runs gitleaks on staged files, blocks files over 1 MB unless marked `shipkeep-large-ok` in `.gitattributes`, and formats staged files. A commit-msg hook enforces Conventional Commits. Hook scripts live in `tools/git-hooks/`. `gitleaks` must be installed locally (https://github.com/gitleaks/gitleaks#installing).
 - CI runs gitleaks on the full history (security workflow).
 - If a secret is ever committed: stop, tell the maintainer, rotate the secret first, then clean the history. Removing it in a later commit is not enough.
 
