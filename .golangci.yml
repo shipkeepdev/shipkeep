@@ -43,6 +43,11 @@ linters:
     generated: lax
     paths:
       - gen/
+    rules:
+      # Tests read fixtures and golden files from paths built at runtime.
+      - path: _test\.go
+        linters: [gosec]
+        text: G304
 
 formatters:
   enable:
