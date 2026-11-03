@@ -1,0 +1,6 @@
+version: 1
+name: analytics
+compose:
+  expose:
+    - service: web
+      port: 8080

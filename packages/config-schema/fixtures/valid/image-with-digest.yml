@@ -1,0 +1,7 @@
+version: 1
+name: billing
+build:
+  type: image
+  image: ghcr.io/acme/billing@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+run:
+  port: 3000

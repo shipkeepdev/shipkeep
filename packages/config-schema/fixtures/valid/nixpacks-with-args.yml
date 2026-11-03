@@ -1,0 +1,9 @@
+version: 1
+name: shop
+build:
+  type: nixpacks
+  args:
+    NIXPACKS_NODE_VERSION: '22'
+    BUILD_FLAG_X: '1'
+run:
+  port: 3000

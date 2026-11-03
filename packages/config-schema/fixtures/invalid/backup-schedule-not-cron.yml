@@ -1,0 +1,11 @@
+version: 1
+name: api
+build:
+  type: dockerfile
+run:
+  port: 3000
+volumes:
+  - name: uploads
+    path: /app/uploads
+    backup:
+      schedule: daily

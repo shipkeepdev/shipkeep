@@ -1,0 +1,6 @@
+version: 1
+name: api
+build:
+  type: buildpacks
+run:
+  port: 3000

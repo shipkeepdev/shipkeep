@@ -1,0 +1,7 @@
+version: 1
+name: api
+build:
+  type: image
+  image: 'ghcr.io/acme/api:1.0.0; rm -rf /'
+run:
+  port: 3000

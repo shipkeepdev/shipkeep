@@ -1,0 +1,6 @@
+version: 1
+name: analytics
+compose:
+  file: docker-compose.yml
+scale:
+  replicas: 2

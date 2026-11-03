@@ -1,0 +1,7 @@
+version: 1
+name: api
+build:
+  type: dockerfile
+  dockerfile: /etc/passwd
+run:
+  port: 3000

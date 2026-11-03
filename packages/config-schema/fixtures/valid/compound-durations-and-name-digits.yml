@@ -1,0 +1,13 @@
+version: 1
+name: a1-b2-c3
+build:
+  type: dockerfile
+run:
+  port: 65535
+  healthcheck:
+    path: /
+    interval: 1m30s
+    timeout: 1500ms
+previews:
+  enabled: true
+  ttl: 2h30m

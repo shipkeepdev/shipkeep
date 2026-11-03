@@ -1,0 +1,11 @@
+version: 1
+name: api
+build:
+  type: dockerfile
+run:
+  port: 3000
+databases:
+  - ref: main-db
+    env: DATABASE_URL
+  - ref: cache-redis
+    env: REDIS_URL

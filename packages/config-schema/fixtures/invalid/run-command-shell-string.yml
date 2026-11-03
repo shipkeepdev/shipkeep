@@ -1,0 +1,7 @@
+version: 1
+name: api
+build:
+  type: dockerfile
+run:
+  command: 'node dist/main.js && echo done'
+  port: 3000

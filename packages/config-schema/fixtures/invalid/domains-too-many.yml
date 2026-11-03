@@ -1,0 +1,58 @@
+version: 1
+name: api
+build:
+  type: dockerfile
+run:
+  port: 3000
+domains:
+  - host0.acme.com
+  - host1.acme.com
+  - host2.acme.com
+  - host3.acme.com
+  - host4.acme.com
+  - host5.acme.com
+  - host6.acme.com
+  - host7.acme.com
+  - host8.acme.com
+  - host9.acme.com
+  - host10.acme.com
+  - host11.acme.com
+  - host12.acme.com
+  - host13.acme.com
+  - host14.acme.com
+  - host15.acme.com
+  - host16.acme.com
+  - host17.acme.com
+  - host18.acme.com
+  - host19.acme.com
+  - host20.acme.com
+  - host21.acme.com
+  - host22.acme.com
+  - host23.acme.com
+  - host24.acme.com
+  - host25.acme.com
+  - host26.acme.com
+  - host27.acme.com
+  - host28.acme.com
+  - host29.acme.com
+  - host30.acme.com
+  - host31.acme.com
+  - host32.acme.com
+  - host33.acme.com
+  - host34.acme.com
+  - host35.acme.com
+  - host36.acme.com
+  - host37.acme.com
+  - host38.acme.com
+  - host39.acme.com
+  - host40.acme.com
+  - host41.acme.com
+  - host42.acme.com
+  - host43.acme.com
+  - host44.acme.com
+  - host45.acme.com
+  - host46.acme.com
+  - host47.acme.com
+  - host48.acme.com
+  - host49.acme.com
+  - host50.acme.com

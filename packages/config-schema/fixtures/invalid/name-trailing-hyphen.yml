@@ -1,0 +1,6 @@
+version: 1
+name: billing-
+build:
+  type: dockerfile
+run:
+  port: 3000

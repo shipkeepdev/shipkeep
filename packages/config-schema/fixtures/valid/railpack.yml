@@ -1,0 +1,7 @@
+version: 1
+name: shop
+build:
+  type: railpack
+  context: apps/shop
+run:
+  port: 3000
