@@ -221,6 +221,7 @@ PostgreSQL, one schema `shipkeep`. All tables have `id uuid` (UUIDv7), `created_
 | `AuditEvent`          | organization_id, actor (user, token, system, node), action, target_type, target_id, metadata, ip, created_at | append-only; no update or delete path                                                    |
 | `ConfirmationToken`   | organization_id, action, target_id, issued_to, expires_at, used_at                                           | 5 min TTL, single use                                                                    |
 | `DataEncryptionKey`   | scope (unique, for example `environment:<id>`), wrapped_key, kek_version, created_at                         | DEK of section 9, wrapped by the KEK; never updated in place, rotation inserts a new row |
+| `InstallationKey`     | kind (unique: `ca`, `confirmation`), certificate_pem, public_key_pem, private_key_enc, not_after             | private half encrypted by the KEK; created once at first start                           |
 
 ## 5. State machines
 

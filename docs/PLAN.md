@@ -45,10 +45,12 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 - [x] **M1.1 Agent skeleton and config** (A). Depends: M0.3
   - `agent/cmd/shipkeep-agent`, config file `/etc/shipkeep/agent.yaml`, structured JSON logging, graceful shutdown, `--dev` mode.
   - Acceptance: binary under 30 MB; starts and stops cleanly; unit tests for config validation.
-- [ ] **M1.2 Enrollment and mTLS stream** (A + C). Depends: M1.1, M2.1
-  - Agent: key generation, CSR, `Enroll`, cert storage (0600), `Connect` stream with reconnect and exponential backoff with jitter, cert renewal.
-  - API: `fleet` module with join tokens, internal CA (keys encrypted at rest with the KEK), `AgentGatewayService` gRPC server, revocation list, CA fingerprint shown in the install command.
-  - Acceptance: integration test enrolls an agent, reconnects after control plane restart, rejects reused token and revoked cert.
+- [ ] **M1.2 Enrollment and mTLS stream** (A + C). Depends: M1.1, M2.1. Split into M1.2a, M1.2b and M1.2c.
+  - [x] **M1.2a** API `fleet` module: join tokens (hashed, single use, 15 min), internal Ed25519 CA with private keys encrypted by the KEK, confirmation signing key, `EnrollNode` and `IssueJoinToken` commands, node and certificate records.
+    - Acceptance: CA issues a client certificate from a CSR with the SPIFFE identity decided by the control plane; a reused or expired token is rejected; audit events emitted.
+  - [ ] **M1.2b** API `AgentGatewayService` gRPC server over TLS from the installation CA (Connect-RPC): `Enroll`, `RenewCertificate`, client-certificate authentication with the revocation list, CA fingerprint in the install command, join-token REST endpoint once RBAC exists.
+  - [ ] **M1.2c** Agent: key generation, CSR, `Enroll`, cert storage (0600), CA fingerprint pinning, `Connect` stream with reconnect and exponential backoff with jitter, cert renewal.
+    - Acceptance: integration test enrolls an agent, reconnects after control plane restart, rejects reused token and revoked cert.
 - [ ] **M1.3 Operation journal and local state** (A). Depends: M1.1
   - SQLite schema from SPEC 3.4 and 3.5, journal API, resume and compensation framework, idempotency keys.
   - Acceptance: tests kill the agent mid-action (simulated) and verify resume or compensation for each step type.
