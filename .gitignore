@@ -85,3 +85,6 @@ __screenshots__/
 
 # TypeScript build output of the Nx typescript plugin
 out-tsc/
+
+# Local state of `shipkeep-agent --dev`
+.shipkeep-dev/

@@ -1,0 +1,32 @@
+# Shipkeep agent configuration. The installer writes this file to /etc/shipkeep/agent.yaml
+# with the values from the install command; edit it only to tune paths and intervals.
+# Unknown keys are rejected. Validate with: shipkeep-agent --validate --config /etc/shipkeep/agent.yaml
+
+control_plane:
+  # host:port of the control plane agent gateway (gRPC over mTLS).
+  address: shipkeep.example.com:7443
+  # SHA-256 fingerprint of the installation CA, shown in the "Add server" dialog.
+  # The agent refuses to talk to a gateway whose CA does not match (SPEC 3.2).
+  ca_fingerprint: sha256:0000000000000000000000000000000000000000000000000000000000000000
+
+node:
+  # Optional. Defaults to the hostname.
+  name: ''
+
+paths:
+  state_dir: /var/lib/shipkeep # SQLite state, operation journal, certificates (mode 0700)
+  run_dir: /run/shipkeep # runtime sockets
+
+docker:
+  host: unix:///var/run/docker.sock # TCP endpoints are refused
+
+caddy:
+  admin_socket: /run/shipkeep/caddy-admin.sock
+
+log:
+  level: info # debug | info | warn | error
+  format: json # json | text
+
+intervals:
+  heartbeat: 5s # 1s to 1m (ADR 0008)
+  reconcile: 30s # 5s to 1h (SPEC 3.5)
