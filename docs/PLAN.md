@@ -33,7 +33,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
   - JSON Schema 2020-12 for SPEC section 2 in `packages/config-schema`; generated TS types; Go types and validator in `lib/config`.
   - Golden test files: 20 valid and 30 invalid examples covering every rule in SPEC 2.2.
   - Acceptance: TS and Go validators agree on every golden file (shared test fixture).
-- [ ] **M0.5 Local dev environment** (X). Depends: M0.1
+- [x] **M0.5 Local dev environment** (X). Depends: M0.1
   - `deploy/dev/compose.yml` with PostgreSQL 17, VictoriaLogs, VictoriaMetrics, a registry; `pnpm dev` starts API and web with hot reload.
   - Acceptance: a new contributor runs the stack with two commands documented in `README.md`.
 - [ ] **M0.6 Custom Semgrep rules** (X). Depends: M0.2

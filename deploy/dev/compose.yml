@@ -1,0 +1,64 @@
+# Local development stack for the control plane (task M0.5). Start with `pnpm dev:infra`.
+# Images are pinned to digests (THREAT_MODEL, supply chain); Renovate keeps them current.
+# Every port binds to 127.0.0.1 only: this stack must never be reachable from the network.
+name: shipkeep-dev
+
+services:
+  postgres:
+    image: postgres:17@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1
+    environment:
+      POSTGRES_USER: shipkeep
+      POSTGRES_PASSWORD: shipkeep
+      POSTGRES_DB: shipkeep
+    ports:
+      - '127.0.0.1:5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U shipkeep -d shipkeep']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0@sha256:251121fa882af99b95ba0c230a4a2f412ea602d2698c64a96c58dc9842bb755d
+    command:
+      - -storageDataPath=/victoria-logs-data
+      - -retentionPeriod=30d
+      - -httpListenAddr=:9428
+    ports:
+      - '127.0.0.1:9428:9428'
+    volumes:
+      - victorialogs-data:/victoria-logs-data
+    restart: unless-stopped
+
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.155.0@sha256:f60dc268b54ecf87f6e09d740c2b732838aa9193090cc741417c9f6386a130df
+    command:
+      - -storageDataPath=/victoria-metrics-data
+      - -retentionPeriod=30d
+      - -httpListenAddr=:8428
+    ports:
+      - '127.0.0.1:8428:8428'
+    volumes:
+      - victoriametrics-data:/victoria-metrics-data
+    restart: unless-stopped
+
+  registry:
+    # CNCF Distribution (ADR 0012). Loopback only until WireGuard lands (M4.1).
+    image: registry:3.1.2@sha256:d4032d4cc323c1731c707931ecada07a53076eac38e3b61ae57533f170f2c6c3
+    environment:
+      REGISTRY_STORAGE_DELETE_ENABLED: 'true'
+      REGISTRY_HTTP_ADDR: 0.0.0.0:5000
+    ports:
+      - '127.0.0.1:5000:5000'
+    volumes:
+      - registry-data:/var/lib/registry
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  victorialogs-data:
+  victoriametrics-data:
+  registry-data:
