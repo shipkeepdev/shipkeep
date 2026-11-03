@@ -59,10 +59,12 @@ Build containers (untrusted code) inside rootless BuildKit
 
 - Static analysis in CI: Semgrep (custom rules below), gosec, golangci-lint, gitleaks, Trivy filesystem scan. CodeQL (TypeScript, Go) once the repository is public. Trivy image scan of the control plane image is added to the release workflow in task M8.3.
 - All third-party GitHub Actions pinned to full commit SHAs and all tool images to digests (the March 2026 trivy-action compromise, CVE-2026-33634, rewrote version tags).
-- Custom Semgrep rules, failing CI:
-  - Go: `exec.Command` or `exec.CommandContext` where any argument is not a string literal; any use of `sh`, `bash`, `-c`.
-  - TypeScript: any import of `child_process`, `execa`, `shelljs`.
+- Custom Semgrep rules in `.semgrep/rules/shipkeep-rules.yml`, failing CI, each proven by `.semgrep/tests/` (`pnpm semgrep:test`):
+  - Go: `exec.Command` or `exec.CommandContext` with a non-literal program; any shell interpreter as program (`sh`, `bash`, `dash`, `zsh`, `busybox`, `cmd`, `powershell`, under any path); a `-c` argument; raw spawning through `syscall.Exec`, `syscall.ForkExec`, `os.StartProcess`.
+  - Go: Docker `HostConfig` with `Privileged`, or `host` PID, IPC, network or user namespaces.
+  - TypeScript: any static or dynamic import of `child_process`, `execa`, `shelljs`, `zx`, `cross-spawn`, `node-pty`.
   - TypeScript: Prisma `$queryRawUnsafe` and `$executeRawUnsafe`.
+  - TypeScript: `eval`, `new Function`, string arguments to `setTimeout` and `setInterval`.
 - Fuzzing (Go native fuzzing) for: `shipkeep.yml` parser (Go side), Compose validator, every agent action validator, routing table builder.
 - Dependency updates through Renovate, security updates merged within 7 days.
 - Release artifacts: signed with cosign keyless, SBOM (SPDX) generated with Syft, provenance attestation.

@@ -36,8 +36,8 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 - [x] **M0.5 Local dev environment** (X). Depends: M0.1
   - `deploy/dev/compose.yml` with PostgreSQL 17, VictoriaLogs, VictoriaMetrics, a registry; `pnpm dev` starts API and web with hot reload.
   - Acceptance: a new contributor runs the stack with two commands documented in `README.md`.
-- [ ] **M0.6 Custom Semgrep rules** (X). Depends: M0.2
-  - Starter rules already exist in `.semgrep/shipkeep-rules.yml`. Add Semgrep rule tests (`.semgrep/tests/`) proving each rule fires on a bad sample and stays silent on a good one, and extend the rules if THREAT_MODEL requires more.
+- [x] **M0.6 Custom Semgrep rules** (X). Depends: M0.2
+  - Starter rules already exist in `.semgrep/rules/shipkeep-rules.yml`. Add Semgrep rule tests (`.semgrep/tests/`) proving each rule fires on a bad sample and stays silent on a good one, and extend the rules if THREAT_MODEL requires more.
   - Acceptance: security workflow fails on the bad samples, passes on the codebase.
 
 ## M1. Agent core
