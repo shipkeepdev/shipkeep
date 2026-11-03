@@ -64,10 +64,10 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 
 ## M2. Control plane core
 
-- [ ] **M2.1 API skeleton** (C). Depends: M0.1. Split into M2.1a and M2.1b (too big for one PR).
+- [x] **M2.1 API skeleton** (C). Depends: M0.1. Split into M2.1a and M2.1b (too big for one PR).
   - [x] **M2.1a** NestJS app with module layout from CLAUDE.md, Prisma, config validation, health endpoints, problem-details errors, OpenAPI generation, request logging with secret redaction.
     - Acceptance: `/api/v1/health` up; OpenAPI document generated in CI; `packages/api-client` generated from it.
-  - [ ] **M2.1b** Shared foundations used by every later module: KEK loading and the envelope encryption library (SPEC 9), the domain event bus, and the `AuditEvent` table with an append-only writer, so that every command from M1.2 onward emits audit events.
+  - [x] **M2.1b** Shared foundations used by every later module: KEK loading and the envelope encryption library (SPEC 9), the domain event bus, and the `AuditEvent` table with an append-only writer, so that every command from M1.2 onward emits audit events.
     - Acceptance: encryption library round-trip and tamper tests pass; an example command emits an audit event end to end.
 - [ ] **M2.2 Identity** (C + W). Depends: M2.1
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.

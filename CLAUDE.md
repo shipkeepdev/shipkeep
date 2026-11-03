@@ -22,7 +22,7 @@ Everything is in English: code, comments, commit messages, PR descriptions, issu
 ```text
 apps/
   api/              Control plane API, NestJS 12 (TypeScript)
-                      src/platform/   cross-cutting: config (zod), logging (pino), http (problem details, validation), prisma, health, openapi
+                      src/platform/   cross-cutting: config (zod), logging (pino), http (problem details, validation), prisma, health, openapi, events (DomainEventBus), crypto (KEK, envelope encryption)
                       src/modules/    bounded contexts, one folder each (see conventions below)
                       prisma/         schema.prisma and migrations; prisma.config.ts for the CLI
                       openapi.json    generated contract of the REST API (pnpm gen:openapi)
@@ -79,7 +79,7 @@ If a command in this table does not exist yet, creating it is part of the curren
 3. **The agent never executes on the host.** Container exec sessions are allowed (typed, audited, RBAC-checked). Host shell access does not exist.
 4. **The control plane never holds SSH keys.** Agents enroll with a one-time join token and get a short-lived mTLS client certificate.
 5. **Domain code is pure.** `packages/domain` and each API module's `domain/` folder import nothing from NestJS, Prisma, HTTP or the file system.
-6. **Every state change is audited.** Commands produce domain events; the audit log is built from them. No write path skips this.
+6. **Every state change is audited.** Commands produce domain events (`createEvent` from `packages/domain`) and publish them on `DomainEventBus` after the change; the `audit` module appends one `AuditEvent` row per event and a store failure fails the command. No write path skips this.
 7. **Destructive actions require explicit confirmation.** Deleting a volume, a database, a server or an environment needs a confirmation token from the user. No destructive default is ever `true`.
 8. **Secrets never touch logs, `shipkeep.yml`, URLs or error messages.** Use the `Secret` type wrappers (`lib/secret` in Go); they redact on serialization.
 9. **The proto and the JSON Schema are the contract.** Generated code is never edited by hand. Change the source, run `pnpm gen`.
@@ -98,6 +98,8 @@ If a command in this table does not exist yet, creating it is part of the curren
 - Validation at the edge with `class-validator` DTOs; domain invariants enforced inside entities.
 - Errors: domain errors extend `DomainError` from `packages/domain` (kind + stable `code`); the global `ProblemDetailsFilter` maps them to RFC 9457 problem details (`application/problem+json`, `type` = `https://shipkeep.dev/problems/<code>`). Never throw raw `Error` for expected conditions.
 - Configuration comes from `AppConfig` (zod-validated environment). Values that embed credentials are `Secret` instances from `packages/domain`; call `expose()` only at the point of use.
+- Secret values at rest go through `EnvelopeService.encryptFor(scope, purpose, bytes)` (platform/crypto); never call the primitives or store a DEK yourself.
+- Integration tests apply migrations with `src/testing/apply-migrations.ts` (plain SQL through `pg`), never by spawning the Prisma CLI.
 - Platform code (`src/platform`) is shared infrastructure; bounded contexts live in `src/modules/<context>` and never import each other's `infrastructure/`.
 - Angular: standalone components, signals, OnPush everywhere, feature folders, no business logic in components (use services/stores).
 
