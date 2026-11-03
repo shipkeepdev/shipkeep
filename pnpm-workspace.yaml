@@ -5,6 +5,10 @@ packages:
 # pnpm 11 blocks dependency build scripts by default. Allow only what the toolchain needs.
 allowBuilds:
   '@bufbuild/buf': true
+  '@prisma/engines': true
+  prisma: true
+  # Telemetry postinstall, never needed.
+  '@scarf/scarf': false
   '@parcel/watcher': true
   '@swc/core': true
   esbuild: true
