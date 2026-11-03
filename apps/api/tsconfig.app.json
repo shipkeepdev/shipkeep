@@ -26,7 +26,8 @@
     "prisma.config.ts",
     "vitest.config.mts",
     "vitest.integration.config.mts",
-    "src/test-setup.ts"
+    "src/test-setup.ts",
+    "src/testing/**/*.ts"
   ],
   "references": [
     {
