@@ -82,3 +82,6 @@ vitest.config.*.timestamp*
 .angular
 
 __screenshots__/
+
+# TypeScript build output of the Nx typescript plugin
+out-tsc/
