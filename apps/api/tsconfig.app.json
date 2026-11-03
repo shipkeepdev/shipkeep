@@ -1,10 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist",
+    "outDir": "out-tsc/app",
     "types": ["node"],
     "rootDir": "src",
-    "tsBuildInfoFile": "dist/tsconfig.app.tsbuildinfo",
+    "tsBuildInfoFile": "out-tsc/app/tsconfig.app.tsbuildinfo",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "target": "es2021",
@@ -18,12 +18,19 @@
   "exclude": [
     "out-tsc",
     "dist",
-    "jest.config.ts",
-    "jest.config.cts",
     "src/**/*.spec.ts",
     "src/**/*.test.ts",
     "eslint.config.js",
     "eslint.config.cjs",
-    "eslint.config.mjs"
+    "eslint.config.mjs",
+    "prisma.config.ts",
+    "vitest.config.mts",
+    "vitest.integration.config.mts",
+    "src/test-setup.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/domain/tsconfig.lib.json"
+    }
   ]
 }

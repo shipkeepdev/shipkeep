@@ -7,6 +7,7 @@ packages/proto-ts/src/gen/** linguist-generated=true -diff
 packages/config-schema/src/gen/** linguist-generated=true -diff
 packages/api-client/src/gen/** linguist-generated=true -diff
 pnpm-lock.yaml linguist-generated=true -diff
+apps/api/openapi.json linguist-generated=true -diff
 
 # Files allowed above 1 MB must be listed here with `shipkeep-large-ok`.
 # example/path/to/fixture.bin shipkeep-large-ok

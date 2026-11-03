@@ -18,6 +18,7 @@ export default [
       // Generated code is never edited by hand (CLAUDE.md, rule 9). Patterns are relative to the
       // config file that imports this one, hence the leading globstar.
       '**/src/gen/**',
+      '**/prisma/generated/**',
     ],
   },
   {
@@ -65,7 +66,7 @@ export default [
   },
   {
     // Config files are plain tooling, not product code.
-    files: ['**/*.config.{js,mjs,cjs,ts,mts,cts}', '**/jest.preset.js', '**/*.spec.ts'],
+    files: ['**/*.config.{js,mjs,cjs,ts,mts,cts}', '**/*.spec.ts', 'tools/**/*.mjs'],
     rules: {
       '@typescript-eslint/explicit-module-boundary-types': 'off',
     },

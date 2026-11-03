@@ -13,3 +13,5 @@ pnpm-lock.yaml
 /packages/api-client/src/gen
 /lib/config/shipkeep.schema.json
 /.semgrep/tests
+/apps/api/src/platform/prisma/generated
+/apps/api/openapi.json

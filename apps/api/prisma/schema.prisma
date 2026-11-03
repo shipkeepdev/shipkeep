@@ -1,0 +1,11 @@
+// Control plane data model (SPEC section 4). One PostgreSQL schema, `shipkeep`.
+// Models arrive with their bounded contexts; the first (AuditEvent) lands in task M2.1b.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/platform/prisma/generated"
+}
+
+datasource db {
+  provider = "postgresql"
+}

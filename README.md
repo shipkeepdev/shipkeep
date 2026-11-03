@@ -29,7 +29,7 @@ pnpm install   # dependencies and git hooks
 pnpm dev       # PostgreSQL, VictoriaLogs, VictoriaMetrics and a registry in Docker, then the API and the web UI with hot reload
 ```
 
-The API listens on http://localhost:3000/api/v1/health, the web UI on http://localhost:4200 (it proxies `/api` to the API). Copy `.env.example` to `.env` to change ports or credentials.
+The API listens on http://localhost:3000/api/v1/health (OpenAPI document at `/api/v1/openapi.json`, interactive docs at `/api/v1/docs`), the web UI on http://localhost:4200 (it proxies `/api` to the API). Copy `.env.example` to `.env` to change ports or credentials.
 
 Other useful commands:
 
@@ -38,7 +38,8 @@ pnpm dev:infra         # only the Docker services
 pnpm dev:infra:down    # stop them, keep the data
 pnpm dev:infra:reset   # stop them and delete the data volumes
 pnpm lint              # ESLint + TypeScript typecheck
-pnpm test              # TypeScript unit tests
+pnpm test              # TypeScript unit tests (vitest)
+pnpm test:integration  # API against a real PostgreSQL (Testcontainers)
 go test ./agent/... ./cli/... ./lib/...
 pnpm gen               # regenerate code from proto/ and shipkeep.schema.json
 ```
