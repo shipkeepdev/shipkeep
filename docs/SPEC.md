@@ -134,6 +134,7 @@ compose:
 - Trust on first contact: the install command shown in the UI contains the SHA-256 fingerprint of the installation CA (`--ca-fingerprint`). Before sending the join token, the agent checks that the gateway's certificate chains to a CA with that fingerprint, then pins that CA.
 - One CA per Shipkeep installation (not per organization). The organization is encoded in each certificate's SAN URI and checked on every call.
 - Join token: 32 random bytes, stored hashed (SHA-256), single use, 15 min TTL, bound to an organization.
+- Enrollment commits the node, certificate, token consumption and audit record in one transaction. A concurrent losing request or an audit failure leaves no orphaned node or certificate.
 - Client certificate: Ed25519, 30-day validity, CN = node_id, SAN URI `spiffe://shipkeep/<org_id>/node/<node_id>`. Rotation through `RenewCertificate` at 2/3 of validity.
 - Revocation: the control plane keeps a deny list of certificate serials; revoked nodes are disconnected immediately.
 - Renewal checks the registered serial, node and organization against the TLS identity. Replacing the certificate, revoking the old serial and recording the audit event share one database transaction; concurrent renewal attempts have one winner. Agents must persist the new certificate and reconnect after renewal. If the response is lost after commit, the old certificate is revoked and the operator must re-enroll the node; recovery without re-enrollment is an open question below.

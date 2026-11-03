@@ -11,6 +11,7 @@ import { AgentGatewayService } from '@shipkeep/proto-ts';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 
 import { PrismaService } from '../../platform/prisma/prisma.service';
+import { DomainEventBus } from '../../platform/events/domain-event-bus';
 import { applyMigrations } from '../../testing/apply-migrations';
 import { resetDatabase } from '../../testing/reset-database';
 
@@ -136,6 +137,55 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
         { headers: { 'x-node-id': 'forged', 'x-client-cert': 'forged' } },
       ),
     ).rejects.toMatchObject({ code: Code.Unauthenticated });
+  });
+
+  it('consumes a join token once under concurrency without leaving orphaned nodes', async () => {
+    const token = await app.get(IssueJoinToken).execute({ organizationId: org, actor });
+    const request = await requestCertificate();
+    const results = await Promise.allSettled(
+      ['tls-race-a', 'tls-race-b'].map((hostname) =>
+        client().enroll({ joinToken: token.value, csrPem: request.csrPem, facts: { hostname } }),
+      ),
+    );
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const nodes = await app.get(PrismaService).node.findMany({
+      where: { name: { in: ['tls-race-a', 'tls-race-b'] } },
+      include: { certificates: true },
+    });
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0]?.certificates).toHaveLength(1);
+  });
+
+  it('rolls back enrollment and preserves the join token if audit delivery fails', async () => {
+    const token = await app.get(IssueJoinToken).execute({ organizationId: org, actor });
+    const request = await requestCertificate();
+    const unsubscribe = app
+      .get(DomainEventBus)
+      .subscribe(() => Promise.reject(new Error('injected audit failure')));
+    try {
+      await expect(
+        client().enroll({
+          joinToken: token.value,
+          csrPem: request.csrPem,
+          facts: { hostname: 'tls-audit-failure' },
+        }),
+      ).rejects.toMatchObject({ code: Code.Internal });
+    } finally {
+      unsubscribe();
+    }
+    expect(await app.get(PrismaService).node.count({ where: { name: 'tls-audit-failure' } })).toBe(
+      0,
+    );
+    expect(
+      await app.get(PrismaService).joinToken.findUnique({ where: { id: token.id } }),
+    ).toMatchObject({ usedAt: null });
+    await expect(
+      client().enroll({
+        joinToken: token.value,
+        csrPem: request.csrPem,
+        facts: { hostname: 'tls-audit-failure' },
+      }),
+    ).resolves.toHaveProperty('nodeId');
   });
 
   it('authenticates unfinished streaming methods before returning Unimplemented', async () => {

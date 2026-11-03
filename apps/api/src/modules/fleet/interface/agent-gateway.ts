@@ -93,6 +93,9 @@ export class AgentGateway implements OnModuleDestroy {
       },
     });
     const server = createSecureServer(
+      // Server-side optional client auth is required for Enroll (SPEC 3.2). guard() checks
+      // socket.authorized plus database identity on all other RPCs; rogue-CA tests cover this.
+      // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
       {
         cert: credentials.cert,
         key: credentials.key.expose(),

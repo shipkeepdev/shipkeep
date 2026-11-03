@@ -27,7 +27,9 @@ function setup() {
   const nodes = new MemoryNodeStore();
   const ca = new FakeCertificateAuthority();
   const issue = new IssueJoinToken(tokens, ca, bus);
-  const enroll = new EnrollNode(tokens, nodes, ca, new FakeConfirmationKeys(), bus);
+  const enroll = new EnrollNode(tokens, nodes, ca, new FakeConfirmationKeys(), bus, {
+    run: (work) => work(),
+  });
   return { bus, published, tokens, nodes, ca, issue, enroll };
 }
 

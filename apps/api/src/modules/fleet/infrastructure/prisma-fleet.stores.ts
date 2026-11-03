@@ -16,17 +16,17 @@ export class PrismaJoinTokenStore implements JoinTokenStore {
   constructor(private readonly prisma: PrismaService) {}
 
   async insert(record: JoinTokenRecord): Promise<void> {
-    await this.prisma.joinToken.create({ data: record });
+    await this.prisma.client().joinToken.create({ data: record });
   }
 
   async findByHash(tokenHash: string): Promise<JoinTokenRecord | undefined> {
-    const row = await this.prisma.joinToken.findUnique({ where: { tokenHash } });
+    const row = await this.prisma.client().joinToken.findUnique({ where: { tokenHash } });
     return row ?? undefined;
   }
 
   async consume(id: string, nodeId: string, usedAt: Date): Promise<boolean> {
     // The `usedAt: null` condition makes the update atomic: only one caller can flip it.
-    const result = await this.prisma.joinToken.updateMany({
+    const result = await this.prisma.client().joinToken.updateMany({
       where: { id, usedAt: null },
       data: { usedAt, usedByNodeId: nodeId },
     });
@@ -39,7 +39,7 @@ export class PrismaNodeStore implements NodeStore {
   constructor(private readonly prisma: PrismaService) {}
 
   async insert(node: NodeRecord): Promise<void> {
-    await this.prisma.node.create({
+    await this.prisma.client().node.create({
       data: {
         id: node.id,
         organizationId: node.organizationId,
@@ -55,7 +55,7 @@ export class PrismaNodeStore implements NodeStore {
   }
 
   async findByName(organizationId: string, name: string): Promise<NodeRecord | undefined> {
-    const row = await this.prisma.node.findUnique({
+    const row = await this.prisma.client().node.findUnique({
       where: { organizationId_name: { organizationId, name } },
     });
     if (!row) return undefined;
@@ -73,7 +73,7 @@ export class PrismaNodeStore implements NodeStore {
   }
 
   async insertCertificate(certificate: NodeCertificateRecord): Promise<void> {
-    await this.prisma.nodeCertificate.create({ data: certificate });
+    await this.prisma.client().nodeCertificate.create({ data: certificate });
   }
 }
 

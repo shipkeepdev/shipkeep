@@ -22,6 +22,8 @@ import {
   type CertificateAuthority,
   CONFIRMATION_KEY_PROVIDER,
   type ConfirmationKeyProvider,
+  FLEET_TRANSACTION,
+  type FleetTransaction,
   JOIN_TOKEN_STORE,
   type JoinTokenStore,
   NODE_STORE,
@@ -64,9 +66,14 @@ export class EnrollNode {
     @Inject(CERTIFICATE_AUTHORITY) private readonly ca: CertificateAuthority,
     @Inject(CONFIRMATION_KEY_PROVIDER) private readonly confirmation: ConfirmationKeyProvider,
     private readonly events: DomainEventBus,
+    @Inject(FLEET_TRANSACTION) private readonly transaction: FleetTransaction,
   ) {}
 
-  async execute(command: EnrollNodeCommand, now = new Date()): Promise<EnrollNodeResult> {
+  execute(command: EnrollNodeCommand, now = new Date()): Promise<EnrollNodeResult> {
+    return this.transaction.run(() => this.enroll(command, now));
+  }
+
+  private async enroll(command: EnrollNodeCommand, now: Date): Promise<EnrollNodeResult> {
     if (!isWellFormedJoinToken(command.joinToken)) throw new JoinTokenRejectedError('malformed');
     if (Buffer.byteLength(command.csrPem, 'utf8') > MAX_CSR_BYTES) {
       throw new ConflictError('csr_too_large', 'certificate request exceeds the size limit');
