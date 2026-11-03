@@ -42,7 +42,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 
 ## M1. Agent core
 
-- [ ] **M1.1 Agent skeleton and config** (A). Depends: M0.3
+- [x] **M1.1 Agent skeleton and config** (A). Depends: M0.3
   - `agent/cmd/shipkeep-agent`, config file `/etc/shipkeep/agent.yaml`, structured JSON logging, graceful shutdown, `--dev` mode.
   - Acceptance: binary under 30 MB; starts and stops cleanly; unit tests for config validation.
 - [ ] **M1.2 Enrollment and mTLS stream** (A + C). Depends: M1.1, M2.1
