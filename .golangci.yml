@@ -34,6 +34,9 @@ linters:
         - name: exported
           arguments: ['checkPrivateReceivers', 'sayRepetitiveInsteadOfStutters']
     wrapcheck:
+      # Errors from our own modules are already wrapped where they originate.
+      ignore-package-globs:
+        - github.com/samuelmbabhazi/shipkeep/*
       ignore-sigs:
         - .Errorf(
         - errors.New(
@@ -48,6 +51,9 @@ linters:
       - path: _test\.go
         linters: [gosec]
         text: G304
+      # Test helpers wrap nothing; wrapping would only obscure assertions.
+      - path: _test\.go
+        linters: [wrapcheck]
 
 formatters:
   enable:
