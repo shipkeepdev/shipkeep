@@ -20,7 +20,8 @@ import {
   SIGNING_ALGORITHM,
 } from './infrastructure/ca/x509';
 
-const org = '0192f0c0-0000-7000-8000-0000000000aa';
+// Distinct from the organization used by the audit integration test: the database may be shared.
+const org = '0192f0c0-0000-7000-8000-0000000000ab';
 const actor = { kind: 'user' as const, id: 'usr_1', ip: '203.0.113.5' };
 
 async function agentCsr(): Promise<string> {
@@ -105,7 +106,10 @@ describe('fleet enrollment against PostgreSQL', () => {
       expect(Buffer.from(key.privateKeyEnc).toString('utf8')).not.toContain('PRIVATE KEY');
     }
 
-    const audit = await prisma.auditEvent.findMany({ orderBy: { id: 'asc' } });
+    const audit = await prisma.auditEvent.findMany({
+      where: { organizationId: org },
+      orderBy: { id: 'asc' },
+    });
     expect(audit.map((a) => a.action)).toEqual(['fleet.join_token.issued', 'fleet.node.enrolled']);
     expect(JSON.stringify(audit)).not.toContain(token.value);
 

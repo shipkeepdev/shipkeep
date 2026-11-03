@@ -79,7 +79,11 @@ describe('audit log and envelope encryption against PostgreSQL', () => {
       }),
     ]);
 
-    const rows = await prisma.auditEvent.findMany({ orderBy: { id: 'asc' } });
+    // Scoped to this test's targets: other integration files may share the database.
+    const rows = await prisma.auditEvent.findMany({
+      where: { targetId: { in: ['node_1', 'self'] } },
+      orderBy: { id: 'asc' },
+    });
     expect(rows.map((r: { action: string }) => r.action)).toEqual([
       'node.enrolled',
       'control_plane.started',
