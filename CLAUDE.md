@@ -27,11 +27,11 @@ agent/              Node agent, Go module github.com/samuelmbabhazi/shipkeep/age
 cli/                CLI, Go module github.com/samuelmbabhazi/shipkeep/cli (single static binary)
 lib/                Shared Go module github.com/samuelmbabhazi/shipkeep/lib:
                       lib/gen      generated protobuf and gRPC code
-                      lib/config   shipkeep.yml types (generated) and validator, shared by agent, cli and fuzz tests
+                      lib/config   shipkeep.yml types (generated), embedded schema copy (generated) and validator, shared by agent, cli and fuzz tests
 proto/              gRPC + protobuf contract between control plane and agent (single source of truth)
 packages/
   domain/           Pure domain model and rules (TypeScript, no framework imports)
-  config-schema/    JSON Schema for shipkeep.yml + generated TS and Go types
+  config-schema/    JSON Schema for shipkeep.yml (source of truth), generated TS types, TS validator, golden fixtures
   api-client/       Generated TypeScript client for the public REST API (used by web)
   proto-ts/         Generated TypeScript code from proto/ (used by api)
 templates/          Service catalog (Compose files + metadata)

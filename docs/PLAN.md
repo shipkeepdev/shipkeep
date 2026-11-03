@@ -29,7 +29,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
   - `buf.yaml` (lint `STANDARD`, breaking `FILE`), `buf.gen.yaml`; `proto/shipkeep/agent/v1/` with the skeleton from SPEC Appendix A and all action messages with fields from SPEC 3.3, 3.6 and the `ExecStream` frames from SPEC 3.1.
   - Generated Go code in `lib/gen`, TS code in `packages/proto-ts`. `pnpm gen` regenerates; CI fails on drift.
   - Acceptance: `buf lint` clean; `buf breaking` wired against `main`; both sides compile.
-- [ ] **M0.4 shipkeep.yml schema** (X). Depends: M0.1
+- [x] **M0.4 shipkeep.yml schema** (X). Depends: M0.1
   - JSON Schema 2020-12 for SPEC section 2 in `packages/config-schema`; generated TS types; Go types and validator in `lib/config`.
   - Golden test files: 20 valid and 30 invalid examples covering every rule in SPEC 2.2.
   - Acceptance: TS and Go validators agree on every golden file (shared test fixture).
