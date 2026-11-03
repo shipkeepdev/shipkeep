@@ -74,7 +74,7 @@ rules:
   # TypeScript (api, web, packages)
   # ------------------------------------------------------------------------------------------
   - id: ts-no-child-process
-    languages: [typescript]
+    languages: [typescript, javascript]
     severity: ERROR
     message: >-
       Do not spawn processes from the control plane. It talks to agents through typed gRPC actions.

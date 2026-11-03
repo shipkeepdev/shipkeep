@@ -1,0 +1,126 @@
+{
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/health": {
+      "get": {
+        "operationId": "health",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/api/v1/ready": {
+      "get": {
+        "operationId": "ready",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadinessDto"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A dependency is unavailable (problem details)."
+          }
+        },
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "Shipkeep API",
+    "description": "Public REST API of the Shipkeep control plane. Errors are RFC 9457 problem details.",
+    "version": "dev",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "apiToken": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http",
+        "description": "API token (Authorization: Bearer <token>)"
+      },
+      "session": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "shipkeep_session"
+      }
+    },
+    "schemas": {
+      "HealthDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "version": {
+            "type": "string",
+            "example": "0.1.0"
+          }
+        },
+        "required": [
+          "status",
+          "version"
+        ]
+      },
+      "ReadinessChecksDto": {
+        "type": "object",
+        "properties": {
+          "database": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          }
+        },
+        "required": [
+          "database"
+        ]
+      },
+      "ReadinessDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "ok"
+            ]
+          },
+          "checks": {
+            "$ref": "#/components/schemas/ReadinessChecksDto"
+          }
+        },
+        "required": [
+          "status",
+          "checks"
+        ]
+      }
+    }
+  }
+}
