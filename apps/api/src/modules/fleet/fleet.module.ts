@@ -1,5 +1,10 @@
 import { Module } from '@nestjs/common';
 
+import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
+import { AuthenticateNode } from './application/authenticate-node';
+import { RenewNodeCertificate } from './application/renew-node-certificate';
+import { PrismaNodeCredentialStore } from './infrastructure/prisma-node-credential.store';
+
 import { EnrollNode } from './application/enroll-node';
 import { IssueJoinToken } from './application/issue-join-token';
 import {
@@ -7,6 +12,8 @@ import {
   CONFIRMATION_KEY_PROVIDER,
   JOIN_TOKEN_STORE,
   NODE_STORE,
+  NODE_CREDENTIAL_STORE,
+  FLEET_TRANSACTION,
 } from './application/ports';
 import { INSTALLATION_KEY_STORE } from './infrastructure/ca/installation-key-store';
 import { X509CertificateAuthority } from './infrastructure/ca/x509-certificate-authority';
@@ -22,6 +29,10 @@ import {
  */
 @Module({
   providers: [
+    AuthenticateNode,
+    RenewNodeCertificate,
+    { provide: FLEET_TRANSACTION, useExisting: PrismaUnitOfWork },
+    { provide: NODE_CREDENTIAL_STORE, useClass: PrismaNodeCredentialStore },
     { provide: INSTALLATION_KEY_STORE, useClass: PrismaInstallationKeyStore },
     { provide: JOIN_TOKEN_STORE, useClass: PrismaJoinTokenStore },
     { provide: NODE_STORE, useClass: PrismaNodeStore },
@@ -31,6 +42,12 @@ import {
     IssueJoinToken,
     EnrollNode,
   ],
-  exports: [IssueJoinToken, EnrollNode, CERTIFICATE_AUTHORITY],
+  exports: [
+    IssueJoinToken,
+    EnrollNode,
+    CERTIFICATE_AUTHORITY,
+    AuthenticateNode,
+    RenewNodeCertificate,
+  ],
 })
 export class FleetModule {}

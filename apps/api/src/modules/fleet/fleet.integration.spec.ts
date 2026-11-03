@@ -12,7 +12,10 @@ import { applyMigrations } from '../../testing/apply-migrations';
 import { resetDatabase } from '../../testing/reset-database';
 
 import { EnrollNode } from './application/enroll-node';
+import { AuthenticateNode } from './application/authenticate-node';
 import { IssueJoinToken } from './application/issue-join-token';
+import { RenewNodeCertificate } from './application/renew-node-certificate';
+import { DomainEventBus } from '../../platform/events/domain-event-bus';
 import { JoinTokenRejectedError } from './domain/join-token';
 import {
   generateEd25519KeyPair,
@@ -150,5 +153,113 @@ describe('fleet enrollment against PostgreSQL', () => {
         agentVersion: '0.1.0',
       }),
     ).rejects.toThrow(JoinTokenRejectedError);
+  });
+
+  async function enrolled(name: string) {
+    if (!app) throw new Error('application did not start');
+    const token = await app.get(IssueJoinToken).execute({ organizationId: org, actor });
+    const result = await app.get(EnrollNode).execute({
+      joinToken: token.value,
+      csrPem: await agentCsr(),
+      facts: {},
+      agentVersion: '0.1.0',
+      name,
+    });
+    const cert = await app
+      .get(PrismaService)
+      .nodeCertificate.findFirstOrThrow({ where: { nodeId: result.nodeId } });
+    return { organizationId: org, nodeId: result.nodeId, serial: cert.serial };
+  }
+
+  it('renews with the authenticated identity, revokes the previous certificate and audits once', async () => {
+    if (!app) throw new Error('application did not start');
+    const identity = await enrolled('renewal');
+    const renewed = await app.get(RenewNodeCertificate).execute(identity, await agentCsr());
+    const cert = new X509Certificate(renewed.certificatePem);
+    expect(cert.subjectAltName).toBe(`URI:spiffe://shipkeep/${org}/node/${identity.nodeId}`);
+    await expect(app.get(AuthenticateNode).execute(identity)).rejects.toMatchObject({
+      code: 'node_unauthenticated',
+    });
+    await expect(
+      app.get(AuthenticateNode).execute({ ...identity, serial: renewed.serial }),
+    ).resolves.toMatchObject({ nodeId: identity.nodeId });
+    const rows = await app.get(PrismaService).auditEvent.findMany({
+      where: { targetId: identity.nodeId, action: 'fleet.node.certificate_renewed' },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.metadata).toMatchObject({
+      previousSerial: identity.serial,
+      certificateSerial: renewed.serial,
+    });
+  });
+
+  it('allows only one concurrent renewal of a certificate', async () => {
+    if (!app) throw new Error('application did not start');
+    const identity = await enrolled('concurrent-renewal');
+    const csr = await agentCsr();
+    const renew = app.get(RenewNodeCertificate);
+    const results = await Promise.allSettled([
+      renew.execute(identity, csr),
+      renew.execute(identity, csr),
+    ]);
+    expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
+    expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
+    expect(
+      await app
+        .get(PrismaService)
+        .nodeCertificate.count({ where: { nodeId: identity.nodeId, revokedAt: null } }),
+    ).toBe(1);
+    expect(
+      await app.get(PrismaService).auditEvent.count({
+        where: { targetId: identity.nodeId, action: 'fleet.node.certificate_renewed' },
+      }),
+    ).toBe(1);
+  });
+
+  it('rolls back the new certificate, revocation and audit if an event subscriber fails', async () => {
+    if (!app) throw new Error('application did not start');
+    const identity = await enrolled('failed-renewal');
+    const unsubscribe = app
+      .get(DomainEventBus)
+      .subscribe(() => Promise.reject(new Error('injected failure')));
+    try {
+      await expect(
+        app.get(RenewNodeCertificate).execute(identity, await agentCsr()),
+      ).rejects.toThrow('injected failure');
+    } finally {
+      unsubscribe();
+    }
+    await expect(app.get(AuthenticateNode).execute(identity)).resolves.toMatchObject({
+      nodeId: identity.nodeId,
+    });
+    expect(
+      await app.get(PrismaService).nodeCertificate.count({ where: { nodeId: identity.nodeId } }),
+    ).toBe(1);
+    expect(
+      await app.get(PrismaService).auditEvent.count({
+        where: { targetId: identity.nodeId, action: 'fleet.node.certificate_renewed' },
+      }),
+    ).toBe(0);
+  });
+
+  it('rejects cross-organization identities and invalid CSRs without revoking the current certificate', async () => {
+    if (!app) throw new Error('application did not start');
+    const identity = await enrolled('invalid-renewal');
+    const renew = app.get(RenewNodeCertificate);
+    await expect(
+      renew.execute(
+        { ...identity, organizationId: '0192f0c0-0000-7000-8000-0000000000ff' },
+        await agentCsr(),
+      ),
+    ).rejects.toMatchObject({ code: 'node_unauthenticated' });
+    await expect(renew.execute(identity, 'x'.repeat(8193))).rejects.toMatchObject({
+      code: 'csr_too_large',
+    });
+    await expect(renew.execute(identity, 'not a CSR')).rejects.toThrow(
+      'certificate request rejected',
+    );
+    await expect(app.get(AuthenticateNode).execute(identity)).resolves.toMatchObject({
+      nodeId: identity.nodeId,
+    });
   });
 });
