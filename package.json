@@ -7,7 +7,7 @@
     "test": "nx run-many -t test",
     "build": "nx run-many -t build",
     "gen": "pnpm gen:proto && pnpm gen:config && pnpm gen:prisma && pnpm gen:openapi && pnpm gen:api-client",
-    "dev": "pnpm dev:infra && nx run-many -t serve -p api web --parallel=2",
+    "dev": "pnpm dev:infra && pnpm dev:kek && pnpm prisma migrate deploy && nx run-many -t serve -p api web --parallel=2",
     "test:integration": "nx run-many -t test:integration",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -24,7 +24,8 @@
     "gen:prisma": "prisma generate --config apps/api/prisma.config.ts",
     "gen:openapi": "nx build api && node tools/gen/openapi.mjs",
     "gen:api-client": "openapi-typescript apps/api/openapi.json -o packages/api-client/src/gen/openapi.ts --export-type --immutable --alphabetize",
-    "prisma": "prisma --config apps/api/prisma.config.ts"
+    "prisma": "prisma --config apps/api/prisma.config.ts",
+    "dev:kek": "node tools/dev/ensure-kek.mjs"
   },
   "private": true,
   "dependencies": {
@@ -50,6 +51,7 @@
     "pino-http": "^11.0.0",
     "reflect-metadata": "^0.2.0",
     "rxjs": "^7.8.0",
+    "uuid": "^14.0.3",
     "zod": "^4.6.7"
   },
   "devDependencies": {
