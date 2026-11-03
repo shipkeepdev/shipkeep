@@ -1,0 +1,26 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compileOnSave": false,
+  "files": [],
+  "references": [
+    {
+      "path": "./apps/api"
+    },
+    {
+      "path": "./packages/domain"
+    },
+    {
+      "path": "./packages/config-schema"
+    },
+    {
+      "path": "./packages/api-client"
+    },
+    {
+      "path": "./packages/proto-ts"
+    },
+    {
+      "path": "./apps/web"
+    }
+  ],
+  "compilerOptions": {}
+}

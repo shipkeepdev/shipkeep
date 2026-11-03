@@ -1,0 +1,13 @@
+# Add files here to ignore them from prettier formatting
+/dist
+/coverage
+/.nx/cache
+/.nx/workspace-data
+.nx/self-healing
+.angular
+pnpm-lock.yaml
+/node_modules
+/lib/gen
+/packages/proto-ts/src/gen
+/packages/config-schema/src/gen
+/packages/api-client/src/gen

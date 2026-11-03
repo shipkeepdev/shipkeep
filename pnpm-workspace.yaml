@@ -1,0 +1,15 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+
+# pnpm 11 blocks dependency build scripts by default. Allow only what the toolchain needs.
+allowBuilds:
+  '@parcel/watcher': true
+  '@swc/core': true
+  esbuild: true
+  lefthook: true
+  nx: true
+  '@nestjs/core': false
+  unrs-resolver: false
+  lmdb: false
+  msgpackr-extract: false
