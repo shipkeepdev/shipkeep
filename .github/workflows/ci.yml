@@ -59,6 +59,12 @@ jobs:
           working-directory: cli
           install-mode: none
       - run: go test -race -count=1 ./agent/... ./cli/... ./lib/...
+      - name: Agent binary size budget (30 MB, PLAN M1.1)
+        run: |
+          CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/shipkeep-agent ./agent/cmd/shipkeep-agent
+          size=$(stat -c%s /tmp/shipkeep-agent)
+          echo "shipkeep-agent is $size bytes"
+          test "$size" -lt 31457280
 
   generated-code:
     name: Generated code is up to date

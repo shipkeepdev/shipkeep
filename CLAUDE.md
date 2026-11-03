@@ -28,6 +28,8 @@ cli/                CLI, Go module github.com/samuelmbabhazi/shipkeep/cli (singl
 lib/                Shared Go module github.com/samuelmbabhazi/shipkeep/lib:
                       lib/gen      generated protobuf and gRPC code
                       lib/config   shipkeep.yml types (generated), embedded schema copy (generated) and validator, shared by agent, cli and fuzz tests
+                      lib/secret   Secret wrappers that redact in fmt, slog, JSON and YAML (rule 8)
+                      lib/agentproto helpers over the generated agent protocol (action kinds)
 proto/              gRPC + protobuf contract between control plane and agent (single source of truth)
 packages/
   domain/           Pure domain model and rules (TypeScript, no framework imports)
@@ -74,7 +76,7 @@ If a command in this table does not exist yet, creating it is part of the curren
 5. **Domain code is pure.** `packages/domain` and each API module's `domain/` folder import nothing from NestJS, Prisma, HTTP or the file system.
 6. **Every state change is audited.** Commands produce domain events; the audit log is built from them. No write path skips this.
 7. **Destructive actions require explicit confirmation.** Deleting a volume, a database, a server or an environment needs a confirmation token from the user. No destructive default is ever `true`.
-8. **Secrets never touch logs, `shipkeep.yml`, URLs or error messages.** Use the `Secret` type wrappers; they redact on serialization.
+8. **Secrets never touch logs, `shipkeep.yml`, URLs or error messages.** Use the `Secret` type wrappers (`lib/secret` in Go); they redact on serialization.
 9. **The proto and the JSON Schema are the contract.** Generated code is never edited by hand. Change the source, run `pnpm gen`.
 10. **Agents must survive a control plane outage.** Running workloads and routing keep working from the agent's local state.
 
