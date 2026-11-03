@@ -110,14 +110,14 @@ describe('audit log and envelope encryption against PostgreSQL', () => {
     await client.connect();
     try {
       const keys = await client.query<{ scope: string; wrapped_key: Buffer; kek_version: number }>(
-        'SELECT scope, wrapped_key, kek_version FROM data_encryption_keys',
+        "SELECT scope, wrapped_key, kek_version FROM data_encryption_keys WHERE scope LIKE 'environment:%'",
       );
       expect(keys.rows).toHaveLength(1);
       expect(keys.rows[0]?.scope).toBe('environment:env_1');
       expect(keys.rows[0]?.kek_version).toBe(1);
       // Neither the plaintext nor the unwrapped key is stored anywhere.
       const dump = await client.query<{ txt: string }>(
-        "SELECT encode(wrapped_key, 'escape') AS txt FROM data_encryption_keys",
+        "SELECT encode(wrapped_key, 'escape') AS txt FROM data_encryption_keys WHERE scope = 'environment:env_1'",
       );
       expect(dump.rows[0]?.txt).not.toContain('hunter2');
     } finally {

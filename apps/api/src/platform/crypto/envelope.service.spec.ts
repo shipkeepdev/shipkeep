@@ -5,23 +5,10 @@ import { join } from 'node:path';
 
 import type { AppConfig } from '../config/app-config';
 
-import type { DataKeyStore, StoredDataKey } from './data-key-store';
+import { MemoryDataKeyStore } from '../../testing/memory-stores';
+
 import { DecryptionError } from './envelope';
 import { EnvelopeService } from './envelope.service';
-
-class MemoryDataKeyStore implements DataKeyStore {
-  readonly keys = new Map<string, StoredDataKey>();
-  inserts = 0;
-  find(scope: string): Promise<StoredDataKey | undefined> {
-    return Promise.resolve(this.keys.get(scope));
-  }
-  insert(key: StoredDataKey & { id: string }): Promise<void> {
-    this.inserts += 1;
-    if (this.keys.has(key.scope)) return Promise.reject(new Error('unique violation'));
-    this.keys.set(key.scope, key);
-    return Promise.resolve();
-  }
-}
 
 async function kekFile(): Promise<string> {
   const path = join(await mkdtemp(join(tmpdir(), 'shipkeep-env-')), 'kek');

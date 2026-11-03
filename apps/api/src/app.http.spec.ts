@@ -1,11 +1,16 @@
 import type { Server } from 'node:http';
 
 import type { INestApplication } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
-import { createApp } from './bootstrap';
+import { AppModule } from './app.module';
+import { configureApp } from './bootstrap';
+import { INSTALLATION_KEY_STORE } from './modules/fleet/infrastructure/ca/installation-key-store';
+import { DATA_KEY_STORE } from './platform/crypto/data-key-store';
 import { PROBLEM_MEDIA_TYPE } from './platform/http/problem-details';
 import { PrismaService } from './platform/prisma/prisma.service';
+import { MemoryDataKeyStore, MemoryInstallationKeyStore } from './testing/memory-stores';
 
 // HTTP pipeline tests. The database is replaced by a stub so they run without Postgres;
 // the real connection is covered by the integration test (app.integration.spec.ts).
@@ -15,8 +20,15 @@ describe('HTTP pipeline', () => {
   const http = (): ReturnType<typeof request> => request(app.getHttpServer() as Server);
 
   beforeAll(async () => {
-    // Environment defaults come from src/test-setup.ts.
-    app = await createApp();
+    // Environment defaults come from src/test-setup.ts. Every store that would reach PostgreSQL
+    // is replaced by an in-memory one; the database itself is covered by the integration tests.
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .overrideProvider(DATA_KEY_STORE)
+      .useValue(new MemoryDataKeyStore())
+      .overrideProvider(INSTALLATION_KEY_STORE)
+      .useValue(new MemoryInstallationKeyStore())
+      .compile();
+    app = configureApp(moduleRef.createNestApplication({ bufferLogs: true }));
     const prisma = app.get(PrismaService);
     vi.spyOn(prisma, 'onModuleInit').mockResolvedValue(undefined);
     vi.spyOn(prisma, 'onModuleDestroy').mockResolvedValue(undefined);

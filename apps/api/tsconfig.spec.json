@@ -14,7 +14,8 @@
     "src/**/*.spec.ts",
     "src/**/*.d.ts",
     "src/test-setup.ts",
-    "src/testing/**/*.ts"
+    "src/testing/**/*.ts",
+    "src/test-setup.integration.ts"
   ],
   "references": [
     {
