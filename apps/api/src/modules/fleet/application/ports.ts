@@ -1,0 +1,52 @@
+import type { JoinTokenRecord } from '../domain/join-token';
+import type { NodeCertificateRecord, NodeRecord } from '../domain/node';
+
+export interface JoinTokenStore {
+  insert(record: JoinTokenRecord): Promise<void>;
+  findByHash(tokenHash: string): Promise<JoinTokenRecord | undefined>;
+  /**
+   * Marks the token used by a node. Returns false when it was already used, so two concurrent
+   * enrollments with the same token cannot both succeed.
+   */
+  consume(id: string, nodeId: string, usedAt: Date): Promise<boolean>;
+}
+
+export interface NodeStore {
+  insert(node: NodeRecord): Promise<void>;
+  findByName(organizationId: string, name: string): Promise<NodeRecord | undefined>;
+  insertCertificate(certificate: NodeCertificateRecord): Promise<void>;
+}
+
+export interface IssuedCertificate {
+  readonly certificatePem: string;
+  /** Hex serial. */
+  readonly serial: string;
+  readonly notBefore: Date;
+  readonly notAfter: Date;
+}
+
+/** The installation CA (SPEC section 3.2). Implemented in infrastructure; the domain never sees keys. */
+export interface CertificateAuthority {
+  /** PEM of the CA certificate agents pin. */
+  caCertificatePem(): Promise<string>;
+  /** `sha256:<64 hex>` of the DER CA certificate, shown in the install command. */
+  caFingerprint(): Promise<string>;
+  /**
+   * Signs a node client certificate from the CSR's public key. The CSR signature must verify;
+   * every name and extension comes from the arguments, never from the CSR.
+   */
+  issueNodeCertificate(
+    csrPem: string,
+    identity: { organizationId: string; nodeId: string },
+  ): Promise<IssuedCertificate>;
+}
+
+/** Ed25519 key pair that signs confirmation tokens (SPEC section 3.6); agents receive the public half. */
+export interface ConfirmationKeyProvider {
+  publicKeyPem(): Promise<string>;
+}
+
+export const JOIN_TOKEN_STORE = Symbol('JoinTokenStore');
+export const NODE_STORE = Symbol('NodeStore');
+export const CERTIFICATE_AUTHORITY = Symbol('CertificateAuthority');
+export const CONFIRMATION_KEY_PROVIDER = Symbol('ConfirmationKeyProvider');

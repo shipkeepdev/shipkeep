@@ -14,6 +14,7 @@ import { EnvelopeService } from '../../platform/crypto/envelope.service';
 import { DomainEventBus } from '../../platform/events/domain-event-bus';
 import { PrismaService } from '../../platform/prisma/prisma.service';
 import { applyMigrations } from '../../testing/apply-migrations';
+import { resetDatabase } from '../../testing/reset-database';
 
 // End to end through the real stack: a domain event published on the bus must land as an
 // audit row, and envelope encryption must persist and reuse its data keys (PLAN M2.1b).
@@ -28,6 +29,8 @@ describe('audit log and envelope encryption against PostgreSQL', () => {
       process.env['DATABASE_URL'] = container.getConnectionUri();
     }
     databaseUrl = process.env['DATABASE_URL'];
+    // Shared CI database: start from an empty schema so this file's KEK matches every row.
+    await resetDatabase(databaseUrl);
     await applyMigrations(databaseUrl, resolve(__dirname, '../../../prisma/migrations'));
 
     // A throwaway KEK: integration tests must never read the development one.
@@ -79,7 +82,11 @@ describe('audit log and envelope encryption against PostgreSQL', () => {
       }),
     ]);
 
-    const rows = await prisma.auditEvent.findMany({ orderBy: { id: 'asc' } });
+    // Scoped to this test's targets: other integration files may share the database.
+    const rows = await prisma.auditEvent.findMany({
+      where: { targetId: { in: ['node_1', 'self'] } },
+      orderBy: { id: 'asc' },
+    });
     expect(rows.map((r: { action: string }) => r.action)).toEqual([
       'node.enrolled',
       'control_plane.started',
@@ -110,14 +117,14 @@ describe('audit log and envelope encryption against PostgreSQL', () => {
     await client.connect();
     try {
       const keys = await client.query<{ scope: string; wrapped_key: Buffer; kek_version: number }>(
-        'SELECT scope, wrapped_key, kek_version FROM data_encryption_keys',
+        "SELECT scope, wrapped_key, kek_version FROM data_encryption_keys WHERE scope LIKE 'environment:%'",
       );
       expect(keys.rows).toHaveLength(1);
       expect(keys.rows[0]?.scope).toBe('environment:env_1');
       expect(keys.rows[0]?.kek_version).toBe(1);
       // Neither the plaintext nor the unwrapped key is stored anywhere.
       const dump = await client.query<{ txt: string }>(
-        "SELECT encode(wrapped_key, 'escape') AS txt FROM data_encryption_keys",
+        "SELECT encode(wrapped_key, 'escape') AS txt FROM data_encryption_keys WHERE scope = 'environment:env_1'",
       );
       expect(dump.rows[0]?.txt).not.toContain('hunter2');
     } finally {

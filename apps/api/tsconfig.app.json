@@ -27,7 +27,8 @@
     "vitest.config.mts",
     "vitest.integration.config.mts",
     "src/test-setup.ts",
-    "src/testing/**/*.ts"
+    "src/testing/**/*.ts",
+    "src/test-setup.integration.ts"
   ],
   "references": [
     {

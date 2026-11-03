@@ -12,11 +12,11 @@ import { createValidationPipe } from './platform/http/validation.pipe';
 import { buildOpenApiDocument, serveOpenApi } from './platform/openapi/openapi';
 
 /**
- * Creates and configures the application without listening. Shared by main.ts, the OpenAPI
- * generator and the HTTP tests so they all exercise the same pipeline.
+ * Applies the HTTP pipeline (prefix, security headers, validation, problem details, OpenAPI) to an
+ * application instance. Shared by createApp and the HTTP tests, which build their instance from a
+ * testing module with stubbed infrastructure.
  */
-export async function createApp(): Promise<INestApplication> {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+export function configureApp(app: INestApplication): INestApplication {
   app.useLogger(app.get(Logger));
   app.enableShutdownHooks();
 
@@ -28,4 +28,9 @@ export async function createApp(): Promise<INestApplication> {
   const config = app.get(AppConfig);
   serveOpenApi(app, buildOpenApiDocument(app, API_VERSION), config.openApiUi);
   return app;
+}
+
+/** Creates and configures the application without listening (main.ts, OpenAPI generator). */
+export async function createApp(): Promise<INestApplication> {
+  return configureApp(await NestFactory.create(AppModule, { bufferLogs: true }));
 }

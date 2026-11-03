@@ -40,3 +40,64 @@ model DataEncryptionKey {
 
   @@map("data_encryption_keys")
 }
+
+/// Long-lived installation key pairs: the internal CA (SPEC 3.2) and the confirmation token signing
+/// key (SPEC 3.6). Private keys are encrypted with the KEK through EnvelopeService.
+model InstallationKey {
+  id             String    @id @db.Uuid
+  kind           String    @unique @db.VarChar(32)
+  certificatePem String?   @map("certificate_pem")
+  publicKeyPem   String    @map("public_key_pem")
+  privateKeyEnc  Bytes     @map("private_key_enc")
+  notAfter       DateTime? @map("not_after") @db.Timestamptz(6)
+  createdAt      DateTime  @map("created_at") @db.Timestamptz(6)
+
+  @@map("installation_keys")
+}
+
+/// Single-use enrollment tokens (SPEC 3.2). Only the SHA-256 of the value is stored.
+/// `organization_id` gains its foreign key when organizations land (M2.3).
+model JoinToken {
+  id             String    @id @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  tokenHash      String    @unique @map("token_hash") @db.Char(64)
+  createdBy      String?   @map("created_by") @db.VarChar(128)
+  createdAt      DateTime  @map("created_at") @db.Timestamptz(6)
+  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt         DateTime? @map("used_at") @db.Timestamptz(6)
+  usedByNodeId   String?   @map("used_by_node_id") @db.Uuid
+
+  @@index([organizationId, expiresAt])
+  @@map("join_tokens")
+}
+
+/// A server running shipkeep-agent (SPEC 4, 5.2).
+model Node {
+  id              String            @id @db.Uuid
+  organizationId  String            @map("organization_id") @db.Uuid
+  name            String            @db.VarChar(40)
+  status          String            @db.VarChar(16)
+  labels          Json
+  facts           Json
+  leaseEpoch      Int               @map("lease_epoch")
+  createdAt       DateTime          @map("created_at") @db.Timestamptz(6)
+  lastHeartbeatAt DateTime?         @map("last_heartbeat_at") @db.Timestamptz(6)
+  certificates    NodeCertificate[]
+
+  @@unique([organizationId, name])
+  @@map("nodes")
+}
+
+/// Client certificates issued to a node; revocation is a deny list of serials (SPEC 3.2).
+model NodeCertificate {
+  id        String    @id @db.Uuid
+  nodeId    String    @map("node_id") @db.Uuid
+  serial    String    @unique @db.VarChar(64)
+  notBefore DateTime  @map("not_before") @db.Timestamptz(6)
+  notAfter  DateTime  @map("not_after") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  node      Node      @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  @@index([nodeId])
+  @@map("node_certificates")
+}

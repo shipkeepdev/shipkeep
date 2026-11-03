@@ -2,6 +2,9 @@
 // environment when app.module.ts is imported, so test values must exist before any import.
 // Values are deliberately fake and always override the developer's .env (which Nx loads into
 // process.env): unit tests never touch a real database or the development KEK.
+// @peculiar/x509 needs reflect-metadata before it is imported.
+import 'reflect-metadata';
+
 import { randomBytes } from 'node:crypto';
 import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
