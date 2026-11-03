@@ -74,11 +74,10 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: agent/go.mod
-      - uses: bufbuild/buf-action@85aebf73123b5c15fd5528aaecbf9129cddf7fa7 # v1.6.0
-        with:
-          setup_only: true
       - run: pnpm install --frozen-lockfile
+      # buf comes from the @bufbuild/buf npm package; plugins run remotely on buf.build with pinned versions.
       - run: pnpm gen
+      - run: pnpm proto:lint
       - run: git diff --exit-code
 
   integration:
