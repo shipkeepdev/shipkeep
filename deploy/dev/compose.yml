@@ -1,6 +1,8 @@
 # Local development stack for the control plane (task M0.5). Start with `pnpm dev:infra`.
 # Images are pinned to digests (THREAT_MODEL, supply chain); Renovate keeps them current.
 # Every port binds to 127.0.0.1 only: this stack must never be reachable from the network.
+# Host ports can be moved with SHIPKEEP_DEV_*_PORT variables (copy .env.example to .env) when a
+# port is already taken on the developer machine.
 name: shipkeep-dev
 
 services:
@@ -11,7 +13,7 @@ services:
       POSTGRES_PASSWORD: shipkeep
       POSTGRES_DB: shipkeep
     ports:
-      - '127.0.0.1:5432:5432'
+      - '127.0.0.1:${SHIPKEEP_DEV_POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -28,7 +30,7 @@ services:
       - -retentionPeriod=30d
       - -httpListenAddr=:9428
     ports:
-      - '127.0.0.1:9428:9428'
+      - '127.0.0.1:${SHIPKEEP_DEV_VICTORIALOGS_PORT:-9428}:9428'
     volumes:
       - victorialogs-data:/victoria-logs-data
     restart: unless-stopped
@@ -40,7 +42,7 @@ services:
       - -retentionPeriod=30d
       - -httpListenAddr=:8428
     ports:
-      - '127.0.0.1:8428:8428'
+      - '127.0.0.1:${SHIPKEEP_DEV_VICTORIAMETRICS_PORT:-8428}:8428'
     volumes:
       - victoriametrics-data:/victoria-metrics-data
     restart: unless-stopped
@@ -52,7 +54,7 @@ services:
       REGISTRY_STORAGE_DELETE_ENABLED: 'true'
       REGISTRY_HTTP_ADDR: 0.0.0.0:5000
     ports:
-      - '127.0.0.1:5000:5000'
+      - '127.0.0.1:${SHIPKEEP_DEV_REGISTRY_PORT:-5000}:5000'
     volumes:
       - registry-data:/var/lib/registry
     restart: unless-stopped
