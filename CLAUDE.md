@@ -44,9 +44,9 @@ e2e/                End-to-end tests against real VMs
 ## Tooling and commands
 
 - Node.js 22 LTS (`.nvmrc`), pnpm 11 (pinned in `package.json` `packageManager`, use Corepack or `pnpm@11`), Nx 24 for the TypeScript workspace.
-- Go 1.24+ for `agent/`, `cli/` and `lib/` (three modules in one Go workspace, `go.work` at repo root, no root module).
+- Go 1.26+ for `agent/`, `cli/` and `lib/` (three modules in one Go workspace, `go.work` at repo root, no root module).
 - The repository lives under the `samuelmbabhazi` account; the `shipkeephq` organization does not exist yet. If the repository is transferred, update the Go module paths and `docs/GITHUB_SETUP.md` in one PR.
-- `buf` for protobuf lint, breaking-change checks and code generation.
+- `buf` (from the `@bufbuild/buf` npm package, so `pnpm exec buf` always matches CI) for protobuf lint, breaking-change checks and code generation. Plugins run remotely on buf.build with versions pinned in `buf.gen.yaml`.
 - Docker with BuildKit for local integration tests.
 
 | Task                                 | Command                                                        |
