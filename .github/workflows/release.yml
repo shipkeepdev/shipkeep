@@ -4,7 +4,7 @@ name: release
 # and deploy/control-plane.Dockerfile (M8.3) exist. No pull_request trigger before then.
 on:
   push:
-    tags: ["v*"]
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -30,7 +30,7 @@ jobs:
       - uses: anchore/sbom-action/download-syft@v0
       - uses: goreleaser/goreleaser-action@v6
         with:
-          version: "~> v2"
+          version: '~> v2'
           args: ${{ startsWith(github.ref, 'refs/tags/') && 'release --clean' || 'release --snapshot --clean' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -39,7 +39,7 @@ jobs:
       - if: startsWith(github.ref, 'refs/tags/')
         uses: actions/attest-build-provenance@v2
         with:
-          subject-path: "dist/*.tar.gz"
+          subject-path: 'dist/*.tar.gz'
 
   control-plane-image:
     name: Control plane image

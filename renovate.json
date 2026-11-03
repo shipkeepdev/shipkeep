@@ -6,7 +6,11 @@
   "vulnerabilityAlerts": { "enabled": true, "schedule": ["at any time"], "labels": ["security"] },
   "postUpdateOptions": ["gomodTidy", "pnpmDedupe"],
   "packageRules": [
-    { "matchUpdateTypes": ["minor", "patch"], "matchCurrentVersion": "!/^0/", "groupName": "non-major dependencies" },
+    {
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchCurrentVersion": "!/^0/",
+      "groupName": "non-major dependencies"
+    },
     { "matchManagers": ["gomod"], "groupName": "go modules" },
     { "matchManagers": ["github-actions"], "groupName": "github actions" }
   ]

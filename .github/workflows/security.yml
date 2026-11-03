@@ -5,7 +5,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: "17 3 * * 1"
+    - cron: '17 3 * * 1'
 
 permissions:
   contents: read
@@ -89,4 +89,4 @@ jobs:
           scan-type: fs
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          exit-code: "1"
+          exit-code: '1'

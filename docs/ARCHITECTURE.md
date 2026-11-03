@@ -116,23 +116,23 @@ Triggered from the UI or CLI, executed by the agent on the control plane node th
 
 ## What we take from the best
 
-| Reference | What they do | What Shipkeep takes |
-| --- | --- | --- |
-| Fly.io flyd | Per-worker orchestrator, source of truth for its machines, resumes work after restart | Agent local state and resumable operation journal |
-| Fly.io fly-proxy and Corrosion | Proxy on every server fed by a gossip-replicated catalog; WireGuard backhaul | Caddy on every node, replicated routing table, cross-node forwarding over WireGuard |
-| Nomad | Job = desired state; heartbeats; allocations; bin packing with constraints | Evaluation, plan, allocation model; heartbeats; placement constraints; leases before failover |
-| Uncloud | No control plane, Corrosion, WireGuard mesh with NAT traversal, Caddy, Compose | NAT traversal; Corrosion evaluation for v0.5 |
-| Kamal | Proxy switches traffic only to healthy instances, then drains the old one | Deploy contract: mandatory health check, switch then drain, retained images |
-| Render | Destructive changes need explicit confirmation | Confirmation tokens for every destructive action |
+| Reference                      | What they do                                                                          | What Shipkeep takes                                                                           |
+| ------------------------------ | ------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Fly.io flyd                    | Per-worker orchestrator, source of truth for its machines, resumes work after restart | Agent local state and resumable operation journal                                             |
+| Fly.io fly-proxy and Corrosion | Proxy on every server fed by a gossip-replicated catalog; WireGuard backhaul          | Caddy on every node, replicated routing table, cross-node forwarding over WireGuard           |
+| Nomad                          | Job = desired state; heartbeats; allocations; bin packing with constraints            | Evaluation, plan, allocation model; heartbeats; placement constraints; leases before failover |
+| Uncloud                        | No control plane, Corrosion, WireGuard mesh with NAT traversal, Caddy, Compose        | NAT traversal; Corrosion evaluation for v0.5                                                  |
+| Kamal                          | Proxy switches traffic only to healthy instances, then drains the old one             | Deploy contract: mandatory health check, switch then drain, retained images                   |
+| Render                         | Destructive changes need explicit confirmation                                        | Confirmation tokens for every destructive action                                              |
 
 Not taken: running without a control plane (agencies need central UI, RBAC and audit), a custom Raft for control plane HA (PostgreSQL primary plus replica is enough), Firecracker microVMs (too heavy for ordinary VPS).
 
 ## Resource targets
 
-| Component | Target |
-| --- | --- |
-| Agent idle RAM | < 50 MB |
-| Control plane idle RAM (API + Postgres) | < 500 MB |
-| Observability stack idle RAM | < 300 MB |
-| Time from push to live (cached build, small Node app) | < 90 s |
-| Failover of a stateless app after node loss | < 90 s |
+| Component                                             | Target   |
+| ----------------------------------------------------- | -------- |
+| Agent idle RAM                                        | < 50 MB  |
+| Control plane idle RAM (API + Postgres)               | < 500 MB |
+| Observability stack idle RAM                          | < 300 MB |
+| Time from push to live (cached build, small Node app) | < 90 s   |
+| Failover of a stateless app after node loss           | < 90 s   |

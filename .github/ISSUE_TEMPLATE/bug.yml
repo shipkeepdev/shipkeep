@@ -1,7 +1,7 @@
 name: Bug report
 description: Something does not work as specified
-title: "bug: "
-labels: ["bug"]
+title: 'bug: '
+labels: ['bug']
 body:
   - type: textarea
     id: what
@@ -27,4 +27,4 @@ body:
       label: Shipkeep version
   - type: markdown
     attributes:
-      value: "Security issues must not be reported here. See SECURITY.md."
+      value: 'Security issues must not be reported here. See SECURITY.md.'

@@ -2,7 +2,7 @@ name: e2e-nightly
 
 on:
   schedule:
-    - cron: "41 1 * * *"
+    - cron: '41 1 * * *'
   workflow_dispatch:
 
 permissions:

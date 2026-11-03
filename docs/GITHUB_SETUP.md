@@ -119,11 +119,11 @@ When the repository becomes public: set the repository variable `ENABLE_CODEQL` 
 
 Set values yourself; never paste them into a chat or a commit.
 
-| Secret | Needed from | Purpose | Command |
-| --- | --- | --- | --- |
-| `HCLOUD_TOKEN` | M10.1 | Create and delete VMs for nightly E2E tests (Hetzner Cloud project dedicated to CI) | `gh secret set HCLOUD_TOKEN --repo "$OWNER/$REPO"` (paste when prompted) |
-| `HOMEBREW_TAP_TOKEN` | M8.2 | Push the CLI formula to `$OWNER/homebrew-tap` (fine-grained token, contents write on that repo only) | `gh secret set HOMEBREW_TAP_TOKEN --repo "$OWNER/$REPO"` |
-| `SCOOP_BUCKET_TOKEN` | M8.2 | Push the CLI manifest to `$OWNER/scoop-bucket` (fine-grained token, contents write on that repo only) | `gh secret set SCOOP_BUCKET_TOKEN --repo "$OWNER/$REPO"` |
+| Secret               | Needed from | Purpose                                                                                               | Command                                                                  |
+| -------------------- | ----------- | ----------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| `HCLOUD_TOKEN`       | M10.1       | Create and delete VMs for nightly E2E tests (Hetzner Cloud project dedicated to CI)                   | `gh secret set HCLOUD_TOKEN --repo "$OWNER/$REPO"` (paste when prompted) |
+| `HOMEBREW_TAP_TOKEN` | M8.2        | Push the CLI formula to `$OWNER/homebrew-tap` (fine-grained token, contents write on that repo only)  | `gh secret set HOMEBREW_TAP_TOKEN --repo "$OWNER/$REPO"`                 |
+| `SCOOP_BUCKET_TOKEN` | M8.2        | Push the CLI manifest to `$OWNER/scoop-bucket` (fine-grained token, contents write on that repo only) | `gh secret set SCOOP_BUCKET_TOKEN --repo "$OWNER/$REPO"`                 |
 
 Signing uses cosign keyless (GitHub OIDC), so no signing key secret is needed. GHCR uses the workflow `GITHUB_TOKEN`.
 
