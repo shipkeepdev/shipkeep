@@ -9,6 +9,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 
 import { PrismaService } from '../../platform/prisma/prisma.service';
 import { applyMigrations } from '../../testing/apply-migrations';
+import { resetDatabase } from '../../testing/reset-database';
 
 import { EnrollNode } from './application/enroll-node';
 import { IssueJoinToken } from './application/issue-join-token';
@@ -47,6 +48,8 @@ describe('fleet enrollment against PostgreSQL', () => {
       container = await new PostgreSqlContainer('postgres:17').start();
       process.env['DATABASE_URL'] = container.getConnectionUri();
     }
+    // Shared CI database: start from an empty schema so this file's KEK matches every row.
+    await resetDatabase(process.env['DATABASE_URL']);
     await applyMigrations(
       process.env['DATABASE_URL'],
       resolve(__dirname, '../../../prisma/migrations'),

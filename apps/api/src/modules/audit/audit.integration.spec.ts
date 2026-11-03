@@ -14,6 +14,7 @@ import { EnvelopeService } from '../../platform/crypto/envelope.service';
 import { DomainEventBus } from '../../platform/events/domain-event-bus';
 import { PrismaService } from '../../platform/prisma/prisma.service';
 import { applyMigrations } from '../../testing/apply-migrations';
+import { resetDatabase } from '../../testing/reset-database';
 
 // End to end through the real stack: a domain event published on the bus must land as an
 // audit row, and envelope encryption must persist and reuse its data keys (PLAN M2.1b).
@@ -28,6 +29,8 @@ describe('audit log and envelope encryption against PostgreSQL', () => {
       process.env['DATABASE_URL'] = container.getConnectionUri();
     }
     databaseUrl = process.env['DATABASE_URL'];
+    // Shared CI database: start from an empty schema so this file's KEK matches every row.
+    await resetDatabase(databaseUrl);
     await applyMigrations(databaseUrl, resolve(__dirname, '../../../prisma/migrations'));
 
     // A throwaway KEK: integration tests must never read the development one.
