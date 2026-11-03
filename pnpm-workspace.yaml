@@ -9,6 +9,10 @@ allowBuilds:
   prisma: true
   # Telemetry postinstall, never needed.
   '@scarf/scarf': false
+  # Optional native builds pulled in by testcontainers (ssh2); the pure JS fallbacks are enough.
+  cpu-features: false
+  ssh2: false
+  protobufjs: false
   '@parcel/watcher': true
   '@swc/core': true
   esbuild: true
