@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 
 import { createHash, webcrypto, X509Certificate } from 'node:crypto';
+import { isIP } from 'node:net';
 
 import * as x509 from '@peculiar/x509';
 
@@ -147,6 +148,39 @@ export async function createNodeCertificate(input: NodeCertificateInput): Promis
         new x509.SubjectAlternativeNameExtension([{ type: 'url', value: input.spiffeId }], true),
         await x509.AuthorityKeyIdentifierExtension.create(ca, false, nodeCrypto),
         await x509.SubjectKeyIdentifierExtension.create(input.nodePublicKey, false, nodeCrypto),
+      ],
+    },
+    nodeCrypto,
+  );
+  return cert.toString('pem');
+}
+
+/** A distinct server-auth key, never the installation CA's private key. */
+export async function createGatewayCertificate(
+  caCertificatePem: string,
+  caPrivateKeyPem: string,
+  keys: KeyPairPem,
+  hostname: string,
+): Promise<string> {
+  const ca = new x509.X509Certificate(caCertificatePem);
+  const cert = await x509.X509CertificateGenerator.create(
+    {
+      serialNumber: randomSerial(),
+      subject: 'CN=Shipkeep Agent Gateway',
+      issuer: ca.subject,
+      notBefore: new Date(),
+      notAfter: new Date(Date.now() + NODE_CERT_VALIDITY_MS),
+      signingAlgorithm: SIGNING_ALGORITHM,
+      publicKey: await importPublicKey(keys.publicKeyPem),
+      signingKey: await importPrivateKey(caPrivateKeyPem),
+      extensions: [
+        new x509.BasicConstraintsExtension(false, undefined, true),
+        new x509.KeyUsagesExtension(x509.KeyUsageFlags.digitalSignature, true),
+        new x509.ExtendedKeyUsageExtension([x509.ExtendedKeyUsage.serverAuth], true),
+        new x509.SubjectAlternativeNameExtension([
+          { type: isIP(hostname) ? 'ip' : 'dns', value: hostname },
+        ]),
+        await x509.AuthorityKeyIdentifierExtension.create(ca, false, nodeCrypto),
       ],
     },
     nodeCrypto,

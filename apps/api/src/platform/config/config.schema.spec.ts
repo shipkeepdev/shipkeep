@@ -52,6 +52,12 @@ describe('parseConfig', () => {
     expect(() => parseConfig({ ...minimal, AGENT_GATEWAY_ADDR: 'nope' })).toThrow(
       /AGENT_GATEWAY_ADDR/,
     );
+    expect(() => parseConfig({ ...minimal, AGENT_GATEWAY_ADDR: 'localhost:99999' })).toThrow(
+      /AGENT_GATEWAY_ADDR/,
+    );
+    expect(() =>
+      parseConfig({ ...minimal, AGENT_GATEWAY_SERVER_NAME: 'https://example.com/path' }),
+    ).toThrow(/AGENT_GATEWAY_SERVER_NAME/);
   });
   it('accepts an explicit built web directory and rejects invalid paths without echoing them', () => {
     expect(

@@ -120,6 +120,7 @@ compose:
 ### 3.1 Transport
 
 - gRPC over HTTP/2 with mTLS. The control plane exposes `AgentGatewayService` on a dedicated port (default 7443). Names follow buf's STANDARD lint rules (`<Rpc>Request` / `<Rpc>Response`, `Service` suffix).
+- The gateway uses TLS 1.3 with a distinct server-auth leaf certificate signed by the installation CA. `AGENT_GATEWAY_SERVER_NAME` sets its DNS or IP SAN; the leaf key stays in memory and is refreshed daily. Only `Enroll` permits an absent client certificate. Other RPCs require a TLS-verified client-auth certificate and a current database registration matching its SPIFFE organization and node. Identity headers are ignored. The initial unary gateway caps messages at 64 KiB and RPC deadlines at 30 seconds; M1.2c configures separate limits for long-lived streams.
 - The agent calls `Connect(stream ConnectRequest) returns (stream ConnectResponse)` and keeps it open.
 - `ConnectRequest` (agent to control plane) carries one of: `Hello`, `Heartbeat`, `ActionUpdate`, `StateReport`.
 - `ConnectResponse` (control plane to agent) carries one of: `Welcome`, `ActionRequest`, `CancelAction`, `RoutingTable`, `PeerList`, `LeaseRenewal`, `ConfigUpdate`.

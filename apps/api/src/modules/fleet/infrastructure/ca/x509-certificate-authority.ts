@@ -19,6 +19,7 @@ import {
 import {
   certificateFingerprint,
   createCaCertificate,
+  createGatewayCertificate,
   createNodeCertificate,
   generateEd25519KeyPair,
   NODE_CERT_VALIDITY_MS,
@@ -66,6 +67,17 @@ export class X509CertificateAuthority
 
   async caFingerprint(): Promise<string> {
     return certificateFingerprint(await this.caCertificatePem());
+  }
+
+  async gatewayCredentials(hostname: string): Promise<{ cert: string; key: Secret; ca: string }> {
+    const ca = await this.requireCa();
+    const keys = await generateEd25519KeyPair();
+    const caPem = await this.caCertificatePem();
+    return {
+      cert: await createGatewayCertificate(caPem, ca.privateKeyPem.expose(), keys, hostname),
+      key: new Secret(keys.privateKeyPem),
+      ca: caPem,
+    };
   }
 
   async publicKeyPem(): Promise<string> {

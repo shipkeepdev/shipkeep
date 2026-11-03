@@ -10,6 +10,7 @@ import { resolve } from 'node:path';
 import { Logger } from 'nestjs-pino';
 
 import { createApp } from './bootstrap';
+import { AgentGateway } from './modules/fleet/interface/agent-gateway';
 import { AppConfig } from './platform/config/app-config';
 import { API_VERSION } from './platform/health/health.controller';
 import { API_PREFIX } from './platform/http/constants';
@@ -34,7 +35,10 @@ async function main(): Promise<void> {
     (config.isProduction ? resolve('dist/apps/web/browser') : undefined);
   const port = config.get('API_PORT');
   try {
+    // Browser assets must be installed before init() so they sit ahead of Nest's not-found handler.
     if (webDirectory) await installWebApp(app, webDirectory);
+    await app.init();
+    await app.get(AgentGateway).start();
     await app.listen(port);
   } catch (error: unknown) {
     await app.close();
