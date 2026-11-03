@@ -7,7 +7,7 @@
     "test": "nx run-many -t test",
     "build": "nx run-many -t build",
     "gen": "pnpm gen:proto && pnpm gen:config",
-    "dev": "echo \"pnpm dev: local control plane stack arrives in M0.5\" && exit 1",
+    "dev": "pnpm dev:infra && nx run-many -t serve -p api web --parallel=2",
     "test:integration": "echo \"pnpm test:integration: no integration tests yet (M1.2)\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
@@ -15,7 +15,10 @@
     "proto:lint": "buf lint && buf format -d --exit-code",
     "proto:breaking": "buf breaking --against '.git#branch=main'",
     "gen:proto": "buf generate",
-    "gen:config": "node tools/gen/config-schema.mjs && tools/gen/config-go.sh"
+    "gen:config": "node tools/gen/config-schema.mjs && tools/gen/config-go.sh",
+    "dev:infra": "docker compose -f deploy/dev/compose.yml up -d --wait",
+    "dev:infra:down": "docker compose -f deploy/dev/compose.yml down",
+    "dev:infra:reset": "docker compose -f deploy/dev/compose.yml down -v"
   },
   "private": true,
   "dependencies": {
