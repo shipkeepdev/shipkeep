@@ -1,0 +1,11 @@
+version: 1
+name: worker
+build:
+  type: dockerfile
+run:
+  port: 4000
+scale:
+  replicas: 3
+  placement:
+    spread: none
+    nodes: [node-a, node-b]

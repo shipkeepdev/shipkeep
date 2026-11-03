@@ -1,0 +1,14 @@
+version: 1
+name: files
+build:
+  type: dockerfile
+run:
+  port: 3000
+volumes:
+  - name: uploads
+    path: /app/uploads
+    backup:
+      schedule: '*/30 * * * *'
+      keep: 48
+  - name: cache
+    path: /var/cache/app

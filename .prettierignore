@@ -11,3 +11,4 @@ pnpm-lock.yaml
 /packages/proto-ts/src/gen
 /packages/config-schema/src/gen
 /packages/api-client/src/gen
+/lib/config/shipkeep.schema.json

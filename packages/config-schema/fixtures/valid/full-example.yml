@@ -1,0 +1,64 @@
+version: 1
+name: billing-api
+
+build:
+  type: dockerfile
+  context: .
+  dockerfile: Dockerfile
+  args:
+    NODE_ENV: production
+
+run:
+  command: ['node', 'dist/main.js']
+  port: 3000
+  healthcheck:
+    path: /health
+    interval: 5s
+    timeout: 3s
+    start_period: 20s
+    healthy_threshold: 2
+
+release:
+  command: ['node', 'dist/migrate.js']
+  timeout: 10m
+
+resources:
+  cpu: '0.5'
+  memory: 512Mi
+
+scale:
+  replicas: 2
+  placement:
+    spread: node
+    labels: { region: eu }
+    nodes: []
+
+domains:
+  - api.acme.com
+
+env:
+  LOG_LEVEL: info
+
+secrets:
+  - DATABASE_URL
+  - STRIPE_KEY
+
+volumes:
+  - name: uploads
+    path: /app/uploads
+    backup: { schedule: '0 3 * * *', keep: 14 }
+
+databases:
+  - ref: billing-db
+    env: DATABASE_URL
+
+previews:
+  enabled: true
+  ttl: 72h
+  max_active: 5
+  database: clone
+
+deploy:
+  strategy: rolling
+  drain_timeout: 30s
+  keep_images: 5

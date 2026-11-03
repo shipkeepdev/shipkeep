@@ -1,0 +1,10 @@
+version: 1
+name: api
+build:
+  type: dockerfile
+run:
+  port: 3000
+previews:
+  enabled: false
+  max_active: 0
+  database: none

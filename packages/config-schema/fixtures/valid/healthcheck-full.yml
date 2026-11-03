@@ -1,0 +1,13 @@
+version: 1
+name: api
+build:
+  type: dockerfile
+run:
+  port: 3000
+  healthcheck:
+    path: /healthz?deep=1
+    interval: 10s
+    timeout: 2s
+    start_period: 1m
+    healthy_threshold: 1
+    unhealthy_threshold: 3

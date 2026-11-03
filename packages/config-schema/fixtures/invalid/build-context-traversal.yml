@@ -1,0 +1,7 @@
+version: 1
+name: api
+build:
+  type: dockerfile
+  context: ../other-repo
+run:
+  port: 3000

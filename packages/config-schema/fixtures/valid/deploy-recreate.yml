@@ -1,0 +1,10 @@
+version: 1
+name: singleton
+build:
+  type: dockerfile
+run:
+  port: 3000
+deploy:
+  strategy: recreate
+  drain_timeout: 0s
+  keep_images: 1

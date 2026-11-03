@@ -1,0 +1,8 @@
+version: 1
+name: api
+build:
+  type: dockerfile
+  args:
+    node-env: production
+run:
+  port: 3000

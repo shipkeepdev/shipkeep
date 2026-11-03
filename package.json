@@ -6,14 +6,16 @@
     "lint": "nx run-many -t lint typecheck",
     "test": "nx run-many -t test",
     "build": "nx run-many -t build",
-    "gen": "buf generate",
+    "gen": "pnpm gen:proto && pnpm gen:config",
     "dev": "echo \"pnpm dev: local control plane stack arrives in M0.5\" && exit 1",
     "test:integration": "echo \"pnpm test:integration: no integration tests yet (M1.2)\"",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "lefthook install",
     "proto:lint": "buf lint && buf format -d --exit-code",
-    "proto:breaking": "buf breaking --against '.git#branch=main'"
+    "proto:breaking": "buf breaking --against '.git#branch=main'",
+    "gen:proto": "buf generate",
+    "gen:config": "node tools/gen/config-schema.mjs && tools/gen/config-go.sh"
   },
   "private": true,
   "dependencies": {
@@ -67,6 +69,7 @@
     "jest-environment-node": "~30.3.0",
     "jest-util": "~30.3.0",
     "jsdom": "^27.1.0",
+    "json-schema-to-typescript": "16.0.0",
     "jsonc-eslint-parser": "^2.1.0",
     "lefthook": "^2.2.2",
     "nx": "24.0.0",

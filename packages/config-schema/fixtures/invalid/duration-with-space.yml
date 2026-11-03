@@ -1,0 +1,9 @@
+version: 1
+name: api
+build:
+  type: dockerfile
+run:
+  port: 3000
+  healthcheck:
+    path: /health
+    interval: 5 seconds

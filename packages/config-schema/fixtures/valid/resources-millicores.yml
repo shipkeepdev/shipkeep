@@ -1,0 +1,9 @@
+version: 1
+name: worker
+build:
+  type: dockerfile
+run:
+  port: 4000
+resources:
+  cpu: 500m
+  memory: 1Gi

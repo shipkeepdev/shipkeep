@@ -1,0 +1,5 @@
+name: api
+build:
+  type: dockerfile
+run:
+  port: 3000

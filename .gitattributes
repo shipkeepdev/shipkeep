@@ -10,3 +10,5 @@ pnpm-lock.yaml linguist-generated=true -diff
 
 # Files allowed above 1 MB must be listed here with `shipkeep-large-ok`.
 # example/path/to/fixture.bin shipkeep-large-ok
+lib/config/types.gen.go linguist-generated=true -diff
+lib/config/shipkeep.schema.json linguist-generated=true -diff
