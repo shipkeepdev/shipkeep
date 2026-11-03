@@ -15,9 +15,7 @@ describe('HTTP pipeline', () => {
   const http = (): ReturnType<typeof request> => request(app.getHttpServer() as Server);
 
   beforeAll(async () => {
-    process.env['DATABASE_URL'] ??= 'postgresql://shipkeep:shipkeep@localhost:5432/shipkeep';
-    process.env['SHIPKEEP_KEK_FILE'] ??= './deploy/dev/secrets/kek';
-    process.env['OPENAPI_UI'] = 'true';
+    // Environment defaults come from src/test-setup.ts.
     app = await createApp();
     const prisma = app.get(PrismaService);
     vi.spyOn(prisma, 'onModuleInit').mockResolvedValue(undefined);

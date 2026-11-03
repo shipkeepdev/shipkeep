@@ -22,6 +22,7 @@ export default defineConfig(() => ({
     globals: true,
     environment: 'node',
     include: ['src/**/*.spec.ts'],
+    setupFiles: ['src/test-setup.ts'],
     // Integration tests have their own config (vitest.integration.config.mts).
     exclude: ['**/node_modules/**', 'src/**/*.integration.spec.ts'],
     reporters: ['default'],
