@@ -21,7 +21,11 @@ Everything is in English: code, comments, commit messages, PR descriptions, issu
 
 ```text
 apps/
-  api/              Control plane API, NestJS (TypeScript)
+  api/              Control plane API, NestJS 12 (TypeScript)
+                      src/platform/   cross-cutting: config (zod), logging (pino), http (problem details, validation), prisma, health, openapi
+                      src/modules/    bounded contexts, one folder each (see conventions below)
+                      prisma/         schema.prisma and migrations; prisma.config.ts for the CLI
+                      openapi.json    generated contract of the REST API (pnpm gen:openapi)
   web/              Web UI, Angular (TypeScript)
 agent/              Node agent, Go module github.com/samuelmbabhazi/shipkeep/agent (single static binary)
 cli/                CLI, Go module github.com/samuelmbabhazi/shipkeep/cli (single static binary)
@@ -51,19 +55,20 @@ e2e/                End-to-end tests against real VMs
 - `buf` (from the `@bufbuild/buf` npm package, so `pnpm exec buf` always matches CI) for protobuf lint, breaking-change checks and code generation. Plugins run remotely on buf.build with versions pinned in `buf.gen.yaml`.
 - Docker with BuildKit for local integration tests.
 
-| Task                                 | Command                                                        |
-| ------------------------------------ | -------------------------------------------------------------- |
-| Install                              | `pnpm install`                                                 |
-| Generate code from proto and schema  | `pnpm gen`                                                     |
-| Lint everything (ESLint + typecheck) | `pnpm lint`                                                    |
-| Format                               | `pnpm format` (check only: `pnpm format:check`)                |
-| Unit tests (TS, affected)            | `pnpm nx affected -t test`                                     |
-| Go tests                             | `go test ./agent/... ./cli/... ./lib/...`                      |
-| Go lint                              | `golangci-lint run ./agent/... ./cli/... ./lib/...`            |
-| Integration tests                    | `pnpm test:integration` (needs Docker)                         |
-| Run control plane locally            | `pnpm dev` (API + web + Postgres via `deploy/dev/compose.yml`) |
-| Run an agent locally                 | `go run ./agent/cmd/shipkeep-agent --dev`                      |
-| Proto checks                         | `buf lint && buf breaking --against '.git#branch=main'`        |
+| Task                                 | Command                                                                                                      |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
+| Install                              | `pnpm install`                                                                                               |
+| Generate code from proto and schema  | `pnpm gen` (proto, shipkeep.yml schema, Prisma client, `apps/api/openapi.json`, `packages/api-client` types) |
+| Lint everything (ESLint + typecheck) | `pnpm lint`                                                                                                  |
+| Format                               | `pnpm format` (check only: `pnpm format:check`)                                                              |
+| Unit tests (TS, affected)            | `pnpm nx affected -t test` (vitest everywhere, including the API)                                            |
+| Go tests                             | `go test ./agent/... ./cli/... ./lib/...`                                                                    |
+| Go lint                              | `golangci-lint run ./agent/... ./cli/... ./lib/...`                                                          |
+| Integration tests                    | `pnpm test:integration` (real PostgreSQL via Testcontainers, or `DATABASE_URL` when set)                     |
+| Prisma CLI                           | `pnpm prisma <command>` (uses `apps/api/prisma.config.ts`)                                                   |
+| Run control plane locally            | `pnpm dev` (API + web + Postgres via `deploy/dev/compose.yml`)                                               |
+| Run an agent locally                 | `go run ./agent/cmd/shipkeep-agent --dev`                                                                    |
+| Proto checks                         | `buf lint && buf breaking --against '.git#branch=main'`                                                      |
 
 If a command in this table does not exist yet, creating it is part of the current task.
 
@@ -91,7 +96,9 @@ If a command in this table does not exist yet, creating it is part of the curren
   - `infrastructure`: Prisma repositories, gRPC client to agents, external adapters.
   - `interface`: REST controllers, DTOs, guards.
 - Validation at the edge with `class-validator` DTOs; domain invariants enforced inside entities.
-- Errors: domain errors are typed classes; controllers map them to RFC 9457 problem details.
+- Errors: domain errors extend `DomainError` from `packages/domain` (kind + stable `code`); the global `ProblemDetailsFilter` maps them to RFC 9457 problem details (`application/problem+json`, `type` = `https://shipkeep.dev/problems/<code>`). Never throw raw `Error` for expected conditions.
+- Configuration comes from `AppConfig` (zod-validated environment). Values that embed credentials are `Secret` instances from `packages/domain`; call `expose()` only at the point of use.
+- Platform code (`src/platform`) is shared infrastructure; bounded contexts live in `src/modules/<context>` and never import each other's `infrastructure/`.
 - Angular: standalone components, signals, OnPush everywhere, feature folders, no business logic in components (use services/stores).
 
 ### Go (agent, cli)
@@ -146,7 +153,7 @@ The repository will be public at v1 and git history is forever. Treat every comm
 
 - Business documents outside `docs/` (pricing negotiations, customer names, contracts, the French planning document). Only the English docs in `docs/` belong in the repository.
 
-**Exception:** generated code from `pnpm gen` (proto and schema) is committed on purpose (ADR 0001).
+**Exception:** generated code from `pnpm gen` (proto, schema, `openapi.json`, api-client types) is committed on purpose (ADR 0001). The Prisma client (`apps/api/src/platform/prisma/generated/`) is the one generated artifact that is not committed: `pnpm install` regenerates it.
 
 **Enforcement**
 
