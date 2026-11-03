@@ -1,0 +1,48 @@
+// Frames of an interactive exec session (SPEC section 3.1).
+
+syntax = "proto3";
+
+package shipkeep.agent.v1;
+
+// Agent to control plane.
+message ExecStreamRequest {
+  oneof frame {
+    ExecOpen open = 1;
+    bytes stdout = 2;
+    bytes stderr = 3;
+    ExecExit exit = 4;
+    ExecError error = 5;
+  }
+}
+
+// Control plane to agent.
+message ExecStreamResponse {
+  oneof frame {
+    bytes stdin = 1;
+    ExecResize resize = 2;
+    ExecClose close = 3;
+  }
+}
+
+// First frame sent by the agent to bind the stream to an ExecSession action.
+message ExecOpen {
+  string session_id = 1;
+}
+
+message ExecResize {
+  uint32 cols = 1;
+  uint32 rows = 2;
+}
+
+// Close stdin or terminate the session.
+message ExecClose {
+  bool kill = 1;
+}
+
+message ExecExit {
+  int32 exit_code = 1;
+}
+
+message ExecError {
+  string message = 1;
+}

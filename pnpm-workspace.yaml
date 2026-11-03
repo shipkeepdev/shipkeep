@@ -4,6 +4,7 @@ packages:
 
 # pnpm 11 blocks dependency build scripts by default. Allow only what the toolchain needs.
 allowBuilds:
+  '@bufbuild/buf': true
   '@parcel/watcher': true
   '@swc/core': true
   esbuild: true
