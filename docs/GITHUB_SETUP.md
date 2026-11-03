@@ -99,7 +99,8 @@ gh api -X POST "repos/$OWNER/$REPO/rulesets" --input - <<'JSON'
           { "context": "Semgrep (custom rules + OWASP)" },
           { "context": "gosec" },
           { "context": "Secret scanning" },
-          { "context": "Trivy filesystem scan" }
+          { "context": "Trivy filesystem scan" },
+          { "context": "actionlint" }
         ] } }
   ]
 }

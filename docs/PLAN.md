@@ -21,7 +21,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
   - ESLint (strict, type-aware), Prettier, `.golangci.yml` (config version 2), EditorConfig, `.nvmrc`, `.tool-versions`.
   - Pre-commit hooks with lefthook: gitleaks on staged files, block files over 1 MB, lint-staged formatting. `.env.example` with fake values only.
   - Acceptance: `pnpm install && pnpm lint && pnpm nx run-many -t test && go test ./agent/... ./cli/... ./lib/...` pass on a clean clone; the `ci` and `security` workflows pass on the PR.
-- [ ] **M0.2 CI and security workflows** (X). Depends: M0.1
+- [x] **M0.2 CI and security workflows** (X). Depends: M0.1
   - Harden the existing workflows in `.github/workflows/`: pin every third-party action to a full commit SHA (with the version in a comment) and every tool image to a digest (`semgrep/semgrep`, `gitleaks/gitleaks`); replace `securego/gosec@master` with a pinned release; pin the golangci-lint version so it matches `.golangci.yml`.
   - `release.yml` is only checked with actionlint here; its first dry run happens in M8.2.
   - Acceptance: all checks listed in GITHUB_SETUP section 5 are green on the PR; actionlint passes; no action referenced by a mutable tag.

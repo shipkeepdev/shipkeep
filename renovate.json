@@ -1,9 +1,18 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended", ":semanticCommits", "helpers:pinGitHubActionDigests"],
+  "extends": [
+    "config:recommended",
+    ":semanticCommits",
+    "helpers:pinGitHubActionDigests",
+    "docker:pinDigests"
+  ],
   "timezone": "Africa/Kigali",
   "schedule": ["before 6am on monday"],
-  "vulnerabilityAlerts": { "enabled": true, "schedule": ["at any time"], "labels": ["security"] },
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "schedule": ["at any time"],
+    "labels": ["security"]
+  },
   "postUpdateOptions": ["gomodTidy", "pnpmDedupe"],
   "packageRules": [
     {
@@ -11,7 +20,13 @@
       "matchCurrentVersion": "!/^0/",
       "groupName": "non-major dependencies"
     },
-    { "matchManagers": ["gomod"], "groupName": "go modules" },
-    { "matchManagers": ["github-actions"], "groupName": "github actions" }
+    {
+      "matchManagers": ["gomod"],
+      "groupName": "go modules"
+    },
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "github actions"
+    }
   ]
 }
