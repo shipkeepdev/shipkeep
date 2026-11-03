@@ -15,9 +15,9 @@ allowBuilds:
   msgpackr-extract: false
 
 # Supply-chain policy (THREAT_MODEL, "Security engineering requirements").
-# New versions must be at least 24 hours old; the lockfile cannot be downgraded silently;
+# New versions must be at least seven days old; the lockfile cannot be downgraded silently;
 # sub-dependencies cannot resolve to git, tarball or other exotic sources.
-minimumReleaseAge: 1440
+minimumReleaseAge: 10080
 trustPolicy: no-downgrade
 # Trust downgrades only matter for fresh publishes (takeover window); ignore them after 7 days.
 trustPolicyIgnoreAfter: 10080
