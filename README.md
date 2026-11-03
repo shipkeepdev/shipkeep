@@ -43,4 +43,4 @@ go test ./agent/... ./cli/... ./lib/...
 pnpm gen               # regenerate code from proto/ and shipkeep.schema.json
 ```
 
-Service ports on the host: PostgreSQL 5432, VictoriaLogs 9428, VictoriaMetrics 8428, registry 5000. Data lives in named Docker volumes.
+Service ports on the host: PostgreSQL 5432, VictoriaLogs 9428, VictoriaMetrics 8428, registry 5000. If one is already taken, set the matching `SHIPKEEP_DEV_*_PORT` in `.env` (see `.env.example`) and adjust `DATABASE_URL`. Data lives in named Docker volumes.
