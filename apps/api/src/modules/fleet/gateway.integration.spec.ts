@@ -188,9 +188,16 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
     ).resolves.toHaveProperty('nodeId');
   });
 
-  it('authenticates unfinished streaming methods before returning Unimplemented', async () => {
+  it('authenticates streaming methods and accepts a matching Hello', async () => {
     const enrolled = await enroll('tls-stream-auth');
-    const input = [{ msg: { case: 'hello' as const, value: { nodeId: enrolled.result.nodeId } } }];
+    const input = [
+      {
+        msg: {
+          case: 'hello' as const,
+          value: { nodeId: enrolled.result.nodeId, leaseEpoch: enrolled.result.leaseEpoch },
+        },
+      },
+    ];
     await expect(
       client().connect(messages(input))[Symbol.asyncIterator]().next(),
     ).rejects.toMatchObject({
@@ -198,12 +205,119 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
     });
     await expect(
       client(enrolled).connect(messages(input))[Symbol.asyncIterator]().next(),
-    ).rejects.toMatchObject({ code: Code.Unimplemented });
+    ).resolves.toMatchObject({ value: { msg: { case: 'welcome' } } });
     await expect(
       client().execStream(messages([]))[Symbol.asyncIterator]().next(),
     ).rejects.toMatchObject({
       code: Code.Unauthenticated,
     });
+  });
+
+  it('rejects forged Hello identities, stale epochs and out-of-order frames', async () => {
+    const enrolled = await enroll('tls-stream-validation');
+    const current = client(enrolled);
+    for (const value of [
+      { nodeId: 'forged', leaseEpoch: enrolled.result.leaseEpoch },
+      { nodeId: enrolled.result.nodeId, leaseEpoch: enrolled.result.leaseEpoch + 1n },
+    ]) {
+      await expect(
+        current
+          .connect(messages([{ msg: { case: 'hello', value } }]))
+          [Symbol.asyncIterator]()
+          .next(),
+      ).rejects.toMatchObject({ code: Code.FailedPrecondition });
+    }
+    await expect(
+      current
+        .connect(messages([{ msg: { case: 'heartbeat', value: {} } }]))
+        [Symbol.asyncIterator]()
+        .next(),
+    ).rejects.toMatchObject({ code: Code.FailedPrecondition });
+    const hello = {
+      msg: {
+        case: 'hello' as const,
+        value: { nodeId: enrolled.result.nodeId, leaseEpoch: enrolled.result.leaseEpoch },
+      },
+    };
+    const repeated = current.connect(messages([hello, hello]))[Symbol.asyncIterator]();
+    await expect(repeated.next()).resolves.toMatchObject({ value: { msg: { case: 'welcome' } } });
+    await expect(repeated.next()).rejects.toMatchObject({ code: Code.InvalidArgument });
+  });
+
+  it('disconnects a silent stream promptly after certificate revocation', async () => {
+    const enrolled = await enroll('tls-live-revocation');
+    const abort = new AbortController();
+    async function* input() {
+      yield {
+        msg: {
+          case: 'hello' as const,
+          value: { nodeId: enrolled.result.nodeId, leaseEpoch: enrolled.result.leaseEpoch },
+        },
+      };
+      await new Promise<void>((resolve) => {
+        if (abort.signal.aborted) resolve();
+        else
+          abort.signal.addEventListener(
+            'abort',
+            () => {
+              resolve();
+            },
+            { once: true },
+          );
+      });
+    }
+    try {
+      const stream = client(enrolled)
+        .connect(input(), { signal: abort.signal })
+        [Symbol.asyncIterator]();
+      await expect(stream.next()).resolves.toMatchObject({ value: { msg: { case: 'welcome' } } });
+      const closed = stream.next();
+      await app.get(PrismaService).nodeCertificate.updateMany({
+        where: { nodeId: enrolled.result.nodeId },
+        data: { revokedAt: new Date() },
+      });
+      await expect(closed).rejects.toMatchObject({ code: Code.Unauthenticated });
+    } finally {
+      abort.abort();
+    }
+  });
+
+  it('accepts streaming deadlines above the unary limit and replaces duplicate connections', async () => {
+    const enrolled = await enroll('tls-stream-replacement');
+    const abort = new AbortController();
+    async function* input() {
+      yield {
+        msg: {
+          case: 'hello' as const,
+          value: { nodeId: enrolled.result.nodeId, leaseEpoch: enrolled.result.leaseEpoch },
+        },
+      };
+      await new Promise<void>((resolve) => {
+        if (abort.signal.aborted) resolve();
+        else
+          abort.signal.addEventListener(
+            'abort',
+            () => {
+              resolve();
+            },
+            { once: true },
+          );
+      });
+    }
+    try {
+      const first = client(enrolled)
+        .connect(input(), { signal: abort.signal, timeoutMs: 60_000 })
+        [Symbol.asyncIterator]();
+      await expect(first.next()).resolves.toMatchObject({ value: { msg: { case: 'welcome' } } });
+      const closed = expect(first.next()).rejects.toMatchObject({ code: Code.Aborted });
+      const second = client(enrolled)
+        .connect(input(), { signal: abort.signal })
+        [Symbol.asyncIterator]();
+      await expect(second.next()).resolves.toMatchObject({ value: { msg: { case: 'welcome' } } });
+      await closed;
+    } finally {
+      abort.abort();
+    }
   });
 
   it('renews with mTLS and rejects the old serial even over the same connection', async () => {

@@ -14,6 +14,8 @@ import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
 import { isDomainError } from '@shipkeep/domain';
 import { AgentGatewayService } from '@shipkeep/proto-ts';
 
+import { NodeStream } from './node-stream';
+
 import { AppConfig } from '../../../platform/config/app-config';
 import { AuthenticateNode } from '../application/authenticate-node';
 import { EnrollNode } from '../application/enroll-node';
@@ -40,6 +42,7 @@ export class AgentGateway implements OnModuleDestroy {
     private readonly authenticate: AuthenticateNode,
     private readonly enroll: EnrollNode,
     private readonly renew: RenewNodeCertificate,
+    private readonly streams: NodeStream,
   ) {}
 
   /** Called explicitly after Nest initialization; OpenAPI generation never opens this listener. */
@@ -59,36 +62,48 @@ export class AgentGateway implements OnModuleDestroy {
       contextValues: (req) =>
         createContextValues().set(peer, req.socket instanceof TLSSocket ? req.socket : undefined),
       routes: (router) => {
-        router.service(AgentGatewayService, {
-          enroll: async (request, context) => {
-            const result = await this.enroll.execute({
-              joinToken: request.joinToken,
-              csrPem: request.csrPem,
-              facts: { ...request.facts },
-              agentVersion: request.agentVersion,
-              ip: context.values.get(peer)?.remoteAddress,
-            });
-            return {
-              certPem: result.certificatePem,
-              caPem: result.caPem,
-              nodeId: result.nodeId,
-              organizationId: result.organizationId,
-              leaseEpoch: BigInt(result.leaseEpoch),
-              confirmationPublicKey: result.confirmationPublicKeyPem,
-              certNotAfter: timestampFromDate(result.certificateNotAfter),
-            };
-          },
-          renewCertificate: async (request, context) => {
+        router.rpc(AgentGatewayService.method.enroll, async (request, context) => {
+          const result = await this.enroll.execute({
+            joinToken: request.joinToken,
+            csrPem: request.csrPem,
+            facts: { ...request.facts },
+            agentVersion: request.agentVersion,
+            ip: context.values.get(peer)?.remoteAddress,
+          });
+          return {
+            certPem: result.certificatePem,
+            caPem: result.caPem,
+            nodeId: result.nodeId,
+            organizationId: result.organizationId,
+            leaseEpoch: BigInt(result.leaseEpoch),
+            confirmationPublicKey: result.confirmationPublicKeyPem,
+            certNotAfter: timestampFromDate(result.certificateNotAfter),
+          };
+        });
+        router.rpc(AgentGatewayService.method.renewCertificate, async (request, context) => {
+          const authenticated = context.values.get(identity);
+          if (!authenticated) throw new NodeAuthenticationError();
+          const result = await this.renew.execute(authenticated, request.csrPem);
+          return {
+            certPem: result.certificatePem,
+            certNotAfter: timestampFromDate(result.notAfter),
+          };
+        });
+        router.rpc(
+          AgentGatewayService.method.connect,
+          (request, context) => {
             const authenticated = context.values.get(identity);
-            if (!authenticated) throw new NodeAuthenticationError();
-            const result = await this.renew.execute(authenticated, request.csrPem);
-            return {
-              certPem: result.certificatePem,
-              certNotAfter: timestampFromDate(result.notAfter),
-            };
+            if (!authenticated)
+              throw new ConnectError('node authentication required', Code.Unauthenticated);
+            return this.streams.connect(request, context, authenticated);
           },
-          // Stream lifecycle is wired with the agent in M1.2c; ExecStream requires its own
-          // authorized ExecSession. Neither unfinished method can bypass authentication.
+          { maxTimeoutMs: 24 * 60 * 60_000 },
+        );
+        // ExecStream must pass the shared authentication guard before reporting Unimplemented.
+        // eslint-disable-next-line require-yield
+        router.rpc(AgentGatewayService.method.execStream, async function* () {
+          await Promise.resolve();
+          throw new ConnectError('exec sessions are not implemented', Code.Unimplemented);
         });
       },
     });
