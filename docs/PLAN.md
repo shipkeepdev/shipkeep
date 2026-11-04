@@ -108,6 +108,8 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
           - [x] **M2.2d4c2b** Session-only token management endpoints, encrypted retries and generated contract.
   - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.
     - [ ] **M2.2e1** Typed browser identity transport, CSRF/idempotency handling and session state.
+      - [x] **M2.2e1a** Correct pagination schema and preserve immutable request/response arrays in the generated SDK.
+      - [ ] **M2.2e1b** Same-origin identity transport and race-safe in-memory session state.
     - [ ] **M2.2e2** Accessible signup, verification, login and password-reset screens.
     - [ ] **M2.2e3** Account security screens for MFA/recovery and API-token lifecycle.
     - [ ] **M2.2e4** Browser acceptance and accessibility checks against the real backend, responsive verification and production static serving.

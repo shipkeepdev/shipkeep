@@ -411,7 +411,6 @@ export type components = {
             readonly pendingExpiresAt: string | null;
             readonly recoveryCodesRemaining: number;
         };
-        readonly Object: Record<string, never>;
         readonly ReadinessChecksDto: {
             /** @enum {string} */
             readonly database: "ok";
@@ -453,7 +452,7 @@ export interface operations {
         readonly parameters: {
             readonly query?: {
                 readonly cursor?: string;
-                readonly limit?: components["schemas"]["Object"];
+                readonly limit?: number;
             };
             readonly header?: never;
             readonly path?: never;

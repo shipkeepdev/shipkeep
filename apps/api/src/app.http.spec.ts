@@ -91,6 +91,19 @@ describe('HTTP pipeline', () => {
     });
     expect(document.paths).toHaveProperty('/api/v1/health');
     expect(document.paths).toHaveProperty('/api/v1/ready');
+    expect(document.paths).toMatchObject({
+      '/api/v1/api-tokens': {
+        get: {
+          parameters: expect.arrayContaining([
+            expect.objectContaining({
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 100 },
+            }),
+          ]),
+        },
+      },
+    });
     await http().get('/api/v1/docs').expect(200);
   });
 });

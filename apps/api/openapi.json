@@ -692,11 +692,7 @@
               "minimum": 1,
               "maximum": 100,
               "default": 100,
-              "allOf": [
-                {
-                  "$ref": "#/components/schemas/Object"
-                }
-              ]
+              "type": "integer"
             }
           }
         ],
@@ -1187,10 +1183,6 @@
         "required": [
           "password"
         ]
-      },
-      "Object": {
-        "type": "object",
-        "properties": {}
       },
       "ApiScopeDto": {
         "type": "object",
