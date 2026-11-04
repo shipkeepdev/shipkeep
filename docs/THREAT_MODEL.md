@@ -57,6 +57,8 @@ Build containers (untrusted code) inside rootless BuildKit
 
 ## Security engineering requirements
 
+- Authentication attempt reservations are atomic PostgreSQL upserts shared by all API instances. Tests prove concurrent requests cannot bypass account delays, account cycling cannot bypass IP quotas, successful login does not reset the IP quota, and rejected retries cannot extend lockouts. Stored limiter keys contain purpose-bound hashes rather than raw email/IP values; bounded expiry cleanup removes old buckets.
+
 - Identity mutations lock the user row before security-sensitive changes. Password changes increment the security version and invalidate sessions and reset tokens in the same transaction as their audit. Credential claims are conditional updates; session activity only advances and cannot revive an expired, revoked, disabled-owner or stale-version session. Real PostgreSQL tests cover concurrent mutations and rollback after credential consumption.
 
 - Identity primitives bound password length, Argon2id memory/concurrency and TOTP windows. Tests cover missing accounts, invalid stored hashes, Unicode passphrases, exact session expiry boundaries, RFC 6238 vectors and replayed TOTP counters. Bearer secrets use purpose-separated hashes and redacting wrappers. Persistence must atomically claim counters and recovery codes before authorizing a request.

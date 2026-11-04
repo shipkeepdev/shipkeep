@@ -65,6 +65,20 @@ model IdentityToken {
   @@map("identity_tokens")
 }
 
+/// Authentication telemetry shared across API instances; keys are purpose-separated hashes.
+model IdentityThrottle {
+  id            String   @id @db.Uuid
+  keyHash       String   @unique @map("key_hash") @db.Char(64)
+  hits          Int
+  windowEndsAt  DateTime @map("window_ends_at") @db.Timestamptz(6)
+  nextAllowedAt DateTime @map("next_allowed_at") @db.Timestamptz(6)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([windowEndsAt])
+  @@map("identity_throttles")
+}
+
 /// Append-only audit log built from domain events. No update or delete path exists in the code;
 /// task M2.4 adds the database permissions that make it impossible for the API role as well.
 model AuditEvent {
