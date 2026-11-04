@@ -91,6 +91,10 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
         - [x] **M2.2c4c2** HTTP idempotency keys, credential-bound replay and acceptance tests.
     - [x] **M2.2c5** Strip credential-bearing URL queries and opaque framework errors from HTTP diagnostics and responses.
   - [ ] **M2.2d** TOTP enrollment/recovery and scoped API tokens.
+    - [x] **M2.2d1** Encrypted TOTP enrollment storage, version/expiry checks and atomic counter/recovery claims.
+    - [ ] **M2.2d2** Audited MFA commands, login proof and session rotation on security changes.
+    - [ ] **M2.2d3** MFA HTTP endpoints and acceptance tests.
+    - [ ] **M2.2d4** Scoped API tokens and bearer authentication.
   - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.
   - Acceptance: auth E2E tests; brute-force protection (rate limit and progressive delay); session rotation on privilege change.
