@@ -71,7 +71,12 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - Acceptance: `/api/v1/health` up; OpenAPI document generated in CI; `packages/api-client` generated from it.
   - [x] **M2.1b** Shared foundations used by every later module: KEK loading and the envelope encryption library (SPEC 9), the domain event bus, and the `AuditEvent` table with an append-only writer, so that every command from M1.2 onward emits audit events.
     - Acceptance: encryption library round-trip and tamper tests pass; an example command emits an audit event end to end.
-- [ ] **M2.2 Identity** (C + W). Depends: M2.1
+- [ ] **M2.2 Identity** (C + W). Depends: M2.1. Split into reviewable foundations, persistence, account/session flows, MFA/tokens and web flows.
+  - [x] **M2.2a** Pure identity policy, bounded Argon2id hashing, purpose-bound token hashes, TOTP counters and recovery-code generation.
+  - [ ] **M2.2b** Transactional identity persistence and audit, database migrations and concurrent-use tests.
+  - [ ] **M2.2c** Signup, verification, login, sessions, CSRF, reset and brute-force protection.
+  - [ ] **M2.2d** TOTP enrollment/recovery and scoped API tokens.
+  - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.
   - Acceptance: auth E2E tests; brute-force protection (rate limit and progressive delay); session rotation on privilege change.
 - [ ] **M2.3 Organizations, projects, environments, RBAC** (C + W). Depends: M2.2

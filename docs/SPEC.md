@@ -296,6 +296,14 @@ API tokens carry explicit scopes that can only narrow the owner's permissions.
 - Resources: `/organizations`, `/projects`, `/environments`, `/nodes`, `/join-tokens`, `/applications`, `/applications/{id}/deployments`, `/deployments/{id}` (+ `/cancel`, `/rollback`), `/releases`, `/domains`, `/secrets` (write and list names only), `/databases`, `/volumes`, `/backups`, `/backup-targets`, `/previews`, `/alert-rules`, `/notification-channels`, `/audit-events`, `/api-tokens`, `/confirmations` (issue confirmation tokens), `/imports/coolify`.
 - Live updates: `GET /api/v1/events` (SSE), filtered by the caller's permissions.
 
+### 8.1 Identity security parameters
+
+- Email identities use lowercase ASCII mailboxes (maximum 254 characters, local part 64); PostgreSQL `citext` enforces case-insensitive uniqueness. Internationalized and quoted mailboxes are outside v0.1.
+- Passwords contain 15 to 128 Unicode code points, without trimming, normalization or composition requirements. NUL is rejected. Argon2id v19 uses 64 MiB, three iterations, one lane, a random 16-byte salt and a 32-byte hash. At most two hashes run concurrently per process, with at most 16 waiting callers; overload fails closed.
+- Session, verification, reset and API credentials have 256 random bits. Only SHA-256 hashes with a distinct `shipkeep:<purpose>:` prefix are persisted. Email verification expires after 24 hours; password reset after 30 minutes. Session limits remain 12 hours idle and seven days absolute, with equality at either boundary considered expired.
+- TOTP uses RFC 6238 SHA-1, a random 160-bit secret, six digits and a 30-second period. Accept the current time step and one adjacent step in either direction. Persist the accepted counter atomically and reject counters already consumed. Ten random 128-bit recovery codes are shown once and stored as purpose-bound hashes; each is consumed atomically.
+- TOTP provisioning URIs are secret response data, never navigation URLs or log fields. Secret values stay wrapped until hashing, encryption or an explicitly defined delivery boundary.
+
 ## 9. Secrets
 
 - Envelope encryption. A key-encryption key (KEK) lives in `/etc/shipkeep/kek` (0400, owned by the service user; 32 raw bytes or their base64) or an external KMS later. Each environment has a data-encryption key (DEK) stored encrypted by the KEK (`DataEncryptionKey`, scope `environment:<id>`). Values are encrypted with AES-256-GCM using the DEK, with associated data that binds the ciphertext to its scope and purpose (`shipkeep:data:<scope>:<purpose>`); blob layout `0x01 | nonce(12) | tag(16) | ciphertext`. The API refuses to start when the KEK file is readable by group or others.
