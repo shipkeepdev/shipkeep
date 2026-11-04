@@ -111,6 +111,9 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
       - [x] **M2.2e1a** Correct pagination schema and preserve immutable request/response arrays in the generated SDK.
       - [x] **M2.2e1b** Same-origin identity transport and race-safe in-memory session state.
     - [ ] **M2.2e2** Accessible signup, verification, login and password-reset screens.
+      - [x] **M2.2e2a** Component-scoped submission state, bounded retries, cooldowns and stale-result protection.
+      - [ ] **M2.2e2b** Validated account forms and private-input lifecycle.
+      - [ ] **M2.2e2c** Accessible account routes and responsive navigation.
     - [ ] **M2.2e3** Account security screens for MFA/recovery and API-token lifecycle.
     - [ ] **M2.2e4** Browser acceptance and accessibility checks against the real backend, responsive verification and production static serving.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.
