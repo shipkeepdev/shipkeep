@@ -285,6 +285,8 @@ Org roles: `owner`, `admin`, `member`. Project or environment roles for members:
 
 API tokens carry explicit scopes that can only narrow the owner's permissions.
 
+Token scopes use the closed permission vocabulary in `packages/domain/src/lib/api-token-policy.ts`: profile read, organization/project/environment reads and lifecycle capabilities, billing, members, nodes, deploy, secret write, container exec, volume/database deletion, observability and audit. No wildcard or secret-value-read permission exists. Each scope names a permission and UUIDv7 organization ID, optionally narrowed by project and environment IDs; environment bounds require their parent project. `profile.read` is the only unscoped account permission. At most 32 input scopes are accepted, copied and deduplicated. Scope matching is never sufficient by itself: the owner's live RBAC policy must also allow the request. Token labels contain 1–64 Unicode code points without control/format characters; expiry is between one minute and ninety days, with at most 50 active tokens per user.
+
 ## 8. Public REST API
 
 - Base path `/api/v1`. OpenAPI 3.1 generated from NestJS decorators and published at `/api/v1/openapi.json`.
