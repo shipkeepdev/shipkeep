@@ -13,6 +13,7 @@ export interface IdentityStore {
   insertUser(user: UserRecord): Promise<boolean>;
   activateUser(id: string, now: Date): Promise<void>;
   changePassword(id: string, hash: Secret, now: Date): Promise<void>;
+  advanceSecurityVersion(id: string, now: Date): Promise<number>;
   insertToken(token: IdentityTokenRecord): Promise<void>;
   findToken(hash: string): Promise<IdentityTokenRecord | null>;
   consumeToken(id: string, now: Date): Promise<boolean>;

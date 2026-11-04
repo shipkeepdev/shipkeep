@@ -8,6 +8,7 @@ import { integrationApp } from '../../testing/integration-app';
 import { AccountCommands } from './application/account-commands';
 import type { IdentityMailer } from './application/identity-ports';
 import { SessionCommands } from './application/session-commands';
+import { MfaProof } from './application/mfa-proof';
 import { hashToken, issueToken, matchesTokenHash } from './infrastructure/identity-secrets';
 import { PasswordHasher } from './infrastructure/password-hasher';
 import { PrismaIdentityStore } from './infrastructure/prisma-identity.store';
@@ -49,7 +50,7 @@ describe('identity commands against PostgreSQL', () => {
       },
       bus,
     );
-    sessions = new SessionCommands(store, passwords, secrets, bus);
+    sessions = new SessionCommands(store, passwords, secrets, bus, fixture.app.get(MfaProof));
   });
   afterAll(async () => {
     await close?.();

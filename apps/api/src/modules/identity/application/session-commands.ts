@@ -20,6 +20,8 @@ import {
   type PasswordHashing,
 } from './identity-ports';
 import { IDENTITY_STORE, type IdentityStore } from './identity-store';
+import type { MfaProofInput } from './mfa-crypto';
+import { MfaProof } from './mfa-proof';
 
 export interface SessionGrant {
   readonly userId: string;
@@ -36,6 +38,7 @@ export class SessionCommands {
     @Inject(PASSWORD_HASHER) private readonly passwords: PasswordHashing,
     @Inject(IDENTITY_SECRETS) private readonly secrets: IdentitySecrets,
     private readonly events: DomainEventBus,
+    private readonly mfa: MfaProof,
   ) {}
 
   async login(
@@ -45,6 +48,7 @@ export class SessionCommands {
       ip: string;
       userAgent: string;
       previous?: Secret;
+      secondFactor?: MfaProofInput;
     },
     now = new Date(),
   ): Promise<SessionGrant> {
@@ -55,23 +59,8 @@ export class SessionCommands {
       // A password reset between verification and this lock must invalidate the proof.
       if (current.securityVersion !== user.securityVersion || current.status !== 'active')
         throw new AuthenticationError();
-      const token = this.secrets.issue();
-      const csrf = this.secrets.issue();
-      const expiresAt = new Date(now.getTime() + SESSION_ABSOLUTE_MS);
-      await this.store.insertSession({
-        id: uuidv7(),
-        userId: current.id,
-        tokenHash: this.secrets.hash('session', token),
-        csrfHash: this.secrets.hash('csrf', csrf),
-        securityVersion: current.securityVersion,
-        createdAt: now,
-        updatedAt: now,
-        lastSeenAt: now,
-        expiresAt,
-        revokedAt: null,
-        ip: input.ip,
-        userAgent: input.userAgent.slice(0, 512),
-      });
+      await this.mfa.verify(current.id, input.secondFactor, now);
+      const grant = await this.issue(current, input, now);
       if (input.previous)
         await this.store.revokeSession(
           current.id,
@@ -81,8 +70,52 @@ export class SessionCommands {
       await this.events.publish([
         identityEvent('logged_in', current.id, { kind: 'user', id: current.id, ip: input.ip }, now),
       ]);
-      return { userId: current.id, email: current.email, token, csrf, expiresAt };
+      return grant;
     });
+  }
+
+  /** Security commands call this only after proving the current user's password/factor. */
+  async rotateAuthenticated(
+    userId: string,
+    expectedVersion: number,
+    context: { ip: string; userAgent: string },
+    now = new Date(),
+  ): Promise<SessionGrant> {
+    return this.store.withUserLock(userId, async (user) => {
+      if (user.status !== 'active' || user.securityVersion !== expectedVersion)
+        throw new AuthenticationError();
+      const securityVersion = await this.store.advanceSecurityVersion(userId, now);
+      const grant = await this.issue({ ...user, securityVersion }, context, now);
+      await this.events.publish([
+        identityEvent('session_rotated', userId, { kind: 'user', id: userId, ip: context.ip }, now),
+      ]);
+      return grant;
+    });
+  }
+
+  private async issue(
+    user: UserRecord,
+    context: { ip: string; userAgent: string },
+    now: Date,
+  ): Promise<SessionGrant> {
+    const token = this.secrets.issue();
+    const csrf = this.secrets.issue();
+    const expiresAt = new Date(now.getTime() + SESSION_ABSOLUTE_MS);
+    await this.store.insertSession({
+      id: uuidv7(),
+      userId: user.id,
+      tokenHash: this.secrets.hash('session', token),
+      csrfHash: this.secrets.hash('csrf', csrf),
+      securityVersion: user.securityVersion,
+      createdAt: now,
+      updatedAt: now,
+      lastSeenAt: now,
+      expiresAt,
+      revokedAt: null,
+      ip: context.ip,
+      userAgent: context.userAgent.slice(0, 512),
+    });
+    return { userId: user.id, email: user.email, token, csrf, expiresAt };
   }
 
   async authenticate(

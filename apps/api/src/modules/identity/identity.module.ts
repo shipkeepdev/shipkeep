@@ -9,6 +9,11 @@ import { IDENTITY_MAILER, IDENTITY_SECRETS, PASSWORD_HASHER } from './applicatio
 import { IDENTITY_STORE } from './application/identity-store';
 import { IDENTITY_THROTTLE } from './application/identity-throttle';
 import { SessionCommands } from './application/session-commands';
+import { MFA_CRYPTO } from './application/mfa-crypto';
+import { MfaProof } from './application/mfa-proof';
+import { MFA_STORE } from './application/mfa-store';
+import { EnvelopeMfaCrypto } from './infrastructure/envelope-mfa-crypto';
+import { PrismaMfaStore } from './infrastructure/prisma-mfa.store';
 import { IdentityMailWorker } from './infrastructure/identity-mail-worker';
 import { hashToken, issueToken, matchesTokenHash } from './infrastructure/identity-secrets';
 import { PasswordHasher } from './infrastructure/password-hasher';
@@ -28,6 +33,9 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
   providers: [
     AccountCommands,
     SessionCommands,
+    MfaProof,
+    { provide: MFA_CRYPTO, useClass: EnvelopeMfaCrypto },
+    { provide: MFA_STORE, useClass: PrismaMfaStore },
     PrivateIdentityMail,
     PrivateIdentityReplay,
     IdentityReplayInterceptor,
