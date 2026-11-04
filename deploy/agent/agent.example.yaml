@@ -9,6 +9,9 @@ control_plane:
   # The agent refuses to talk to a gateway whose CA does not match (SPEC 3.2).
   ca_fingerprint: sha256:0000000000000000000000000000000000000000000000000000000000000000
 
+  # Initial enrollment only: regular 0600 file, removed after credentials are saved.
+  join_token_file: /etc/shipkeep/join-token
+
 node:
   # Optional. Defaults to the hostname.
   name: ''

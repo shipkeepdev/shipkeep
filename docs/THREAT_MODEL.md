@@ -80,6 +80,8 @@ Build containers (untrusted code) inside rootless BuildKit
 
 - A wrong CA fingerprint, rogue CA, hostname mismatch or expired server certificate prevents any enrollment RPC and join-token disclosure. Bootstrap uses a custom verifier only for a payload-free TLS probe; all application traffic uses standard TLS verification against the verified root. Tests exercise real Go TLS/gRPC servers and token-echoing error responses.
 
+- Enrollment consumes a bounded, non-symlink 0600 token file only after credential persistence succeeds. The real Go daemon/NestJS/PostgreSQL integration test covers enrollment, token reuse, API restart, live revocation, persisted identity and log redaction. Its test-only helper launches a fixed Go test argv without a shell; it is excluded from the production API build.
+
 - The agent connection loop never adopts an unexpected node/epoch or silently re-enrolls after rejection. Unsupported control frames fail explicitly until their journaled handlers exist. Renewal persistence failure halts connection attempts because the old serial has already been revoked; remote error text is excluded from reconnect logs.
 
 - Agent credential loading rejects symlinks, oversized files, loose permissions, key/certificate mismatches and tenant/node identity substitutions. Keys use the redacting Go `Secret` wrapper; only the explicit atomic persistence boundary writes private material.
