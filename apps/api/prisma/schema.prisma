@@ -98,8 +98,6 @@ model AuditEvent {
   @@map("audit_events")
 }
 
-/// Data-encryption keys of envelope encryption (SPEC section 9), one per scope (for example
-/// `environment:<id>`), each wrapped by the key-encryption key of the given version.
 /// Short-lived encrypted request/response pairs for retrying authentication mutations.
 model IdentityReplay {
   keyHash    String   @id @map("key_hash") @db.Char(64)
@@ -111,6 +109,8 @@ model IdentityReplay {
   @@map("identity_replays")
 }
 
+/// Data-encryption keys of envelope encryption (SPEC section 9), one per scope (for example
+/// `environment:<id>`), each wrapped by the key-encryption key of the given version.
 model DataEncryptionKey {
   id         String   @id @db.Uuid
   scope      String   @unique @db.VarChar(128)
