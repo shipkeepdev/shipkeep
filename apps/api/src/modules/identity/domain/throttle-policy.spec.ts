@@ -1,6 +1,18 @@
 import { throttlePolicy } from './throttle-policy';
 
 describe('authentication throttle policy', () => {
+  it('bounds API traffic without delaying every successful machine request', () => {
+    expect(throttlePolicy('api', 'ip')).toEqual({
+      limit: 600,
+      windowMs: 60000,
+      progressive: false,
+    });
+    expect(throttlePolicy('api', 'subject')).toEqual({
+      limit: 300,
+      windowMs: 60000,
+      progressive: false,
+    });
+  });
   it('bounds expensive credential proofs and email delivery separately', () => {
     expect(throttlePolicy('login', 'ip')).toMatchObject({
       limit: 100,

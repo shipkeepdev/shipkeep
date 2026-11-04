@@ -6,6 +6,7 @@ import { JobsModule } from '../../platform/jobs/jobs.module';
 
 import { AccountCommands } from './application/account-commands';
 import { ApiTokenCommands } from './application/api-token-commands';
+import { ApiTokenAuthentication } from './application/api-token-authentication';
 import { API_TOKEN_AUTHORITY, AccountTokenAuthority } from './application/api-token-authority';
 import { API_TOKEN_STORE } from './application/api-token-store';
 import { PrismaApiTokenStore } from './infrastructure/prisma-api-token.store';
@@ -40,6 +41,7 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
   providers: [
     AccountCommands,
     ApiTokenCommands,
+    ApiTokenAuthentication,
     { provide: API_TOKEN_STORE, useClass: PrismaApiTokenStore },
     { provide: API_TOKEN_AUTHORITY, useClass: AccountTokenAuthority },
     SessionCommands,
