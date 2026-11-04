@@ -115,7 +115,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
       - [x] **M2.2e2b** Validated account forms and private-input lifecycle.
       - [x] **M2.2e2c** Account routes, labeled forms, focus feedback and responsive navigation; browser verification in M2.2e4.
     - [ ] **M2.2e3** Account security screens for MFA/recovery and API-token lifecycle.
-      - [ ] **M2.2e3a** MFA enrollment/recovery form state and temporary private grants.
+      - [x] **M2.2e3a** MFA enrollment/recovery form state and temporary private grants.
       - [ ] **M2.2e3b** MFA status, enrollment and recovery screens.
       - [ ] **M2.2e3c** Token creation/revocation form state and paginated metadata.
       - [ ] **M2.2e3d** Token-management screens and one-time credential display.
