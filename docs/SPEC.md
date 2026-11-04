@@ -303,6 +303,8 @@ The browser identity transport uses the generated SDK against the current origin
 
 Form submissions suppress concurrent requests and retain their retry key for an unchanged body after uncertain transport/server failures. They require an explicit restart after four minutes (before the server's five-minute cache expires), a backward clock change or a replay conflict. Known client rejections release the attempt; HTTP 408 remains uncertain. A bounded server-requested wait survives a form restart. Private retry snapshots live only in native private fields for the form's lifetime, are cleared after success/restart/destruction and cannot appear in object serialization. Leaving or resetting a form invalidates its pending results.
 
+Account forms cover signup, verification, verification resend, login and both password-reset steps. Only active fields participate in validation. Passwords retain whitespace and Unicode code points; new passwords require confirmation. Email and pasted code edges are trimmed, while login accepts either an optional authenticator code or one recovery code. Codes are never read from or written to navigation URLs. Mail-request outcomes remain generic. Successful submissions and route departure clear passwords/codes; abandoned login results cannot populate browser session state.
+
 - Base path `/api/v1`. OpenAPI 3.1 generated from NestJS decorators and published at `/api/v1/openapi.json`.
 - Auth: session cookie (UI, `SameSite=Strict`, CSRF token) or `Authorization: Bearer <api_token>`.
 - Errors: RFC 9457 problem details with a stable `type` URI per error.

@@ -32,10 +32,14 @@ export class SessionStore {
       );
     }
   }
-  async login(body: IdentitySchema<'LoginCredentialsDto'>, key: string): Promise<void> {
+  async login(
+    body: IdentitySchema<'LoginCredentialsDto'>,
+    key: string,
+    isCurrent: () => boolean = () => true,
+  ): Promise<void> {
     const revision = ++this.revision;
     const profile = await this.api.login(body, key);
-    if (revision === this.revision) this.accept(profile);
+    if (revision === this.revision && isCurrent()) this.accept(profile);
   }
   async logout(key: string): Promise<void> {
     const revision = ++this.revision;

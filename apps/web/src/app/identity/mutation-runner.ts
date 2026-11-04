@@ -60,14 +60,17 @@ export class MutationRunner {
     });
   }
 
-  async run<T>(body: unknown, operation: (key: string) => Promise<T>): Promise<Outcome<T>> {
+  async run<T>(
+    body: unknown,
+    operation: (key: string, isCurrent: () => boolean) => Promise<T>,
+  ): Promise<Outcome<T>> {
     if (this.#destroyed || this.busy() || this.cooldown() || this.restartRequired())
       return { ok: false };
     const revision = ++this.#revision;
     this.pending.set(true);
     this.failure.set(null);
     try {
-      const value = await operation(this.#attempt.keyFor(body));
+      const value = await operation(this.#attempt.keyFor(body), () => revision === this.#revision);
       if (revision !== this.#revision) return { ok: false };
       this.#attempt.reset();
       return { ok: true, value };
