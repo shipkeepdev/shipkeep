@@ -99,11 +99,14 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - [ ] **M2.2d4** Scoped API tokens and bearer authentication.
       - [x] **M2.2d4a** Closed permission vocabulary, scope narrowing and bounded token metadata policy.
       - [ ] **M2.2d4b** Token persistence, audited creation/revocation and owner-permission checks.
+        - [x] **M2.2d4b1** User-owned token schema/store, bounded expiry, version invalidation and atomic revocation.
+        - [ ] **M2.2d4b2** Reauthenticated token commands, audited lifecycle and live authorization port.
       - [ ] **M2.2d4c** Bearer authentication, per-token limits and HTTP acceptance tests.
   - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.
   - Acceptance: auth E2E tests; brute-force protection (rate limit and progressive delay); session rotation on privilege change.
 - [ ] **M2.3 Organizations, projects, environments, RBAC** (C + W). Depends: M2.2
+  - Integrate API-token owner authorization with live membership/role bindings; add project-owned tokens bounded to their project and creator's live authority/security version.
   - Entities from SPEC 4, RBAC matrix from SPEC 7 as a policy module, default-deny guard, row-level security.
   - Acceptance: generated RBAC matrix test covers every route and role; tenant isolation suite passes.
 - [ ] **M2.4 Audit log guarantees and UI** (C + W). Depends: M2.3
