@@ -52,6 +52,10 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - [x] **M1.2b1** Certificate identity checks and atomic certificate renewal with revocation and audit; tests cover concurrent renewals and rollback on audit failure.
     - [x] **M1.2b2** TLS gateway and unary RPC adapters, default-deny client-certificate authentication, revocation checks and transport tests. The CA fingerprint is already returned by `IssueJoinToken`; displaying it in the install command and exposing join tokens remain gated on M2.3/M8.3. `Connect` stream lifecycle and prompt disconnection after revocation are completed with M1.2c; until then streaming methods authenticate and return `Unimplemented`.
   - [ ] **M1.2c** Agent: key generation, CSR, `Enroll`, cert storage (0600), CA fingerprint pinning, `Connect` stream with reconnect and exponential backoff with jitter, cert renewal.
+    - [x] **M1.2c1** Ed25519 keys and CSRs, identity-bound credential validation, atomic 0600 credential generations and persistence failure tests.
+    - [ ] **M1.2c2** Pinned TLS enrollment and certificate renewal client, with rogue-CA and token non-disclosure tests.
+    - [ ] **M1.2c3** Authenticated gateway stream lifecycle, Hello validation and active revocation checks.
+    - [ ] **M1.2c4** Agent connection loop, reconnect/backoff, renewal scheduling and real agent/gateway restart integration tests.
     - Acceptance: integration test enrolls an agent, reconnects after control plane restart, rejects reused token and revoked cert.
 - [x] **M1.3 Operation journal and local state** (A). Depends: M1.1. Split into M1.3a/b/c for review.
   - [x] **M1.3a** Private SQLite store, exclusive process ownership, durable operation intent/checkpoints/history, idempotency and stale-writer checks.
