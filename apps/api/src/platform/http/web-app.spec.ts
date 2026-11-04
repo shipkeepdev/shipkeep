@@ -66,6 +66,21 @@ describe('production browser serving', () => {
     const icon = await http().get('/favicon.ico').expect(200);
     expect(icon.headers['cache-control']).toBe('public, max-age=300');
   });
+  it('replaces every nonce in normalized Angular build output', async () => {
+    await writeFile(
+      join(directory, 'index.html'),
+      `<sk-root ngcspnonce="${WEB_NONCE_PLACEHOLDER}"></sk-root><script src="main-ABCDEFGH.js" nonce="${WEB_NONCE_PLACEHOLDER}"></script><link rel="stylesheet" href="styles.css" nonce="${WEB_NONCE_PLACEHOLDER}">`,
+    );
+    await start();
+    const response = await http().get('/auth/login').expect(200);
+    const nonces = [...response.text.matchAll(/nonce="([A-Za-z0-9_-]+)"/g)].map(
+      (match) => match[1],
+    );
+    expect(nonces).toHaveLength(3);
+    expect(new Set(nonces).size).toBe(1);
+    expect(nonces[0]).toHaveLength(32);
+    expect(response.text).not.toContain(WEB_NONCE_PLACEHOLDER);
+  });
   it('keeps API paths and non-navigation requests out of the SPA fallback', async () => {
     await mkdir(join(directory, 'api'), { recursive: true });
     await writeFile(join(directory, 'api/private.js'), 'must not be served');
