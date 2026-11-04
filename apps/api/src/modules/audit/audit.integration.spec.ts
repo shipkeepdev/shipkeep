@@ -13,6 +13,7 @@ import request from 'supertest';
 import { EnvelopeService } from '../../platform/crypto/envelope.service';
 import { DomainEventBus } from '../../platform/events/domain-event-bus';
 import { PrismaService } from '../../platform/prisma/prisma.service';
+import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { applyMigrations } from '../../testing/apply-migrations';
 import { resetDatabase } from '../../testing/reset-database';
 
@@ -130,5 +131,87 @@ describe('audit log and envelope encryption against PostgreSQL', () => {
     } finally {
       await client.end();
     }
+  });
+
+  it('rolls back a command when PostgreSQL rejects its audit record', async () => {
+    if (!app) throw new Error('application did not start');
+    const database = app.get(PrismaUnitOfWork);
+    const prisma = app.get(PrismaService);
+    const bus = app.get(DomainEventBus);
+    const id = '0192f0c0-0000-7000-8000-0000000000b1';
+    const scope = 'test:atomic-command';
+    await prisma.$executeRaw`ALTER TABLE audit_events ADD CONSTRAINT test_reject_audit CHECK (action <> 'test.rejected')`;
+    try {
+      await expect(
+        database.run(async () => {
+          await database.client.dataEncryptionKey.create({
+            data: {
+              id,
+              scope,
+              wrappedKey: new Uint8Array([1]),
+              kekVersion: 1,
+            },
+          });
+          await bus.publish([
+            createEvent({
+              type: 'test.rejected',
+              actor: SYSTEM_ACTOR,
+              target: { type: 'test', id },
+              payload: {},
+            }),
+          ]);
+        }),
+      ).rejects.toThrow();
+      expect(await prisma.dataEncryptionKey.findUnique({ where: { scope } })).toBeNull();
+      expect(await prisma.auditEvent.count({ where: { targetId: id } })).toBe(0);
+    } finally {
+      await prisma.$executeRaw`ALTER TABLE audit_events DROP CONSTRAINT test_reject_audit`;
+    }
+  });
+
+  it('joins nested commands while isolating concurrent request transactions', async () => {
+    if (!app) throw new Error('application did not start');
+    const database = app.get(PrismaUnitOfWork);
+    const prisma = app.get(PrismaService);
+    const bus = app.get(DomainEventBus);
+    const scopes = ['test:commit', 'test:rollback'];
+    await Promise.all(
+      scopes.map(async (scope, index) => {
+        const id = `0192f0c0-0000-7000-8000-0000000000c${String(index)}`;
+        const result = database.run(async () => {
+          await database.client.dataEncryptionKey.create({
+            data: {
+              id,
+              scope,
+              wrappedKey: new Uint8Array([1]),
+              kekVersion: 1,
+            },
+          });
+          await database.run(async () => {
+            expect(
+              await database.client.dataEncryptionKey.findUnique({ where: { scope } }),
+            ).not.toBeNull();
+            await bus.publish([
+              createEvent({
+                type: 'test.recorded',
+                actor: SYSTEM_ACTOR,
+                target: { type: 'test', id },
+                payload: {},
+              }),
+            ]);
+          });
+          if (index === 1) throw new Error('injected command failure');
+        });
+        if (index === 1) await expect(result).rejects.toThrow('injected command failure');
+        else await result;
+        expect(await prisma.dataEncryptionKey.count({ where: { scope } })).toBe(
+          index === 0 ? 1 : 0,
+        );
+        expect(await prisma.auditEvent.count({ where: { targetId: id } })).toBe(
+          index === 0 ? 1 : 0,
+        );
+      }),
+    );
+    expect(database.client).toBe(prisma);
   });
 });
