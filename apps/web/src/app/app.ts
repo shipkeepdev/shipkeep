@@ -1,4 +1,4 @@
-import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject, PendingTasks } from '@angular/core';
 import { RouterModule } from '@angular/router';
 
 import { SessionStore } from './identity/session-store';
@@ -13,6 +13,6 @@ import { SessionStore } from './identity/session-store';
 export class App {
   protected readonly session = inject(SessionStore);
   constructor() {
-    void this.session.refresh();
+    inject(PendingTasks).run(() => this.session.refresh());
   }
 }

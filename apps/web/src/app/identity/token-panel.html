@@ -1,0 +1,315 @@
+<section class="border-b border-line py-8" aria-labelledby="token-title">
+  <h2 #heading id="token-title" tabindex="-1">API tokens</h2>
+  <p class="mb-5 text-sm text-muted">
+    Allow a script or tool to read your account profile. Keep tokens private. You can have up to 50
+    active tokens.
+  </p>
+  @if (store.problem() || store.notice(); as message) {
+    <div
+      #feedback
+      class="feedback"
+      tabindex="-1"
+      [attr.role]="store.problem() ? 'alert' : 'status'"
+    >
+      <p>{{ message }}</p>
+    </div>
+  }
+  @if (clipboard.message(); as message) {
+    <p class="hint" role="status">{{ message }}</p>
+  }
+  @if (store.credential(); as credential) {
+    <div class="my-6 max-w-md">
+      <h3 class="mb-3 font-semibold">Save your API token</h3>
+      <label for="new-token">{{ credential.name }}</label>
+      <input
+        id="new-token"
+        class="font-mono text-sm"
+        readonly
+        [value]="credential.token"
+        autocomplete="off"
+        spellcheck="false"
+        aria-describedby="new-token-help"
+      />
+      <p id="new-token-help" class="hint">
+        Save this token before leaving. It is hidden after ten minutes and cannot be viewed here
+        again after closing this display.
+      </p>
+      <div class="mt-4 flex flex-wrap gap-3">
+        <button
+          class="button button-secondary"
+          type="button"
+          (click)="clipboard.copy(credential.token)"
+        >
+          Copy API token
+        </button>
+        <button
+          class="button"
+          type="button"
+          (click)="dismiss()"
+          [disabled]="store.submission.busy()"
+        >
+          I have saved this token
+        </button>
+      </div>
+    </div>
+  } @else if (store.mode() !== 'idle') {
+    <form
+      class="my-6 max-w-md"
+      [formGroup]="store.form"
+      (ngSubmit)="submit()"
+      novalidate
+      [attr.aria-busy]="working()"
+    >
+      <h3 class="mb-4 font-semibold">
+        {{ store.mode() === 'create' ? 'Create an API token' : 'Revoke an API token' }}
+      </h3>
+      @if (store.selected(); as selected) {
+        <p class="mb-5 text-sm">
+          {{ selected.name }} will stop working immediately after revocation.
+        </p>
+      }
+      <fieldset class="min-w-0 space-y-5" [disabled]="store.submission.busy()">
+        <legend class="sr-only">API token details and confirmation</legend>
+        @if (store.mode() === 'create') {
+          <div>
+            <label for="token-name">Token name</label>
+            <input
+              #firstField
+              id="token-name"
+              formControlName="name"
+              autocomplete="off"
+              aria-describedby="token-name-hint token-name-error"
+              [attr.aria-invalid]="!!store.errorFor('name')"
+              required
+            />
+            <p id="token-name-hint" class="hint">
+              Choose a name that identifies the tool using this token.
+            </p>
+            <p id="token-name-error" class="field-error">{{ store.errorFor('name') }}</p>
+          </div>
+          <div>
+            <label for="token-lifetime">Expires after</label>
+            <select
+              id="token-lifetime"
+              formControlName="lifetimeDays"
+              aria-describedby="token-expiry token-lifetime-error"
+              [attr.aria-invalid]="!!store.errorFor('lifetimeDays')"
+            >
+              @for (days of lifetimes; track days) {
+                <option [ngValue]="days">{{ days }} {{ days === 1 ? 'day' : 'days' }}</option>
+              }
+            </select>
+            <p id="token-expiry" class="hint">Expires {{ store.expiresAt() | date: 'medium' }}.</p>
+            <p id="token-lifetime-error" class="field-error">
+              {{ store.errorFor('lifetimeDays') }}
+            </p>
+          </div>
+          <p class="text-sm">
+            <span class="font-semibold">Permission:</span> Read your account profile.
+          </p>
+        }
+        <div>
+          <label for="token-password">Current password</label>
+          <input
+            #firstField
+            id="token-password"
+            type="password"
+            autocomplete="current-password"
+            formControlName="password"
+            aria-describedby="token-password-error"
+            [attr.aria-invalid]="!!store.errorFor('password')"
+            required
+          />
+          <p id="token-password-error" class="field-error">{{ store.errorFor('password') }}</p>
+        </div>
+        @if (store.mfaRequired()) {
+          <div>
+            <label for="token-factor-kind">Code type</label
+            ><select id="token-factor-kind" formControlName="factorKind">
+              <option value="totp">Authenticator code</option>
+              <option value="recovery">Recovery code</option>
+            </select>
+          </div>
+          <div>
+            <label for="token-factor">{{
+              store.form.controls.factorKind.value === 'totp'
+                ? 'Authenticator code'
+                : 'Recovery code'
+            }}</label>
+            <input
+              id="token-factor"
+              formControlName="factor"
+              autocomplete="one-time-code"
+              autocapitalize="none"
+              spellcheck="false"
+              [attr.inputmode]="
+                store.form.controls.factorKind.value === 'totp' ? 'numeric' : 'text'
+              "
+              aria-describedby="token-factor-error"
+              [attr.aria-invalid]="!!store.errorFor('factor')"
+              required
+            />
+            <p id="token-factor-error" class="field-error">{{ store.errorFor('factor') }}</p>
+          </div>
+        }
+        <div class="flex flex-wrap gap-3">
+          <button
+            class="button"
+            type="submit"
+            [disabled]="
+              store.submission.busy() ||
+              !!store.submission.cooldown() ||
+              store.submission.restartRequired()
+            "
+          >
+            {{
+              working()
+                ? 'Working…'
+                : store.mode() === 'create'
+                  ? 'Create API token'
+                  : 'Revoke API token'
+            }}
+          </button>
+          <button
+            class="button button-secondary"
+            type="button"
+            (click)="dismiss()"
+            [disabled]="store.submission.busy()"
+          >
+            Cancel
+          </button>
+        </div>
+      </fieldset>
+    </form>
+  }
+
+  @if (store.state() === 'loading') {
+    <p class="border-y border-line py-5 text-muted" role="status">Loading API tokens…</p>
+  } @else if (store.state() === 'unavailable') {
+    <p class="mb-4 text-danger" role="alert">
+      API tokens could not be loaded. Try again before making changes.
+    </p>
+    <button
+      class="button button-secondary"
+      type="button"
+      (click)="store.refresh()"
+      [disabled]="store.submission.busy()"
+    >
+      Load tokens again
+    </button>
+  } @else {
+    <div class="mb-5 flex flex-wrap gap-3">
+      @if (store.mode() === 'idle' && !store.credential()) {
+        <button
+          class="button button-secondary"
+          type="button"
+          (click)="create()"
+          [disabled]="store.submission.busy()"
+        >
+          Create API token
+        </button>
+      }
+      <button
+        class="button button-secondary"
+        type="button"
+        (click)="store.refresh()"
+        [disabled]="store.submission.busy()"
+      >
+        Refresh tokens
+      </button>
+    </div>
+    @if (store.items().length) {
+      <div class="overflow-x-auto" role="region" aria-label="API token list" tabindex="0">
+        <table class="w-full min-w-[36rem] text-left text-sm">
+          <caption class="sr-only">
+            API tokens, expiry and current access
+          </caption>
+          <thead>
+            <tr class="border-y border-line text-muted">
+              <th class="py-3 pr-4 font-medium" scope="col">Name and use</th>
+              <th class="py-3 pr-4 font-medium" scope="col">Expires</th>
+              <th class="py-3 pr-4 font-medium" scope="col">Status</th>
+              <th class="py-3 font-medium" scope="col">Manage</th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (token of store.items(); track token.id) {
+              <tr class="border-b border-line align-top">
+                <th class="max-w-64 py-4 pr-4 font-normal" scope="row">
+                  <p class="break-words font-semibold">{{ token.name }}</p>
+                  @for (scope of token.scopes; track $index) {
+                    <p class="mt-1 text-xs text-muted">
+                      {{
+                        scope.permission === 'profile.read'
+                          ? 'Read account profile'
+                          : scope.permission
+                      }}
+                    </p>
+                  }
+                  <p class="mt-2 text-xs text-muted">
+                    Created {{ token.createdAt | date: 'mediumDate' }}<br />Last used:
+                    {{ token.lastUsedAt ? (token.lastUsedAt | date: 'medium') : 'Never' }}
+                  </p>
+                </th>
+                <td class="py-4 pr-4 whitespace-nowrap">
+                  {{ token.expiresAt | date: 'mediumDate' }}
+                </td>
+                <td class="py-4 pr-4" [class.text-success]="store.statusFor(token) === 'active'">
+                  {{
+                    store.statusFor(token) === 'invalidated'
+                      ? 'Security settings changed'
+                      : (store.statusFor(token) | titlecase)
+                  }}
+                </td>
+                <td class="py-3">
+                  <button
+                    class="button button-secondary"
+                    type="button"
+                    (click)="revoke(token.id)"
+                    [attr.aria-label]="'Revoke token ' + token.name"
+                    [disabled]="
+                      store.submission.busy() ||
+                      !!store.credential() ||
+                      store.statusFor(token) !== 'active'
+                    "
+                  >
+                    Revoke
+                  </button>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    } @else {
+      <p class="border-y border-line py-5 text-sm text-muted">
+        {{
+          store.page()
+            ? 'There are no more tokens on this page.'
+            : 'No API tokens yet. Create one when a script or tool needs access.'
+        }}
+      </p>
+    }
+    @if (store.page() || store.nextCursor()) {
+      <nav aria-label="Token pages" class="mt-4 flex items-center gap-3">
+        <button
+          class="button button-secondary"
+          type="button"
+          (click)="store.previousPage()"
+          [disabled]="!store.page() || store.submission.busy()"
+        >
+          Previous
+        </button>
+        <span class="text-sm tabular-nums">Page {{ store.page() + 1 }}</span>
+        <button
+          class="button button-secondary"
+          type="button"
+          (click)="store.nextPage()"
+          [disabled]="!store.nextCursor() || store.submission.busy()"
+        >
+          Next
+        </button>
+      </nav>
+    }
+  }
+</section>

@@ -9,6 +9,8 @@ import {
   type ElementRef,
   inject,
   Injector,
+  PendingTasks,
+  signal,
   viewChild,
 } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
@@ -26,6 +28,7 @@ import { PrivateClipboard } from './private-clipboard';
 export class MfaPanel {
   protected readonly store = inject(MfaFormStore);
   protected readonly clipboard = inject(PrivateClipboard);
+  protected readonly working = signal(false);
   private readonly focus = inject(FocusMonitor);
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
@@ -33,7 +36,7 @@ export class MfaPanel {
   private readonly password = viewChild<ElementRef<HTMLInputElement>>('password');
   private readonly feedback = viewChild<ElementRef<HTMLElement>>('feedback');
   constructor() {
-    void this.store.load();
+    inject(PendingTasks).run(() => this.store.load());
     effect(() => {
       this.store.setup();
       this.store.recoveryCodes();
@@ -48,7 +51,13 @@ export class MfaPanel {
     this.focusAfterRender('heading');
   }
   protected async submit(): Promise<void> {
-    await this.store.submit();
+    if (this.store.submission.busy()) return;
+    this.working.set(true);
+    try {
+      await this.store.submit();
+    } finally {
+      this.working.set(false);
+    }
     if (!this.destroyRef.destroyed && !this.store.submission.problem())
       this.focusAfterRender('feedback');
   }

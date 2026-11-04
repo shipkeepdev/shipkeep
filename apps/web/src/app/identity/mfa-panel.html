@@ -123,12 +123,7 @@
           }
         }
       </p>
-      <form
-        [formGroup]="store.form"
-        (ngSubmit)="submit()"
-        novalidate
-        [attr.aria-busy]="store.submission.busy()"
-      >
+      <form [formGroup]="store.form" (ngSubmit)="submit()" novalidate [attr.aria-busy]="working()">
         <fieldset class="min-w-0 space-y-5" [disabled]="store.submission.busy()">
           <legend class="sr-only">Confirm this security change</legend>
           <div>
@@ -189,7 +184,7 @@
               "
             >
               {{
-                store.submission.busy()
+                working()
                   ? 'Working…'
                   : store.mode() === 'setup'
                     ? 'Get setup key'
