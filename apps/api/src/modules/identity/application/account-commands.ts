@@ -40,7 +40,7 @@ export class AccountCommands {
     const id = uuidv7();
     const token = this.secrets.issue();
     const expiresAt = new Date(now.getTime() + EMAIL_TOKEN_MS);
-    const inserted = await this.store.transaction(async () => {
+    await this.store.transaction(async () => {
       const created = await this.store.insertUser({
         id,
         email,
@@ -64,9 +64,9 @@ export class AccountCommands {
         usedAt: null,
       });
       await this.events.publish([identityEvent('registered', id, SYSTEM_ACTOR, now)]);
+      await this.mailer.send({ email, purpose: 'verify', token, expiresAt });
       return true;
     });
-    if (inserted) await this.mailer.send({ email, purpose: 'verify', token, expiresAt });
   }
 
   async requestEmail(
@@ -81,7 +81,7 @@ export class AccountCommands {
     const expiresAt = new Date(
       now.getTime() + (purpose === 'verify' ? EMAIL_TOKEN_MS : RESET_TOKEN_MS),
     );
-    const issued = await this.store.withUserLock(user.id, async (current) => {
+    await this.store.withUserLock(user.id, async (current) => {
       if (current.status !== (purpose === 'verify' ? 'pending' : 'active')) return false;
       // Reissuing does not invalidate a link already in transit. Each token remains single-use;
       // successful verification/reset invalidates every outstanding credential of its purpose.
@@ -99,9 +99,9 @@ export class AccountCommands {
       await this.events.publish([
         identityEvent(`${purpose}_requested`, user.id, SYSTEM_ACTOR, now),
       ]);
+      await this.mailer.send({ email, purpose, token, expiresAt });
       return true;
     });
-    if (issued) await this.mailer.send({ email, purpose, token, expiresAt });
   }
 
   async verifyEmail(value: Secret, now = new Date()): Promise<void> {
