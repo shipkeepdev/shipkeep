@@ -52,4 +52,37 @@ describe('parseConfig', () => {
       /AGENT_GATEWAY_ADDR/,
     );
   });
+
+  it('requires a safe public origin and HTTPS in production', () => {
+    for (const API_PUBLIC_URL of [
+      'http://user:password@example.com',
+      'https://example.com/path',
+      'https://example.com/?token=value',
+      'https://example.com/#token',
+    ]) {
+      expect(() => parseConfig({ ...minimal, API_PUBLIC_URL })).toThrow(/API_PUBLIC_URL/);
+    }
+    expect(() => parseConfig({ ...minimal, NODE_ENV: 'production' })).toThrow(/HTTPS/);
+    expect(() =>
+      parseConfig({ ...minimal, NODE_ENV: 'production', API_PUBLIC_URL: 'https://example.com' }),
+    ).not.toThrow();
+  });
+
+  it('validates SMTP configuration and redacts its password', () => {
+    expect(() => parseConfig({ ...minimal, SMTP_HOST: 'smtp.example.com' })).toThrow(/SMTP_FROM/);
+    expect(() => parseConfig({ ...minimal, SMTP_USER: 'test-user' })).toThrow(/SMTP_PASSWORD/);
+    const smtp = {
+      SMTP_HOST: 'smtp.example.com',
+      SMTP_FROM: 'mail@example.com',
+      SMTP_USER: 'test-user',
+      SMTP_PASSWORD: 'smtp-test-password',
+    };
+    const parsed = parseConfig({ ...minimal, ...smtp });
+    expect(parsed.SMTP_PORT).toBe(465);
+    expect(parsed.SMTP_PASSWORD?.expose()).toBe(smtp.SMTP_PASSWORD);
+    expect(JSON.stringify(parsed)).not.toContain(smtp.SMTP_PASSWORD);
+    expect(() =>
+      parseConfig({ ...minimal, ...smtp, SMTP_FROM: 'mail@example.com\r\nBcc: other@example.com' }),
+    ).toThrow();
+  });
 });
