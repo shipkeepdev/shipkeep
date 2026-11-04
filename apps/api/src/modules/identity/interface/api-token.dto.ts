@@ -67,7 +67,7 @@ export class ApiTokenPageQueryDto {
   @IsInt()
   @Min(1)
   @Max(100)
-  limit: number = 100;
+  limit = 100;
 }
 export class ApiTokenDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
