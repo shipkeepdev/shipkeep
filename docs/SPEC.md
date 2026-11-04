@@ -299,6 +299,8 @@ HTTP routes deny bearer access unless explicitly opted in. `GET /auth/session` a
 
 Session-only token management uses `POST /api-tokens` (201, secret plus metadata), `GET /api-tokens?cursor=&limit=` (items plus nextCursor, default/max 100), and `POST /api-tokens/{id}/revoke` (204). Creation/revocation require password and optional TOTP/recovery proof when MFA is enabled, Origin and session-bound CSRF; both accept encrypted idempotent retries. A full page returns an exclusive cursor; an exhausted cursor may yield an empty terminal page. Dates require an explicit timezone. A revoked, expired, invalidated or no-longer-authorized token cannot be retrieved from a prior creation retry.
 
+The browser identity transport uses the generated SDK against the current origin only, with same-origin cookies, no response caching and no redirects. It reads exactly one matching CSRF cookie (the `__Host-` variant on HTTPS), supplies caller-owned idempotency keys for mutations and never sets bearer credentials. Browser session state retains only user ID, email and expiry in memory. It discards late responses after newer state changes and distinguishes unauthenticated access from temporary service failure. UI errors use fixed messages and bounded retry delays rather than forwarding arbitrary server/transport diagnostics.
+
 - Base path `/api/v1`. OpenAPI 3.1 generated from NestJS decorators and published at `/api/v1/openapi.json`.
 - Auth: session cookie (UI, `SameSite=Strict`, CSRF token) or `Authorization: Bearer <api_token>`.
 - Errors: RFC 9457 problem details with a stable `type` URI per error.
