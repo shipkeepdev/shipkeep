@@ -84,6 +84,9 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
       - [x] **M2.2c3a** Transactional pg-boss jobs with encrypted payloads, bounded retries and restart/tamper tests.
       - [x] **M2.2c3b** SMTP transport, configuration and TLS delivery tests.
     - [ ] **M2.2c4** REST endpoints, secure cookies, origin checks, CSRF and HTTP acceptance tests.
+      - [x] **M2.2c4a** Default-deny session and rate-limit guards, host-bound cookies and HTTP boundary tests.
+      - [ ] **M2.2c4b** Account/session controllers, module wiring, generated API contract and HTTP acceptance tests.
+      - [ ] **M2.2c4c** Idempotent authentication mutations and concurrent retry tests.
   - [ ] **M2.2d** TOTP enrollment/recovery and scoped API tokens.
   - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.
