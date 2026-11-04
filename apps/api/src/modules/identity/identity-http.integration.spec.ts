@@ -141,6 +141,9 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
     const known = await post('reset/request', { email: 'flow@example.com' }).expect(202);
     expect(missing.body).toEqual(known.body);
     await post('login', { email: 'missing@example.com', password }).expect(401);
+    // Keep the persisted subject delay active independently of this machine's Argon2 latency.
+    await prisma.$executeRaw`UPDATE identity_throttles SET next_allowed_at = ${new Date(Date.now() + 60000)}
+      WHERE next_allowed_at > created_at`;
     const blocked = await post('login', { email: 'missing@example.com', password }).expect(429);
     expect(blocked.headers['retry-after']).toBeDefined();
     expect(blocked.headers['cache-control']).toBe('no-store');
