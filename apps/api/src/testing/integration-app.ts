@@ -3,7 +3,7 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import type { INestApplication, InjectionToken } from '@nestjs/common';
+import type { INestApplication, InjectionToken, NestApplicationOptions } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 
@@ -13,10 +13,16 @@ import { resetDatabase } from './reset-database';
 /** Integration files run serially and must only receive a disposable DATABASE_URL. */
 export async function integrationApp(
   overrides: { token: InjectionToken; value: unknown }[] = [],
+  options: {
+    isolatedDatabase?: boolean;
+    httpsOptions?: NestApplicationOptions['httpsOptions'];
+    beforeInit?: (app: INestApplication) => Promise<void>;
+  } = {},
 ): Promise<{ app: INestApplication; databaseUrl: string; close: () => Promise<void> }> {
-  const container = process.env['DATABASE_URL']
-    ? undefined
-    : await new PostgreSqlContainer('postgres:17').start();
+  const container =
+    process.env['DATABASE_URL'] && !options.isolatedDatabase
+      ? undefined
+      : await new PostgreSqlContainer('postgres:17').start();
   const directory = await mkdtemp(join(tmpdir(), 'shipkeep-identity-test-'));
   const previous = {
     DATABASE_URL: process.env['DATABASE_URL'],
@@ -32,7 +38,7 @@ export async function integrationApp(
     await rm(directory, { recursive: true, force: true });
   };
   try {
-    const databaseUrl = previous.DATABASE_URL ?? container?.getConnectionUri() ?? '';
+    const databaseUrl = container?.getConnectionUri() ?? previous.DATABASE_URL ?? '';
     process.env['DATABASE_URL'] = databaseUrl;
     process.env['SHIPKEEP_KEK_FILE'] = join(directory, 'kek');
     process.env['LOG_LEVEL'] = 'error';
@@ -45,8 +51,11 @@ export async function integrationApp(
     for (const { token, value } of overrides)
       builder = builder.overrideProvider(token).useValue(value);
     const module = await builder.compile();
-    const app = configureApp(module.createNestApplication({ bufferLogs: true }));
+    const app = configureApp(
+      module.createNestApplication({ bufferLogs: true, httpsOptions: options.httpsOptions }),
+    );
     try {
+      await options.beforeInit?.(app);
       await app.init();
     } catch (error: unknown) {
       await app.close();

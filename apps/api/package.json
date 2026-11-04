@@ -81,6 +81,23 @@
         "dependsOn": [
           "^build"
         ]
+      },
+      "test:browser": {
+        "executor": "nx:run-commands",
+        "cache": false,
+        "options": {
+          "command": "vitest run --config vitest.browser.config.mts",
+          "cwd": "apps/api"
+        },
+        "dependsOn": [
+          "^build",
+          {
+            "target": "build",
+            "projects": [
+              "web"
+            ]
+          }
+        ]
       }
     },
     "tags": [
@@ -115,10 +132,12 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
     "@nestjs/testing": "^12.3.1",
     "@testcontainers/postgresql": "^12.2.1",
     "@types/express": "^5.0.6",
     "@types/supertest": "^7.2.1",
+    "playwright": "1.64.1",
     "supertest": "^7.3.1"
   }
 }

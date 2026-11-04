@@ -44,8 +44,19 @@ pnpm dev:infra:reset   # stop them and delete the data volumes
 pnpm lint              # ESLint + TypeScript typecheck
 pnpm test              # TypeScript unit tests (vitest)
 pnpm test:integration  # API against a real PostgreSQL (Testcontainers)
+pnpm exec playwright install --with-deps chromium  # one-time browser/system setup
+pnpm test:browser      # production web build + HTTPS, disposable Postgres and local TLS SMTP
 go test ./agent/... ./cli/... ./lib/...
 pnpm gen               # regenerate code from proto/ and shipkeep.schema.json
 ```
 
 Service ports on the host: PostgreSQL 5432, VictoriaLogs 9428, VictoriaMetrics 8428, registry 5000. If one is already taken, set the matching `SHIPKEEP_DEV_*_PORT` in `.env` (see `.env.example`) and adjust `DATABASE_URL`. Data lives in named Docker volumes.
+
+Browser acceptance requires Docker and always creates a fresh PostgreSQL container, even when
+`DATABASE_URL` is set. Chromium uses the production Angular assets against a loopback HTTPS API
+and a local TLS SMTP fixture; no external email is sent. Self-signed certificate acceptance is
+limited to that browser context. The suite checks public forms, signup, email verification,
+login/logout, cookie/CSRF/Origin boundaries, CSP, automated WCAG rules and horizontal overflow
+at widths from 320 to 1440 pixels. It records no traces, HAR files or screenshots. Password-reset,
+MFA/recovery and token-management browser workflows, plus manual visual/accessibility review,
+remain tracked in `docs/PLAN.md`.

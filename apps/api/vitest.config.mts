@@ -24,7 +24,7 @@ export default defineConfig(() => ({
     include: ['src/**/*.spec.ts'],
     setupFiles: ['src/test-setup.ts'],
     // Integration tests have their own config (vitest.integration.config.mts).
-    exclude: ['**/node_modules/**', 'src/**/*.integration.spec.ts'],
+    exclude: ['**/node_modules/**', 'src/**/*.integration.spec.ts', 'src/**/*.browser.spec.ts'],
     reporters: ['default'],
     coverage: {
       reportsDirectory: './test-output/vitest/coverage',
