@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { isDomainError } from '@shipkeep/domain';
 import type { Request, Response } from 'express';
+import { requestPath } from './request-path';
 
 import {
   type FieldError,
@@ -43,13 +44,15 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 
     const problem = this.toProblem(exception, request);
     if (problem.status >= 500) {
-      // Deliberate 5xx (for example 503 from the readiness probe) are expected conditions;
-      // anything else is a bug and gets the full error for diagnosis.
+      // Driver/parser exceptions may contain credentials. Keep only diagnostic identifiers.
       if (exception instanceof HttpException) {
-        this.logger.warn({ requestId: problem.requestId, path: request.url }, problem.detail);
+        this.logger.warn(
+          { requestId: problem.requestId, path: requestPath(request.url), status: problem.status },
+          'HTTP request failed',
+        );
       } else {
         this.logger.error(
-          { requestId: problem.requestId, path: request.url, err: exception },
+          { requestId: problem.requestId, path: requestPath(request.url), status: problem.status },
           'unhandled error',
         );
       }
@@ -59,7 +62,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
 
   toProblem(exception: unknown, request: Request & { id?: unknown }): ProblemDetails {
     const base = {
-      instance: request.originalUrl || request.url,
+      instance: requestPath(request.originalUrl || request.url),
       ...(typeof request.id === 'string' ? { requestId: request.id } : {}),
     };
 
@@ -95,7 +98,8 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         type: problemType(code),
         title: statusTitle(status),
         status,
-        detail: httpDetail(exception),
+        // Framework messages can echo malformed JSON or a URL containing a credential.
+        detail: statusTitle(status),
         code,
       };
     }
@@ -109,15 +113,4 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       code: PROBLEM_CODES.internalError,
     };
   }
-}
-
-function httpDetail(exception: HttpException): string {
-  const body: unknown = exception.getResponse();
-  if (typeof body === 'string') return body;
-  if (body && typeof body === 'object' && 'message' in body) {
-    const message: unknown = body.message;
-    if (typeof message === 'string') return message;
-    if (Array.isArray(message)) return message.map(String).join('; ');
-  }
-  return exception.message;
 }

@@ -71,6 +71,17 @@ describe('HTTP pipeline', () => {
     });
   });
 
+  it('does not reflect malformed JSON credentials or query strings in errors', async () => {
+    const secret = 'private-parser-fixture';
+    const response = await http()
+      .post(`/api/v1/auth/login?token=${secret}`)
+      .set('Content-Type', 'application/json')
+      .send(`{"password":"${secret}" invalid}`)
+      .expect(400);
+    expect(response.body).toMatchObject({ instance: '/api/v1/auth/login', status: 400 });
+    expect(JSON.stringify(response.body)).not.toContain(secret);
+  });
+
   it('serves the OpenAPI 3.1 document and the UI when enabled', async () => {
     const res = await http().get('/api/v1/openapi.json').expect(200);
     const document = res.body as { openapi: string; info: { title: string }; paths: object };
