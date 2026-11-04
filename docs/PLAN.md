@@ -73,10 +73,10 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - Acceptance: encryption library round-trip and tamper tests pass; an example command emits an audit event end to end.
 - [ ] **M2.2 Identity** (C + W). Depends: M2.1. Split into reviewable foundations, persistence, account/session flows, MFA/tokens and web flows.
   - [x] **M2.2a** Pure identity policy, bounded Argon2id hashing, purpose-bound token hashes, TOTP counters and recovery-code generation.
-  - [ ] **M2.2b** Transactional identity persistence and audit, database migrations and concurrent-use tests.
+  - [x] **M2.2b** Transactional identity persistence and audit, database migrations and concurrent-use tests.
     - [x] **M2.2b1** Request-local unit of work; audit writes join command transactions; real PostgreSQL rollback and isolation tests.
     - [x] **M2.2b2** Identity schema, case-insensitive email uniqueness, bounded credential lifetimes and real PostgreSQL constraint/concurrency tests.
-    - [ ] **M2.2b3** Identity repositories and atomic account/session operations.
+    - [x] **M2.2b3** Identity repositories, per-user mutation locks, session invalidation and atomic token consumption.
   - [ ] **M2.2c** Signup, verification, login, sessions, CSRF, reset and brute-force protection.
   - [ ] **M2.2d** TOTP enrollment/recovery and scoped API tokens.
   - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.

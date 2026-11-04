@@ -64,5 +64,8 @@ describe('identity policy', () => {
     expect(sessionIsLive({ createdAt, lastSeenAt: createdAt, revokedAt: null }, new Date(-1))).toBe(
       false,
     );
+    expect(
+      sessionIsLive({ createdAt, lastSeenAt: new Date(1001), revokedAt: null }, new Date(1000)),
+    ).toBe(true);
   });
 });

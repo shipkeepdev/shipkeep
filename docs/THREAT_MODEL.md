@@ -57,6 +57,8 @@ Build containers (untrusted code) inside rootless BuildKit
 
 ## Security engineering requirements
 
+- Identity mutations lock the user row before security-sensitive changes. Password changes increment the security version and invalidate sessions and reset tokens in the same transaction as their audit. Credential claims are conditional updates; session activity only advances and cannot revive an expired, revoked, disabled-owner or stale-version session. Real PostgreSQL tests cover concurrent mutations and rollback after credential consumption.
+
 - Identity primitives bound password length, Argon2id memory/concurrency and TOTP windows. Tests cover missing accounts, invalid stored hashes, Unicode passphrases, exact session expiry boundaries, RFC 6238 vectors and replayed TOTP counters. Bearer secrets use purpose-separated hashes and redacting wrappers. Persistence must atomically claim counters and recovery codes before authorizing a request.
 
 - Static analysis in CI: Semgrep (custom rules below), gosec, golangci-lint, gitleaks, Trivy filesystem scan. CodeQL (TypeScript, Go) once the repository is public. Trivy image scan of the control plane image is added to the release workflow in task M8.3.

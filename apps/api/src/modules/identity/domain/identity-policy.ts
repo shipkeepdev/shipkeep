@@ -51,7 +51,6 @@ export function sessionIsLive(
   return (
     session.revokedAt === null &&
     time >= session.createdAt.getTime() &&
-    time >= session.lastSeenAt.getTime() &&
     time < session.createdAt.getTime() + SESSION_ABSOLUTE_MS &&
     time < session.lastSeenAt.getTime() + SESSION_IDLE_MS
   );
