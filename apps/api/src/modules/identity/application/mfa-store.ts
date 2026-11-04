@@ -24,4 +24,5 @@ export interface MfaStore {
   replaceRecovery(userId: string, hashes: readonly string[], now: Date): Promise<void>;
   claimRecovery(userId: string, hash: string, now: Date): Promise<boolean>;
   remove(userId: string): Promise<void>;
+  remainingRecovery(userId: string): Promise<number>;
 }

@@ -11,6 +11,8 @@ import { IDENTITY_THROTTLE } from './application/identity-throttle';
 import { SessionCommands } from './application/session-commands';
 import { MFA_CRYPTO } from './application/mfa-crypto';
 import { MfaCommands } from './application/mfa-commands';
+import { MfaQuery } from './application/mfa-query';
+import { MfaController } from './interface/mfa.controller';
 import { MfaProof } from './application/mfa-proof';
 import { MFA_STORE } from './application/mfa-store';
 import { EnvelopeMfaCrypto } from './infrastructure/envelope-mfa-crypto';
@@ -30,12 +32,13 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
 
 @Module({
   imports: [JobsModule],
-  controllers: [IdentityController],
+  controllers: [IdentityController, MfaController],
   providers: [
     AccountCommands,
     SessionCommands,
     MfaProof,
     MfaCommands,
+    MfaQuery,
     { provide: MFA_CRYPTO, useClass: EnvelopeMfaCrypto },
     { provide: MFA_STORE, useClass: PrismaMfaStore },
     PrivateIdentityMail,

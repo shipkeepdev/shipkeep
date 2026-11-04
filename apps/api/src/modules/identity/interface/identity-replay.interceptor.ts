@@ -58,6 +58,9 @@ export class IdentityReplayInterceptor implements NestInterceptor {
     const input = new Secret(
       JSON.stringify({
         body: body ?? null,
+        ...(request.identity
+          ? { userId: request.identity.userId, securityVersion: request.identity.securityVersion }
+          : {}),
         ...(route === 'auth/logout'
           ? {
               cookie: request.headers.cookie,

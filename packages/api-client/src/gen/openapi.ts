@@ -36,6 +36,86 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/auth/mfa": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["status"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/mfa/disable": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["disable"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/mfa/enable": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["enable"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/mfa/recovery": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["regenerateRecovery"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/mfa/setup": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["setup"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/auth/register": {
         readonly parameters: {
             readonly query?: never;
@@ -187,11 +267,55 @@ export type components = {
              */
             readonly email: string;
         };
+        readonly EnableMfaDto: {
+            /** Format: password */
+            readonly password: string;
+            readonly totp: string;
+        };
         readonly HealthDto: {
             /** @enum {string} */
             readonly status: "ok";
             /** @example 0.1.0 */
             readonly version: string;
+        };
+        readonly LoginCredentialsDto: {
+            /**
+             * Format: email
+             * @example person@example.com
+             */
+            readonly email: string;
+            /** Format: password */
+            readonly password: string;
+            readonly recovery?: string;
+            readonly totp?: string;
+        };
+        readonly MfaPasswordDto: {
+            /** Format: password */
+            readonly password: string;
+        };
+        readonly MfaRecoveryDto: {
+            /** Format: email */
+            readonly email: string;
+            /** Format: date-time */
+            readonly expiresAt: string;
+            /** @description Private single-use codes shown on creation only. */
+            readonly recoveryCodes: readonly string[];
+            /** Format: uuid */
+            readonly userId: string;
+        };
+        readonly MfaSetupDto: {
+            /** Format: date-time */
+            readonly expiresAt: string;
+            /** @description Private otpauth provisioning data; never a navigation URL. */
+            readonly provisioningUri: string;
+            /** @description Private base32 seed. Store only in the authenticator. */
+            readonly secret: string;
+        };
+        readonly MfaStatusDto: {
+            readonly enabled: boolean;
+            /** Format: date-time */
+            readonly pendingExpiresAt: string | null;
+            readonly recoveryCodesRemaining: number;
         };
         readonly ReadinessChecksDto: {
             /** @enum {string} */
@@ -201,6 +325,12 @@ export type components = {
             readonly checks: components["schemas"]["ReadinessChecksDto"];
             /** @enum {string} */
             readonly status: "ok";
+        };
+        readonly ReauthenticateMfaDto: {
+            /** Format: password */
+            readonly password: string;
+            readonly recovery?: string;
+            readonly totp?: string;
         };
         readonly ResetPasswordDto: {
             /** Format: password */
@@ -238,7 +368,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["CredentialsDto"];
+                readonly "application/json": components["schemas"]["LoginCredentialsDto"];
             };
         };
         readonly responses: {
@@ -273,6 +403,137 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    readonly status: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MfaStatusDto"];
+                };
+            };
+        };
+    };
+    readonly disable: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7; bound to the current account security version. */
+                readonly "Idempotency-Key"?: string;
+                readonly Origin: string;
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReauthenticateMfaDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionDto"];
+                };
+            };
+        };
+    };
+    readonly enable: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7; bound to the current account security version. */
+                readonly "Idempotency-Key"?: string;
+                readonly Origin: string;
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["EnableMfaDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MfaRecoveryDto"];
+                };
+            };
+        };
+    };
+    readonly regenerateRecovery: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7; bound to the current account security version. */
+                readonly "Idempotency-Key"?: string;
+                readonly Origin: string;
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReauthenticateMfaDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MfaRecoveryDto"];
+                };
+            };
+        };
+    };
+    readonly setup: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7; bound to the current account security version. */
+                readonly "Idempotency-Key"?: string;
+                readonly Origin: string;
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MfaPasswordDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MfaSetupDto"];
+                };
             };
         };
     };

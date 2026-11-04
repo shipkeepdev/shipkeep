@@ -37,6 +37,7 @@ import {
 import { AllowAnonymous } from './identity.guard';
 import { IdentityAttemptLimit } from './identity-rate.guard';
 import { IdentityReplayInterceptor } from './identity-replay.interceptor';
+import { factorInput, LoginCredentialsDto } from './mfa.dto';
 import {
   clearSessionCookies,
   clientIp,
@@ -151,7 +152,7 @@ export class IdentityController {
   @IdentityAttemptLimit('login')
   @ApiOkResponse({ type: SessionDto })
   async login(
-    @Body() body: CredentialsDto,
+    @Body() body: LoginCredentialsDto,
     @Req() request: IdentityRequest,
     @Res({ passthrough: true }) response: Response,
   ): Promise<SessionDto> {
@@ -163,6 +164,7 @@ export class IdentityController {
     const grant = await this.sessions.login({
       email: body.email,
       password: new Secret(body.password),
+      secondFactor: factorInput(body),
       ip: clientIp(request),
       userAgent: request.headers['user-agent'] ?? '',
       ...(hasSession ? { previous: readCredential(request.headers.cookie, policy.name) } : {}),

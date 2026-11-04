@@ -36,7 +36,11 @@ export class IdentityRateGuard implements CanActivate {
     if (!attempt) return true;
     const request = context.switchToHttp().getRequest<IdentityRequest>();
     const response = context.switchToHttp().getResponse<Response>();
-    const decision = await this.throttle.acquire(attempt, clientIp(request), subject(request.body));
+    const decision = await this.throttle.acquire(
+      attempt,
+      clientIp(request),
+      request.identity?.userId ?? subject(request.body),
+    );
     response.setHeader('RateLimit-Limit', decision.limit);
     response.setHeader('RateLimit-Remaining', decision.remaining);
     response.setHeader(
