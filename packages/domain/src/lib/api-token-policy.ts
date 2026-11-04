@@ -66,7 +66,13 @@ export function parseApiScopes(value: unknown): readonly ApiScope[] {
       throw invalidScopes();
     unique.set(JSON.stringify(scope), scope);
   }
-  return Object.freeze([...unique.values()]);
+  const scopes = [...unique.values()];
+  if (
+    new Set(scopes.flatMap((scope) => (scope.organizationId ? [scope.organizationId] : []))).size >
+    1
+  )
+    throw invalidScopes();
+  return Object.freeze(scopes);
 }
 
 /** This only narrows a permission; the owner's live RBAC decision must ALSO allow the request. */

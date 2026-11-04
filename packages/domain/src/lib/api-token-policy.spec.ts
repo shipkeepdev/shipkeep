@@ -36,6 +36,10 @@ describe('API token policy', () => {
       [{ permission: 'deploy.run', organizationId, environmentId }],
       [{ permission: 'deploy.run', organizationId: '../escape' }],
       [{ permission: 'deploy.run', organizationId, admin: true }],
+      [
+        { permission: 'deploy.run', organizationId },
+        { permission: 'deploy.run', organizationId: other },
+      ],
       Array.from({ length: 33 }, () => ({ permission: 'profile.read' })),
     ]) {
       expect(() => parseApiScopes(scopes)).toThrow();
