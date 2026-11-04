@@ -10,6 +10,61 @@ datasource db {
   provider = "postgresql"
 }
 
+/// Installation-wide identity. Email ownership is required before organization membership.
+model User {
+  id              String          @id @db.Uuid
+  email           String          @unique @db.Citext
+  passwordHash    String          @map("password_hash") @db.VarChar(256)
+  status          String          @default("pending") @db.VarChar(16)
+  emailVerifiedAt DateTime?       @map("email_verified_at") @db.Timestamptz(6)
+  securityVersion Int             @default(0) @map("security_version")
+  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  sessions        UserSession[]
+  identityTokens  IdentityToken[]
+
+  @@map("users")
+}
+
+/// Opaque browser credential and CSRF verifier. Privilege changes invalidate older versions.
+model UserSession {
+  id              String    @id @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  tokenHash       String    @unique @map("token_hash") @db.Char(64)
+  csrfHash        String    @map("csrf_hash") @db.Char(64)
+  securityVersion Int       @map("security_version")
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastSeenAt      DateTime  @map("last_seen_at") @db.Timestamptz(6)
+  expiresAt       DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt       DateTime? @map("revoked_at") @db.Timestamptz(6)
+  ip              String    @db.VarChar(45)
+  userAgent       String    @map("user_agent") @db.VarChar(512)
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@index([expiresAt])
+  @@map("user_sessions")
+}
+
+/// Single-use email verification/reset credentials. Plaintext is only delivered to the mailbox.
+model IdentityToken {
+  id              String    @id @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  purpose         String    @db.VarChar(16)
+  tokenHash       String    @unique @map("token_hash") @db.Char(64)
+  securityVersion Int       @map("security_version")
+  expiresAt       DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt          DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
+  @@map("identity_tokens")
+}
+
 /// Append-only audit log built from domain events. No update or delete path exists in the code;
 /// task M2.4 adds the database permissions that make it impossible for the API role as well.
 model AuditEvent {
