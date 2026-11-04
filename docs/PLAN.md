@@ -92,9 +92,9 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - [x] **M2.2c5** Strip credential-bearing URL queries and opaque framework errors from HTTP diagnostics and responses.
   - [ ] **M2.2d** TOTP enrollment/recovery and scoped API tokens.
     - [x] **M2.2d1** Encrypted TOTP enrollment storage, version/expiry checks and atomic counter/recovery claims.
-    - [ ] **M2.2d2** Audited MFA commands, login proof and session rotation on security changes.
+    - [x] **M2.2d2** Audited MFA commands, login proof and session rotation on security changes.
       - [x] **M2.2d2a** Require atomic TOTP/recovery proof before session creation; rotate sessions and reset links on security changes.
-      - [ ] **M2.2d2b** Password reauthentication, TOTP setup/activation/disable and recovery-code regeneration.
+      - [x] **M2.2d2b** Password reauthentication, TOTP setup/activation/disable and recovery-code regeneration.
     - [ ] **M2.2d3** MFA HTTP endpoints and acceptance tests.
     - [ ] **M2.2d4** Scoped API tokens and bearer authentication.
   - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.
