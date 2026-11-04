@@ -45,7 +45,12 @@ export function newMutationKey(): string {
 }
 
 /** Cookie credentials never leave this origin, follow redirects, or enter browser storage. */
-export function browserRequest(input: Request, origin: string, cookie: string): Request {
+export function browserRequest(
+  input: Request,
+  origin: string,
+  cookie: string,
+  timeoutMs = 20000,
+): Request {
   const url = new URL(input.url);
   if (
     url.origin !== origin ||
@@ -72,6 +77,7 @@ export function browserRequest(input: Request, origin: string, cookie: string): 
     mode: 'same-origin',
     redirect: 'error',
     cache: 'no-store',
+    signal: AbortSignal.any([input.signal, AbortSignal.timeout(timeoutMs)]),
   });
 }
 

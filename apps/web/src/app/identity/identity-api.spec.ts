@@ -60,6 +60,28 @@ describe('browser identity transport', () => {
       ),
     ).toThrow('Request could not be sent.');
   });
+
+  it('bounds network waits and preserves caller cancellation', async () => {
+    const input = browserRequest(new Request(`${origin}/api/v1/auth/session`), origin, '', 1);
+    await new Promise<void>((resolve) => {
+      input.signal.addEventListener(
+        'abort',
+        () => {
+          resolve();
+        },
+        { once: true },
+      );
+    });
+    expect(input.signal.aborted).toBe(true);
+    const cancel = new AbortController();
+    cancel.abort();
+    const cancelled = browserRequest(
+      new Request(`${origin}/api/v1/auth/session`, { signal: cancel.signal }),
+      origin,
+      '',
+    );
+    expect(cancelled.signal.aborted).toBe(true);
+  });
   it('does not fall back to insecure or ambiguous CSRF cookies', () => {
     for (const cookie of [
       `shipkeep_csrf=${csrf}`,
