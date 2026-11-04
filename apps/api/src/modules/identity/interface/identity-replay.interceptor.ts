@@ -12,7 +12,9 @@ import { z } from 'zod';
 import { AppConfig } from '../../../platform/config/app-config';
 import { API_PREFIX } from '../../../platform/http/constants';
 import { SessionCommands } from '../application/session-commands';
+import { ApiTokenAuthentication } from '../application/api-token-authentication';
 import { AuthenticationError } from '../domain/identity-policy';
+import { TokenPermissionError } from '../domain/token-permission-error';
 import { PrivateIdentityReplay } from '../infrastructure/private-identity-replay';
 
 import { cookiePolicy, type IdentityRequest, readCredential } from './session-http';
@@ -26,6 +28,7 @@ export class IdentityReplayInterceptor implements NestInterceptor {
   constructor(
     private readonly retries: PrivateIdentityReplay,
     private readonly sessions: SessionCommands,
+    private readonly tokens: ApiTokenAuthentication,
     private readonly config: AppConfig,
   ) {}
 
@@ -82,6 +85,25 @@ export class IdentityReplayInterceptor implements NestInterceptor {
         return new Secret(JSON.stringify(snapshot));
       });
       const snapshot = resultSchema.parse(JSON.parse(result.response.expose()) as unknown);
+      if (result.replayed && route === 'api-tokens') {
+        const grant = z.object({ token: z.string().length(43) }).parse(snapshot.body);
+        if (!request.identity || request.identity.kind !== 'session')
+          throw new AuthenticationError();
+        try {
+          await this.tokens.assertReplayAvailable(
+            request.identity.userId,
+            request.identity.securityVersion,
+            new Secret(grant.token),
+          );
+        } catch (error: unknown) {
+          if (!(error instanceof AuthenticationError) && !(error instanceof TokenPermissionError))
+            throw error;
+          throw new ConflictError(
+            'idempotency_result_expired',
+            'The prior API token is no longer available. Use a new idempotency key.',
+          );
+        }
+      }
       if (result.replayed && route === 'auth/login') {
         // A later reset, logout, expiry or privilege change must invalidate cached grants too.
         const header = snapshot.cookies.map((cookie) => cookie.split(';')[0]).join('; ');

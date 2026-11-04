@@ -90,23 +90,27 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
         - [x] **M2.2c4c1** Encrypted retry storage, transaction-bound concurrency control, expiry and rollback tests.
         - [x] **M2.2c4c2** HTTP idempotency keys, credential-bound replay and acceptance tests.
     - [x] **M2.2c5** Strip credential-bearing URL queries and opaque framework errors from HTTP diagnostics and responses.
-  - [ ] **M2.2d** TOTP enrollment/recovery and scoped API tokens.
+  - [x] **M2.2d** TOTP enrollment/recovery and scoped API tokens.
     - [x] **M2.2d1** Encrypted TOTP enrollment storage, version/expiry checks and atomic counter/recovery claims.
     - [x] **M2.2d2** Audited MFA commands, login proof and session rotation on security changes.
       - [x] **M2.2d2a** Require atomic TOTP/recovery proof before session creation; rotate sessions and reset links on security changes.
       - [x] **M2.2d2b** Password reauthentication, TOTP setup/activation/disable and recovery-code regeneration.
     - [x] **M2.2d3** MFA HTTP endpoints and acceptance tests.
-    - [ ] **M2.2d4** Scoped API tokens and bearer authentication.
+    - [x] **M2.2d4** Scoped API tokens and bearer authentication.
       - [x] **M2.2d4a** Closed permission vocabulary, scope narrowing and bounded token metadata policy.
       - [x] **M2.2d4b** Token persistence, audited creation/revocation and owner-permission checks.
         - [x] **M2.2d4b1** User-owned token schema/store, bounded expiry, version invalidation and atomic revocation.
         - [x] **M2.2d4b2** Reauthenticated token commands, audited lifecycle and live authorization port.
-      - [ ] **M2.2d4c** Bearer authentication, per-token limits and HTTP acceptance tests.
+      - [x] **M2.2d4c** Bearer authentication, per-token limits and HTTP acceptance tests.
         - [x] **M2.2d4c1** Credential authentication, live owner-policy intersection and API traffic quotas.
-        - [ ] **M2.2d4c2** Session-only token management, default-deny bearer guard and HTTP acceptance tests.
+        - [x] **M2.2d4c2** Session-only token management, default-deny bearer guard and HTTP acceptance tests.
           - [x] **M2.2d4c2a** Default-deny bearer guard, shared traffic limits and profile-read HTTP acceptance.
-          - [ ] **M2.2d4c2b** Session-only token management endpoints, encrypted retries and generated contract.
+          - [x] **M2.2d4c2b** Session-only token management endpoints, encrypted retries and generated contract.
   - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.
+    - [ ] **M2.2e1** Typed browser identity transport, CSRF/idempotency handling and session state.
+    - [ ] **M2.2e2** Accessible signup, verification, login and password-reset screens.
+    - [ ] **M2.2e3** Account security screens for MFA/recovery and API-token lifecycle.
+    - [ ] **M2.2e4** Browser acceptance and accessibility checks against the real backend, responsive verification and production static serving.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.
   - Acceptance: auth E2E tests; brute-force protection (rate limit and progressive delay); session rotation on privilege change.
 - [ ] **M2.3 Organizations, projects, environments, RBAC** (C + W). Depends: M2.2

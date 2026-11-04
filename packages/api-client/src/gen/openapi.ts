@@ -4,6 +4,38 @@
  */
 
 export type paths = {
+    readonly "/api/v1/api-tokens": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listApiTokens"];
+        readonly put?: never;
+        readonly post: operations["createApiToken"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/api-tokens/{id}/revoke": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["revokeApiToken"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/auth/login": {
         readonly parameters: {
             readonly query?: never;
@@ -248,6 +280,68 @@ export type paths = {
 export type webhooks = Record<string, never>;
 export type components = {
     schemas: {
+        readonly ApiScopeDto: {
+            /** Format: uuid */
+            readonly environmentId?: string;
+            /** Format: uuid */
+            readonly organizationId?: string;
+            /** @enum {string} */
+            readonly permission: "profile.read" | "organization.read" | "organization.delete" | "billing.manage" | "member.manage" | "node.manage" | "project.read" | "project.create" | "project.delete" | "environment.read" | "environment.create" | "environment.delete" | "deploy.run" | "secret.write" | "container.exec" | "volume.delete" | "database.delete" | "observability.read" | "audit.read";
+            /** Format: uuid */
+            readonly projectId?: string;
+        };
+        readonly ApiTokenCreatedDto: {
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** Format: date-time */
+            readonly expiresAt: string;
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: date-time */
+            readonly lastUsedAt: string | null;
+            readonly name: string;
+            /** Format: date-time */
+            readonly revokedAt: string | null;
+            readonly scopes: readonly components["schemas"]["ApiScopeDto"][];
+            /** @enum {string} */
+            readonly status: "active" | "revoked" | "expired" | "invalidated";
+            /** @description Private credential shown on creation only. Store it securely. */
+            readonly token: string;
+        };
+        readonly ApiTokenDto: {
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** Format: date-time */
+            readonly expiresAt: string;
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: date-time */
+            readonly lastUsedAt: string | null;
+            readonly name: string;
+            /** Format: date-time */
+            readonly revokedAt: string | null;
+            readonly scopes: readonly components["schemas"]["ApiScopeDto"][];
+            /** @enum {string} */
+            readonly status: "active" | "revoked" | "expired" | "invalidated";
+        };
+        readonly ApiTokenPageDto: {
+            readonly items: readonly components["schemas"]["ApiTokenDto"][];
+            /** Format: uuid */
+            readonly nextCursor: string | null;
+        };
+        readonly CreateApiTokenDto: {
+            /**
+             * Format: date-time
+             * @description One minute to ninety days from creation.
+             */
+            readonly expiresAt: string;
+            readonly name: string;
+            /** Format: password */
+            readonly password: string;
+            readonly recovery?: string;
+            readonly scopes: readonly components["schemas"]["ApiScopeDto"][];
+            readonly totp?: string;
+        };
         readonly CredentialsDto: {
             /**
              * Format: email
@@ -317,6 +411,7 @@ export type components = {
             readonly pendingExpiresAt: string | null;
             readonly recoveryCodesRemaining: number;
         };
+        readonly Object: Record<string, never>;
         readonly ReadinessChecksDto: {
             /** @enum {string} */
             readonly database: "ok";
@@ -354,6 +449,84 @@ export type components = {
 };
 export type $defs = Record<string, never>;
 export interface operations {
+    readonly listApiTokens: {
+        readonly parameters: {
+            readonly query?: {
+                readonly cursor?: string;
+                readonly limit?: components["schemas"]["Object"];
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiTokenPageDto"];
+                };
+            };
+        };
+    };
+    readonly createApiToken: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7; credential-bound encrypted result for five minutes. */
+                readonly "Idempotency-Key"?: string;
+                readonly Origin: string;
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CreateApiTokenDto"];
+            };
+        };
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApiTokenCreatedDto"];
+                };
+            };
+        };
+    };
+    readonly revokeApiToken: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7; credential-bound encrypted result for five minutes. */
+                readonly "Idempotency-Key"?: string;
+                readonly Origin: string;
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly id: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReauthenticateMfaDto"];
+            };
+        };
+        readonly responses: {
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     readonly login: {
         readonly parameters: {
             readonly query?: never;

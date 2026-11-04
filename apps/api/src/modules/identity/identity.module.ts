@@ -18,6 +18,7 @@ import { MFA_CRYPTO } from './application/mfa-crypto';
 import { MfaCommands } from './application/mfa-commands';
 import { MfaQuery } from './application/mfa-query';
 import { MfaController } from './interface/mfa.controller';
+import { ApiTokenController } from './interface/api-token.controller';
 import { MfaProof } from './application/mfa-proof';
 import { MFA_STORE } from './application/mfa-store';
 import { EnvelopeMfaCrypto } from './infrastructure/envelope-mfa-crypto';
@@ -37,7 +38,7 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
 
 @Module({
   imports: [JobsModule],
-  controllers: [IdentityController, MfaController],
+  controllers: [IdentityController, MfaController, ApiTokenController],
   providers: [
     AccountCommands,
     ApiTokenCommands,

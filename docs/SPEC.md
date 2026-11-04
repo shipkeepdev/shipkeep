@@ -297,6 +297,8 @@ Bearer authentication re-reads the credential under the owner's lock before inte
 
 HTTP routes deny bearer access unless explicitly opted in. `GET /auth/session` accepts `profile.read` and returns account metadata with the API credential's expiry; it creates no browser session. MFA and credential-management routes require a browser session. Authorization headers never fall back to cookies; duplicate or malformed headers fail closed. Origin/CSRF checks apply to session mutations and anonymous browser mutations. Explicitly permitted bearer requests use their non-ambient header credential and do not require browser CSRF proof.
 
+Session-only token management uses `POST /api-tokens` (201, secret plus metadata), `GET /api-tokens?cursor=&limit=` (items plus nextCursor, default/max 100), and `POST /api-tokens/{id}/revoke` (204). Creation/revocation require password and optional TOTP/recovery proof when MFA is enabled, Origin and session-bound CSRF; both accept encrypted idempotent retries. A full page returns an exclusive cursor; an exhausted cursor may yield an empty terminal page. Dates require an explicit timezone. A revoked, expired, invalidated or no-longer-authorized token cannot be retrieved from a prior creation retry.
+
 - Base path `/api/v1`. OpenAPI 3.1 generated from NestJS decorators and published at `/api/v1/openapi.json`.
 - Auth: session cookie (UI, `SameSite=Strict`, CSRF token) or `Authorization: Bearer <api_token>`.
 - Errors: RFC 9457 problem details with a stable `type` URI per error.
