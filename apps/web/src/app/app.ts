@@ -1,5 +1,7 @@
-import { ChangeDetectionStrategy, Component } from '@angular/core';
+import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { RouterModule } from '@angular/router';
+
+import { SessionStore } from './identity/session-store';
 
 @Component({
   imports: [RouterModule],
@@ -9,5 +11,8 @@ import { RouterModule } from '@angular/router';
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class App {
-  protected readonly title = 'Shipkeep';
+  protected readonly session = inject(SessionStore);
+  constructor() {
+    void this.session.refresh();
+  }
 }

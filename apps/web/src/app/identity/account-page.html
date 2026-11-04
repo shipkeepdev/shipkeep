@@ -1,0 +1,46 @@
+<section class="max-w-2xl" aria-labelledby="account-title">
+  <h1 #heading id="account-title" tabindex="-1">Account security</h1>
+  <p class="page-intro">Manage access to your Shipkeep account.</p>
+  @switch (store.session.state()) { @case ('loading') {
+  <p role="status" class="border-y border-line py-6 text-muted">Checking your session…</p>
+  } @case ('unavailable') {
+  <div class="feedback" role="alert">
+    <p>Your session could not be checked. Try again when the service is available.</p>
+  </div>
+  <button class="button" type="button" (click)="store.session.refresh()">
+    Check session again
+  </button>
+  } @case ('anonymous') {
+  <p class="mb-6">Sign in to manage your account security.</p>
+  <a class="button" routerLink="/auth/login">Sign in</a>
+  } @case ('authenticated') {
+  <dl class="mb-8 border-y border-line py-5">
+    <dt class="mb-2 text-sm text-muted">Signed in as</dt>
+    <dd class="break-all font-semibold">{{ store.session.profile()?.email }}</dd>
+  </dl>
+  <a routerLink="/auth/forgot-password">Change your password</a>
+  @if (store.submission.problem(); as problem) {
+  <div class="feedback" role="alert">
+    <p>{{ problem }}</p>
+    @if (store.submission.restartRequired()) {
+    <button class="button button-secondary mt-3" type="button" (click)="store.submission.reset()">
+      Start again
+    </button>
+    }
+  </div>
+  }
+  <div class="mt-8">
+    <button
+      class="button button-secondary"
+      type="button"
+      (click)="signOut()"
+      [disabled]="store.submission.busy() || !!store.submission.cooldown() || store.submission.restartRequired()"
+    >
+      {{ store.submission.busy() ? 'Signing out…' : 'Sign out' }}
+    </button>
+    @if (store.submission.cooldown()) {
+    <p class="hint" role="status">Try again in {{ store.submission.cooldown() }} seconds.</p>
+    }
+  </div>
+  } }
+</section>
