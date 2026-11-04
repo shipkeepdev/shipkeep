@@ -61,7 +61,7 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
       },
       { timeout: 8000 },
     );
-    const code = smtp.messages[index].match(/\b[A-Za-z0-9_-]{43}\b/)?.[0];
+    const code = smtp.messages[index].match(/^[A-Za-z0-9_-]{43}$/m)?.[0];
     if (!code) throw new Error('missing code in SMTP fixture');
     return code;
   }
