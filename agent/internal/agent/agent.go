@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/config"
+	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
 	"github.com/samuelmbabhazi/shipkeep/lib/buildinfo"
 )
 
@@ -37,10 +38,29 @@ func New(cfg config.Config, logger *slog.Logger) (*Agent, error) {
 
 // Run starts the agent and blocks until ctx is cancelled or a component fails. It returns nil on
 // a clean shutdown.
-func (a *Agent) Run(ctx context.Context) error {
+func (a *Agent) Run(ctx context.Context) (runErr error) {
+	defer func() {
+		if errors.Is(runErr, context.Canceled) {
+			runErr = nil
+		}
+	}()
 	if err := a.prepareDirectories(); err != nil {
 		return err
 	}
+
+	if ctx.Err() != nil {
+		return nil
+	}
+	store, err := journal.Open(ctx, a.cfg.Paths.StateDir)
+	if err != nil {
+		return err
+	}
+	defer func() { runErr = errors.Join(runErr, store.Close()) }()
+	unfinished, err := store.Unfinished(ctx)
+	if err != nil {
+		return err
+	}
+	a.logger.Info("journal ready", "unfinished_operations", len(unfinished))
 
 	a.logger.Info("agent started",
 		"version", buildinfo.Version,
