@@ -309,6 +309,8 @@ Web routes are `/auth/login`, `/auth/register`, `/auth/verify-email`, `/auth/req
 
 MFA forms distinguish unknown/unavailable status from disabled protection and require current password/proof for the chosen operation. Account security mutations share one submission gate, including sign-out, to avoid overlapping rotations. Provisioning seeds are hidden at their server expiry (with a ten-minute client cap); recovery codes are hidden after ten minutes without changing their server validity. Successful rotation updates only public session fields. Private grants and inputs clear on dismissal/destruction and serialize as an opaque store label. A setup display timeout hides the seed but preserves a running activation's confirmed recovery-code result.
 
+The account MFA panel supports manual authenticator enrollment with a copyable setup key (time-based, six digits, 30 seconds), activation, recovery-code replacement and disable. Provisioning URIs are not rendered as navigation links. Private text is copied only on an explicit user gesture through the browser clipboard API; denied/unavailable clipboard access offers manual selection and never exposes raw diagnostics. Recovery codes disappear on acknowledgement or timeout. Security-change forms explain session/API-token invalidation before submission, and one shared error summary receives focus when a request fails.
+
 - Base path `/api/v1`. OpenAPI 3.1 generated from NestJS decorators and published at `/api/v1/openapi.json`.
 - Auth: session cookie (UI, `SameSite=Strict`, CSRF token) or `Authorization: Bearer <api_token>`.
 - Errors: RFC 9457 problem details with a stable `type` URI per error.

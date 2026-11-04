@@ -13,6 +13,7 @@ describe('account route presentation', () => {
     login: vi.fn<IdentityApi['login']>(),
     logout: vi.fn<IdentityApi['logout']>(),
     verifyEmail: vi.fn<IdentityApi['verifyEmail']>(),
+    mfaStatus: vi.fn<IdentityApi['mfaStatus']>(),
   };
   let harness: RouterTestingHarness;
   const profile = {
@@ -22,6 +23,11 @@ describe('account route presentation', () => {
   };
   beforeEach(async () => {
     vi.resetAllMocks();
+    api.mfaStatus.mockResolvedValue({
+      enabled: false,
+      pendingExpiresAt: null,
+      recoveryCodesRemaining: 0,
+    });
     TestBed.configureTestingModule({
       providers: [provideRouter(appRoutes), { provide: IdentityApi, useValue: api }],
     });
@@ -101,12 +107,16 @@ describe('account route presentation', () => {
     TestBed.inject(SessionStore).accept(profile);
     await harness.navigateByUrl('/account/security');
     api.logout.mockRejectedValueOnce(new IdentityRequestError(0));
-    element().querySelector('button')?.click();
+    Array.from(element().querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === 'Sign out')
+      ?.click();
     await harness.fixture.whenStable();
     expect(element().querySelector('[role="alert"]')?.textContent).toContain('Connection lost');
     expect(element().textContent).toContain(profile.email);
     api.logout.mockResolvedValue();
-    element().querySelector('button')?.click();
+    Array.from(element().querySelectorAll('button'))
+      .find((button) => button.textContent.trim() === 'Sign out')
+      ?.click();
     await harness.fixture.whenStable();
     expect(TestBed.inject(Router).url).toBe('/auth/login');
   });
