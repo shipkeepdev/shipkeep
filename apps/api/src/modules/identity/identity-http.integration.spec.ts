@@ -1,6 +1,7 @@
 import type { Server } from 'node:http';
 
 import request from 'supertest';
+import { v7 as uuidv7 } from 'uuid';
 
 import { AppConfig } from '../../platform/config/app-config';
 import { DomainEventBus } from '../../platform/events/domain-event-bus';
@@ -54,14 +55,22 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
     await prisma.identityThrottle.deleteMany();
   });
 
-  async function mailCode(index: number): Promise<string> {
+  async function mailCode(email: string, purpose: 'verify' | 'reset' = 'verify'): Promise<string> {
+    const message = () =>
+      [...smtp.messages]
+        .reverse()
+        .find(
+          (mail) =>
+            mail.includes(email) &&
+            mail.includes(purpose === 'verify' ? '/verify-email' : '/reset-password'),
+        );
     await vi.waitFor(
       () => {
-        expect(smtp.messages.length).toBeGreaterThan(index);
+        expect(message()).toBeDefined();
       },
       { timeout: 8000 },
     );
-    const code = smtp.messages[index].match(/^[A-Za-z0-9_-]{43}$/m)?.[0];
+    const code = message()?.match(/^[A-Za-z0-9_-]{43}$/m)?.[0];
     if (!code) throw new Error('missing code in SMTP fixture');
     return code;
   }
@@ -89,12 +98,11 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
 
   it('signs up, verifies over SMTP, rotates sessions, resets the password and logs out', async () => {
     const email = 'flow@example.com';
-    const message = smtp.messages.length;
     await post('register', { email, password }).expect(202).expect('Cache-Control', 'no-store');
     await post('login', { email, password }).expect(401);
-    await post('verify', { token: await mailCode(message) }).expect(204);
+    await post('verify', { token: await mailCode(email) }).expect(204);
     await prisma.identityThrottle.deleteMany();
-    await post('verify', { token: await mailCode(message) }).expect(401);
+    await post('verify', { token: await mailCode(email) }).expect(401);
     const first = await post('login', { email, password }).expect(200);
     expect(first.body).toEqual({
       userId: expect.any(String),
@@ -108,10 +116,11 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
       await post('login', { email, password }).set('Cookie', a.session).expect(200),
     );
     await http().get('/api/v1/auth/session').set('Cookie', a.session).expect(401);
-    const resetMessage = smtp.messages.length;
     await post('reset/request', { email }).expect(202);
     const replacement = 'replacement HTTP test passphrase';
-    await post('reset', { token: await mailCode(resetMessage), password: replacement }).expect(204);
+    await post('reset', { token: await mailCode(email, 'reset'), password: replacement }).expect(
+      204,
+    );
     await http().get('/api/v1/auth/session').set('Cookie', second.session).expect(401);
     const final = credentials(await post('login', { email, password: replacement }).expect(200));
     const logout = await post('logout', {})
@@ -179,5 +188,85 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it('replays registration, login and logout without repeating their side effects', async () => {
+    const email = 'retries@example.com';
+    const key = uuidv7();
+    const results = await Promise.all(
+      [0, 1].map(() =>
+        post('register', { email, password }).set('Idempotency-Key', key).expect(202),
+      ),
+    );
+    expect(results.map((result) => result.headers['idempotency-replayed']).sort()).toEqual([
+      'false',
+      'true',
+    ]);
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+    expect(await prisma.identityToken.count({ where: { userId: user.id } })).toBe(1);
+    await post('register', { email: 'other@example.com', password })
+      .set('Idempotency-Key', key)
+      .expect(409);
+    await post('verify', { token: await mailCode(email) }).expect(204);
+    const loginKey = uuidv7();
+    const first = await post('login', { email, password })
+      .set('Idempotency-Key', loginKey)
+      .expect(200);
+    const cookies = credentials(first);
+    const second = await post('login', { password, email })
+      .set('Cookie', cookies.session)
+      .set('Idempotency-Key', loginKey)
+      .expect(200);
+    expect(second.headers['set-cookie']).toEqual(first.headers['set-cookie']);
+    expect(second.body).toEqual(first.body);
+    expect(await prisma.userSession.count({ where: { userId: user.id } })).toBe(1);
+    const logoutKey = uuidv7();
+    const logout = () =>
+      post('logout', {})
+        .set('Cookie', cookies.session)
+        .set('X-Shipkeep-CSRF', cookies.csrf)
+        .set('Idempotency-Key', logoutKey);
+    await logout().expect(204);
+    await logout().expect(204).expect('Idempotency-Replayed', 'true');
+    await post('logout', {}).set('Idempotency-Key', logoutKey).expect(409);
+    await post('logout', {})
+      .set('Cookie', cookies.session)
+      .set('X-Shipkeep-CSRF', 'A'.repeat(43))
+      .set('Idempotency-Key', logoutKey)
+      .expect(409);
+    expect(
+      await prisma.auditEvent.count({
+        where: { targetId: user.id, action: 'identity.logged_out' },
+      }),
+    ).toBe(1);
+    await prisma.identityThrottle.deleteMany();
+    const revoked = await post('login', { email, password })
+      .set('Idempotency-Key', loginKey)
+      .expect(409);
+    expect(revoked.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('rejects malformed retry keys and never sends a cookie when retry persistence fails', async () => {
+    await post('register', { email: 'invalid-key@example.com', password })
+      .set('Idempotency-Key', '../invalid')
+      .expect(400);
+    expect(await prisma.user.count({ where: { email: 'invalid-key@example.com' } })).toBe(0);
+    const email = 'retry-rollback@example.com';
+    await post('register', { email, password }).expect(202);
+    await post('verify', { token: await mailCode(email) }).expect(204);
+    const key = uuidv7();
+    await prisma.$executeRaw`ALTER TABLE identity_replays ADD CONSTRAINT test_http_reject_replay CHECK (false) NOT VALID`;
+    try {
+      const response = await post('login', { email, password })
+        .set('Idempotency-Key', key)
+        .expect(503);
+      expect(response.headers['set-cookie']).toBeUndefined();
+      const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+      expect(await prisma.userSession.count({ where: { userId: user.id } })).toBe(0);
+    } finally {
+      await prisma.$executeRaw`ALTER TABLE identity_replays DROP CONSTRAINT test_http_reject_replay`;
+    }
+    await prisma.identityThrottle.deleteMany();
+    await post('login', { email, password }).set('Idempotency-Key', key).expect(200);
   });
 });

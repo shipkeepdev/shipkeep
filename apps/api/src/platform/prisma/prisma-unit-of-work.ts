@@ -8,7 +8,8 @@ import { PrismaService } from './prisma.service';
 /**
  * Repositories participating in a command use `client`, including the synchronous audit
  * subscriber. No transaction is shared across requests. Nested commands join their caller;
- * external I/O (mail, password hashing) must happen outside the transaction.
+ * external network I/O must happen outside the transaction. Idempotent HTTP commands include
+ * bounded password work in the outer transaction so mutations and their retry result are atomic.
  */
 @Injectable()
 export class PrismaUnitOfWork {

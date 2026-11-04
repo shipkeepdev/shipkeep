@@ -58,6 +58,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Lowercase UUIDv4/v7. Reuses the same request result for five minutes.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -88,6 +97,15 @@
             "name": "Origin",
             "in": "header",
             "description": "Exact API_PUBLIC_URL origin; required for browser mutations.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Lowercase UUIDv4/v7. Reuses the same request result for five minutes.",
             "required": false,
             "schema": {
               "type": "string"
@@ -126,6 +144,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Lowercase UUIDv4/v7. Reuses the same request result for five minutes.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -156,6 +183,15 @@
             "name": "Origin",
             "in": "header",
             "description": "Exact API_PUBLIC_URL origin; required for browser mutations.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Lowercase UUIDv4/v7. Reuses the same request result for five minutes.",
             "required": false,
             "schema": {
               "type": "string"
@@ -194,6 +230,15 @@
             "schema": {
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Lowercase UUIDv4/v7. Reuses the same request result for five minutes.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
@@ -224,6 +269,15 @@
             "name": "Origin",
             "in": "header",
             "description": "Exact API_PUBLIC_URL origin; required for browser mutations.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Lowercase UUIDv4/v7. Reuses the same request result for five minutes.",
             "required": false,
             "schema": {
               "type": "string"
@@ -311,6 +365,15 @@
             "in": "header",
             "description": "CSRF cookie value bound to this session.",
             "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Lowercase UUIDv4/v7. Reuses the same request result for five minutes.",
+            "required": false,
             "schema": {
               "type": "string"
             }
