@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   ApiCookieAuth,
+  ApiBearerAuth,
   ApiHeader,
   ApiNoContentResponse,
   ApiOkResponse,
@@ -35,6 +36,7 @@ import {
   SessionDto,
 } from './identity.dto';
 import { AllowAnonymous } from './identity.guard';
+import { AllowApiToken } from './api-token-access';
 import { IdentityAttemptLimit } from './identity-rate.guard';
 import { IdentityReplayInterceptor } from './identity-replay.interceptor';
 import { factorInput, LoginCredentialsDto } from './mfa.dto';
@@ -44,7 +46,7 @@ import {
   cookiePolicy,
   headerCredential,
   type IdentityRequest,
-  principal,
+  authenticatedPrincipal,
   readCredential,
   setSessionCookies,
 } from './session-http';
@@ -175,10 +177,12 @@ export class IdentityController {
   }
 
   @Get('session')
+  @AllowApiToken('profile.read')
+  @ApiBearerAuth('apiToken')
   @ApiCookieAuth('session')
   @ApiOkResponse({ type: SessionDto })
   session(@Req() request: IdentityRequest): SessionDto {
-    const user = principal(request);
+    const user = authenticatedPrincipal(request);
     return { userId: user.userId, email: user.email, expiresAt: user.expiresAt.toISOString() };
   }
 

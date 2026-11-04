@@ -21,8 +21,17 @@ export interface SessionPrincipal {
   readonly expiresAt: Date;
   readonly token: Secret;
 }
+export interface ApiTokenPrincipal {
+  readonly kind: 'api_token';
+  readonly userId: string;
+  readonly email: string;
+  readonly tokenId: string;
+  readonly securityVersion: number;
+  readonly expiresAt: Date;
+}
+export type IdentityPrincipal = SessionPrincipal | ApiTokenPrincipal;
 export type IdentityRequest = Request<Record<string, string>, unknown, unknown> & {
-  identity?: SessionPrincipal;
+  identity?: IdentityPrincipal;
 };
 
 export function cookiePolicy(publicUrl: string): CookiePolicy {
@@ -82,6 +91,11 @@ export function clientIp(request: Request): string {
 }
 
 export function principal(request: IdentityRequest): SessionPrincipal {
+  if (request.identity?.kind !== 'session') throw new AuthenticationError();
+  return request.identity;
+}
+
+export function authenticatedPrincipal(request: IdentityRequest): IdentityPrincipal {
   if (!request.identity) throw new AuthenticationError();
   return request.identity;
 }

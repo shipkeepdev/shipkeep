@@ -295,6 +295,8 @@ Creating or revoking a token requires password reauthentication and the active M
 
 Bearer authentication re-reads the credential under the owner's lock before intersecting its scopes with current owner authority. Revocation and role/security changes use that same lock. API traffic has separate fixed one-minute quotas: 300 requests per token and 600 per trusted client IP, shared across instances, without the progressive delay used for password proofs. Invalid credentials still consume the IP budget. Creation retries must revalidate the cached credential and owner authority before disclosing it again.
 
+HTTP routes deny bearer access unless explicitly opted in. `GET /auth/session` accepts `profile.read` and returns account metadata with the API credential's expiry; it creates no browser session. MFA and credential-management routes require a browser session. Authorization headers never fall back to cookies; duplicate or malformed headers fail closed. Origin/CSRF checks apply to session mutations and anonymous browser mutations. Explicitly permitted bearer requests use their non-ambient header credential and do not require browser CSRF proof.
+
 - Base path `/api/v1`. OpenAPI 3.1 generated from NestJS decorators and published at `/api/v1/openapi.json`.
 - Auth: session cookie (UI, `SameSite=Strict`, CSRF token) or `Authorization: Bearer <api_token>`.
 - Errors: RFC 9457 problem details with a stable `type` URI per error.
