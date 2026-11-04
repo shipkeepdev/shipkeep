@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { AuditModule } from './modules/audit/audit.module';
 import { FleetModule } from './modules/fleet/fleet.module';
+import { IdentityModule } from './modules/identity/identity.module';
 import { AppConfigModule } from './platform/config/config.module';
 import { CryptoModule } from './platform/crypto/crypto.module';
 import { EventsModule } from './platform/events/events.module';
@@ -23,6 +24,7 @@ import { PrismaModule } from './platform/prisma/prisma.module';
     HealthModule,
     AuditModule,
     FleetModule,
+    IdentityModule,
   ],
 })
 export class AppModule {}

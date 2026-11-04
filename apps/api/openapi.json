@@ -45,6 +45,291 @@
           "health"
         ]
       }
+    },
+    "/api/v1/auth/register": {
+      "post": {
+        "operationId": "register",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API_PUBLIC_URL origin; required for browser mutations.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted. Existing accounts receive the same response."
+          }
+        },
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/verification/request": {
+      "post": {
+        "operationId": "requestVerification",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API_PUBLIC_URL origin; required for browser mutations.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted regardless of account existence or status."
+          }
+        },
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/verify": {
+      "post": {
+        "operationId": "verifyEmail",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API_PUBLIC_URL origin; required for browser mutations.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailCodeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/reset/request": {
+      "post": {
+        "operationId": "requestPasswordReset",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API_PUBLIC_URL origin; required for browser mutations.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EmailDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Accepted regardless of account existence or status."
+          }
+        },
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/reset": {
+      "post": {
+        "operationId": "resetPassword",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API_PUBLIC_URL origin; required for browser mutations.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/login": {
+      "post": {
+        "operationId": "login",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API_PUBLIC_URL origin; required for browser mutations.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/session": {
+      "get": {
+        "operationId": "session",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API_PUBLIC_URL origin; required for browser mutations.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/logout": {
+      "post": {
+        "operationId": "logout",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API_PUBLIC_URL origin; required for browser mutations.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "description": "CSRF cookie value bound to this session.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "identity"
+        ]
+      }
     }
   },
   "info": {
@@ -66,7 +351,8 @@
       "session": {
         "type": "apiKey",
         "in": "cookie",
-        "name": "shipkeep_session"
+        "name": "__Host-shipkeep_session",
+        "description": "HTTPS session cookie; HTTP development uses shipkeep_session."
       }
     },
     "schemas": {
@@ -119,6 +405,100 @@
         "required": [
           "status",
           "checks"
+        ]
+      },
+      "CredentialsDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email",
+            "example": "person@example.com"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password"
+          }
+        },
+        "required": [
+          "email",
+          "password"
+        ]
+      },
+      "EmailDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email",
+            "example": "person@example.com"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "EmailCodeDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 43,
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "token"
+        ]
+      },
+      "ResetPasswordDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 43,
+            "writeOnly": true
+          },
+          "password": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password"
+          }
+        },
+        "required": [
+          "token",
+          "password"
+        ]
+      },
+      "SessionDto": {
+        "type": "object",
+        "properties": {
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "userId",
+          "email",
+          "expiresAt"
         ]
       }
     }

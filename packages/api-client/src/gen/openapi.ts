@@ -4,6 +4,134 @@
  */
 
 export type paths = {
+    readonly "/api/v1/auth/login": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["login"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/logout": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["logout"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/register": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["register"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/reset": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["resetPassword"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/reset/request": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["requestPasswordReset"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/session": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["session"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/verification/request": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["requestVerification"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/auth/verify": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["verifyEmail"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/health": {
         readonly parameters: {
             readonly query?: never;
@@ -40,6 +168,25 @@ export type paths = {
 export type webhooks = Record<string, never>;
 export type components = {
     schemas: {
+        readonly CredentialsDto: {
+            /**
+             * Format: email
+             * @example person@example.com
+             */
+            readonly email: string;
+            /** Format: password */
+            readonly password: string;
+        };
+        readonly EmailCodeDto: {
+            readonly token: string;
+        };
+        readonly EmailDto: {
+            /**
+             * Format: email
+             * @example person@example.com
+             */
+            readonly email: string;
+        };
         readonly HealthDto: {
             /** @enum {string} */
             readonly status: "ok";
@@ -55,6 +202,19 @@ export type components = {
             /** @enum {string} */
             readonly status: "ok";
         };
+        readonly ResetPasswordDto: {
+            /** Format: password */
+            readonly password: string;
+            readonly token: string;
+        };
+        readonly SessionDto: {
+            /** Format: email */
+            readonly email: string;
+            /** Format: date-time */
+            readonly expiresAt: string;
+            /** Format: uuid */
+            readonly userId: string;
+        };
     };
     responses: never;
     parameters: never;
@@ -64,6 +224,199 @@ export type components = {
 };
 export type $defs = Record<string, never>;
 export interface operations {
+    readonly login: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
+                readonly Origin?: string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CredentialsDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionDto"];
+                };
+            };
+        };
+    };
+    readonly logout: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
+                readonly Origin?: string;
+                /** @description CSRF cookie value bound to this session. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly register: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
+                readonly Origin?: string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CredentialsDto"];
+            };
+        };
+        readonly responses: {
+            /** @description Accepted. Existing accounts receive the same response. */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly resetPassword: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
+                readonly Origin?: string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ResetPasswordDto"];
+            };
+        };
+        readonly responses: {
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly requestPasswordReset: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
+                readonly Origin?: string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["EmailDto"];
+            };
+        };
+        readonly responses: {
+            /** @description Accepted regardless of account existence or status. */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly session: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
+                readonly Origin?: string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionDto"];
+                };
+            };
+        };
+    };
+    readonly requestVerification: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
+                readonly Origin?: string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["EmailDto"];
+            };
+        };
+        readonly responses: {
+            /** @description Accepted regardless of account existence or status. */
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly verifyEmail: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
+                readonly Origin?: string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["EmailCodeDto"];
+            };
+        };
+        readonly responses: {
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
     readonly health: {
         readonly parameters: {
             readonly query?: never;

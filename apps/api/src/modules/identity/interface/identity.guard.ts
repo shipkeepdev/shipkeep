@@ -1,13 +1,8 @@
-import {
-  type CanActivate,
-  type CustomDecorator,
-  type ExecutionContext,
-  Injectable,
-  SetMetadata,
-} from '@nestjs/common';
+import { type CanActivate, type ExecutionContext, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 
 import { AppConfig } from '../../../platform/config/app-config';
+import { ANONYMOUS } from '../../../platform/http/allow-anonymous';
 import { SessionCommands } from '../application/session-commands';
 import { AuthenticationError } from '../domain/identity-policy';
 
@@ -19,10 +14,7 @@ import {
   readCredential,
 } from './session-http';
 
-const ANONYMOUS = 'shipkeep:identity:anonymous';
-export function AllowAnonymous(): CustomDecorator {
-  return SetMetadata(ANONYMOUS, true);
-}
+export { AllowAnonymous } from '../../../platform/http/allow-anonymous';
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
 /** Every controller requires authentication unless explicitly marked anonymous. */

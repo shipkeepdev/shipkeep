@@ -78,7 +78,7 @@ describe('private identity email jobs against PostgreSQL', () => {
         return Promise.resolve();
       },
     });
-    await worker.onModuleInit();
+    await worker.start();
     await vi.waitFor(
       () => {
         expect(received).toHaveLength(1);
@@ -101,7 +101,7 @@ describe('private identity email jobs against PostgreSQL', () => {
     const deliver = vi.fn().mockRejectedValueOnce(new Error(failure)).mockResolvedValue(undefined);
     const worker = new IdentityMailWorker(jobs, mail, envelope, { deliver });
     await mail.send(message);
-    await worker.onModuleInit();
+    await worker.start();
     await vi.waitFor(
       () => {
         expect(deliver).toHaveBeenCalledTimes(2);
@@ -127,7 +127,7 @@ describe('private identity email jobs against PostgreSQL', () => {
     await mail.send({ ...message, expiresAt: new Date(0) });
     const fakeId = '0192f0c0-0000-7000-8000-0000000000aa';
     await jobs.send(IDENTITY_MAIL_QUEUE, { id: fakeId, ciphertext: 'corrupted' }, { id: fakeId });
-    await new IdentityMailWorker(jobs, mail, envelope, { deliver }).onModuleInit();
+    await new IdentityMailWorker(jobs, mail, envelope, { deliver }).start();
     await vi.waitFor(
       async () => {
         const states = (await jobs.findJobs(IDENTITY_MAIL_QUEUE)).map((job) => job.state);

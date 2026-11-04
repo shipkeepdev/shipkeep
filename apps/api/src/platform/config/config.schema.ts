@@ -21,6 +21,7 @@ export const configSchema = z
   .object({
     NODE_ENV: nodeEnv,
     API_PORT: port.default(3000),
+    TRUST_PROXY: z.enum(['none', 'loopback']).default('none'),
     API_PUBLIC_URL: httpUrl
       .refine((value) => {
         const url = new URL(value);
