@@ -35,6 +35,9 @@ kubeconfig
 *.sqlite
 *.sqlite3
 *.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite.lock
 *.db
 *.dump
 *.sql.gz
