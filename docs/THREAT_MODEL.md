@@ -57,6 +57,8 @@ Build containers (untrusted code) inside rootless BuildKit
 
 ## Security engineering requirements
 
+- Identity primitives bound password length, Argon2id memory/concurrency and TOTP windows. Tests cover missing accounts, invalid stored hashes, Unicode passphrases, exact session expiry boundaries, RFC 6238 vectors and replayed TOTP counters. Bearer secrets use purpose-separated hashes and redacting wrappers. Persistence must atomically claim counters and recovery codes before authorizing a request.
+
 - Static analysis in CI: Semgrep (custom rules below), gosec, golangci-lint, gitleaks, Trivy filesystem scan. CodeQL (TypeScript, Go) once the repository is public. Trivy image scan of the control plane image is added to the release workflow in task M8.3.
 - All third-party GitHub Actions pinned to full commit SHAs and all tool images to digests (the March 2026 trivy-action compromise, CVE-2026-33634, rewrote version tags).
 - Custom Semgrep rules in `.semgrep/rules/shipkeep-rules.yml`, failing CI, each proven by `.semgrep/tests/` (`pnpm semgrep:test`):

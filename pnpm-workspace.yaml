@@ -4,6 +4,8 @@ packages:
 
 # pnpm 11 blocks dependency build scripts by default. Allow only what the toolchain needs.
 allowBuilds:
+  # Argon2id password hashing (MIT), native Node binding.
+  argon2: true
   '@bufbuild/buf': true
   '@prisma/engines': true
   prisma: true
