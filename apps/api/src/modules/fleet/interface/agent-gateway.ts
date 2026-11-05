@@ -19,6 +19,7 @@ import { NodeStream } from './node-stream';
 import { AppConfig } from '../../../platform/config/app-config';
 import { AuthenticateNode } from '../application/authenticate-node';
 import { EnrollNode } from '../application/enroll-node';
+import { factsFromProto } from '../application/node-facts';
 import { RenewNodeCertificate } from '../application/renew-node-certificate';
 import { parseNodeSpiffeId } from '../domain/node';
 import { NodeAuthenticationError, type NodeIdentity } from '../domain/node-identity';
@@ -67,7 +68,7 @@ export class AgentGateway implements OnModuleDestroy {
           const result = await this.enroll.execute({
             joinToken: new Secret(request.joinToken),
             csrPem: request.csrPem,
-            facts: { ...request.facts },
+            facts: factsFromProto(request.facts),
             agentVersion: request.agentVersion,
             ip: context.values.get(peer)?.remoteAddress,
           });

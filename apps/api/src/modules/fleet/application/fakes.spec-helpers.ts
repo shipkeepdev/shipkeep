@@ -1,6 +1,6 @@
 // In-memory implementations of the fleet ports for unit tests.
 import type { JoinTokenRecord } from '../domain/join-token';
-import type { NodeCertificateRecord, NodeRecord, NodeStatus } from '../domain/node';
+import type { NodeCertificateRecord, NodeFacts, NodeRecord, NodeStatus } from '../domain/node';
 
 import type {
   CertificateAuthority,
@@ -106,6 +106,15 @@ export class MemoryNodeStore implements NodeStore {
     if (index < 0 || !node) return Promise.resolve(false);
     this.nodes[index] = { ...node, status: next, lastHeartbeatAt: now };
     return Promise.resolve(true);
+  }
+  updateFacts(organizationId: string, id: string, facts: NodeFacts): Promise<void> {
+    const index = this.nodes.findIndex(
+      (node) =>
+        node.organizationId === organizationId && node.id === id && node.status !== 'removed',
+    );
+    const node = this.nodes.at(index);
+    if (index >= 0 && node) this.nodes[index] = { ...node, facts };
+    return Promise.resolve();
   }
   insertCertificate(certificate: NodeCertificateRecord): Promise<void> {
     this.certificates.push(certificate);
