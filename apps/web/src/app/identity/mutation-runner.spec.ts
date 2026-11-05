@@ -43,8 +43,8 @@ describe('identity mutation runner', () => {
     await runner.run({ password: 'fixture' }, call);
     await runner.run({ password: 'fixture' }, call);
     await runner.run({ password: 'fixture' }, call);
-    expect(call.mock.calls.at(0)).toEqual(call.mock.calls.at(1));
-    expect(call.mock.calls.at(1)).not.toEqual(call.mock.calls.at(2));
+    expect(call.mock.calls.at(0)?.at(0)).toEqual(call.mock.calls.at(1)?.at(0));
+    expect(call.mock.calls.at(1)?.at(0)).not.toEqual(call.mock.calls.at(2)?.at(0));
     expect(runner.problem()).toBeNull();
   });
 

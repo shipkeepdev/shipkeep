@@ -64,4 +64,13 @@ describe('session state', () => {
     await expect(store.logout('request-key')).rejects.toThrow('Connection lost.');
     expect(store.state()).toBe('authenticated');
   });
+  it('does not apply a login response after its owning form has been left', async () => {
+    api.login.mockResolvedValue(profile);
+    await store.login(
+      { email: profile.email, password: 'correct horse browser fixture' },
+      'request-key',
+      () => false,
+    );
+    expect(store.profile()).toBeNull();
+  });
 });
