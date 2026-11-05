@@ -157,9 +157,9 @@ describe('tenant transactions with a restricted PostgreSQL login', () => {
     // The setting is local to its transaction and cleared afterwards.
     await database.run(async () => {
       await database.runEnrollment('b'.repeat(64), () => Promise.resolve());
-      const [row] = await database.client.$queryRaw<{ hash: string }[]>`
+      const rows = await database.client.$queryRaw<{ hash: string }[]>`
         SELECT coalesce(current_setting('app.join_token_hash', true), '') AS hash`;
-      expect(row?.hash).toBe('');
+      expect(rows[0]?.hash).toBe('');
     });
   });
 
