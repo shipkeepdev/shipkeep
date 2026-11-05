@@ -137,6 +137,8 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
   - [ ] **M2.3c** Tenant transaction context, repositories and audited commands with concurrent last-owner protection.
     - [x] **M2.3c1** Transaction-local tenant context, restricted runtime-role checks and pooled/nested/concurrent transaction tests.
     - [ ] **M2.3c2** Runtime-role provisioning, account-bound organization discovery and tenant repositories.
+      - [x] **M2.3c2a** Separate runtime/migration credentials, restricted grants, queue upgrade preservation and full-app role acceptance.
+      - [ ] **M2.3c2b** Account-bound organization discovery and scoped tenant repositories.
     - [ ] **M2.3c3** Audited organization/project/environment commands and rollback acceptance.
     - [ ] **M2.3c4** Membership/binding commands, live authority and privilege-change session invalidation.
   - [ ] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.

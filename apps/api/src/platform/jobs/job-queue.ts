@@ -12,6 +12,8 @@ export class JobQueue extends PgBoss implements OnModuleInit, OnModuleDestroy {
     super({
       connectionString: config.get('DATABASE_URL').expose(),
       schema: 'shipkeep_jobs',
+      // Provisioned by migrations; the runtime login cannot create database schemas.
+      createSchema: false,
       max: 5,
     });
     // Library errors may carry driver parameters. Persist/log only an opaque operational signal.
