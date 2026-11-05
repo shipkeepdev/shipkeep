@@ -12,14 +12,19 @@ import { parseConfig, type ParsedConfig } from '../../../platform/config/config.
 import { ProblemDetailsFilter } from '../../../platform/http/problem-details.filter';
 import { IDENTITY_THROTTLE, type IdentityThrottle } from '../application/identity-throttle';
 import { SessionCommands } from '../application/session-commands';
+import { ApiTokenAuthentication } from '../application/api-token-authentication';
 import { AuthenticationError } from '../domain/identity-policy';
 
 import { AllowAnonymous, IdentityGuard } from './identity.guard';
+import { AllowApiToken } from './api-token-access';
 import { IdentityAttemptLimit, IdentityRateGuard } from './identity-rate.guard';
-import { type IdentityRequest, principal } from './session-http';
+import { authenticatedPrincipal, type IdentityRequest, principal } from './session-http';
 
 @Controller('fixture')
 class FixtureController {
+  @Post('token') @AllowApiToken('profile.read') tokenWrite(@Req() input: IdentityRequest) {
+    return { kind: authenticatedPrincipal(input).kind };
+  }
   @Get('public') @AllowAnonymous() publicRead() {
     return { ok: true };
   }
@@ -50,6 +55,7 @@ describe('identity HTTP guards', () => {
     ),
   );
   const authenticate = vi.fn<SessionCommands['authenticate']>();
+  const authenticateToken = vi.fn<ApiTokenAuthentication['authenticate']>();
   const acquire = vi.fn<IdentityThrottle['acquire']>();
   const http = () => request(app.getHttpServer() as Server);
 
@@ -59,6 +65,7 @@ describe('identity HTTP guards', () => {
       providers: [
         { provide: AppConfig, useValue: config },
         { provide: SessionCommands, useValue: { authenticate } },
+        { provide: ApiTokenAuthentication, useValue: { authenticate: authenticateToken } },
         { provide: IDENTITY_THROTTLE, useValue: { acquire } },
         { provide: APP_GUARD, useClass: IdentityGuard },
         { provide: APP_GUARD, useClass: IdentityRateGuard },
@@ -158,6 +165,34 @@ describe('identity HTTP guards', () => {
       .send({ email: 'Person@EXAMPLE.com' })
       .expect(201);
     expect(acquire).toHaveBeenCalledWith('login', expect.any(String), 'person@example.com');
+  });
+
+  it('allows explicit bearer mutations without ambient CSRF credentials and keeps session checks', async () => {
+    const session = await authenticate(new Secret(value));
+    authenticate.mockClear();
+    authenticateToken.mockResolvedValue({
+      user: session.user,
+      token: {
+        id: 'api-token-id',
+        userId: session.user.id,
+        name: 'Fixture',
+        tokenHash: 'hash',
+        scopes: [{ permission: 'profile.read' }],
+        securityVersion: 1,
+        createdAt: new Date(),
+        expiresAt: session.session.expiresAt,
+        revokedAt: null,
+        lastUsedAt: null,
+      },
+    });
+    const response = await http()
+      .post('/fixture/token')
+      .set('Authorization', `Bearer ${value}`)
+      .expect(201);
+    expect(response.body).toEqual({ kind: 'api_token' });
+    expect(authenticate).not.toHaveBeenCalled();
+    expect(authenticateToken).toHaveBeenCalledWith(expect.any(Secret), 'profile.read', {});
+    await http().post('/fixture/token').set('Cookie', cookie).expect(403);
   });
 
   it('rejects ambiguous cookies and never falls back from a bearer header to a session', async () => {

@@ -104,7 +104,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
       - [ ] **M2.2d4c** Bearer authentication, per-token limits and HTTP acceptance tests.
         - [x] **M2.2d4c1** Credential authentication, live owner-policy intersection and API traffic quotas.
         - [ ] **M2.2d4c2** Session-only token management, default-deny bearer guard and HTTP acceptance tests.
-          - [ ] **M2.2d4c2a** Default-deny bearer guard, shared traffic limits and profile-read HTTP acceptance.
+          - [x] **M2.2d4c2a** Default-deny bearer guard, shared traffic limits and profile-read HTTP acceptance.
           - [ ] **M2.2d4c2b** Session-only token management endpoints, encrypted retries and generated contract.
   - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.

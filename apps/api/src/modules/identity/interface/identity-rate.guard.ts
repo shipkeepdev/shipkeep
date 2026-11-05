@@ -2,7 +2,6 @@ import {
   type CanActivate,
   type CustomDecorator,
   type ExecutionContext,
-  HttpException,
   Inject,
   Injectable,
   SetMetadata,
@@ -15,6 +14,7 @@ import { normalizeEmail } from '../domain/identity-policy';
 import type { IdentityAttempt } from '../domain/throttle-policy';
 
 import { clientIp, type IdentityRequest } from './session-http';
+import { enforceThrottle } from './throttle-response';
 
 const ATTEMPT = 'shipkeep:identity:attempt';
 export function IdentityAttemptLimit(attempt: IdentityAttempt): CustomDecorator {
@@ -41,16 +41,7 @@ export class IdentityRateGuard implements CanActivate {
       clientIp(request),
       request.identity?.userId ?? subject(request.body),
     );
-    response.setHeader('RateLimit-Limit', decision.limit);
-    response.setHeader('RateLimit-Remaining', decision.remaining);
-    response.setHeader(
-      'RateLimit-Reset',
-      Math.max(0, Math.ceil((decision.resetAt.getTime() - Date.now()) / 1000)),
-    );
-    if (!decision.allowed) {
-      response.setHeader('Retry-After', decision.retryAfterSeconds);
-      throw new HttpException('Too many authentication attempts. Try again later.', 429);
-    }
+    enforceThrottle(response, decision);
     return true;
   }
 }
