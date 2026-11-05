@@ -20,7 +20,7 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM shipkeep_runtime;
 GRANT SELECT,INSERT,UPDATE,DELETE ON
   users,user_sessions,identity_tokens,identity_throttles,identity_replays,user_mfa,recovery_codes,api_tokens,
   organizations,memberships,projects,environments,role_bindings,
-  nodes,node_certificates,join_tokens TO shipkeep_runtime;
+  nodes,node_certificates,join_tokens,secrets TO shipkeep_runtime;
 -- Single-use state only moves forward; rows are never deleted by the API.
 GRANT SELECT,INSERT,UPDATE ON confirmation_tokens,agent_actions TO shipkeep_runtime;
 -- Append-only from the API: audit history, and wrapped key material that is never rewritten

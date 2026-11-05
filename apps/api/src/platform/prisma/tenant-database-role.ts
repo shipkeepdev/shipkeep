@@ -14,10 +14,10 @@ export async function assertTenantDatabaseRole(client: Prisma.TransactionClient)
       WHERE n.nspname='public' AND c.relkind='r'
         AND c.relname IN ('organizations','memberships','projects','environments','role_bindings',
           'nodes','node_certificates','join_tokens','audit_events',
-          'confirmation_tokens','agent_actions')
+          'confirmation_tokens','agent_actions','secrets')
     )
     SELECT
-      (SELECT count(*)=11 AND bool_and(relrowsecurity AND relforcerowsecurity) FROM tenant_tables)
+      (SELECT count(*)=12 AND bool_and(relrowsecurity AND relforcerowsecurity) FROM tenant_tables)
       AND pg_catalog.current_setting('row_security')='on'
       AND NOT EXISTS (
         SELECT 1 FROM pg_catalog.pg_roles r
