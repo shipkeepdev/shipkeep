@@ -59,12 +59,20 @@ export class PrismaIdentityStore implements IdentityStore {
       where: { id },
       data: {
         passwordHash: hash.expose(),
-        securityVersion: { increment: 1 },
         updatedAt: now,
       },
     });
+    await this.advanceSecurityVersion(id, now);
+  }
+
+  async advanceSecurityVersion(id: string, now: Date): Promise<number> {
+    const user = await this.database.client.user.update({
+      where: { id },
+      data: { securityVersion: { increment: 1 }, updatedAt: now },
+    });
     await this.revokeSessions(id, now);
     await this.invalidateTokens(id, 'reset', now);
+    return user.securityVersion;
   }
 
   async insertToken(token: IdentityTokenRecord): Promise<void> {
