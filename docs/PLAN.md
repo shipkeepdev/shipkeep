@@ -79,7 +79,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - [x] **M2.2b3** Identity repositories, per-user mutation locks, session invalidation and atomic token consumption.
   - [ ] **M2.2c** Signup, verification, login, sessions, CSRF, reset and brute-force protection.
     - [x] **M2.2c1** Audited account/session commands, single-use email/reset flows, login rotation and concurrent password-reset protection.
-    - [ ] **M2.2c2** Persistent request limits and progressive login delays.
+    - [x] **M2.2c2** Persistent request limits and progressive login delays shared across API instances.
     - [ ] **M2.2c3** Private email delivery with bounded retries.
     - [ ] **M2.2c4** REST endpoints, secure cookies, origin checks, CSRF and HTTP acceptance tests.
   - [ ] **M2.2d** TOTP enrollment/recovery and scoped API tokens.
