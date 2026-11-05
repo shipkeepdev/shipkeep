@@ -71,6 +71,16 @@ export class MemoryNodeStore implements NodeStore {
       this.nodes.find((node) => node.organizationId === organizationId && node.id === id),
     );
   }
+  remove(organizationId: string, id: string): Promise<boolean> {
+    const index = this.nodes.findIndex(
+      (node) =>
+        node.organizationId === organizationId && node.id === id && node.status !== 'removed',
+    );
+    const node = this.nodes.at(index);
+    if (index < 0 || !node) return Promise.resolve(false);
+    this.nodes[index] = { ...node, status: 'removed' };
+    return Promise.resolve(true);
+  }
   list(organizationId: string, beforeId?: string): Promise<NodeRecord[]> {
     return Promise.resolve(
       this.nodes

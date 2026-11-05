@@ -51,3 +51,19 @@ export function installationKeyCreated(input: {
     payload: { kind: input.kind, publicKeyFingerprint: input.publicKeyFingerprint },
   });
 }
+
+export function nodeRemoved(input: {
+  organizationId: string;
+  nodeId: string;
+  name: string;
+  confirmationId: string;
+  actor: Actor;
+}): DomainEvent {
+  return createEvent({
+    type: 'fleet.node.removed',
+    organizationId: input.organizationId,
+    actor: input.actor,
+    target: { type: 'node', id: input.nodeId },
+    payload: { name: input.name, confirmationId: input.confirmationId },
+  });
+}
