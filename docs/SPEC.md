@@ -198,6 +198,14 @@ The agent also enforces these rules:
 - `secrets_as_files` is refused until the tmpfs writer exists. Secret values are only sent to the local daemon as environment variables.
 - Start, stop and remove act only on managed containers, referenced by full id or `sk-` name, never by id prefix. They are idempotent: stopping or removing a missing container is done; starting one fails. Removing a container's volumes needs a `container.remove` confirmation for that container, spent in a non-retryable first step. A token without `remove_volumes` is refused.
 
+Routes (`agent/internal/caddy`, ADR 0005) are typed JSON sent to Caddy's admin API on its Unix socket.
+
+- **Configuration:** the agent owns one `shipkeep` server listening on `:80` and `:443`. It creates only the deepest missing configuration level and never calls `/load`, which would also reset the admin endpoint. Each route is the Caddy object `sk-route-<route_id>`: replaced in place with `PATCH /id/…`, or appended.
+- **Hosts:** 1–32 lowercase DNS names (a leading `*.` is allowed); IP addresses and `localhost` are refused.
+- **Upstreams:** 1–64 private IP `address:port` literals (Docker or WireGuard networks only), with weights 1–100 mapped to weighted round robin.
+- **TLS:** `TLS_MODE_OFF` adds the hosts to the server's `automatic_https.skip` list. DNS-01 is refused until a provider is configured.
+- **Switch-then-drain:** `UpsertRoute` switches upstreams atomically and, when it replaced an existing route, waits the drain timeout (default 30 s, at most 5 min) before succeeding, so stopping the old instance comes after draining. `RemoveRoute` also drains after removal.
+
 `HealthCheck` probes a managed container from the agent:
 
 - **Target:** its private network address only, never loopback, link-local (for example cloud metadata) or public addresses. The port is the requested TCP port, or for HTTP the single exposed TCP port.
