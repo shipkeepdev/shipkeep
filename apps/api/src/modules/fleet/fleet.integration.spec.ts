@@ -20,6 +20,7 @@ import {
   importPublicKey,
   SIGNING_ALGORITHM,
 } from './infrastructure/ca/x509';
+import { POSTGRES_TEST_IMAGE } from '../../testing/postgres-image';
 
 // Distinct from the organization used by the audit integration test: the database may be shared.
 const org = '0192f0c0-0000-7000-8000-0000000000ab';
@@ -46,7 +47,7 @@ describe('fleet enrollment against PostgreSQL', () => {
 
   beforeAll(async () => {
     if (!process.env['DATABASE_URL']) {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(POSTGRES_TEST_IMAGE).start();
       process.env['DATABASE_URL'] = container.getConnectionUri();
     }
     // Shared CI database: start from an empty schema so this file's KEK matches every row.

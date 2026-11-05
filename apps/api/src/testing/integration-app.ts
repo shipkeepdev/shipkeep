@@ -10,6 +10,7 @@ import { PostgreSqlContainer } from '@testcontainers/postgresql';
 import { applyMigrations } from './apply-migrations';
 import { resetDatabase } from './reset-database';
 import { runtimeDatabase } from './runtime-database';
+import { POSTGRES_TEST_IMAGE } from './postgres-image';
 
 /** Integration files run serially and must only receive a disposable DATABASE_URL. */
 export async function integrationApp(
@@ -24,7 +25,7 @@ export async function integrationApp(
   const container =
     process.env['DATABASE_URL'] && !options.isolatedDatabase
       ? undefined
-      : await new PostgreSqlContainer('postgres:17').start();
+      : await new PostgreSqlContainer(POSTGRES_TEST_IMAGE).start();
   const directory = await mkdtemp(join(tmpdir(), 'shipkeep-identity-test-'));
   const previous = {
     DATABASE_URL: process.env['DATABASE_URL'],
