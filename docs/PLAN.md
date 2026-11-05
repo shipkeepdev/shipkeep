@@ -142,6 +142,9 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
         - [x] **M2.3c2b1** Account-scoped discovery policies, mutually exclusive transaction contexts and restricted-login isolation tests.
         - [x] **M2.3c2b2** Tenant authorization repository and live resource-authority queries; mutation repositories land with their audited commands in M2.3c3/c4.
     - [ ] **M2.3c3** Audited organization/project/environment commands and rollback acceptance.
+      - [x] **M2.3c3a** Pure resource-setting validation, safe defaults and scoped settings permissions.
+      - [ ] **M2.3c3b** Audited organization creation/settings, creator ownership and session rotation.
+      - [ ] **M2.3c3c** Audited project/environment creation/settings and filtered catalog queries.
     - [ ] **M2.3c4** Membership/binding commands, live authority and privilege-change session invalidation.
   - [ ] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.
   - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.

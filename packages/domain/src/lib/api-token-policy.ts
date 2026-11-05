@@ -4,15 +4,18 @@ import { InvalidInputError } from './errors.js';
 export const PERMISSIONS = [
   'profile.read',
   'organization.read',
+  'organization.update',
   'organization.delete',
   'billing.manage',
   'member.manage',
   'node.manage',
   'project.read',
   'project.create',
+  'project.update',
   'project.delete',
   'environment.read',
   'environment.create',
+  'environment.update',
   'environment.delete',
   'deploy.run',
   'secret.write',
@@ -119,13 +122,13 @@ export function assertApiTokenExpiry(expiresAt: Date, now: Date): void {
 
 function resourceId(value: unknown): string | undefined {
   if (value === undefined) return undefined;
-  if (typeof value !== 'string' || !UUID.test(value)) throw invalidScopes();
+  if (typeof value !== 'string' || value.length !== 36 || !UUID.test(value)) throw invalidScopes();
   return value;
 }
 function validContext(value: ResourceContext): boolean {
   return (
     [value.organizationId, value.projectId, value.environmentId].every(
-      (id) => id === undefined || UUID.test(id),
+      (id) => id === undefined || (typeof id === 'string' && id.length === 36 && UUID.test(id)),
     ) &&
     (value.projectId === undefined || value.organizationId !== undefined) &&
     (value.environmentId === undefined || value.projectId !== undefined)
