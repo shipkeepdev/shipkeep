@@ -301,7 +301,39 @@ export type paths = {
         };
         readonly get: operations["members"];
         readonly put?: never;
-        readonly post?: never;
+        readonly post: operations["add"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/members/{membershipId}/remove": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["remove"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/members/{membershipId}/role": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["setRole"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -472,6 +504,19 @@ export type paths = {
 export type webhooks = Record<string, never>;
 export type components = {
     schemas: {
+        readonly AddMemberDto: {
+            /**
+             * Format: email
+             * @example person@example.com
+             */
+            readonly email: string;
+            /** Format: password */
+            readonly password: string;
+            readonly recovery?: string;
+            /** @enum {string} */
+            readonly role: "owner" | "admin" | "member";
+            readonly totp?: string;
+        };
         readonly ApiScopeDto: {
             /** Format: uuid */
             readonly environmentId?: string;
@@ -654,6 +699,34 @@ export type components = {
             /** Format: uuid */
             readonly nextCursor: string | null;
         };
+        readonly MemberRoleDto: {
+            /** Format: password */
+            readonly password: string;
+            readonly recovery?: string;
+            /** @enum {string} */
+            readonly role: "owner" | "admin" | "member";
+            readonly totp?: string;
+        };
+        readonly MembershipDto: {
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly organizationId: string;
+            /** @enum {string} */
+            readonly orgRole: "owner" | "admin" | "member";
+            /** Format: date-time */
+            readonly updatedAt: string;
+            /** Format: uuid */
+            readonly userId: string;
+        };
+        readonly MembershipMutationDto: {
+            /** @description Null after removal. */
+            readonly membership: components["schemas"]["MembershipDto"] | null;
+            /** @description Present only when the caller changed their own role: the caller's credentials were rotated and the new ones are set only in cookies. */
+            readonly session?: components["schemas"]["SessionDto"];
+        };
         readonly MemberViewDto: {
             readonly active: boolean;
             /** Format: date-time */
@@ -763,6 +836,12 @@ export type components = {
             readonly status: "ok";
         };
         readonly ReauthenticateMfaDto: {
+            /** Format: password */
+            readonly password: string;
+            readonly recovery?: string;
+            readonly totp?: string;
+        };
+        readonly RemoveMemberDto: {
             /** Format: password */
             readonly password: string;
             readonly recovery?: string;
@@ -1326,6 +1405,104 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["MemberPageDto"];
+                };
+            };
+        };
+    };
+    readonly add: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7. Encrypted result retained for five minutes and bound to the credential. */
+                readonly "Idempotency-Key"?: string;
+                /** @description Exact API origin; required for session mutations. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof; required for session mutations. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AddMemberDto"];
+            };
+        };
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MembershipMutationDto"];
+                };
+            };
+        };
+    };
+    readonly remove: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7. Encrypted result retained for five minutes and bound to the credential. */
+                readonly "Idempotency-Key"?: string;
+                /** @description Exact API origin; required for session mutations. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof; required for session mutations. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly membershipId: string;
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RemoveMemberDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MembershipMutationDto"];
+                };
+            };
+        };
+    };
+    readonly setRole: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7. Encrypted result retained for five minutes and bound to the credential. */
+                readonly "Idempotency-Key"?: string;
+                /** @description Exact API origin; required for session mutations. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof; required for session mutations. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly membershipId: string;
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["MemberRoleDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MembershipMutationDto"];
                 };
             };
         };
