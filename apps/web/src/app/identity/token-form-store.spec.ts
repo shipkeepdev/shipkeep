@@ -84,8 +84,9 @@ describe('API-token forms', () => {
     expect(store.form.controls.password.value).toBe('');
     expect(JSON.stringify(store)).not.toContain('BBBB');
     expect(JSON.stringify(store.items())).not.toContain('BBBB');
-    vi.advanceTimersByTime(600000);
-    expect(store.credential()).toBeNull();
+    // The token is shown once by the server: no timer may hide it before acknowledgement.
+    vi.advanceTimersByTime(3600000);
+    expect(store.credential()?.token).toBe('B'.repeat(43));
   });
   it('requires current MFA proof when enabled and never sends both proof types', async () => {
     api.mfaStatus.mockResolvedValue({

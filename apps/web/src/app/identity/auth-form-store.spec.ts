@@ -80,7 +80,6 @@ describe('account forms', () => {
     expect(session.login).toHaveBeenLastCalledWith(
       { email: 'person@example.com', password, totp: '123456' },
       expect.any(String),
-      expect.any(Function),
     );
     store.configure('login');
     store.form.controls.factorKind.setValue('recovery');
@@ -89,7 +88,6 @@ describe('account forms', () => {
     expect(session.login).toHaveBeenLastCalledWith(
       { email: 'person@example.com', password, recovery: 'a'.repeat(32) },
       expect.any(String),
-      expect.any(Function),
     );
     store.configure('login');
     store.form.patchValue({ email: 'person@example.com', password });
@@ -97,7 +95,6 @@ describe('account forms', () => {
     expect(session.login).toHaveBeenLastCalledWith(
       { email: 'person@example.com', password },
       expect.any(String),
-      expect.any(Function),
     );
   });
 

@@ -168,10 +168,8 @@ export class MfaFormStore {
             ? 'Two-factor authentication is enabled.'
             : 'Your recovery codes have been replaced.',
         );
-        this.expirePrivate(
-          600000,
-          'Recovery codes are now hidden. The codes you saved remain valid.',
-        );
+        // No timer: the server shows these codes once, so they stay until the user acknowledges
+        // them or leaves the page (WCAG 2.2.1, timing adjustable).
       } else this.message.set('Two-factor authentication is disabled.');
     }
     await this.load();
