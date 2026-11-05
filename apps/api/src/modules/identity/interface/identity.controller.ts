@@ -171,7 +171,7 @@ export class IdentityController {
       userAgent: request.headers['user-agent'] ?? '',
       ...(hasSession ? { previous: readCredential(request.headers.cookie, policy.name) } : {}),
     });
-    await this.throttle.succeeded(normalizeEmail(body.email));
+    await this.throttle.succeeded(normalizeEmail(body.email), clientIp(request));
     setSessionCookies(response, grant, policy);
     return { userId: grant.userId, email: grant.email, expiresAt: grant.expiresAt.toISOString() };
   }
