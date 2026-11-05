@@ -29,7 +29,7 @@ export class IdentityRequestError extends Error {
             : status === 404
               ? 'This item is no longer available.'
               : status === 409
-                ? 'This request can no longer be replayed. Start a new request.'
+                ? 'This request conflicts with the current account state. Reload the page before trying again.'
                 : status === 429
                   ? 'Too many attempts. Wait before trying again.'
                   : status >= 500
