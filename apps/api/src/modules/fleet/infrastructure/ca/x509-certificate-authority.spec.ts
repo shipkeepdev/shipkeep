@@ -97,7 +97,10 @@ describe('X509CertificateAuthority', () => {
     expect(cert.serialNumber.toLowerCase().replace(/^0+/, '')).toBe(
       issued.serial.replace(/^0+/, ''),
     );
-    expect(issued.notAfter.getTime() - issued.notBefore.getTime()).toBe(30 * 864e5);
+    // Backdated for clock skew; the useful lifetime still runs 30 days from issuance.
+    expect(issued.notAfter.getTime() - issued.notBefore.getTime()).toBe(30 * 864e5 + 5 * 60_000);
+    expect(issued.notBefore.getTime()).toBeLessThanOrEqual(Date.now() - 4 * 60_000);
+    expect(new Date(cert.validFrom).getTime()).toBeLessThanOrEqual(Date.now() - 4 * 60_000);
   });
 
   it('issues distinct serials and keeps the node public key', async () => {
@@ -181,6 +184,8 @@ describe('X509CertificateAuthority', () => {
       expect(leaf.keyUsage).toEqual(['1.3.6.1.5.5.7.3.1']);
       expect(host === '127.0.0.1' ? leaf.checkIP(host) : leaf.checkHost(host)).toBe(host);
       expect(JSON.stringify(credentials)).not.toContain('PRIVATE KEY');
+      // Backdated so agents whose clock runs a few minutes behind still accept it.
+      expect(new Date(leaf.validFrom).getTime()).toBeLessThanOrEqual(Date.now() - 4 * 60_000);
     }
   });
 });

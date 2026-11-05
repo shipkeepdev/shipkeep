@@ -168,7 +168,7 @@ describe('EnrollNode', () => {
         facts: {},
         agentVersion: '0.1.0',
       }),
-    ).rejects.toMatchObject({ code: 'csr_too_large' });
+    ).rejects.toMatchObject({ kind: 'invalid', code: 'csr_too_large' });
     expect(tokens.records.get(second.id)?.usedAt).toBeNull();
   });
 

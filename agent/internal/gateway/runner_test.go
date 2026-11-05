@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"testing"
@@ -134,5 +135,61 @@ func TestBackoffIsBoundedAndJittered(t *testing.T) {
 	}
 	if len(values) < 2 {
 		t.Fatal("backoff has no jitter")
+	}
+}
+
+func TestRunnerRetriesSavingRenewedCredentials(t *testing.T) {
+	address, server := startGateway(t, true)
+	server.renewSoon.Store(true)
+	bundle, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := bundle.Save(dir); err != nil {
+		t.Fatal(err)
+	}
+	failures := 2
+	runner := Runner{Address: address, StateDir: dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	runner.save = func(b nodecredentials.Bundle) error {
+		if failures > 0 {
+			failures--
+			return errors.New("no space left on device")
+		}
+		return b.Save(dir)
+	}
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	renewed, err := runner.cycle(ctx, bundle)
+	if err != nil {
+		t.Fatalf("transient disk errors discarded the renewed credentials: %v", err)
+	}
+	stored, err := nodecredentials.Load(dir, "")
+	if err != nil || !stored.Key.Equal(renewed.Key) || failures != 0 {
+		t.Fatal("renewed credentials were not persisted after the disk recovered")
+	}
+}
+
+func TestRunnerFinishesRenewalWhenShutdownIsRequested(t *testing.T) {
+	address, server := startGateway(t, true)
+	server.renewSoon.Store(true)
+	bundle, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	if err := bundle.Save(dir); err != nil {
+		t.Fatal(err)
+	}
+	runner := Runner{Address: address, StateDir: dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel() // SIGTERM arrives as the renewal starts.
+	renewed, err := runner.cycle(ctx, bundle)
+	if err != nil {
+		t.Fatalf("renewal abandoned on shutdown: %v", err)
+	}
+	stored, err := nodecredentials.Load(dir, "")
+	if err != nil || !stored.Key.Equal(renewed.Key) || stored.Key.Equal(bundle.Key) {
+		t.Fatal("renewal committed by the server was not persisted before shutdown")
 	}
 }

@@ -19,6 +19,10 @@ import (
 
 var errIdentity = errors.New("gateway rejected the node identity or epoch; operator recovery is required")
 
+// renewalTimeout bounds the renewal exchange plus persistence, which must finish even when
+// shutdown is signalled: once the control plane commits a renewal, the old certificate is revoked.
+const renewalTimeout = 30 * time.Second
+
 // Runner owns one outbound stream and its reconnect/renewal lifecycle.
 type Runner struct {
 	Address  string
@@ -26,6 +30,9 @@ type Runner struct {
 	Version  string
 	Facts    *agentv1.NodeFacts
 	Logger   *slog.Logger
+
+	// save persists renewed credentials; nil means Bundle.Save. Tests inject disk failures here.
+	save func(nodecredentials.Bundle) error
 }
 
 // Run preserves local credentials during outages and never silently re-enrolls a rejected node.
@@ -83,16 +90,49 @@ func (r Runner) cycle(ctx context.Context, bundle nodecredentials.Bundle) (nodec
 			return bundle, err
 		}
 	}
-	renewed, err := Renew(ctx, client, bundle)
+	// A cancelled RPC could still commit on the server and revoke the old certificate, so the
+	// exchange is not tied to shutdown.
+	renewCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), renewalTimeout)
+	defer cancel()
+	renewed, err := Renew(renewCtx, client, bundle)
 	if err != nil {
 		return bundle, err
 	}
-	if err := renewed.Save(r.StateDir); err != nil {
-		// Renewal already revoked the old certificate. Never reconnect using it after a failed save.
-		return bundle, errIdentity
+	if err := r.persist(ctx, renewed); err != nil {
+		// Only reachable once shutdown was requested and the last write failed too. The renewed
+		// credentials are still the only valid ones: hand them back, never the revoked bundle.
+		r.Logger.Error("renewed agent certificate could not be saved; operator recovery may be required")
+		return renewed, errIdentity
 	}
 	r.Logger.Info("agent certificate renewed")
 	return renewed, nil
+}
+
+// persist keeps retrying a failed write of renewed credentials (for example a full disk) with
+// bounded backoff. The renewed bundle exists only in memory and the old one is already revoked,
+// so giving up early would force a re-enrollment. After shutdown is requested, one final write is
+// attempted.
+func (r Runner) persist(ctx context.Context, renewed nodecredentials.Bundle) error {
+	save := r.save
+	if save == nil {
+		save = func(b nodecredentials.Bundle) error { return b.Save(r.StateDir) }
+	}
+	for attempt := 0; ; attempt++ {
+		err := save(renewed)
+		if err == nil {
+			return nil
+		}
+		if ctx.Err() != nil {
+			return fmt.Errorf("save renewed credentials during shutdown: %w", err)
+		}
+		r.Logger.Warn("saving renewed agent credentials failed; retrying", "attempt", attempt+1)
+		timer := time.NewTimer(retryDelay(min(attempt, 5)))
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+		case <-timer.C:
+		}
+	}
 }
 
 func (r Runner) session(ctx context.Context, client agentv1.AgentGatewayServiceClient, bundle nodecredentials.Bundle, renewAt time.Time) error {
