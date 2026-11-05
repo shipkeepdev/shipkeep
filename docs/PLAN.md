@@ -29,8 +29,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
 1. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
-2. M1.4a, M1.4b and M1.4c (container actions).
-3. M1.5 (Caddy routes). It can start in parallel with the items above, because its dependencies are met.
+2. M1.5 (Caddy routes). It can start in parallel with the items above, because its dependencies are met.
 
 **Before going public** (the maintainer changes the visibility; ADR 0016):
 
@@ -114,17 +113,17 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - [x] **M1.3c** Resumable/compensating step executor, transition notifications, daemon ownership and interruption tests.
   - SQLite schema from SPEC 3.4 and 3.5, journal API, resume and compensation framework, idempotency keys.
   - Acceptance: tests kill the agent mid-action (simulated) and verify resume or compensation for each step type.
-- [ ] **M1.4 Container actions** (A). Depends: M1.3. Split:
+- [x] **M1.4 Container actions** (A). Depends: M1.3. Split:
   - [x] **M1.4a** Action dispatch over `Connect`: `ActionRequest` journaled before execution, `ActionUpdate` progress, `CancelAction`, control-plane dispatcher and audit, idempotent redelivery after reconnect.
     - [x] **M1.4a1** Agent side: validated, journaled dispatch with progress updates, idempotent redelivery and cancellation; handlers registered per kind.
     - [x] **M1.4a2** Control-plane side: durable per-node action queue, delivery over the stream, update persistence, redelivery after reconnect, audit.
   - [x] **M1.4b** Docker Engine SDK adapter: `EnsureNetwork`, `PullImage`, `EnsureVolume`, `RemoveVolume` (confirmation token verified with the enrollment public key, `jti` single use).
     - [x] **M1.4b1** Typed Engine API client; `EnsureNetwork`, `PullImage`, `EnsureVolume` handlers with malicious-input and fuzz tests.
     - [x] **M1.4b2** Go confirmation-token verifier (SPEC 3.6) and `RemoveVolume`.
-  - [ ] **M1.4c** `CreateContainer`, `StartContainer`, `StopContainer`, `RemoveContainer`, `HealthCheck`, `RunReleaseTask`, with validator fuzz tests.
+  - [x] **M1.4c** `CreateContainer`, `StartContainer`, `StopContainer`, `RemoveContainer`, `HealthCheck`, `RunReleaseTask`, with validator fuzz tests.
     - [x] **M1.4c1** Container spec validation and `CreateContainer` with confined defaults, malicious-input and fuzz tests.
     - [x] **M1.4c2** `StartContainer`, `StopContainer`, `RemoveContainer` (confirmation when removing volumes).
-    - [ ] **M1.4c3** `HealthCheck` and `RunReleaseTask`.
+    - [x] **M1.4c3** `HealthCheck` and `RunReleaseTask`.
   - `EnsureNetwork`, `PullImage`, `CreateContainer`, `StartContainer`, `StopContainer`, `RemoveContainer`, `EnsureVolume`, `RemoveVolume`, `HealthCheck`, `RunReleaseTask` through the Docker Engine SDK, with all validations from SPEC 3.3.
   - Acceptance: integration tests against real Docker; malicious-input tests (privileged, host mounts, path traversal, oversized fields) all rejected; fuzz tests for validators.
 - [ ] **M1.5 Caddy route management** (A). Depends: M1.3
