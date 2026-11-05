@@ -198,6 +198,14 @@ The agent also enforces these rules:
 - `secrets_as_files` is refused until the tmpfs writer exists. Secret values are only sent to the local daemon as environment variables.
 - Start, stop and remove act only on managed containers, referenced by full id or `sk-` name, never by id prefix. They are idempotent: stopping or removing a missing container is done; starting one fails. Removing a container's volumes needs a `container.remove` confirmation for that container, spent in a non-retryable first step. A token without `remove_volumes` is refused.
 
+`HealthCheck` probes a managed container from the agent:
+
+- **Target:** its private network address only, never loopback, link-local (for example cloud metadata) or public addresses. The port is the requested TCP port, or for HTTP the single exposed TCP port.
+- **HTTP:** a `GET` that never follows redirects; 2xx and 3xx count as healthy. The path is absolute and not network-path, printable, at most 2048 bytes.
+- **Timing:** interval 1 s–1 min, timeout no longer than the interval, start period up to 10 min, thresholds 1–10, overall deadline up to 30 min.
+
+`RunReleaseTask` runs a validated container spec once, with the restart policy forced to `no`. It creates the container, then starts it, waits for it to exit within its timeout (1 s–1 h) and removes it, all in one non-retryable step, so the exit code is the final result. On timeout the task is killed and removed. After a crash it is compensated (removed), never run again.
+
 Each container is labelled with its name and an `sk.spec` fingerprint of its spec, computed with secret values replaced by their versions. A replay reuses the same container; a different spec under the same name is refused.
 
 The agent only adopts or changes resources that carry its `sk.managed=true` label; a same-named unmanaged network or volume is refused. Image pulls accept only digest-pinned references, plus optional credentials that are short-lived and scoped to the image's own registry. The `sk.` label namespace is reserved for the agent.

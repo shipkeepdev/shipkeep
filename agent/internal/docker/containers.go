@@ -12,8 +12,14 @@ type Container struct {
 	ID     string `json:"Id"`
 	Name   string `json:"Name"`
 	Config struct {
-		Labels map[string]string `json:"Labels"`
+		Labels       map[string]string   `json:"Labels"`
+		ExposedPorts map[string]struct{} `json:"ExposedPorts"`
 	} `json:"Config"`
+	NetworkSettings struct {
+		Networks map[string]struct {
+			IPAddress string `json:"IPAddress"`
+		} `json:"Networks"`
+	} `json:"NetworkSettings"`
 	State struct {
 		Running  bool   `json:"Running"`
 		Status   string `json:"Status"`
@@ -109,4 +115,16 @@ func (c *Client) StopContainer(ctx context.Context, id string, timeout int) erro
 func (c *Client) RemoveContainer(ctx context.Context, id string, volumes bool) error {
 	query := url.Values{"force": {"true"}, "v": {strconv.FormatBool(volumes)}}
 	return c.do(ctx, http.MethodDelete, "/containers/"+url.PathEscape(id)+"?"+query.Encode(), nil, nil)
+}
+
+// WaitContainer blocks until the container stops and returns its exit code.
+func (c *Client) WaitContainer(ctx context.Context, id string) (int, error) {
+	var result struct {
+		StatusCode int `json:"StatusCode"`
+	}
+	request := c.long
+	if err := c.request(ctx, request, http.MethodPost, "/containers/"+url.PathEscape(id)+"/wait?condition=not-running", nil, &result); err != nil {
+		return 0, err
+	}
+	return result.StatusCode, nil
 }
