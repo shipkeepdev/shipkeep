@@ -28,7 +28,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
-1. M2.3d4c, then M2.3d4d (binding HTTP, route/role matrix).
+1. M2.3d4d (route/role matrix and tenant acceptance checkpoint).
 2. M2.3g1, then M2.3g2 (row-level security for fleet and audit tables). They must land before M2.4 and M2.7 expose any reads.
 3. M2.3e (project-owned tokens).
 4. M2.7 (fleet administration endpoints).
@@ -228,7 +228,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
     - [ ] **M2.3d4** Membership/binding HTTP endpoints and generated route/role acceptance matrix.
       - [x] **M2.3d4a** Session-only membership and effective-binding directories with scoped pagination.
       - [x] **M2.3d4b** Membership mutation HTTP, fresh proof, credential rotation and encrypted retries.
-      - [ ] **M2.3d4c** Project/environment binding mutation HTTP and privilege-change acceptance.
+      - [x] **M2.3d4c** Project/environment binding mutation HTTP and privilege-change acceptance.
       - [ ] **M2.3d4d** Generated registered-route/role matrix and full tenant acceptance checkpoint.
   - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
   - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.
