@@ -143,7 +143,14 @@ export class AgentActions {
       const expired = await this.store.expire(identity.organizationId, identity.nodeId, now);
       if (expired.length)
         await this.events.publish(
-          expired.map((record) => this.event('expired', record, { kind: 'system' }, {})),
+          expired.map((record) =>
+            this.event(
+              'expired',
+              record,
+              { kind: 'system' },
+              { idempotencyKey: record.idempotencyKey },
+            ),
+          ),
         );
       const records = await this.store.deliverable(identity.organizationId, identity.nodeId, now);
       return records
@@ -196,6 +203,8 @@ export class AgentActions {
             { kind: 'node', id: identity.nodeId },
             {
               step: changed.step,
+              // Owners of the action (the deployment pipeline) wake up on its key.
+              idempotencyKey: changed.idempotencyKey,
               ...(changed.error ? { error: changed.error } : {}),
             },
           ),

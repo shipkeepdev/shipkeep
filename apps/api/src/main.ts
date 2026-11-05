@@ -11,6 +11,7 @@ import { Logger } from 'nestjs-pino';
 
 import { createApp } from './bootstrap';
 import { AgentGateway } from './modules/fleet/interface/agent-gateway';
+import { DeploymentWorker } from './modules/deployments/infrastructure/deployment-worker';
 import { AppConfig } from './platform/config/app-config';
 import { API_VERSION } from './platform/health/health.controller';
 import { API_PREFIX } from './platform/http/constants';
@@ -39,6 +40,7 @@ async function main(): Promise<void> {
     if (webDirectory) await installWebApp(app, webDirectory);
     await app.init();
     await app.get(AgentGateway).start();
+    await app.get(DeploymentWorker).start();
     await app.listen(port);
   } catch (error: unknown) {
     await app.close();

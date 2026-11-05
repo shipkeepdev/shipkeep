@@ -1,4 +1,5 @@
-import type { DeploymentState } from '@shipkeep/domain';
+import type { Actor, DeploymentState } from '@shipkeep/domain';
+import type { ActionRequest } from '@shipkeep/proto-ts';
 
 import type { Application } from '../../apps/domain/application';
 import type { Allocation, StepOutcome } from '../domain/pipeline';
@@ -25,6 +26,8 @@ export interface DeploymentStore {
     now: Date,
   ): Promise<DeploymentRecord | undefined>;
   find(applicationId: string, deploymentId: string): Promise<DeploymentRecord | undefined>;
+  /** The deployment by id alone, for the pipeline worker (tenant context only). */
+  byId(deploymentId: string): Promise<DeploymentRecord | undefined>;
   list(applicationId: string): Promise<DeploymentRecord[]>;
   releases(applicationId: string): Promise<Release[]>;
   /** Stores the deployment's new state if it is still in `expected`; false when it moved meanwhile. */
@@ -62,6 +65,38 @@ export interface PipelineStore {
   nodes(organizationId: string): Promise<NodeView[]>;
   /** Placed replicas summed per node id. */
   load(organizationId: string): Promise<Map<string, NodeLoad>>;
+  application(applicationId: string): Promise<PipelineApplication | undefined>;
+}
+
+/** The application fields the pipeline needs. */
+export interface PipelineApplication {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly projectId: string;
+  readonly environmentId: string;
+  readonly name: string;
+}
+
+export const DEPLOYMENT_WAKER = Symbol('DeploymentWaker');
+/**
+ * Schedules a pipeline run for a deployment. Inside a transaction the job commits with it; at
+ * most one run is pending per deployment.
+ */
+export interface DeploymentWaker {
+  wake(organizationId: string, deploymentId: string, delaySeconds?: number): Promise<void>;
+}
+
+export const ACTION_QUEUE = Symbol('ActionQueue');
+/** The fleet's durable agent action queue (AgentActions), idempotent by node and key. */
+export interface ActionQueue {
+  enqueue(input: {
+    organizationId: string;
+    nodeId: string;
+    idempotencyKey: string;
+    action: ActionRequest['action'];
+    deadline: Date;
+    actor: Actor;
+  }): Promise<{ id: string; created: boolean }>;
 }
 
 export const IMAGE_RESOLVER = Symbol('ImageResolver');

@@ -13,6 +13,7 @@ import { INSTALLATION_KEY_STORE } from './modules/fleet/infrastructure/ca/instal
 import { DATA_KEY_STORE } from './platform/crypto/data-key-store';
 import { PROBLEM_MEDIA_TYPE } from './platform/http/problem-details';
 import { PrismaService } from './platform/prisma/prisma.service';
+import { DeploymentQueue } from './modules/deployments/infrastructure/deployment-queue';
 import { JobQueue } from './platform/jobs/job-queue';
 import { MemoryDataKeyStore, MemoryInstallationKeyStore } from './testing/memory-stores';
 import { routeInventory } from './testing/route-inventory';
@@ -42,6 +43,8 @@ describe('HTTP pipeline', () => {
       .useValue({ append: () => Promise.resolve() })
       .overrideProvider(JobQueue)
       .useValue({})
+      .overrideProvider(DeploymentQueue)
+      .useValue({ wake: () => Promise.resolve() })
       .compile();
     app = configureApp(moduleRef.createNestApplication({ bufferLogs: true }));
     const prisma = app.get(PrismaService);
