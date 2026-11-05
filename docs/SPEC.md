@@ -305,6 +305,8 @@ Form submissions suppress concurrent requests and retain their retry key for an 
 
 Account forms cover signup, verification, verification resend, login and both password-reset steps. Only active fields participate in validation. Passwords retain whitespace and Unicode code points; new passwords require confirmation. Email and pasted code edges are trimmed, while login accepts either an optional authenticator code or one recovery code. Codes are never read from or written to navigation URLs. Mail-request outcomes remain generic. Successful submissions and route departure clear passwords/codes; abandoned login results cannot populate browser session state.
 
+Web routes are `/auth/login`, `/auth/register`, `/auth/verify-email`, `/auth/request-verification`, `/auth/forgot-password` and `/auth/reset-password`. Public email links `/verify-email` and `/reset-password` redirect to their matching forms. Successful login opens `/account/security`; sign-out returns to login only after server confirmation. Forms use associated labels/help/errors, an error summary, keyboard focus on route/results, optional native MFA disclosure and a content skip link. Navigation moves above the working column on narrow screens. Tailwind and Angular CDK provide the shared styles and programmatic focus primitive, following ADR 0009.
+
 - Base path `/api/v1`. OpenAPI 3.1 generated from NestJS decorators and published at `/api/v1/openapi.json`.
 - Auth: session cookie (UI, `SameSite=Strict`, CSRF token) or `Authorization: Bearer <api_token>`.
 - Errors: RFC 9457 problem details with a stable `type` URI per error.

@@ -1,0 +1,166 @@
+<section class="max-w-md" aria-labelledby="page-title">
+  <h1 #heading id="page-title" tabindex="-1">{{ copy().title }}</h1>
+  <p class="page-intro">{{ copy().description }}</p>
+
+  @if (store.success(); as success) {
+  <div #feedback class="feedback" role="status" tabindex="-1"><p>{{ success }}</p></div>
+  <div class="flex flex-wrap gap-3">
+    @if (store.mode() === 'register' || store.mode() === 'request-verification') {
+    <a class="button" routerLink="/auth/verify-email">Enter verification code</a>
+    } @else if (store.mode() === 'forgot-password') {
+    <a class="button" routerLink="/auth/reset-password">Enter reset code</a>
+    } @else {
+    <a class="button" routerLink="/auth/login">Continue to sign in</a>
+    }
+    <button type="button" class="button button-secondary" (click)="store.restart()">
+      Start again
+    </button>
+  </div>
+  } @else { @if (store.validationProblem() || store.submission.problem(); as problem) {
+  <div #feedback class="feedback" role="alert" tabindex="-1">
+    <p class="text-danger">{{ problem }}</p>
+    @if (store.submission.restartRequired()) {
+    <button type="button" class="button button-secondary mt-3" (click)="store.restart()">
+      Start again
+    </button>
+    }
+  </div>
+  }
+  <form
+    [formGroup]="store.form"
+    (ngSubmit)="submit()"
+    novalidate
+    [attr.aria-busy]="store.submission.busy()"
+  >
+    <fieldset class="min-w-0 space-y-6" [disabled]="store.submission.busy()">
+      <legend class="sr-only">{{ copy().title }}</legend>
+      @if (store.hasEmail()) {
+      <div>
+        <label for="email">Email address</label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          autocomplete="username"
+          inputmode="email"
+          autocapitalize="none"
+          spellcheck="false"
+          formControlName="email"
+          aria-describedby="email-error"
+          [attr.aria-invalid]="!!store.errorFor('email')"
+          required
+        />
+        <p id="email-error" class="field-error">{{ store.errorFor('email') }}</p>
+      </div>
+      } @if (store.hasCode()) {
+      <div>
+        <label for="code"
+          >{{ store.mode() === 'verify-email' ? 'Verification code' : 'Reset code' }}</label
+        >
+        <input
+          id="code"
+          name="code"
+          autocomplete="one-time-code"
+          autocapitalize="none"
+          spellcheck="false"
+          formControlName="code"
+          aria-describedby="code-error"
+          [attr.aria-invalid]="!!store.errorFor('code')"
+          required
+        />
+        <p id="code-error" class="field-error">{{ store.errorFor('code') }}</p>
+      </div>
+      } @if (store.hasPassword()) {
+      <div>
+        <label for="password"
+          >{{ store.mode() === 'reset-password' ? 'New password' : 'Password' }}</label
+        >
+        <input
+          id="password"
+          name="password"
+          type="password"
+          [autocomplete]="store.mode() === 'login' ? 'current-password' : 'new-password'"
+          formControlName="password"
+          aria-describedby="password-hint password-error"
+          [attr.aria-invalid]="!!store.errorFor('password')"
+          required
+        />
+        <p id="password-hint" class="hint">
+          Use 15–128 characters. Spaces and long passphrases are welcome.
+        </p>
+        <p id="password-error" class="field-error">{{ store.errorFor('password') }}</p>
+      </div>
+      } @if (store.hasConfirmation()) {
+      <div>
+        <label for="confirmation">Confirm password</label>
+        <input
+          id="confirmation"
+          name="confirmation"
+          type="password"
+          autocomplete="new-password"
+          formControlName="confirmation"
+          aria-describedby="confirmation-error"
+          [attr.aria-invalid]="!!store.errorFor('confirmation')"
+          required
+        />
+        <p id="confirmation-error" class="field-error">{{ store.errorFor('confirmation') }}</p>
+      </div>
+      } @if (store.mode() === 'login') {
+      <details #factorDetails class="border-y border-line py-3">
+        <summary class="min-h-11 content-center text-sm font-semibold">
+          Two-factor authentication
+        </summary>
+        <p class="hint mb-4">
+          If enabled on your account, enter an authenticator or recovery code.
+        </p>
+        <label for="factor-kind">Code type</label>
+        <select id="factor-kind" formControlName="factorKind">
+          <option value="totp">Authenticator code</option>
+          <option value="recovery">Recovery code</option>
+        </select>
+        <label class="mt-4" for="factor"
+          >{{ store.form.controls.factorKind.value === 'totp' ? 'Authenticator code' : 'Recovery
+          code' }}</label
+        >
+        <input
+          id="factor"
+          name="factor"
+          autocomplete="one-time-code"
+          autocapitalize="none"
+          spellcheck="false"
+          [attr.inputmode]="store.form.controls.factorKind.value === 'totp' ? 'numeric' : 'text'"
+          formControlName="factor"
+          aria-describedby="factor-error"
+          [attr.aria-invalid]="!!store.errorFor('factor')"
+        />
+        <p id="factor-error" class="field-error">{{ store.errorFor('factor') }}</p>
+      </details>
+      }
+      <button
+        class="button w-full sm:w-auto"
+        type="submit"
+        [disabled]="store.submission.busy() || !!store.submission.cooldown() || store.submission.restartRequired()"
+      >
+        {{ store.submission.busy() ? 'Working…' : copy().action }}
+      </button>
+    </fieldset>
+    @if (store.submission.cooldown()) {
+    <p class="hint tabular-nums" role="status">
+      Try again in {{ store.submission.cooldown() }} seconds.
+    </p>
+    }
+  </form>
+  }
+  <nav class="form-links" aria-label="Account help">
+    @if (store.mode() === 'login') {
+    <a routerLink="/auth/forgot-password">Forgot password?</a
+    ><a routerLink="/auth/register">Create an account</a>
+    } @else {
+    <a routerLink="/auth/login">Back to sign in</a>
+    } @if (store.mode() === 'verify-email') {
+    <a routerLink="/auth/request-verification">Send a new verification email</a> } @if (store.mode()
+    === 'reset-password') { <a routerLink="/auth/forgot-password">Request a new reset code</a> } @if
+    (store.mode() === 'forgot-password') {
+    <a routerLink="/auth/reset-password">I already have a code</a> }
+  </nav>
+</section>

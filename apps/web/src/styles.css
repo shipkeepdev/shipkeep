@@ -1,1 +1,142 @@
 /* You can add global styles to this file, and also import other style files */
+@import 'tailwindcss' source('./app');
+
+@theme {
+  --font-sans: ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #192b3b;
+  --color-muted: #526171;
+  --color-line: #c6d0d9;
+  --color-panel: #f2f5f7;
+  --color-accent: #1759ba;
+  --color-danger: #a02127;
+  --color-success: #176145;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  body {
+    @apply m-0 bg-white font-sans text-base text-ink antialiased;
+  }
+  h1 {
+    @apply mb-3 text-[1.75rem] leading-tight font-semibold text-balance;
+  }
+  h2 {
+    @apply mb-3 text-xl font-semibold;
+  }
+  p {
+    @apply leading-relaxed;
+  }
+  a {
+    @apply text-accent underline underline-offset-4;
+  }
+  a:hover {
+    @apply decoration-2;
+  }
+  a,
+  button,
+  input,
+  select,
+  summary {
+    -webkit-tap-highlight-color: transparent;
+  }
+  :focus-visible {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+  ::selection {
+    color: #192b3b;
+    background: #dceaff;
+  }
+  input,
+  select {
+    caret-color: var(--color-accent);
+  }
+  input:not([type='checkbox']),
+  select {
+    @apply block min-h-11 w-full rounded-md border border-line bg-white px-3 py-2 text-base text-ink;
+  }
+  input[aria-invalid='true'] {
+    @apply border-danger;
+  }
+  input:disabled,
+  select:disabled {
+    @apply bg-panel text-muted;
+  }
+  label {
+    @apply mb-2 block text-sm font-semibold;
+  }
+  button,
+  summary {
+    @apply cursor-pointer;
+  }
+  button:disabled {
+    @apply cursor-not-allowed;
+  }
+}
+
+@layer components {
+  .button {
+    @apply inline-flex min-h-11 items-center justify-center rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-white no-underline;
+    transition: background-color 160ms ease-out;
+  }
+  .button:hover {
+    background-color: #124895;
+  }
+  .button:active {
+    background-color: #103c7c;
+  }
+  .button:disabled {
+    @apply bg-panel text-muted;
+  }
+  .button-secondary {
+    @apply border border-line bg-white text-ink;
+  }
+  .button-secondary:hover {
+    @apply bg-panel;
+  }
+  .hint {
+    @apply mt-2 text-sm leading-relaxed text-muted;
+  }
+  .field-error {
+    @apply mt-2 text-sm text-danger;
+  }
+  .feedback {
+    @apply my-6 rounded-md border border-line bg-panel p-4 text-sm leading-relaxed;
+  }
+  .feedback:focus {
+    outline: 3px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+  .page-intro {
+    @apply mb-8 max-w-prose text-muted;
+  }
+  .form-links {
+    @apply mt-8 flex flex-wrap gap-x-6 gap-y-4 border-t border-line pt-6 text-sm;
+  }
+  .nav-link {
+    @apply flex min-h-11 items-center rounded-md px-3 py-2 text-sm text-ink no-underline;
+  }
+  .nav-link:hover {
+    @apply bg-white;
+  }
+  .nav-link[aria-current='page'] {
+    @apply bg-white font-semibold text-accent;
+  }
+  .skip-link {
+    @apply fixed top-3 left-3 z-50 -translate-y-24 rounded-md bg-white px-4 py-3;
+  }
+  .skip-link:focus {
+    @apply translate-y-0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
