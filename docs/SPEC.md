@@ -359,6 +359,14 @@ succeeded -> rolled_back (when a later rollback targets the previous release)
     - stops the new replicas that were created;
     - if the switch was interrupted, restores the previous upstreams and removes the route from nodes that only hosted new replicas;
     - does nothing once draining began, because the new release already serves.
+  - The worker (`DeploymentPipeline`, run from the pg-boss queue `deployment-run`):
+    - The `stately` policy keeps at most one queued and one active run per deployment.
+    - Deploying and cancelling send a run in the command's transaction. Every final agent action whose key belongs to a deployment wakes it, and a run that waits on agents is checked again after 15 s.
+    - A run applies decisions until the deployment waits or finishes. The image is resolved outside any transaction. Placement uses `placeReplicas` over the nodes as they are observed, and fails with each node's rejection reason when a replica does not fit.
+    - Steps are enqueued with the system actor and a one-hour deadline. Transitions compare-and-swap the state, so concurrent runs cannot both apply.
+    - Audit events: `release.image_resolved`, `deployment.placed`, `deployment.advanced` (`from`, `to`) and `deployment.failed` (`reason`, `routing`).
+    - Success stops the replaced replicas. Failure and cancellation run `recovery` and stop the deployment's own replicas.
+    - The worker starts with the agent gateway in `main.ts`.
   - Steps become proto actions in `deployments/infrastructure/agent-steps.ts`. Secret values are injected there at enqueue time, so they travel only inside the encrypted action payload. A full pipeline run is kept as golden vectors (`agent/internal/actions/testdata/control-plane-actions.txt`), and a Go test plans each one with the agent's own handlers, so the planner and the agent validators cannot drift apart.
   - Containers are named `sk-<name[0:24]>-<application id suffix>-r<release>-<replica|task>`, on the network `sk-env-<environment id>`. They carry the labels `shipkeep.application`, `shipkeep.release` and `shipkeep.deployment`; secrets are listed by name, and the worker injects their values.
 
