@@ -38,6 +38,13 @@ blockExoticSubdeps: true
 overrides:
   # CVE-2026-113872: DoS via aborted request during async file filtering (via @nestjs/platform-express).
   multer: '>=2.5.0'
+  # Dependabot advisories on development tooling only (nothing below ships in the control plane).
+  # undici < 7.30.1, several high/medium advisories (via nx).
+  'undici@>=7.0.0 <7.30.1': 7.30.1
+  # vite 8.3.0 to 8.3.2, dev-server advisories (via @angular/build).
+  'vite@>=8.3.0 <8.3.3': 8.3.5
+  # uuid < 11.1.1 (via sockjs in webpack-dev-server); uuid 11 keeps the CommonJS v4 export it uses.
+  'sockjs>uuid': 11.1.1
 
 patchedDependencies:
   # Type declarations only: preserve readonly arrays/tuples until upstream fixes #2615.
