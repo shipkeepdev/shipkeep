@@ -420,6 +420,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}/remove": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["removeNode"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects": {
         readonly parameters: {
             readonly query?: never;
@@ -1133,6 +1149,10 @@ export type components = {
             readonly password: string;
             readonly recovery?: string;
             readonly totp?: string;
+        };
+        readonly RemoveNodeDto: {
+            /** @description Confirmation token for `node.remove` on this node (SPEC 3.6). */
+            readonly confirmation: string;
         };
         readonly RequestConfirmationDto: {
             /** @enum {string} */
@@ -1941,6 +1961,35 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["NodePageDto"];
                 };
+            };
+        };
+    };
+    readonly removeNode: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Required for session requests. */
+                readonly Origin?: string;
+                /** @description Required for session requests. */
+                readonly "X-Shipkeep-CSRF"?: string;
+            };
+            readonly path: {
+                readonly nodeId: string;
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RemoveNodeDto"];
+            };
+        };
+        readonly responses: {
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
