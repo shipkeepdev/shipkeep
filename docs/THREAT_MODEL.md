@@ -78,6 +78,8 @@ Build containers (untrusted code) inside rootless BuildKit
 
 - The agent journal stores hashes instead of action payloads and bounded outcome metadata instead of raw output/errors. Private SQLite files, an exclusive process lock, durable transactions and revision checks prevent concurrent execution or checkpoint replacement. Tests cover conflicting replays, duplicate submissions and restart persistence.
 
+- A wrong CA fingerprint, rogue CA, hostname mismatch or expired server certificate prevents any enrollment RPC and join-token disclosure. Bootstrap uses a custom verifier only for a payload-free TLS probe; all application traffic uses standard TLS verification against the verified root. Tests exercise real Go TLS/gRPC servers and token-echoing error responses.
+
 - Agent credential loading rejects symlinks, oversized files, loose permissions, key/certificate mismatches and tenant/node identity substitutions. Keys use the redacting Go `Secret` wrapper; only the explicit atomic persistence boundary writes private material.
 
 - Gateway enrollment shares the TLS listener with protected RPCs: TLS requests (but does not require) a client certificate so a fresh agent can enroll. Application-level authentication is default-deny for every RPC except `Enroll`, derives identity only from the verified TLS peer, and checks the serial against the database on every call. TLS and PostgreSQL integration tests cover missing and unregistered certificates, revoked serials on reused connections, spoofed identity headers, CA trust and hostname verification. Streaming handlers remain unavailable until their lifecycle and revocation-disconnection tests land in M1.2c.

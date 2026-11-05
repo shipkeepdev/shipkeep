@@ -131,7 +131,7 @@ compose:
 ### 3.2 Enrollment
 
 - `Enroll(EnrollRequest{join_token, csr_pem, facts}) returns EnrollResponse{cert_pem, ca_pem, node_id, wireguard_ip, lease_epoch, confirmation_public_key}`. Unary call, server-side TLS only (no client cert yet).
-- Trust on first contact: the install command shown in the UI contains the SHA-256 fingerprint of the installation CA (`--ca-fingerprint`). Before sending the join token, the agent checks that the gateway's certificate chains to a CA with that fingerprint, then pins that CA.
+- Trust on first contact: the install command shown in the UI contains the SHA-256 fingerprint of the installation CA (`--ca-fingerprint`). Before sending the join token, the agent checks that the gateway's certificate chains to a CA with that fingerprint, then pins that CA. The gateway sends its leaf and CA chain during TLS. A payload-free TLS probe verifies the SHA-256 root pin, server certificate chain, validity and hostname; the enrollment RPC then uses that root with normal TLS verification. Only explicit development mode permits a missing initial fingerprint. RPC requests and responses are bounded to 64 KiB, unary calls time out after 30 seconds, and remote error text is never logged.
 - One CA per Shipkeep installation (not per organization). The organization is encoded in each certificate's SAN URI and checked on every call.
 - Join token: 32 random bytes, stored hashed (SHA-256), single use, 15 min TTL, bound to an organization.
 - Enrollment commits the node, certificate, token consumption and audit record in one transaction. A concurrent losing request or an audit failure leaves no orphaned node or certificate.
