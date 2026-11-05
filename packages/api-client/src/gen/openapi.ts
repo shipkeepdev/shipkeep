@@ -292,6 +292,38 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/audit-events": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["auditEvents"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/audit-events/export": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["exportAuditEvents"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/join-tokens": {
         readonly parameters: {
             readonly query?: never;
@@ -682,6 +714,27 @@ export type components = {
             /** @enum {string} */
             readonly role: "admin" | "developer" | "viewer";
             readonly totp?: string;
+        };
+        readonly AuditEventDto: {
+            readonly action: string;
+            readonly actorId: string | null;
+            /** @enum {string} */
+            readonly actorKind: "user" | "api_token" | "system" | "node";
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** Format: uuid */
+            readonly id: string;
+            readonly ip: string | null;
+            readonly metadata: {
+                readonly [key: string]: unknown;
+            };
+            readonly targetId: string;
+            readonly targetType: string;
+        };
+        readonly AuditEventPageDto: {
+            readonly items: readonly components["schemas"]["AuditEventDto"][];
+            /** Format: uuid */
+            readonly nextCursor: string | null;
         };
         readonly BindingDto: {
             /** Format: date-time */
@@ -1592,6 +1645,67 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["OrganizationDto"];
                 };
+            };
+        };
+    };
+    readonly auditEvents: {
+        readonly parameters: {
+            readonly query?: {
+                readonly action?: string;
+                readonly actorId?: string;
+                readonly cursor?: string;
+                /** @description Inclusive lower bound. */
+                readonly from?: string;
+                readonly limit?: number;
+                readonly targetId?: string;
+                readonly targetType?: string;
+                /** @description Exclusive upper bound. */
+                readonly to?: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AuditEventPageDto"];
+                };
+            };
+        };
+    };
+    readonly exportAuditEvents: {
+        readonly parameters: {
+            readonly query?: {
+                readonly action?: string;
+                readonly actorId?: string;
+                /** @description Inclusive lower bound. */
+                readonly from?: string;
+                readonly targetId?: string;
+                readonly targetType?: string;
+                /** @description Exclusive upper bound. */
+                readonly to?: string;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description One AuditEventDto JSON object per line, newest first. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

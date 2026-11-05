@@ -28,6 +28,8 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | GET | `/organizations` | account | - |  |  |  |  |  |  |  |  |  |  |  |
 | POST | `/organizations` | account | - |  |  |  |  |  |  |  |  |  |  |  |
 | GET | `/organizations/:organizationId` | organization.read @ organization | organization.read | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
+| GET | `/organizations/:organizationId/audit-events` | audit.read @ organization | audit.read | yes | yes | no | no | no | no | no | no | no | no | no |
+| GET | `/organizations/:organizationId/audit-events/export` | audit.read @ organization | audit.read | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/join-tokens` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/members` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/members` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
