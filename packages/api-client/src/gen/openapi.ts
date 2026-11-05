@@ -269,7 +269,7 @@ export type paths = {
         };
         readonly get: operations["listOrganizations"];
         readonly put?: never;
-        readonly post?: never;
+        readonly post: operations["createOrganization"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -356,6 +356,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/settings": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["updateOrganization"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/ready": {
         readonly parameters: {
             readonly query?: never;
@@ -436,6 +452,15 @@ export type components = {
             readonly password: string;
             readonly recovery?: string;
             readonly scopes: readonly components["schemas"]["ApiScopeDto"][];
+            readonly totp?: string;
+        };
+        readonly CreateOrganizationDto: {
+            /** @description Trimmed to a display name of 1–80 Unicode code points. */
+            readonly name: string;
+            /** Format: password */
+            readonly password: string;
+            readonly recovery?: string;
+            readonly slug: string;
             readonly totp?: string;
         };
         readonly CredentialsDto: {
@@ -527,6 +552,11 @@ export type components = {
             readonly pendingExpiresAt: string | null;
             readonly recoveryCodesRemaining: number;
         };
+        readonly OrganizationCreatedDto: {
+            readonly organization: components["schemas"]["OrganizationDto"];
+            /** @description Updated account profile; rotated credentials are set only in cookies. */
+            readonly session: components["schemas"]["SessionDto"];
+        };
         readonly OrganizationDto: {
             /** Format: date-time */
             readonly createdAt: string;
@@ -541,6 +571,11 @@ export type components = {
             readonly items: readonly components["schemas"]["OrganizationDto"][];
             /** Format: uuid */
             readonly nextCursor: string | null;
+        };
+        readonly OrganizationSettingsDto: {
+            /** @description Trimmed to a display name of 1–80 Unicode code points. */
+            readonly name: string;
+            readonly slug: string;
         };
         readonly ProjectDto: {
             /** Format: date-time */
@@ -1063,6 +1098,36 @@ export interface operations {
             };
         };
     };
+    readonly createOrganization: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7. Encrypted result retained for five minutes and bound to the credential. */
+                readonly "Idempotency-Key"?: string;
+                /** @description Exact API origin; required for session mutations. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof; required for session mutations. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CreateOrganizationDto"];
+            };
+        };
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["OrganizationCreatedDto"];
+                };
+            };
+        };
+    };
     readonly getOrganization: {
         readonly parameters: {
             readonly query?: never;
@@ -1174,6 +1239,38 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["EnvironmentDto"];
+                };
+            };
+        };
+    };
+    readonly updateOrganization: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Lowercase UUIDv4/v7. Encrypted result retained for five minutes and bound to the credential. */
+                readonly "Idempotency-Key"?: string;
+                /** @description Exact API origin; required for session mutations. */
+                readonly Origin?: string;
+                /** @description Session-bound CSRF proof; required for session mutations. */
+                readonly "X-Shipkeep-CSRF"?: string;
+            };
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["OrganizationSettingsDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["OrganizationDto"];
                 };
             };
         };
