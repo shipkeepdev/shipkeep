@@ -5,6 +5,7 @@ import { AppConfig } from '../../platform/config/app-config';
 import { JobsModule } from '../../platform/jobs/jobs.module';
 
 import { AccountCommands } from './application/account-commands';
+import { AccountMutationAuthority } from './application/account-mutation-authority';
 import { ApiTokenCommands } from './application/api-token-commands';
 import { ApiTokenAuthentication } from './application/api-token-authentication';
 import { API_TOKEN_AUTHORITY, AccountTokenAuthority } from './application/api-token-authority';
@@ -41,6 +42,7 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
   controllers: [IdentityController, MfaController, ApiTokenController],
   providers: [
     AccountCommands,
+    AccountMutationAuthority,
     ApiTokenCommands,
     ApiTokenAuthentication,
     { provide: API_TOKEN_STORE, useClass: PrismaApiTokenStore },
@@ -67,6 +69,7 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
     { provide: APP_GUARD, useClass: IdentityGuard },
     { provide: APP_GUARD, useClass: IdentityRateGuard },
   ],
+  exports: [AccountMutationAuthority],
 })
 export class IdentityModule implements OnModuleInit {
   constructor(

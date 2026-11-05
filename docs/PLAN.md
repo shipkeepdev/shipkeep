@@ -144,6 +144,8 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - [ ] **M2.3c3** Audited organization/project/environment commands and rollback acceptance.
       - [x] **M2.3c3a** Pure resource-setting validation, safe defaults and scoped settings permissions.
       - [ ] **M2.3c3b** Audited organization creation/settings, creator ownership and session rotation.
+        - [x] **M2.3c3b1** Public account-mutation authority with live version checks, reauthentication and transaction-bound session rotation.
+        - [ ] **M2.3c3b2** Organization persistence, audited commands and atomic owner/session acceptance.
       - [ ] **M2.3c3c** Audited project/environment creation/settings and filtered catalog queries.
     - [ ] **M2.3c4** Membership/binding commands, live authority and privilege-change session invalidation.
   - [ ] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.
