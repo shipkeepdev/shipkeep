@@ -6,6 +6,7 @@ import { TenantAccessModule } from '../organizations/tenant-access.module';
 
 import { FleetAdministration } from './application/fleet-administration';
 import { FleetAdministrationController } from './interface/fleet-administration.controller';
+import { InstallationKeysModule } from './installation-keys.module';
 import { AuthenticateNode } from './application/authenticate-node';
 import { RenewNodeCertificate } from './application/renew-node-certificate';
 import { PrismaNodeCredentialStore } from './infrastructure/prisma-node-credential.store';
@@ -15,27 +16,19 @@ import { NodeStream } from './interface/node-stream';
 import { EnrollNode } from './application/enroll-node';
 import { IssueJoinToken } from './application/issue-join-token';
 import {
-  CERTIFICATE_AUTHORITY,
-  CONFIRMATION_KEY_PROVIDER,
   JOIN_TOKEN_STORE,
   NODE_STORE,
   NODE_CREDENTIAL_STORE,
   FLEET_TRANSACTION,
 } from './application/ports';
-import { INSTALLATION_KEY_STORE } from './infrastructure/ca/installation-key-store';
-import { X509CertificateAuthority } from './infrastructure/ca/x509-certificate-authority';
-import {
-  PrismaInstallationKeyStore,
-  PrismaJoinTokenStore,
-  PrismaNodeStore,
-} from './infrastructure/prisma-fleet.stores';
+import { PrismaJoinTokenStore, PrismaNodeStore } from './infrastructure/prisma-fleet.stores';
 
 /**
  * Fleet: nodes, enrollment, certificates (SPEC section 3.2). Agents use the gRPC gateway;
  * organization administrators use the session-only REST routes of M2.7.
  */
 @Module({
-  imports: [IdentityModule, TenantAccessModule],
+  imports: [IdentityModule, TenantAccessModule, InstallationKeysModule],
   controllers: [FleetAdministrationController],
   providers: [
     FleetAdministration,
@@ -45,12 +38,8 @@ import {
     RenewNodeCertificate,
     { provide: FLEET_TRANSACTION, useExisting: PrismaUnitOfWork },
     { provide: NODE_CREDENTIAL_STORE, useClass: PrismaNodeCredentialStore },
-    { provide: INSTALLATION_KEY_STORE, useClass: PrismaInstallationKeyStore },
     { provide: JOIN_TOKEN_STORE, useClass: PrismaJoinTokenStore },
     { provide: NODE_STORE, useClass: PrismaNodeStore },
-    X509CertificateAuthority,
-    { provide: CERTIFICATE_AUTHORITY, useExisting: X509CertificateAuthority },
-    { provide: CONFIRMATION_KEY_PROVIDER, useExisting: X509CertificateAuthority },
     IssueJoinToken,
     EnrollNode,
   ],
@@ -58,7 +47,7 @@ import {
     AgentGateway,
     IssueJoinToken,
     EnrollNode,
-    CERTIFICATE_AUTHORITY,
+    InstallationKeysModule,
     AuthenticateNode,
     RenewNodeCertificate,
   ],

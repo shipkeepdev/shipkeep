@@ -112,6 +112,12 @@ export class FakeConfirmationKeys implements ConfirmationKeyProvider {
   publicKeyPem(): Promise<string> {
     return Promise.resolve('-----BEGIN PUBLIC KEY-----\nFAKE\n-----END PUBLIC KEY-----\n');
   }
+  signConfirmation(): Promise<Uint8Array> {
+    return Promise.resolve(new Uint8Array(64));
+  }
+  verifyConfirmation(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
 }
 
 export const FAKE_CSR =
