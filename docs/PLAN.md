@@ -292,6 +292,8 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - Acceptance: failure injected at every state leaves the previous release serving.
   - [x] **M3.4a** Pure deployment aggregate with plan-based skipping, routing outcome on failure, and exhaustive transition tests.
   - [ ] **M3.4b** Applications and releases for image sources (API), with the one-active-deployment invariant.
+    - [x] **M3.4b1** Image applications: `applications` table (forced RLS), schema-validated configuration with a hash for optimistic concurrency, audited create and update, list and read routes.
+    - [ ] **M3.4b2** Releases (immutable configuration snapshot and image) and deployments (queued through the aggregate, one active per application, cancel before work starts).
   - [ ] **M3.4c** Orchestration: pg-boss job driving agent actions per state (schedule, pull, create, start, health, switch, drain, stop the old release), restoring routing on failure.
 - [ ] **M3.5 Rollback and release history** (C + W). Depends: M3.4
   - Keep N images; one-click rollback; release diff view (image, config).
