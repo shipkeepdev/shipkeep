@@ -20,8 +20,10 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM shipkeep_runtime;
 GRANT SELECT,INSERT,UPDATE,DELETE ON
   users,user_sessions,identity_tokens,identity_throttles,identity_replays,user_mfa,recovery_codes,api_tokens,
   organizations,memberships,projects,environments,role_bindings,
-  data_encryption_keys,installation_keys,nodes,node_certificates,join_tokens TO shipkeep_runtime;
-GRANT SELECT,INSERT ON audit_events TO shipkeep_runtime;
+  nodes,node_certificates,join_tokens TO shipkeep_runtime;
+-- Append-only from the API: audit history, and wrapped key material that is never rewritten
+-- (SPEC 9: rotation inserts new rows). Losing a DEK row would make its secrets unrecoverable.
+GRANT SELECT,INSERT ON audit_events,data_encryption_keys,installation_keys TO shipkeep_runtime;
 
 -- pg-boss administers only its dedicated schema. Transfer existing queue objects explicitly;
 -- never REASSIGN OWNED globally, which could transfer tenant tables to the runtime role.
