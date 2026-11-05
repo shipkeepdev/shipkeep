@@ -32,14 +32,23 @@ export class SessionStore {
       );
     }
   }
-  async login(
-    body: IdentitySchema<'LoginCredentialsDto'>,
-    key: string,
-    isCurrent: () => boolean = () => true,
-  ): Promise<void> {
+  /**
+   * A successful login always updates the session, even if its form was left meanwhile: the server
+   * has already set the session cookie, so the UI must not keep claiming the user is signed out.
+   * Callers use their own `isCurrent` check only for form side effects such as navigation.
+   */
+  async login(body: IdentitySchema<'LoginCredentialsDto'>, key: string): Promise<void> {
     const revision = ++this.revision;
-    const profile = await this.api.login(body, key);
-    if (revision === this.revision && isCurrent()) this.accept(profile);
+    let profile: SessionProfile;
+    try {
+      profile = await this.api.login(body, key);
+    } catch (error: unknown) {
+      // This login superseded a pending session check; settle the state instead of leaving it
+      // stuck on "loading".
+      if (revision === this.revision && this.status() === 'loading') void this.refresh();
+      throw error;
+    }
+    if (revision === this.revision) this.accept(profile);
   }
   async logout(key: string): Promise<void> {
     const revision = ++this.revision;
@@ -47,6 +56,11 @@ export class SessionStore {
       await this.api.logout(key);
       if (revision === this.revision) this.clear();
     } catch (error: unknown) {
+      // 401: the session already expired or was revoked elsewhere, so the user is signed out.
+      if (error instanceof IdentityRequestError && error.status === 401) {
+        if (revision === this.revision) this.clear();
+        return;
+      }
       if (revision === this.revision)
         this.status.set(this.current() ? 'authenticated' : 'unavailable');
       throw error;

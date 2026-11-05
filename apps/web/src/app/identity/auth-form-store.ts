@@ -161,13 +161,12 @@ export class AuthFormStore {
             : mode === 'verify-email'
               ? { token }
               : { email };
-    const result = await this.submission.run(body, (key, isCurrent) => {
+    const result = await this.submission.run(body, (key) => {
       switch (mode) {
         case 'login':
           return this.session.login(
             { email, password, ...(factor ? { [factorKind]: factor } : {}) },
             key,
-            isCurrent,
           );
         case 'register':
           return this.api.register({ email, password }, key);

@@ -64,13 +64,31 @@ describe('session state', () => {
     await expect(store.logout('request-key')).rejects.toThrow('Connection lost.');
     expect(store.state()).toBe('authenticated');
   });
-  it('does not apply a login response after its owning form has been left', async () => {
-    api.login.mockResolvedValue(profile);
-    await store.login(
-      { email: profile.email, password: 'correct horse browser fixture' },
-      'request-key',
-      () => false,
-    );
+  it('treats a 401 logout as already signed out', async () => {
+    store.accept(profile);
+    api.logout.mockRejectedValue(new IdentityRequestError(401));
+    await store.logout('request-key');
+    expect(store.state()).toBe('anonymous');
     expect(store.profile()).toBeNull();
+  });
+
+  it('settles a pending session check when a superseding login fails', async () => {
+    let resolve: ((value: typeof profile) => void) | undefined;
+    api.session.mockReturnValueOnce(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const loading = store.refresh();
+    api.session.mockRejectedValueOnce(new IdentityRequestError(401));
+    api.login.mockRejectedValue(new IdentityRequestError(401));
+    await expect(
+      store.login({ email: profile.email, password: 'correct horse browser fixture' }, 'key'),
+    ).rejects.toThrow('could not be verified');
+    resolve?.(profile);
+    await loading;
+    await vi.waitFor(() => {
+      expect(store.state()).toBe('anonymous');
+    });
   });
 });
