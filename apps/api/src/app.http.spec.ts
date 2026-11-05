@@ -1,8 +1,7 @@
 import type { Server } from 'node:http';
 
 import type { INestApplication } from '@nestjs/common';
-import { METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
-import { MetadataScanner, ModulesContainer, Reflector } from '@nestjs/core';
+import { ModulesContainer, Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 
@@ -16,8 +15,7 @@ import { PROBLEM_MEDIA_TYPE } from './platform/http/problem-details';
 import { PrismaService } from './platform/prisma/prisma.service';
 import { JobQueue } from './platform/jobs/job-queue';
 import { MemoryDataKeyStore, MemoryInstallationKeyStore } from './testing/memory-stores';
-import { ANONYMOUS } from './platform/http/allow-anonymous';
-import { ROUTE_ACCESS, type RouteAccess } from './modules/identity/interface/route-access';
+import { routeInventory } from './testing/route-inventory';
 
 // HTTP pipeline tests. The database is replaced by a stub so they run without Postgres;
 // the real connection is covered by the integration test (app.integration.spec.ts).
@@ -54,34 +52,11 @@ describe('HTTP pipeline', () => {
   });
 
   it('requires an explicit access declaration on every registered controller route', () => {
-    const reflector = app.get(Reflector);
-    const scanner = new MetadataScanner();
-    const routes: string[] = [];
-    for (const module of app.get(ModulesContainer).values()) {
-      for (const controller of module.controllers.values()) {
-        const type = controller.metatype;
-        if (!type) continue;
-        const prototype = type.prototype as Record<string, unknown>;
-        for (const name of scanner.getAllMethodNames(prototype)) {
-          const handler = prototype[name];
-          if (
-            typeof handler !== 'function' ||
-            reflector.get(METHOD_METADATA, handler) === undefined
-          )
-            continue;
-          const path = `${String(reflector.get(PATH_METADATA, type))}/${String(reflector.get(PATH_METADATA, handler))}`;
-          routes.push(path);
-          const targets = [handler, type];
-          const anonymous = reflector.getAllAndOverride<boolean | undefined>(ANONYMOUS, targets);
-          const access = reflector.getAllAndOverride<RouteAccess | undefined>(
-            ROUTE_ACCESS,
-            targets,
-          );
-          expect(anonymous === true || access !== undefined, path).toBe(true);
-          if (access?.kind === 'account' && !anonymous)
-            expect(path, path).not.toMatch(/:(organizationId|projectId|environmentId)\b/);
-        }
-      }
+    const routes = routeInventory(app.get(ModulesContainer), app.get(Reflector));
+    for (const route of routes) {
+      expect(route.anonymous || route.access !== undefined, route.path).toBe(true);
+      if (route.access?.kind === 'account' && !route.anonymous)
+        expect(route.path, route.path).not.toMatch(/:(organizationId|projectId|environmentId)\b/);
     }
     expect(routes.length).toBeGreaterThan(10);
   });

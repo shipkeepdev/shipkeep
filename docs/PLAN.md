@@ -28,14 +28,13 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
-1. M2.3d4d (route/role matrix and tenant acceptance checkpoint).
-2. M2.3g1, then M2.3g2 (row-level security for fleet and audit tables). They must land before M2.4 and M2.7 expose any reads.
-3. M2.3e (project-owned tokens).
-4. M2.7 (fleet administration endpoints).
-5. M2.4a, then M2.5a (audit query/export API, confirmation token issuance).
-6. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
-7. M1.4a, M1.4b and M1.4c (container actions).
-8. M1.5 (Caddy routes) and M4.3 (scheduler, pure function). They can start in parallel with the items above, because their dependencies are met.
+1. M2.3g1, then M2.3g2 (row-level security for fleet and audit tables). They must land before M2.4 and M2.7 expose any reads.
+2. M2.3e (project-owned tokens).
+3. M2.7 (fleet administration endpoints).
+4. M2.4a, then M2.5a (audit query/export API, confirmation token issuance).
+5. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
+6. M1.4a, M1.4b and M1.4c (container actions).
+7. M1.5 (Caddy routes) and M4.3 (scheduler, pure function). They can start in parallel with the items above, because their dependencies are met.
 
 **Work that no task owned yet, now assigned:**
 
@@ -214,7 +213,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
       - [x] **M2.3c4c** Scoped resource-role binding commands and membership/binding queries.
         - [x] **M2.3c4c1** Audited project/environment role assignments, removals and credential invalidation.
         - [x] **M2.3c4c2** Bounded, scope-authorized member/binding administration queries.
-  - [ ] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.
+  - [x] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.
     - [x] **M2.3d1** Explicit account/tenant route declarations, canonical path scopes and fail-closed session/bearer guard.
     - [x] **M2.3d2** Live token authority and credential revalidation inside resource commands.
       - [x] **M2.3d2a** Live tenant scope grants and account-locked command credential validation.
@@ -225,11 +224,11 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
       - [x] **M2.3d3c** Audited resource creation/settings HTTP endpoints and mutation acceptance.
         - [x] **M2.3d3c1** Organization creation/settings endpoints, fresh proof, rotated cookies and transactional retry acceptance.
         - [x] **M2.3d3c2** Project/environment creation/settings endpoints and scoped mutation acceptance.
-    - [ ] **M2.3d4** Membership/binding HTTP endpoints and generated route/role acceptance matrix.
+    - [x] **M2.3d4** Membership/binding HTTP endpoints and generated route/role acceptance matrix.
       - [x] **M2.3d4a** Session-only membership and effective-binding directories with scoped pagination.
       - [x] **M2.3d4b** Membership mutation HTTP, fresh proof, credential rotation and encrypted retries.
       - [x] **M2.3d4c** Project/environment binding mutation HTTP and privilege-change acceptance.
-      - [ ] **M2.3d4d** Generated registered-route/role matrix and full tenant acceptance checkpoint.
+      - [x] **M2.3d4d** Generated registered-route/role matrix and full tenant acceptance checkpoint.
   - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
   - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.
     - [ ] **M2.3f1** Organization switcher, project/environment catalog and settings, member and binding screens, API-token scope picker.
