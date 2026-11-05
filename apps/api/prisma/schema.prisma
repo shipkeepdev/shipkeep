@@ -96,6 +96,8 @@ model Environment {
   project        Project       @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade)
   roleBindings   RoleBinding[]
 
+  secrets Secret[]
+
   @@unique([projectId, name])
   @@unique([organizationId, projectId, id])
   @@map("environments")
@@ -374,4 +376,23 @@ model AgentAction {
   @@unique([nodeId, idempotencyKey])
   @@index([organizationId, nodeId, state])
   @@map("agent_actions")
+}
+
+/// Environment secret (SPEC 9): the value is encrypted and never returned by the API.
+model Secret {
+  id             String      @id @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  projectId      String      @map("project_id") @db.Uuid
+  environmentId  String      @map("environment_id") @db.Uuid
+  name           String      @db.VarChar(128)
+  valueEnc       Bytes       @map("value_enc")
+  version        Int
+  updatedBy      String?     @map("updated_by") @db.VarChar(128)
+  createdAt      DateTime    @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @map("updated_at") @db.Timestamptz(6)
+  environment    Environment @relation(fields: [organizationId, projectId, environmentId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Restrict, map: "secrets_environment_fkey")
+
+  @@unique([environmentId, name])
+  @@index([organizationId, environmentId])
+  @@map("secrets")
 }

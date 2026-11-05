@@ -596,6 +596,38 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/secrets": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listSecrets"];
+        readonly put?: never;
+        readonly post: operations["setSecret"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/secrets/{name}/remove": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["removeSecret"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/settings": {
         readonly parameters: {
             readonly query?: never;
@@ -1166,6 +1198,19 @@ export type components = {
             readonly password: string;
             readonly token: string;
         };
+        readonly SecretDto: {
+            /** Format: date-time */
+            readonly createdAt: string;
+            readonly name: string;
+            /** Format: date-time */
+            readonly updatedAt: string;
+            /** @description Account that set this version. */
+            readonly updatedBy: string | null;
+            readonly version: number;
+        };
+        readonly SecretListDto: {
+            readonly items: readonly components["schemas"]["SecretDto"][];
+        };
         readonly SessionDto: {
             /** Format: email */
             readonly email: string;
@@ -1173,6 +1218,11 @@ export type components = {
             readonly expiresAt: string;
             /** Format: uuid */
             readonly userId: string;
+        };
+        readonly SetSecretDto: {
+            readonly name: string;
+            /** @description Never returned. */
+            readonly value: string;
         };
         readonly VerifyEmailDto: {
             /**
@@ -2391,6 +2441,78 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["BindingMutationDto"];
                 };
+            };
+        };
+    };
+    readonly listSecrets: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SecretListDto"];
+                };
+            };
+        };
+    };
+    readonly setSecret: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SetSecretDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SecretDto"];
+                };
+            };
+        };
+    };
+    readonly removeSecret: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly environmentId: string;
+                readonly name: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };
