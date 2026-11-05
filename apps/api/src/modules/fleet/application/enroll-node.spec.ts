@@ -10,6 +10,7 @@ import {
   FakeConfirmationKeys,
   MemoryJoinTokenStore,
   MemoryNodeStore,
+  RecordingTransaction,
 } from './fakes.spec-helpers';
 import { IssueJoinToken } from './issue-join-token';
 
@@ -26,11 +27,10 @@ function setup() {
   const tokens = new MemoryJoinTokenStore();
   const nodes = new MemoryNodeStore();
   const ca = new FakeCertificateAuthority();
-  const issue = new IssueJoinToken(tokens, ca, bus, { run: (work) => work() });
-  const enroll = new EnrollNode(tokens, nodes, ca, new FakeConfirmationKeys(), bus, {
-    run: (work) => work(),
-  });
-  return { bus, published, tokens, nodes, ca, issue, enroll };
+  const transaction = new RecordingTransaction();
+  const issue = new IssueJoinToken(tokens, ca, bus, transaction);
+  const enroll = new EnrollNode(tokens, nodes, ca, new FakeConfirmationKeys(), bus, transaction);
+  return { bus, published, tokens, nodes, ca, issue, enroll, transaction };
 }
 
 describe('IssueJoinToken', () => {
@@ -52,6 +52,26 @@ describe('IssueJoinToken', () => {
 });
 
 describe('EnrollNode', () => {
+  it('finds the token by hash alone, then writes only inside its organization', async () => {
+    const { issue, enroll, tokens, nodes, transaction } = setup();
+    const token = await issue.execute({ organizationId: org, actor });
+    const hash = tokens.records.get(token.id)?.tokenHash ?? '';
+    let insertedIn = '';
+    const insert = nodes.insert.bind(nodes);
+    nodes.insert = (node) => {
+      insertedIn = transaction.current;
+      return insert(node);
+    };
+    await enroll.execute({
+      joinToken: token.value,
+      csrPem: FAKE_CSR,
+      facts: { hostname: 'scoped' },
+      agentVersion: '0.1.0',
+    });
+    expect(transaction.scopes).toEqual([`tenant:${org}`, `enrollment:${hash}`, `tenant:${org}`]);
+    expect(insertedIn).toBe(`tenant:${org}`);
+  });
+
   it('enrolls a node with a fresh token and consumes it', async () => {
     const { issue, enroll, nodes, tokens, ca, published } = setup();
     const token = await issue.execute({ organizationId: org, actor });

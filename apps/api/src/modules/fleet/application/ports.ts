@@ -3,13 +3,18 @@ import type { NodeCertificateRecord, NodeRecord } from '../domain/node';
 import type { NodeCredential, NodeIdentity } from '../domain/node-identity';
 
 export interface NodeCredentialStore {
-  find(serial: string): Promise<NodeCredential | undefined>;
+  /** Looks the serial up inside `organizationId` only (the organization of the TLS identity). */
+  find(organizationId: string, serial: string): Promise<NodeCredential | undefined>;
   /** Compare-and-swap: only a still-current certificate may be replaced. */
   replace(identity: NodeIdentity, certificate: NodeCertificateRecord, now: Date): Promise<boolean>;
 }
 
 export interface FleetTransaction {
   run<T>(work: () => Promise<T>): Promise<T>;
+  /** Tenant row security context: only rows of `organizationId` are visible and writable. */
+  runTenant<T>(organizationId: string, work: () => Promise<T>): Promise<T>;
+  /** Only the join token with this hash is visible, read-only (ADR 0015). */
+  runEnrollment<T>(tokenHash: string, work: () => Promise<T>): Promise<T>;
 }
 
 export const NODE_CREDENTIAL_STORE = Symbol('NodeCredentialStore');

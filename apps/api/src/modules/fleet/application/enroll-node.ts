@@ -9,6 +9,7 @@ import {
   hashJoinToken,
   isWellFormedJoinToken,
   JoinTokenRejectedError,
+  type JoinTokenRecord,
 } from '../domain/join-token';
 import {
   assertNodeName,
@@ -79,10 +80,26 @@ export class EnrollNode {
     if (Buffer.byteLength(command.csrPem, 'utf8') > MAX_CSR_BYTES) {
       throw new InvalidInputError('csr_too_large', 'certificate request exceeds the size limit');
     }
-    const record = await this.tokens.findByHash(hashJoinToken(command.joinToken.expose()));
+    const tokenHash = hashJoinToken(command.joinToken.expose());
+    // Only this token's row is visible until its organization is known (ADR 0015).
+    const record = await this.transaction.runEnrollment(tokenHash, () =>
+      this.tokens.findByHash(tokenHash),
+    );
     const verdict = evaluateJoinToken(command.joinToken.expose(), record, now);
     if (!verdict.ok) throw new JoinTokenRejectedError(verdict.reason);
-    const organizationId = verdict.record.organizationId;
+    const token = verdict.record;
+    return this.transaction.runTenant(token.organizationId, () =>
+      this.register(command, token, now),
+    );
+  }
+
+  /** Every write of an enrollment runs in the token's organization. */
+  private async register(
+    command: EnrollNodeCommand,
+    token: JoinTokenRecord,
+    now: Date,
+  ): Promise<EnrollNodeResult> {
+    const organizationId = token.organizationId;
 
     const facts = sanitizeFacts(command.facts);
     const name = this.resolveName(command.name, facts);
@@ -115,7 +132,7 @@ export class EnrollNode {
       revokedAt: null,
     });
     // Consuming last and atomically means a token can never enroll two nodes.
-    if (!(await this.tokens.consume(verdict.record.id, nodeId, now))) {
+    if (!(await this.tokens.consume(token.id, nodeId, now))) {
       throw new JoinTokenRejectedError('used');
     }
 
@@ -124,7 +141,7 @@ export class EnrollNode {
         organizationId,
         nodeId,
         name,
-        tokenId: verdict.record.id,
+        tokenId: token.id,
         certificateSerial: issued.serial,
         certificateNotAfter: issued.notAfter,
         ...(command.ip ? { ip: command.ip } : {}),

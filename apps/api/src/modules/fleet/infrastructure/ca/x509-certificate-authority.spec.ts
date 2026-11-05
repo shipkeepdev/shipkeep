@@ -53,7 +53,11 @@ async function csrFor(keys = generateEd25519KeyPair()): Promise<string> {
   return csr.toString('pem');
 }
 
-const inline = { run: <T>(work: () => Promise<T>) => work() };
+const inline = {
+  run: <T>(work: () => Promise<T>) => work(),
+  runTenant: <T>(_organizationId: string, work: () => Promise<T>) => work(),
+  runEnrollment: <T>(_tokenHash: string, work: () => Promise<T>) => work(),
+};
 
 const org = '0192f0c0-0000-7000-8000-0000000000aa';
 const nodeId = '0192f0c0-0000-7000-8000-0000000000bb';
@@ -103,6 +107,7 @@ describe('X509CertificateAuthority', () => {
     bus.subscribe(() => Promise.reject(new Error('audit store down')));
     // Emulates the rollback of a real transaction: whatever the work inserted is undone.
     const rollback = {
+      ...inline,
       run: async <T>(work: () => Promise<T>): Promise<T> => {
         try {
           return await work();
