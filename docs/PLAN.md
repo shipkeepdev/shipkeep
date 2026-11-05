@@ -113,7 +113,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - [x] **M1.3c** Resumable/compensating step executor, transition notifications, daemon ownership and interruption tests.
   - SQLite schema from SPEC 3.4 and 3.5, journal API, resume and compensation framework, idempotency keys.
   - Acceptance: tests kill the agent mid-action (simulated) and verify resume or compensation for each step type.
-- [x] **M1.4 Container actions** (A). Depends: M1.3. Split:
+- [ ] **M1.4 Container actions** (A). Depends: M1.3. Split: all handlers are done (a, b, c). Only the acceptance remains open: integration tests against a real Docker daemon, to run with CI-1 (#137).
   - [x] **M1.4a** Action dispatch over `Connect`: `ActionRequest` journaled before execution, `ActionUpdate` progress, `CancelAction`, control-plane dispatcher and audit, idempotent redelivery after reconnect.
     - [x] **M1.4a1** Agent side: validated, journaled dispatch with progress updates, idempotent redelivery and cancellation; handlers registered per kind.
     - [x] **M1.4a2** Control-plane side: durable per-node action queue, delivery over the stream, update persistence, redelivery after reconnect, audit.
