@@ -39,6 +39,8 @@ var ErrNotFound = errors.New("docker resource not found")
 // Client talks to one local Docker daemon.
 type Client struct {
 	http *http.Client
+	// long has no response-header timeout, for calls that answer only when a container exits.
+	long *http.Client
 }
 
 // New returns a client for a `unix:///path` host. Other schemes are refused (see config).
@@ -56,7 +58,9 @@ func New(host string) (*Client, error) {
 		IdleConnTimeout:       30 * time.Second,
 		ResponseHeaderTimeout: 30 * time.Second,
 	}
-	return &Client{http: &http.Client{Transport: transport}}, nil
+	waiting := transport.Clone()
+	waiting.ResponseHeaderTimeout = 0
+	return &Client{http: &http.Client{Transport: transport}, long: &http.Client{Transport: waiting}}, nil
 }
 
 // Network is the subset of a network the agent relies on.
@@ -195,6 +199,10 @@ func (c *Client) PullImage(ctx context.Context, repository, digest string, auth 
 }
 
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+	return c.request(ctx, c.http, method, path, body, out)
+}
+
+func (c *Client) request(ctx context.Context, client *http.Client, method, path string, body, out any) error {
 	var reader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
@@ -210,7 +218,7 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
-	response, err := c.http.Do(request)
+	response, err := client.Do(request)
 	if err != nil {
 		return fmt.Errorf("docker %s: %w", method, err)
 	}
