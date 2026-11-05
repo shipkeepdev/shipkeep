@@ -169,7 +169,8 @@ function assertContext(user: UserRecord, context: SecurityContext): void {
   if (user.status !== 'active' || user.securityVersion !== context.securityVersion)
     throw new AuthenticationError();
 }
-function metadata(record: ApiTokenRecord, version: number, now: Date): ApiTokenMetadata {
+/** Lifecycle metadata of a token whose owner currently has security version `version`. */
+export function metadata(record: ApiTokenRecord, version: number, now: Date): ApiTokenMetadata {
   return {
     id: record.id,
     name: record.name,
