@@ -318,6 +318,8 @@ The shared tenant policy is default-deny for unknown permissions, roles and inva
 
 `TenantAccess` resolves the current active/verified membership, project ancestry, environment protection and role bindings inside the caller's tenant transaction before evaluating that policy. Every resource query includes its organization, and environment queries include their parent project. Caller-supplied role or protection fields are ignored. Changed roles, protection and account status take effect on the next decision; no permission cache is used. Missing resources and denied permissions use the same resource-not-found response. The read-side module is independent of identity commands; session/bearer route wiring follows in M2.3d, with role mutations serialized against identity locks in M2.3c4.
 
+An explicit environment role replaces the member's project role for that environment instead of adding to it, so a narrower environment binding can restrict access. Only an actor with project-level member management may create or remove an environment override for a member who administers the project, so an environment-only administrator cannot restrict a project administrator (decided 2026-11-05).
+
 Organization admins may manage non-owner memberships, but only owners may grant or remove ownership. Removing or demoting the last owner is forbidden. Commands must lock the organization before reading the owner count and changing membership; the pure policy alone provides no concurrency guarantee. Project/environment administrators may only manage bindings within their authorized scope, never organization membership or ownership. Destructive-action authorization remains separate from the single-use confirmation required by M2.5.
 
 Organization membership commands add existing active verified accounts by email; invitations to unknown/unverified accounts are not implemented. They recheck the directory candidate's email and state under ordered account locks, then lock the organization and repeat live member-management authorization. Existing memberships require an explicit role change when the requested role differs. Same-role requests are idempotent; removal cascades resource bindings. Only owners may manage owners, and simultaneous owner departures cannot remove the final owner (`last_organization_owner`). Disabled accounts may be removed but cannot receive a new membership/role. Membership writes, their audits and affected-account credential invalidation commit together.
@@ -470,8 +472,6 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 | Internationalization | English only for v0.1; strings externalized for later translation                  |
 
 ## 16. Open questions
-
-- M2.3 implementation defaults: an explicit environment role overrides a project role rather than adding to it; organization admins cannot grant or change ownership. These conservative defaults prevent privilege escalation and are recorded for maintainer review.
 
 - Fleet and audit tables carry `organization_id` but are not yet under row-level security, so they rely on repository filters alone. SPEC 4 requires both layers; PLAN M2.3g tracks the change. Open point: which cross-tenant operations (enrollment by join-token hash, gateway certificate lookup, audit appends from system actors) run under the separate reviewed role, and how that role is provisioned next to `shipkeep_runtime`.
 

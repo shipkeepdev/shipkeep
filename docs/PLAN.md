@@ -49,12 +49,12 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 | Retry-safe certificate renewal (SPEC 16)                                   | M4.5   |
 | The web token scope picker                                                 | M2.3f1 |
 
-**Decisions needed from the maintainer:**
+**Decisions taken (2026-11-05):**
 
-- Restore GitHub Actions billing (unblocks CI-1).
-- Whether `RestoreVolume` and `RestoreDatabase` require a confirmation token. This is an action-list change (rule 2, `security-review`). See SPEC 16.
-- Approve `argparse` (PSF-2.0, runtime transitive dependency through `js-yaml` from `@nestjs/swagger`), or replace it. PSF-2.0 is not on the allowed license list.
-- Confirm the M2.3 role defaults listed in SPEC 16.
+- **CI.** GitHub Actions stays unavailable for now and development continues. Every PR is merged after the local gate, and its description says which checks did not run. CI-1 runs as soon as Actions is back.
+- **In-place restores.** `RestoreVolume` and `RestoreDatabase` over an existing target require a confirmation token. Restores into new targets do not (ADR 0013, #112).
+- **`argparse`.** It is approved as a per-package license exception (PSF-2.0, ADR 0014).
+- **M2.3 role defaults.** The conservative defaults are confirmed and moved from the SPEC 16 open questions into SPEC 7: an environment role replaces the project role, and only owners grant ownership.
 
 ---
 
