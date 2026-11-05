@@ -79,20 +79,26 @@ export class PrismaUnitOfWork {
         }
         const scope = { kind, id, lease: Symbol('database scope') };
         current.scope = scope;
+        let result: T;
         try {
           await assertTenantDatabaseRole(current.client);
           await current.client.$queryRaw`SELECT
             pg_catalog.set_config('app.org_id', ${kind === 'tenant' ? id : ''}, true) AS organization_context,
             pg_catalog.set_config('app.user_id', ${kind === 'account' ? id : ''}, true) AS account_context`;
-          return await this.tenantLease.run(scope.lease, operation);
+          result = await this.tenantLease.run(scope.lease, operation);
+        } catch (error: unknown) {
+          // An aborted SQL transaction also rejects cleanup. Preserve the original domain
+          // error; the outer transaction still rolls back.
+          await clearScope(current.client).catch(() => undefined);
+          current.scope = undefined;
+          throw error;
+        }
+        try {
+          // Cleanup failure after success must fail the command, never retain a scope.
+          await clearScope(current.client);
+          return result;
         } finally {
-          try {
-            await current.client.$queryRaw`SELECT
-              pg_catalog.set_config('app.org_id', '', true) AS organization_context,
-              pg_catalog.set_config('app.user_id', '', true) AS account_context`;
-          } finally {
-            current.scope = undefined;
-          }
+          current.scope = undefined;
         }
       });
     } catch (error: unknown) {
@@ -101,4 +107,10 @@ export class PrismaUnitOfWork {
       throw new ServiceUnavailableException('Tenant storage temporarily unavailable.');
     }
   }
+}
+
+async function clearScope(client: Prisma.TransactionClient): Promise<void> {
+  await client.$queryRaw`SELECT
+    pg_catalog.set_config('app.org_id', '', true) AS organization_context,
+    pg_catalog.set_config('app.user_id', '', true) AS account_context`;
 }
