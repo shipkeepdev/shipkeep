@@ -3,6 +3,7 @@ import { APP_GUARD } from '@nestjs/core';
 
 import { AppConfig } from '../../platform/config/app-config';
 import { JobsModule } from '../../platform/jobs/jobs.module';
+import { TenantAccessModule } from '../organizations/tenant-access.module';
 
 import { AccountCommands } from './application/account-commands';
 import { AccountMutationAuthority } from './application/account-mutation-authority';
@@ -38,7 +39,7 @@ import { IdentityGuard } from './interface/identity.guard';
 import { IdentityRateGuard } from './interface/identity-rate.guard';
 
 @Module({
-  imports: [JobsModule],
+  imports: [JobsModule, TenantAccessModule],
   controllers: [IdentityController, MfaController, ApiTokenController],
   providers: [
     AccountCommands,
