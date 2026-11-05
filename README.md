@@ -4,7 +4,7 @@ Your own cloud on your own servers, without leaving the root key in a web panel.
 
 Shipkeep is a self-hosted platform to deploy applications, databases and services on servers you own: git push to deploy, automatic HTTPS, managed databases with backups, preview environments, logs, metrics and alerts, across one or many servers.
 
-> Status: private, pre-v0.1. The code will be published under Apache-2.0 at v1.0.
+> Status: private, pre-v0.1, licensed under [Apache-2.0](LICENSE). The repository will be made public later (ADR 0016).
 > Continuous integration is paused (GitHub Actions billing); pull requests are merged after the local checks listed in [CONTRIBUTING.md](CONTRIBUTING.md), and a full CI run on `main` is tracked in issue #137.
 
 ## Contributing

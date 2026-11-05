@@ -32,6 +32,15 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 2. M1.4a, M1.4b and M1.4c (container actions).
 3. M1.5 (Caddy routes). It can start in parallel with the items above, because its dependencies are met.
 
+**Before going public** (the maintainer changes the visibility; ADR 0016):
+
+- CI-1 green on `main` (#137), and branch protection with required checks (GITHUB_SETUP section 5).
+- Full-history gitleaks scan clean. Rotate any credential that was ever committed, even if it was later deleted.
+- Enable GitHub private vulnerability reporting and update `SECURITY.md` accordingly.
+- Enforce DCO sign-off on pull requests (for example with the DCO GitHub app).
+- Review the internal assistant documents (`CLAUDE.md`, `docs/CLAUDE_CODE_KICKOFF.md`, `docs/GITHUB_SETUP.md`) for anything that should not be public.
+- Set the repository topics and website, and check the README status line.
+
 **Work that no task owned yet, now assigned:**
 
 | Work                                                                       | Task   |
