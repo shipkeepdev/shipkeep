@@ -6,6 +6,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { applyMigrations } from '../../testing/apply-migrations';
 import { resetDatabase } from '../../testing/reset-database';
+import { POSTGRES_TEST_IMAGE } from '../../testing/postgres-image';
 
 describe('identity schema against PostgreSQL', () => {
   let container: StartedPostgreSqlContainer | undefined;
@@ -17,7 +18,7 @@ describe('identity schema against PostgreSQL', () => {
 
   beforeAll(async () => {
     if (!process.env['DATABASE_URL']) {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(POSTGRES_TEST_IMAGE).start();
     }
     databaseUrl = process.env['DATABASE_URL'] ?? container?.getConnectionUri() ?? '';
     await resetDatabase(databaseUrl);

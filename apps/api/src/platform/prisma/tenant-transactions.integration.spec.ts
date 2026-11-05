@@ -14,6 +14,7 @@ import type { ParsedConfig } from '../config/config.schema';
 
 import { PrismaService } from './prisma.service';
 import { PrismaUnitOfWork } from './prisma-unit-of-work';
+import { POSTGRES_TEST_IMAGE } from '../../testing/postgres-image';
 
 describe('tenant transactions with a restricted PostgreSQL login', () => {
   let container: StartedPostgreSqlContainer | undefined;
@@ -25,7 +26,7 @@ describe('tenant transactions with a restricted PostgreSQL login', () => {
 
   beforeAll(async () => {
     if (!process.env['DATABASE_URL'])
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(POSTGRES_TEST_IMAGE).start();
     const url = container?.getConnectionUri() ?? process.env['DATABASE_URL'] ?? '';
     await resetDatabase(url);
     await applyMigrations(url, resolve(__dirname, '../../../prisma/migrations'));

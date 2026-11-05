@@ -7,6 +7,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { applyMigrations } from '../../testing/apply-migrations';
 import { resetDatabase } from '../../testing/reset-database';
+import { POSTGRES_TEST_IMAGE } from '../../testing/postgres-image';
 
 const migrations = resolve(__dirname, '../../../prisma/migrations');
 const tables = ['nodes', 'join_tokens'] as const;
@@ -19,7 +20,7 @@ describe('fleet organization references against PostgreSQL', () => {
 
   beforeAll(async () => {
     if (!process.env['DATABASE_URL'])
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(POSTGRES_TEST_IMAGE).start();
     const url = container?.getConnectionUri() ?? process.env['DATABASE_URL'] ?? '';
     await resetDatabase(url);
     await applyMigrations(url, migrations);

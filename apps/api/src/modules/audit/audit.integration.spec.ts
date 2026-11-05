@@ -16,6 +16,7 @@ import { PrismaService } from '../../platform/prisma/prisma.service';
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { applyMigrations } from '../../testing/apply-migrations';
 import { resetDatabase } from '../../testing/reset-database';
+import { POSTGRES_TEST_IMAGE } from '../../testing/postgres-image';
 
 // End to end through the real stack: a domain event published on the bus must land as an
 // audit row, and envelope encryption must persist and reuse its data keys (PLAN M2.1b).
@@ -26,7 +27,7 @@ describe('audit log and envelope encryption against PostgreSQL', () => {
 
   beforeAll(async () => {
     if (!process.env['DATABASE_URL']) {
-      container = await new PostgreSqlContainer('postgres:17').start();
+      container = await new PostgreSqlContainer(POSTGRES_TEST_IMAGE).start();
       process.env['DATABASE_URL'] = container.getConnectionUri();
     }
     databaseUrl = process.env['DATABASE_URL'];
