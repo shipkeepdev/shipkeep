@@ -11,6 +11,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/samuelmbabhazi/shipkeep/agent/internal/confirm"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
 	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
@@ -23,6 +24,7 @@ type Engine interface {
 	CreateNetwork(ctx context.Context, name string, internal bool, labels map[string]string) (string, error)
 	Volume(ctx context.Context, name string) (docker.Volume, error)
 	CreateVolume(ctx context.Context, name string, labels map[string]string) error
+	RemoveVolume(ctx context.Context, name string) error
 	Image(ctx context.Context, ref string) (docker.Image, error)
 	PullImage(ctx context.Context, repository, digest string, auth *docker.Auth) error
 }
@@ -42,9 +44,17 @@ const (
 	maxLabels   = 16
 )
 
+// Confirmer spends a confirmation token for one action on one target (SPEC 3.6).
+type Confirmer interface {
+	Consume(ctx context.Context, token, action, target string) error
+}
+
 // DockerHandlers returns the network, image and volume handlers backed by engine.
-func DockerHandlers(engine Engine) map[string]Handler {
+func DockerHandlers(engine Engine, confirmations Confirmer) map[string]Handler {
 	return map[string]Handler{
+		"remove_volume": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
+			return removeVolume(engine, confirmations, req.GetRemoveVolume())
+		}, Result: resourceResult},
 		"ensure_network": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return ensureNetwork(engine, req.GetEnsureNetwork())
 		}, Result: resourceResult},
@@ -165,6 +175,50 @@ func ensureVolume(engine Engine, action *agentv1.EnsureVolume) (journal.Plan, er
 		// Never delete data to undo an ensure: removal is a confirmed, separate action.
 		Compensate: func(context.Context) error { return nil },
 	}}}, nil
+}
+
+// removeVolume deletes a managed volume after spending a confirmation for exactly that volume.
+// The token is checked for shape here and verified and spent in the first journaled step.
+func removeVolume(engine Engine, confirmations Confirmer, action *agentv1.RemoveVolume) (journal.Plan, error) {
+	name, token := action.GetName(), action.GetConfirmationToken()
+	if !resourceName.MatchString(name) || confirmations == nil || !confirm.Wellformed(token) {
+		return journal.Plan{}, errInput
+	}
+	return journal.Plan{Version: "remove-volume-v1", Steps: []journal.Step{
+		{
+			// Not retry-safe: after an uncertain crash the token may be spent, so the operation
+			// fails and a new confirmation is required.
+			Name: "confirm",
+			Apply: func(ctx context.Context) (journal.Outcome, error) {
+				if err := confirmations.Consume(ctx, token, "volume.remove", name); err != nil {
+					return journal.Outcome{}, fmt.Errorf("confirmation: %w", err)
+				}
+				return journal.Outcome{}, nil
+			},
+			Compensate: func(context.Context) error { return nil },
+		},
+		{
+			Name:      "remove",
+			RetrySafe: true,
+			Apply: func(ctx context.Context) (journal.Outcome, error) {
+				existing, err := engine.Volume(ctx, name)
+				switch {
+				case errors.Is(err, docker.ErrNotFound):
+					return journal.Outcome{ResourceID: name}, nil
+				case err != nil:
+					return journal.Outcome{}, fmt.Errorf("inspect volume: %w", err)
+				case existing.Labels[docker.ManagedLabel] != "true":
+					return journal.Outcome{}, errForeign
+				}
+				if err := engine.RemoveVolume(ctx, name); err != nil && !errors.Is(err, docker.ErrNotFound) {
+					return journal.Outcome{}, fmt.Errorf("remove volume: %w", err)
+				}
+				return journal.Outcome{ResourceID: name}, nil
+			},
+			// Deleted data cannot be restored here; restores are separate, confirmed actions.
+			Compensate: func(context.Context) error { return nil },
+		},
+	}}, nil
 }
 
 // volumeLabels validates caller labels; the `sk.` namespace is reserved for the agent.
