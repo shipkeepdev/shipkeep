@@ -293,6 +293,8 @@ User-owned API token rows persist only a purpose-bound SHA-256 credential hash, 
 
 Creating or revoking a token requires password reauthentication and the active MFA factor. Commands recheck the current security version under the user lock; token writes, proof consumption and audit events commit together. Repeating a completed revocation is harmless. Creation verifies every scope against live owner authority and serializes the active-token cap. Listing returns lifecycle metadata without hashes or security versions. A token's plaintext is returned only by creation (or its bounded encrypted idempotent replay).
 
+Bearer authentication re-reads the credential under the owner's lock before intersecting its scopes with current owner authority. Revocation and role/security changes use that same lock. API traffic has separate fixed one-minute quotas: 300 requests per token and 600 per trusted client IP, shared across instances, without the progressive delay used for password proofs. Invalid credentials still consume the IP budget. Creation retries must revalidate the cached credential and owner authority before disclosing it again.
+
 - Base path `/api/v1`. OpenAPI 3.1 generated from NestJS decorators and published at `/api/v1/openapi.json`.
 - Auth: session cookie (UI, `SameSite=Strict`, CSRF token) or `Authorization: Bearer <api_token>`.
 - Errors: RFC 9457 problem details with a stable `type` URI per error.
