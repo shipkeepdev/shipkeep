@@ -52,6 +52,9 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/bindings` | member.manage @ environment | - | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/bindings` | member.manage @ environment | - | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/bindings/:membershipId/remove` | member.manage @ environment | - | yes | yes | no | yes | no | no | yes | no | no | no | no |
+| GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/secrets` | environment.read @ environment | environment.read | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
+| POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/secrets` | secret.write @ environment | secret.write | yes | yes | no | yes | no | no | yes | no | no | no | no |
+| POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/secrets/:name/remove` | secret.write @ environment | secret.write | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/settings` | environment.update @ environment | environment.update | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | POST | `/organizations/:organizationId/projects/:projectId/settings` | project.update @ project | project.update | yes | yes | no | yes | no | no | no | no | no | yes | no |
 | POST | `/organizations/:organizationId/settings` | organization.update @ organization | organization.update | yes | yes | no | no | no | no | no | no | no | no | no |
