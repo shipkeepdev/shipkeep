@@ -19,12 +19,15 @@ import { NodeStream } from './interface/node-stream';
 import { EnrollNode } from './application/enroll-node';
 import { IssueJoinToken } from './application/issue-join-token';
 import {
+  AGENT_ACTION_STORE,
   JOIN_TOKEN_STORE,
   NODE_STORE,
   NODE_CREDENTIAL_STORE,
   FLEET_TRANSACTION,
 } from './application/ports';
 import { PrismaJoinTokenStore, PrismaNodeStore } from './infrastructure/prisma-fleet.stores';
+import { PrismaAgentActionStore } from './infrastructure/prisma-agent-action.store';
+import { AgentActions } from './application/agent-actions';
 
 /**
  * Fleet: nodes, enrollment, certificates (SPEC section 3.2). Agents use the gRPC gateway;
@@ -44,6 +47,8 @@ import { PrismaJoinTokenStore, PrismaNodeStore } from './infrastructure/prisma-f
     { provide: NODE_CREDENTIAL_STORE, useClass: PrismaNodeCredentialStore },
     { provide: JOIN_TOKEN_STORE, useClass: PrismaJoinTokenStore },
     { provide: NODE_STORE, useClass: PrismaNodeStore },
+    { provide: AGENT_ACTION_STORE, useClass: PrismaAgentActionStore },
+    AgentActions,
     IssueJoinToken,
     EnrollNode,
   ],
@@ -54,6 +59,7 @@ import { PrismaJoinTokenStore, PrismaNodeStore } from './infrastructure/prisma-f
     InstallationKeysModule,
     AuthenticateNode,
     RenewNodeCertificate,
+    AgentActions,
   ],
 })
 export class FleetModule {}

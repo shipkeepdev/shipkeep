@@ -8,6 +8,7 @@ import {
   type ConnectResponse,
 } from '@shipkeep/proto-ts';
 
+import { AgentActions } from '../application/agent-actions';
 import { AuthenticateNode } from '../application/authenticate-node';
 import { NodeAuthenticationError, type NodeIdentity } from '../domain/node-identity';
 
@@ -15,12 +16,18 @@ const pollMs = 1000;
 const idleMs = 15_000;
 const tick = Symbol('tick');
 
-/** Transport only: durable leases, state reports and action dispatch belong to M1.3/M4.5. */
+/**
+ * Agent stream: identity, heartbeats and at-least-once action delivery (M1.4a2). Durable leases
+ * and state reports belong to M4.5 and M1.6.
+ */
 @Injectable()
 export class NodeStream {
   private readonly active = new Map<string, AbortController>();
 
-  constructor(private readonly authenticate: AuthenticateNode) {}
+  constructor(
+    private readonly authenticate: AuthenticateNode,
+    private readonly actions: AgentActions,
+  ) {}
 
   async *connect(
     input: AsyncIterable<ConnectRequest>,
@@ -36,10 +43,17 @@ export class NodeStream {
     let pending = nextFrame(reader);
     let lastMessage = Date.now();
     let hello = false;
+    // Actions sent on this stream; a new stream redelivers every unfinished one.
+    const sent = new Set<string>();
     try {
       while (!signal.aborted) {
         // Poll even a silent peer: revocation, expiry and removal must terminate existing streams.
         const credential = await this.authenticate.execute(identity);
+        if (hello)
+          for (const request of await this.actions.deliverable(identity, sent)) {
+            sent.add(request.actionId);
+            yield create(ConnectResponseSchema, { msg: { case: 'actionRequest', value: request } });
+          }
         const result = await waitForFrame(pending, signal);
         if (result === tick) {
           if (Date.now() - lastMessage >= idleMs)
@@ -70,6 +84,8 @@ export class NodeStream {
               },
             },
           });
+        } else if (message.case === 'actionUpdate') {
+          await this.actions.record(identity, message.value);
         } else if (
           message.case !== 'heartbeat' ||
           message.value.leaseEpoch !== BigInt(credential.leaseEpoch) ||

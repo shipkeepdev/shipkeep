@@ -1,3 +1,4 @@
+import type { AgentActionChange, AgentActionRecord } from '../domain/agent-action';
 import type { JoinTokenRecord } from '../domain/join-token';
 import type { NodeCertificateRecord, NodeRecord } from '../domain/node';
 import type { NodeCredential, NodeIdentity } from '../domain/node-identity';
@@ -76,6 +77,29 @@ export interface ConfirmationKeyProvider {
   signConfirmation(input: Uint8Array): Promise<Uint8Array>;
   verifyConfirmation(input: Uint8Array, signature: Uint8Array): Promise<boolean>;
 }
+
+/** Every method runs inside `runTenant` for the action's organization. */
+export interface AgentActionStore {
+  /** False when the node already has an action with this idempotency key. */
+  insert(record: AgentActionRecord): Promise<boolean>;
+  findByKey(
+    organizationId: string,
+    nodeId: string,
+    key: string,
+  ): Promise<AgentActionRecord | undefined>;
+  /** Non-terminal actions whose deadline is still ahead, oldest first, at most 100. */
+  deliverable(organizationId: string, nodeId: string, now: Date): Promise<AgentActionRecord[]>;
+  /** Marks overdue non-terminal actions `expired` and returns them. */
+  expire(organizationId: string, nodeId: string, now: Date): Promise<AgentActionRecord[]>;
+  /** Applies a change unless the action is terminal; returns the updated action, if any. */
+  apply(
+    organizationId: string,
+    nodeId: string,
+    id: string,
+    change: AgentActionChange,
+  ): Promise<AgentActionRecord | undefined>;
+}
+export const AGENT_ACTION_STORE = Symbol('AgentActionStore');
 
 export const JOIN_TOKEN_STORE = Symbol('JoinTokenStore');
 export const NODE_STORE = Symbol('NodeStore');

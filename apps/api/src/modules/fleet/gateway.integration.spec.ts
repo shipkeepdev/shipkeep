@@ -7,15 +7,23 @@ import { Code, createClient } from '@connectrpc/connect';
 import { createGrpcTransport } from '@connectrpc/connect-node';
 import type { INestApplication } from '@nestjs/common';
 import * as x509 from '@peculiar/x509';
-import { AgentGatewayService } from '@shipkeep/proto-ts';
+import { create, type MessageInitShape } from '@bufbuild/protobuf';
+import {
+  AgentGatewayService,
+  type ConnectRequestSchema,
+  EnsureNetworkSchema,
+  OperationState,
+} from '@shipkeep/proto-ts';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 
 import { DomainEventBus } from '../../platform/events/domain-event-bus';
+import { auditLog } from '../../testing/audit-log';
 import { applyMigrations } from '../../testing/apply-migrations';
 import { fleetDatabase, type FleetDatabase } from '../../testing/fleet-database';
 import { POSTGRES_TEST_IMAGE } from '../../testing/postgres-image';
 import { resetDatabase } from '../../testing/reset-database';
 
+import { AgentActions } from './application/agent-actions';
 import { IssueJoinToken } from './application/issue-join-token';
 import {
   createCaCertificate,
@@ -34,6 +42,37 @@ const actor = { kind: 'user' as const, id: 'usr_test' };
 
 async function* messages<T>(values: readonly T[]): AsyncGenerator<T> {
   for (const value of values) yield await Promise.resolve(value);
+}
+
+/** An input stream the test feeds frame by frame. */
+function pushable<T>() {
+  const items: T[] = [];
+  let wake: (() => void) | undefined;
+  let closed = false;
+  return {
+    push(item: T) {
+      items.push(item);
+      wake?.();
+    },
+    close() {
+      closed = true;
+      wake?.();
+    },
+    async *[Symbol.asyncIterator](): AsyncGenerator<T> {
+      for (;;) {
+        const next = items.shift();
+        if (next !== undefined) {
+          yield next;
+          continue;
+        }
+        if (closed) return;
+        await new Promise<void>((resolve) => {
+          wake = resolve;
+        });
+        wake = undefined;
+      }
+    },
+  };
 }
 
 async function requestCertificate() {
@@ -405,5 +444,101 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
       code: Code.InvalidArgument,
       rawMessage: 'invalid certificate request',
     });
+  });
+
+  it('delivers queued actions on every stream until the agent reports a final state', async () => {
+    const enrolled = await enroll('tls-actions');
+    const nodeId = enrolled.result.nodeId;
+    const queued = await app.get(AgentActions).enqueue({
+      organizationId: org,
+      nodeId,
+      idempotencyKey: 'test:network',
+      action: { case: 'ensureNetwork', value: create(EnsureNetworkSchema, { name: 'sk-test' }) },
+      deadline: new Date(Date.now() + 60_000),
+      actor: { kind: 'system' },
+    });
+    const hello = {
+      msg: { case: 'hello' as const, value: { nodeId, leaseEpoch: enrolled.result.leaseEpoch } },
+    };
+    const open = () => {
+      const input = pushable<MessageInitShape<typeof ConnectRequestSchema>>();
+      const abort = new AbortController();
+      input.push(hello);
+      const frames = client(enrolled)
+        .connect(input, { signal: abort.signal, timeoutMs: 30_000 })
+        [Symbol.asyncIterator]();
+      return { input, abort, frames };
+    };
+    const nextAction = async (
+      frames: AsyncIterator<{ msg: { case?: string; value?: unknown } }>,
+    ) => {
+      for (;;) {
+        const frame = await frames.next();
+        if (frame.done) throw new Error('stream ended before an action');
+        if (frame.value.msg.case === 'actionRequest')
+          return frame.value.msg.value as {
+            actionId: string;
+            idempotencyKey: string;
+            action: { case: string };
+          };
+      }
+    };
+
+    // Delivered, then the connection drops without any update.
+    const first = open();
+    const delivered = await nextAction(first.frames);
+    expect(delivered).toMatchObject({
+      actionId: queued.id,
+      idempotencyKey: 'test:network',
+      action: { case: 'ensureNetwork' },
+    });
+    first.abort.abort();
+
+    // A new stream redelivers it; the final update completes it.
+    const second = open();
+    expect((await nextAction(second.frames)).actionId).toBe(queued.id);
+    for (const state of [OperationState.RUNNING, OperationState.SUCCEEDED])
+      second.input.push({
+        msg: {
+          case: 'actionUpdate' as const,
+          value: { actionId: queued.id, state, step: 'create' },
+        },
+      });
+    const row = async () =>
+      (
+        await db.admin.query<{ state: string; step: string }>(
+          'SELECT state, step FROM agent_actions WHERE id=$1',
+          [queued.id],
+        )
+      ).rows.at(0);
+    for (let attempt = 0; attempt < 50 && (await row())?.state !== 'succeeded'; attempt++)
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(await row()).toEqual({ state: 'succeeded', step: 'create' });
+    second.abort.abort();
+
+    const events = await auditLog().findMany({
+      where: { targetId: queued.id },
+      orderBy: { id: 'asc' },
+    });
+    expect(events.map((event) => event.action)).toEqual([
+      'fleet.action.queued',
+      'fleet.action.succeeded',
+    ]);
+    // The same key never queues a second action, and a late update never reopens a final one.
+    await expect(
+      app.get(AgentActions).enqueue({
+        organizationId: org,
+        nodeId,
+        idempotencyKey: 'test:network',
+        action: { case: 'ensureNetwork', value: create(EnsureNetworkSchema, { name: 'sk-test' }) },
+        deadline: new Date(Date.now() + 60_000),
+        actor: { kind: 'system' },
+      }),
+    ).resolves.toEqual({ id: queued.id, created: false });
+    const payload = await db.admin.query<{ payload_enc: Buffer }>(
+      'SELECT payload_enc FROM agent_actions WHERE id=$1',
+      [queued.id],
+    );
+    expect(payload.rows[0]?.payload_enc.toString('latin1')).not.toContain('sk-test');
   });
 });
