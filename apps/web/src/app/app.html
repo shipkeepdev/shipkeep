@@ -4,28 +4,28 @@
     <a routerLink="/" class="text-xl font-semibold text-ink no-underline">Shipkeep</a>
     <nav aria-label="Account" class="mt-5 flex flex-wrap gap-1 md:mt-8 md:flex-col">
       @if (session.profile()) {
-      <a
-        class="nav-link"
-        routerLink="/account/security"
-        routerLinkActive="selected"
-        ariaCurrentWhenActive="page"
-        >Account security</a
-      >
+        <a
+          class="nav-link"
+          routerLink="/account/security"
+          routerLinkActive="selected"
+          ariaCurrentWhenActive="page"
+          >Account security</a
+        >
       } @else {
-      <a
-        class="nav-link"
-        routerLink="/auth/login"
-        routerLinkActive="selected"
-        ariaCurrentWhenActive="page"
-        >Sign in</a
-      >
-      <a
-        class="nav-link"
-        routerLink="/auth/register"
-        routerLinkActive="selected"
-        ariaCurrentWhenActive="page"
-        >Create account</a
-      >
+        <a
+          class="nav-link"
+          routerLink="/auth/login"
+          routerLinkActive="selected"
+          ariaCurrentWhenActive="page"
+          >Sign in</a
+        >
+        <a
+          class="nav-link"
+          routerLink="/auth/register"
+          routerLinkActive="selected"
+          ariaCurrentWhenActive="page"
+          >Create account</a
+        >
       }
       <a
         class="nav-link"
