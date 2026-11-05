@@ -289,6 +289,8 @@ Token scopes use the closed permission vocabulary in `packages/domain/src/lib/ap
 
 ## 8. Public REST API
 
+User-owned API token rows persist only a purpose-bound SHA-256 credential hash, scopes and lifecycle metadata. Password resets and MFA security changes invalidate tokens through the owner's security version; authentication also checks active account status, expiry and revocation. Last-use timestamps advance monotonically. Token lists are owner-filtered and use an exclusive UUID cursor, with at most 100 records per page. Project ownership and live tenant authorization are wired with the M2.3 resource model; before that integration, tenant permissions fail closed.
+
 - Base path `/api/v1`. OpenAPI 3.1 generated from NestJS decorators and published at `/api/v1/openapi.json`.
 - Auth: session cookie (UI, `SameSite=Strict`, CSRF token) or `Authorization: Bearer <api_token>`.
 - Errors: RFC 9457 problem details with a stable `type` URI per error.
