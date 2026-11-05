@@ -8,6 +8,6 @@ import "maps"
 func Registry(engine Engine, confirmations Confirmer, router Router, intents Intents, facts Handler) map[string]Handler {
 	handlers := map[string]Handler{"collect_facts": facts}
 	maps.Copy(handlers, DockerHandlers(engine, confirmations, intents))
-	maps.Copy(handlers, RouteHandlers(router, nil))
+	maps.Copy(handlers, RouteHandlers(router, engine, nil))
 	return handlers
 }

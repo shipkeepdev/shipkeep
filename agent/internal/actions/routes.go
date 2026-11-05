@@ -3,6 +3,7 @@ package actions
 import (
 	"context"
 	"fmt"
+	"math"
 	"net/netip"
 	"regexp"
 	"slices"
@@ -11,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/caddy"
+	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
 	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
 )
@@ -22,6 +24,18 @@ type Router interface {
 	UpsertRoute(ctx context.Context, route caddy.Route) error
 	RemoveRoute(ctx context.Context, id string) error
 	SetPlainHosts(ctx context.Context, add, remove []string) error
+}
+
+// Containers resolves container upstreams (ADR 0017); the Docker engine implements it.
+type Containers interface {
+	Container(ctx context.Context, ref string) (docker.Container, error)
+}
+
+// localUpstream is a container upstream, resolved to a dial address when the route is applied.
+type localUpstream struct {
+	index int
+	name  string
+	port  uint16
 }
 
 const (
@@ -39,13 +53,13 @@ var (
 )
 
 // RouteHandlers returns the Caddy-backed route handlers; sleep waits for draining (tests shorten it).
-func RouteHandlers(router Router, sleep func(context.Context, time.Duration) error) map[string]Handler {
+func RouteHandlers(router Router, containers Containers, sleep func(context.Context, time.Duration) error) map[string]Handler {
 	if sleep == nil {
 		sleep = wait
 	}
 	return map[string]Handler{
 		"upsert_route": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
-			return upsertRoute(router, sleep, req.GetUpsertRoute().GetRoute())
+			return upsertRoute(router, containers, sleep, req.GetUpsertRoute().GetRoute())
 		}, Result: resourceResult},
 		"remove_route": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return removeRoute(router, sleep, req.GetRemoveRoute())
@@ -55,8 +69,8 @@ func RouteHandlers(router Router, sleep func(context.Context, time.Duration) err
 
 // upsertRoute switches traffic atomically, then waits for in-flight requests to drain from the
 // replaced upstreams before reporting success (switch-then-drain, ADR 0005).
-func upsertRoute(router Router, sleep func(context.Context, time.Duration) error, route *agentv1.Route) (journal.Plan, error) {
-	desired, plain, drain, err := caddyRoute(route)
+func upsertRoute(router Router, containers Containers, sleep func(context.Context, time.Duration) error, route *agentv1.Route) (journal.Plan, error) {
+	template, local, plain, drain, err := caddyRoute(route)
 	if err != nil {
 		return journal.Plan{}, err
 	}
@@ -67,6 +81,10 @@ func upsertRoute(router Router, sleep func(context.Context, time.Duration) error
 			Name:      "apply",
 			RetrySafe: true,
 			Apply: func(ctx context.Context) (journal.Outcome, error) {
+				desired, err := resolveUpstreams(ctx, containers, template, local)
+				if err != nil {
+					return journal.Outcome{}, err
+				}
 				if err := router.EnsureServer(ctx); err != nil {
 					return journal.Outcome{}, fmt.Errorf("ensure caddy server: %w", err)
 				}
@@ -102,7 +120,7 @@ func upsertRoute(router Router, sleep func(context.Context, time.Duration) error
 						return journal.Outcome{}, err
 					}
 				}
-				return journal.Outcome{ResourceID: desired.ID}, nil
+				return journal.Outcome{ResourceID: template.ID}, nil
 			},
 			Compensate: func(context.Context) error { return nil },
 		},
@@ -154,30 +172,51 @@ func removeRoute(router Router, sleep func(context.Context, time.Duration) error
 	}}, nil
 }
 
-// caddyRoute validates a route and builds its typed Caddy form.
-func caddyRoute(route *agentv1.Route) (caddy.Route, bool, time.Duration, error) {
+// caddyRoute validates a route and builds its typed Caddy form. Container upstreams are returned
+// separately with an empty dial address, filled by resolveUpstreams when the route is applied.
+func caddyRoute(route *agentv1.Route) (caddy.Route, []localUpstream, bool, time.Duration, error) {
+	fail := func() (caddy.Route, []localUpstream, bool, time.Duration, error) {
+		return caddy.Route{}, nil, false, 0, errInput
+	}
 	if route == nil || !routeID.MatchString(route.GetRouteId()) || len(route.GetHosts()) == 0 || len(route.GetHosts()) > maxHosts ||
 		len(route.GetUpstreams()) == 0 || len(route.GetUpstreams()) > maxUpstreams {
-		return caddy.Route{}, false, 0, errInput
+		return fail()
 	}
 	hosts := []string{}
 	for _, host := range route.GetHosts() {
 		if len(host) > maxHostnameBytes || !hostname.MatchString(host) || slices.Contains(hosts, host) {
-			return caddy.Route{}, false, 0, errInput
+			return fail()
 		}
 		hosts = append(hosts, host)
 	}
-	upstreams, weights, weighted := []caddy.Upstream{}, []int{}, false
-	for _, upstream := range route.GetUpstreams() {
-		address, err := netip.ParseAddrPort(upstream.GetAddress())
-		// Only Docker and WireGuard network addresses: private IP literals with a port.
-		if err != nil || address.String() != upstream.GetAddress() || !address.Addr().IsPrivate() || address.Port() == 0 ||
-			upstream.GetWeight() > maxWeight || slices.ContainsFunc(upstreams, func(u caddy.Upstream) bool { return u.Dial == address.String() }) {
-			return caddy.Route{}, false, 0, errInput
+	upstreams, weights, weighted, local := []caddy.Upstream{}, []int{}, false, []localUpstream{}
+	for index, upstream := range route.GetUpstreams() {
+		if upstream.GetWeight() > maxWeight {
+			return fail()
+		}
+		if upstream.GetContainer() != "" || upstream.GetPort() != 0 {
+			name, raw := upstream.GetContainer(), upstream.GetPort()
+			// A local container by name (ADR 0017); never together with an address.
+			if upstream.GetAddress() != "" || !resourceName.MatchString(name) || raw == 0 || raw > math.MaxUint16 {
+				return fail()
+			}
+			port := uint16(raw)
+			if slices.ContainsFunc(local, func(u localUpstream) bool { return u.name == name && u.port == port }) {
+				return fail()
+			}
+			local = append(local, localUpstream{index: index, name: name, port: port})
+			upstreams = append(upstreams, caddy.Upstream{})
+		} else {
+			address, err := netip.ParseAddrPort(upstream.GetAddress())
+			// Only Docker and WireGuard network addresses: private IP literals with a port.
+			if err != nil || address.String() != upstream.GetAddress() || !address.Addr().IsPrivate() || address.Port() == 0 ||
+				slices.ContainsFunc(upstreams, func(u caddy.Upstream) bool { return u.Dial == address.String() }) {
+				return fail()
+			}
+			upstreams = append(upstreams, caddy.Upstream{Dial: address.String()})
 		}
 		weight := max(int(upstream.GetWeight()), 1)
 		weighted = weighted || weight != 1
-		upstreams = append(upstreams, caddy.Upstream{Dial: address.String()})
 		weights = append(weights, weight)
 	}
 	var plain bool
@@ -187,19 +226,60 @@ func caddyRoute(route *agentv1.Route) (caddy.Route, bool, time.Duration, error) 
 		plain = true
 	case agentv1.TlsMode_TLS_MODE_AUTO_DNS:
 		// DNS-01 needs a provider configuration the agent does not have yet.
-		return caddy.Route{}, false, 0, errInput
+		return fail()
 	default:
-		return caddy.Route{}, false, 0, errInput
+		return fail()
 	}
 	drain, err := drainTimeout(route.GetDrainTimeout())
 	if err != nil {
-		return caddy.Route{}, false, 0, err
+		return caddy.Route{}, nil, false, 0, err
 	}
 	handler := caddy.Handler{Handler: "reverse_proxy", Upstreams: upstreams}
 	if weighted {
 		handler.LoadBalancing = &caddy.LoadBalancing{SelectionPolicy: map[string]any{"policy": "weighted_round_robin", "weights": weights}}
 	}
-	return caddy.Route{ID: caddy.RouteID(route.GetRouteId()), Match: []caddy.Match{{Host: hosts}}, Handle: []caddy.Handler{handler}, Terminal: true}, plain, drain, nil
+	return caddy.Route{ID: caddy.RouteID(route.GetRouteId()), Match: []caddy.Match{{Host: hosts}}, Handle: []caddy.Handler{handler}, Terminal: true}, local, plain, drain, nil
+}
+
+// resolveUpstreams returns a copy of template with every container upstream resolved to the
+// container's private address on its first Shipkeep network, by name order (ADR 0017).
+func resolveUpstreams(ctx context.Context, containers Containers, template caddy.Route, local []localUpstream) (caddy.Route, error) {
+	if len(local) == 0 {
+		return template, nil
+	}
+	handler := template.Handle[0]
+	handler.Upstreams = slices.Clone(handler.Upstreams)
+	for _, upstream := range local {
+		container, err := containers.Container(ctx, upstream.name)
+		if err != nil {
+			return caddy.Route{}, fmt.Errorf("inspect upstream container: %w", err)
+		}
+		if container.Config.Labels[docker.ManagedLabel] != "true" || !container.State.Running {
+			return caddy.Route{}, errInput
+		}
+		networks := []string{}
+		for network := range container.NetworkSettings.Networks {
+			if resourceName.MatchString(network) {
+				networks = append(networks, network)
+			}
+		}
+		slices.Sort(networks)
+		dial := ""
+		for _, network := range networks {
+			address, err := netip.ParseAddr(container.NetworkSettings.Networks[network].IPAddress)
+			if err == nil && address.IsPrivate() {
+				dial = netip.AddrPortFrom(address, upstream.port).String()
+				break
+			}
+		}
+		if dial == "" || slices.ContainsFunc(handler.Upstreams, func(u caddy.Upstream) bool { return u.Dial == dial }) {
+			return caddy.Route{}, errInput
+		}
+		handler.Upstreams[upstream.index] = caddy.Upstream{Dial: dial}
+	}
+	route := template
+	route.Handle = []caddy.Handler{handler}
+	return route, nil
 }
 
 func drainTimeout(value *durationpb.Duration) (time.Duration, error) {

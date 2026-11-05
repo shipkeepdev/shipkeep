@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"strings"
 	"sync"
@@ -11,14 +12,45 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/caddy"
+	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
 	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 type fakeRouter struct {
-	mu     sync.Mutex
-	routes map[string]caddy.Route
-	plain  []string
-	server bool
+	mu         sync.Mutex
+	routes     map[string]caddy.Route
+	plain      []string
+	server     bool
+	containers fakeContainers
+}
+
+// fakeContainers answers container inspections for route upstreams (ADR 0017).
+type fakeContainers map[string]docker.Container
+
+func (f fakeContainers) Container(_ context.Context, ref string) (docker.Container, error) {
+	container, ok := f[ref]
+	if !ok {
+		return docker.Container{}, errors.New("no such container")
+	}
+	return container, nil
+}
+
+func runningContainer(managed bool, networks map[string]string) docker.Container {
+	container := docker.Container{}
+	container.Config.Labels = map[string]string{}
+	if managed {
+		container.Config.Labels[docker.ManagedLabel] = "true"
+	}
+	container.State.Running = true
+	container.NetworkSettings.Networks = map[string]struct {
+		IPAddress string `json:"IPAddress"`
+	}{}
+	for name, address := range networks {
+		container.NetworkSettings.Networks[name] = struct {
+			IPAddress string `json:"IPAddress"`
+		}{IPAddress: address}
+	}
+	return container
 }
 
 func (f *fakeRouter) EnsureServer(context.Context) error { f.server = true; return nil }
@@ -58,7 +90,7 @@ func routeRequest(t *testing.T, router *fakeRouter, slept *[]time.Duration, req 
 		*slept = append(*slept, duration)
 		return nil
 	}
-	d := &Dispatcher{Journal: open(t), Handlers: RouteHandlers(router, sleep), Epoch: func() uint64 { return 3 }}
+	d := &Dispatcher{Journal: open(t), Handlers: RouteHandlers(router, router.containers, sleep), Epoch: func() uint64 { return 3 }}
 	req.ActionId, req.IdempotencyKey, req.LeaseEpoch = testID, "route", 3
 	req.DeadlineUnixMs = time.Now().Add(time.Minute).UnixMilli()
 	out := &recorder{}
@@ -144,6 +176,73 @@ func TestRoutesRejectMaliciousInput(t *testing.T) {
 			route := validRoute("172.18.0.5:8080")
 			mutate(route)
 			if update := routeRequest(t, router, &slept, upsert(route)); update.GetError() != errInvalid || len(router.routes) != 0 {
+				t.Fatalf("accepted: %v", update)
+			}
+		})
+	}
+}
+
+func TestRoutesResolveLocalContainers(t *testing.T) {
+	router := &fakeRouter{routes: map[string]caddy.Route{}, containers: fakeContainers{
+		"sk-web-1": runningContainer(true, map[string]string{"bridge": "172.17.0.9", "sk-prod": "172.20.0.4", "sk-aaa": ""}),
+		"sk-web-2": runningContainer(true, map[string]string{"sk-prod": "172.20.0.5"}),
+	}}
+	var slept []time.Duration
+	route := validRoute("10.8.0.2:3000")
+	route.Upstreams = append(route.Upstreams,
+		&agentv1.Upstream{Container: "sk-web-1", Port: 8080},
+		&agentv1.Upstream{Container: "sk-web-2", Port: 8080, Weight: 2},
+	)
+	if update := routeRequest(t, router, &slept, upsert(route)); !succeeded(update) {
+		t.Fatalf("container upstreams not applied: %v", update)
+	}
+	dials := make([]string, 0, 3)
+	for _, upstream := range router.routes[caddy.RouteID("api-prod")].Handle[0].Upstreams {
+		dials = append(dials, upstream.Dial)
+	}
+	// The bridge network and networks without an address are skipped; order and weights are kept.
+	if !slices.Equal(dials, []string{"10.8.0.2:3000", "172.20.0.4:8080", "172.20.0.5:8080"}) {
+		t.Fatalf("unexpected upstreams: %v", dials)
+	}
+}
+
+func TestRoutesRejectUnsafeContainerUpstreams(t *testing.T) {
+	containers := fakeContainers{
+		"sk-web":      runningContainer(true, map[string]string{"sk-prod": "172.20.0.4"}),
+		"sk-foreign":  runningContainer(false, map[string]string{"sk-prod": "172.20.0.6"}),
+		"sk-bridge":   runningContainer(true, map[string]string{"bridge": "172.17.0.2"}),
+		"sk-public":   runningContainer(true, map[string]string{"sk-prod": "8.8.8.8"}),
+		"sk-loopback": runningContainer(true, map[string]string{"sk-prod": "127.0.0.1"}),
+		"sk-twin":     runningContainer(true, map[string]string{"sk-prod": "172.20.0.4"}),
+	}
+	stopped := runningContainer(true, map[string]string{"sk-prod": "172.20.0.7"})
+	stopped.State.Running = false
+	containers["sk-stopped"] = stopped
+	cases := map[string][]*agentv1.Upstream{
+		"address and container":  {{Address: "10.0.0.2:80", Container: "sk-web", Port: 80}},
+		"container without port": {{Container: "sk-web"}},
+		"port without container": {{Port: 80}},
+		"port overflow":          {{Container: "sk-web", Port: 70000}},
+		"name injection":         {{Container: "sk-web/../../docker", Port: 80}},
+		"container id":           {{Container: strings.Repeat("a", 64), Port: 80}},
+		"unprefixed name":        {{Container: "postgres", Port: 5432}},
+		"duplicate container":    {{Container: "sk-web", Port: 80}, {Container: "sk-web", Port: 80}},
+		"unmanaged container":    {{Container: "sk-foreign", Port: 80}},
+		"stopped container":      {{Container: "sk-stopped", Port: 80}},
+		"missing container":      {{Container: "sk-missing", Port: 80}},
+		"no shipkeep network":    {{Container: "sk-bridge", Port: 80}},
+		"public address":         {{Container: "sk-public", Port: 80}},
+		"loopback address":       {{Container: "sk-loopback", Port: 80}},
+		"same dial twice":        {{Container: "sk-web", Port: 80}, {Container: "sk-twin", Port: 80}},
+		"collides with address":  {{Address: "172.20.0.4:80"}, {Container: "sk-web", Port: 80}},
+	}
+	for name, upstreams := range cases {
+		t.Run(name, func(t *testing.T) {
+			router := &fakeRouter{routes: map[string]caddy.Route{}, containers: containers}
+			var slept []time.Duration
+			route := validRoute("172.18.0.5:8080")
+			route.Upstreams = upstreams
+			if update := routeRequest(t, router, &slept, upsert(route)); succeeded(update) || len(router.routes) != 0 {
 				t.Fatalf("accepted: %v", update)
 			}
 		})
