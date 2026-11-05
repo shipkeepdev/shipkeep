@@ -81,6 +81,8 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - [x] **M2.2c1** Audited account/session commands, single-use email/reset flows, login rotation and concurrent password-reset protection.
     - [x] **M2.2c2** Persistent request limits and progressive login delays shared across API instances.
     - [ ] **M2.2c3** Private email delivery with bounded retries.
+      - [x] **M2.2c3a** Transactional pg-boss jobs with encrypted payloads, bounded retries and restart/tamper tests.
+      - [ ] **M2.2c3b** SMTP transport, configuration and TLS delivery tests.
     - [ ] **M2.2c4** REST endpoints, secure cookies, origin checks, CSRF and HTTP acceptance tests.
   - [ ] **M2.2d** TOTP enrollment/recovery and scoped API tokens.
   - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.

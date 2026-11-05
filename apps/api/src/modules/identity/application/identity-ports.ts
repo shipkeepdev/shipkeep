@@ -22,6 +22,7 @@ export interface IdentitySecrets {
 
 export const IDENTITY_MAILER = Symbol('IdentityMailer');
 export interface IdentityMailer {
+  /** Enqueues encrypted delivery in the current command transaction; never contacts SMTP here. */
   send(input: {
     email: string;
     purpose: 'verify' | 'reset';

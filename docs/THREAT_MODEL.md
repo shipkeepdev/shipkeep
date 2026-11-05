@@ -57,6 +57,8 @@ Build containers (untrusted code) inside rootless BuildKit
 
 ## Security engineering requirements
 
+- Identity email jobs are encrypted and transactionally coupled to their credential and audit. Real PostgreSQL/pg-boss tests prove rollback, delivery after restart, retry without transport-error disclosure, rejection of tampered ciphertext and suppression of expired credentials. The queue's schema and names are fixed; its upstream Prisma adapter binds values as parameters. SMTP is isolated behind a delivery port and never runs in the command transaction.
+
 - Authentication attempt reservations are atomic PostgreSQL upserts shared by all API instances. Tests prove concurrent requests cannot bypass account delays, account cycling cannot bypass IP quotas, successful login does not reset the IP quota, and rejected retries cannot extend lockouts. Stored limiter keys contain purpose-bound hashes rather than raw email/IP values; bounded expiry cleanup removes old buckets.
 
 - Identity mutations lock the user row before security-sensitive changes. Password changes increment the security version and invalidate sessions and reset tokens in the same transaction as their audit. Credential claims are conditional updates; session activity only advances and cannot revive an expired, revoked, disabled-owner or stale-version session. Real PostgreSQL tests cover concurrent mutations and rollback after credential consumption.
