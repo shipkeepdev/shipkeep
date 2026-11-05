@@ -1,4 +1,5 @@
 import * as x509 from '@peculiar/x509';
+import { Client } from 'pg';
 import { Secret } from '@shipkeep/domain';
 
 import { auditLog } from '../../testing/audit-log';
@@ -92,5 +93,70 @@ describe('fleet administration over HTTP', () => {
       .get(`/api/v1/organizations/${fixture.foreignId}/nodes`, 'owner')
       .expect(200);
     expect(foreign.body).toEqual({ items: [], nextCursor: null });
+  });
+
+  it('removes a node only with a confirmation for that node, revoking its certificates', async () => {
+    const enroll = async (hostname: string) => {
+      await resetLimits();
+      const issued = await fixture
+        .post(`${fixture.root}/join-tokens`, 'owner', { password: fixture.password.expose() })
+        .expect(201);
+      return fixture.app.get(EnrollNode).execute({
+        joinToken: new Secret((issued.body as { token: string }).token),
+        csrPem: await agentCsr(),
+        facts: { hostname },
+        agentVersion: '0.1.0',
+      });
+    };
+    const target = await enroll('edge-remove.example.com');
+    const sibling = await enroll('edge-keep.example.com');
+    const confirm = async (nodeId: string, name: string) =>
+      (
+        (
+          await fixture
+            .post(`${fixture.root}/confirmations`, 'admin', {
+              action: 'node.remove',
+              target: nodeId,
+              name,
+            })
+            .expect(201)
+        ).body as { token: string }
+      ).token;
+    const remove = (nodeId: string, body: object, actor: 'admin' | 'member' = 'admin') =>
+      fixture.post(`${fixture.root}/nodes/${nodeId}/remove`, actor, body);
+
+    await remove(target.nodeId, {}).expect(400);
+    const forSibling = await confirm(sibling.nodeId, 'edge-keep');
+    await remove(target.nodeId, { confirmation: forSibling })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toMatchObject({ code: 'confirmation_rejected' });
+      });
+    const token = await confirm(target.nodeId, 'edge-remove');
+    await remove(target.nodeId, { confirmation: token }, 'member').expect(404);
+    await remove(target.nodeId, { confirmation: token }).expect(204);
+    await remove(target.nodeId, { confirmation: token }).expect(404);
+
+    const admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+    try {
+      const nodes = await admin.query<{ id: string; status: string }>(
+        'SELECT id,status FROM nodes WHERE id = ANY($1)',
+        [[target.nodeId, sibling.nodeId]],
+      );
+      expect(nodes.rows.find((row) => row.id === target.nodeId)?.status).toBe('removed');
+      expect(nodes.rows.find((row) => row.id === sibling.nodeId)?.status).not.toBe('removed');
+      const live = await admin.query(
+        'SELECT id FROM node_certificates WHERE node_id=$1 AND revoked_at IS NULL',
+        [target.nodeId],
+      );
+      expect(live.rowCount).toBe(0);
+    } finally {
+      await admin.end();
+    }
+    const events = await auditLog().findMany({
+      where: { action: 'fleet.node.removed', targetId: target.nodeId },
+    });
+    expect(events.map((event) => event.actorId)).toEqual([fixture.actors.admin.id]);
   });
 });
