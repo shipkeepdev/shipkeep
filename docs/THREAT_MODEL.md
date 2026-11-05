@@ -57,6 +57,8 @@ Build containers (untrusted code) inside rootless BuildKit
 
 ## Security engineering requirements
 
+- Tenant SQL tables force row-level policies on transaction-local organization context. Restricted-role PostgreSQL tests cover missing context, foreign reads/writes, table-owner queries, attempted RLS disabling and context cleanup. Membership changes take a write lock on the organization; deferred ownership checks reject simultaneous removal of the last owners under both read-committed and repeatable-read isolation. Runtime database-role enforcement and HTTP tenant resolution must be installed before exposing organization endpoints.
+
 - SMTP delivery requires verified implicit TLS. Loopback TLS-server tests prove that untrusted and wrong-host certificates fail before authentication, valid delivery succeeds, and recipient header injection is rejected. Unit tests enforce a hard delivery deadline and opaque transport errors. Email credentials never appear in navigation URLs; the public control-plane origin requires HTTPS in production.
 
 - Identity email jobs are encrypted and transactionally coupled to their credential and audit. Real PostgreSQL/pg-boss tests prove rollback, delivery after restart, retry without transport-error disclosure, rejection of tampered ciphertext and suppression of expired credentials. The queue's schema and names are fixed; its upstream Prisma adapter binds values as parameters. SMTP is isolated behind a delivery port and never runs in the command transaction.
