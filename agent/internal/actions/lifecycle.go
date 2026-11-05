@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
+	"time"
 
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/confirm"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
@@ -31,7 +33,7 @@ func managed(ctx context.Context, engine Engine, ref string) (docker.Container, 
 	return container, nil
 }
 
-func startContainer(engine Engine, action *agentv1.StartContainer) (journal.Plan, error) {
+func startContainer(engine Engine, intents Intents, action *agentv1.StartContainer) (journal.Plan, error) {
 	ref := action.GetContainerId()
 	if !containerRef.MatchString(ref) {
 		return journal.Plan{}, errInput
@@ -50,6 +52,9 @@ func startContainer(engine Engine, action *agentv1.StartContainer) (journal.Plan
 			if err := engine.StartContainer(ctx, container.ID); err != nil {
 				return journal.Outcome{}, fmt.Errorf("start container: %w", err)
 			}
+			if err := setIntent(ctx, intents, container, true); err != nil {
+				return journal.Outcome{}, err
+			}
 			return journal.Outcome{ResourceID: container.ID}, nil
 		},
 		// A started container is the wanted end state; stopping is a separate action.
@@ -57,7 +62,7 @@ func startContainer(engine Engine, action *agentv1.StartContainer) (journal.Plan
 	}}}, nil
 }
 
-func stopContainer(engine Engine, action *agentv1.StopContainer) (journal.Plan, error) {
+func stopContainer(engine Engine, intents Intents, action *agentv1.StopContainer) (journal.Plan, error) {
 	ref := action.GetContainerId()
 	seconds := defaultStopSeconds
 	if timeout := action.GetStopTimeout(); timeout != nil {
@@ -81,6 +86,10 @@ func stopContainer(engine Engine, action *agentv1.StopContainer) (journal.Plan, 
 			if err != nil {
 				return journal.Outcome{}, err
 			}
+			// Record the intent first: the reconciler must never restart a container being stopped.
+			if err := setIntent(ctx, intents, container, false); err != nil {
+				return journal.Outcome{}, err
+			}
 			if err := engine.StopContainer(ctx, container.ID, seconds); err != nil && !errors.Is(err, docker.ErrNotFound) {
 				return journal.Outcome{}, fmt.Errorf("stop container: %w", err)
 			}
@@ -92,7 +101,7 @@ func stopContainer(engine Engine, action *agentv1.StopContainer) (journal.Plan, 
 
 // removeContainer removes a managed container. Removing its volumes destroys data and needs a
 // `container.remove` confirmation for that container, spent in a non-retryable first step.
-func removeContainer(engine Engine, confirmations Confirmer, action *agentv1.RemoveContainer) (journal.Plan, error) {
+func removeContainer(engine Engine, confirmations Confirmer, intents Intents, action *agentv1.RemoveContainer) (journal.Plan, error) {
 	ref, volumes, token := action.GetContainerId(), action.GetRemoveVolumes(), action.GetConfirmationToken()
 	if !containerRef.MatchString(ref) || (volumes && (confirmations == nil || !confirm.Wellformed(token))) || (!volumes && token != "") {
 		return journal.Plan{}, errInput
@@ -121,12 +130,30 @@ func removeContainer(engine Engine, confirmations Confirmer, action *agentv1.Rem
 			if err != nil {
 				return journal.Outcome{}, err
 			}
+			if err := setIntent(ctx, intents, container, false); err != nil {
+				return journal.Outcome{}, err
+			}
 			if err := engine.RemoveContainer(ctx, container.ID, volumes); err != nil && !errors.Is(err, docker.ErrNotFound) {
 				return journal.Outcome{}, fmt.Errorf("remove container: %w", err)
+			}
+			if intents != nil {
+				if err := intents.ClearIntent(ctx, strings.TrimPrefix(container.Name, "/")); err != nil {
+					return journal.Outcome{}, fmt.Errorf("clear intent: %w", err)
+				}
 			}
 			return journal.Outcome{ResourceID: container.ID}, nil
 		},
 		Compensate: func(context.Context) error { return nil },
 	})
 	return journal.Plan{Version: "remove-container-v1", Steps: steps}, nil
+}
+
+func setIntent(ctx context.Context, intents Intents, container docker.Container, running bool) error {
+	if intents == nil {
+		return nil
+	}
+	if err := intents.SetIntent(ctx, strings.TrimPrefix(container.Name, "/"), running, time.Now()); err != nil {
+		return fmt.Errorf("record intent: %w", err)
+	}
+	return nil
 }

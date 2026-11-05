@@ -247,3 +247,14 @@ func (c *Client) request(ctx context.Context, client *http.Client, method, path 
 	}
 	return nil
 }
+
+// DockerVersion returns the daemon's version string.
+func (c *Client) DockerVersion(ctx context.Context) (string, error) {
+	var version struct {
+		Version string `json:"Version"`
+	}
+	if err := c.do(ctx, http.MethodGet, "/version", nil, &version); err != nil {
+		return "", err
+	}
+	return version.Version, nil
+}

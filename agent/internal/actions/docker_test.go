@@ -151,7 +151,7 @@ func (f *fakeEngine) PullImage(_ context.Context, repository, digest string, aut
 
 func run(t *testing.T, engine Engine, req *agentv1.ActionRequest) *agentv1.ActionUpdate {
 	t.Helper()
-	d := &Dispatcher{Journal: open(t), Handlers: DockerHandlers(engine, confirmer{}), Epoch: func() uint64 { return 3 }}
+	d := &Dispatcher{Journal: open(t), Handlers: DockerHandlers(engine, confirmer{}, nil), Epoch: func() uint64 { return 3 }}
 	req.ActionId = testID
 	req.IdempotencyKey = "test:key"
 	req.LeaseEpoch = 3
@@ -274,7 +274,7 @@ func (c confirmer) Consume(_ context.Context, token, action, target string) erro
 
 func TestRemoveVolumeNeedsConfirmationAndManagedVolume(t *testing.T) {
 	remove := func(engine *fakeEngine, c Confirmer, name string) *agentv1.ActionUpdate {
-		d := &Dispatcher{Journal: open(t), Handlers: DockerHandlers(engine, c), Epoch: func() uint64 { return 3 }}
+		d := &Dispatcher{Journal: open(t), Handlers: DockerHandlers(engine, c, nil), Epoch: func() uint64 { return 3 }}
 		out := &recorder{}
 		d.Handle(context.Background(), &agentv1.ActionRequest{ActionId: testID, IdempotencyKey: "rm", LeaseEpoch: 3, DeadlineUnixMs: time.Now().Add(time.Minute).UnixMilli(),
 			Action: &agentv1.ActionRequest_RemoveVolume{RemoveVolume: &agentv1.RemoveVolume{Name: name, ConfirmationToken: wellformed}}}, out.send)
