@@ -46,6 +46,9 @@ describe('tenant RLS and owner constraints against PostgreSQL', () => {
     await admin.query('GRANT shipkeep_tenant_test TO CURRENT_USER');
     await admin.query('GRANT USAGE ON SCHEMA public TO shipkeep_tenant_test');
     await admin.query(
+      'GRANT SELECT (id,status,email_verified_at) ON users TO shipkeep_tenant_test',
+    );
+    await admin.query(
       'GRANT SELECT,INSERT,UPDATE,DELETE ON organizations,memberships,projects,environments,role_bindings TO shipkeep_tenant_test',
     );
     actor = await restrictedClient();

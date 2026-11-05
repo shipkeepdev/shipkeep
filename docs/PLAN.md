@@ -139,6 +139,8 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - [ ] **M2.3c2** Runtime-role provisioning, account-bound organization discovery and tenant repositories.
       - [x] **M2.3c2a** Separate runtime/migration credentials, restricted grants, queue upgrade preservation and full-app role acceptance.
       - [ ] **M2.3c2b** Account-bound organization discovery and scoped tenant repositories.
+        - [x] **M2.3c2b1** Account-scoped discovery policies, mutually exclusive transaction contexts and restricted-login isolation tests.
+        - [ ] **M2.3c2b2** Tenant read/write repositories and live resource-authority queries.
     - [ ] **M2.3c3** Audited organization/project/environment commands and rollback acceptance.
     - [ ] **M2.3c4** Membership/binding commands, live authority and privilege-change session invalidation.
   - [ ] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.

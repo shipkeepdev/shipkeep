@@ -9,7 +9,7 @@ import { assertTenantDatabaseRole } from './tenant-database-role';
 
 interface TransactionContext {
   client: Prisma.TransactionClient;
-  scope?: { organizationId: string; lease: symbol };
+  scope?: { kind: 'tenant' | 'account'; id: string; lease: symbol };
 }
 
 /**
@@ -42,36 +42,54 @@ export class PrismaUnitOfWork {
    * Nested scopes may join only the same tenant; sibling scopes cannot race on one connection.
    * The setting is local to the transaction and cleared before returning to an outer command.
    */
-  async runTenant<T>(organizationId: string, operation: () => Promise<T>): Promise<T> {
-    if (
-      !/^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(organizationId)
-    )
-      throw new InvalidInputError('invalid_tenant_context', 'Invalid organization context.');
+  runTenant<T>(organizationId: string, operation: () => Promise<T>): Promise<T> {
+    return this.runScoped('tenant', organizationId, operation);
+  }
+
+  /** Discover only this verified account's memberships and organization metadata through RLS.
+   * The account id must come from authenticated identity, never a caller-selected account.
+   * This mode grants no tenant writes and cannot nest inside an active tenant scope.
+   */
+  runAccountDiscovery<T>(userId: string, operation: () => Promise<T>): Promise<T> {
+    return this.runScoped('account', userId, operation);
+  }
+
+  private async runScoped<T>(
+    kind: 'tenant' | 'account',
+    id: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id))
+      throw new InvalidInputError(`invalid_${kind}_context`, 'Invalid database context.');
     try {
       return await this.run(async () => {
         const current = this.context.getStore();
         if (!current) throw new ServiceUnavailableException();
         if (current.scope) {
           if (
-            current.scope.organizationId !== organizationId ||
+            current.scope.kind !== kind ||
+            current.scope.id !== id ||
             current.scope.lease !== this.tenantLease.getStore()
           )
             throw new ConflictError(
               'tenant_context_conflict',
-              'Organization context cannot change within a command.',
+              'Database context cannot change within a command.',
             );
           return operation();
         }
-        const scope = { organizationId, lease: Symbol('tenant transaction') };
+        const scope = { kind, id, lease: Symbol('database scope') };
         current.scope = scope;
         try {
           await assertTenantDatabaseRole(current.client);
-          await current.client
-            .$queryRaw`SELECT pg_catalog.set_config('app.org_id', ${organizationId}, true)`;
+          await current.client.$queryRaw`SELECT
+            pg_catalog.set_config('app.org_id', ${kind === 'tenant' ? id : ''}, true) AS organization_context,
+            pg_catalog.set_config('app.user_id', ${kind === 'account' ? id : ''}, true) AS account_context`;
           return await this.tenantLease.run(scope.lease, operation);
         } finally {
           try {
-            await current.client.$queryRaw`SELECT pg_catalog.set_config('app.org_id', '', true)`;
+            await current.client.$queryRaw`SELECT
+              pg_catalog.set_config('app.org_id', '', true) AS organization_context,
+              pg_catalog.set_config('app.user_id', '', true) AS account_context`;
           } finally {
             current.scope = undefined;
           }
