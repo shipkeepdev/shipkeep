@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/actions"
@@ -18,7 +17,6 @@ import (
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/gateway"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
 	"github.com/samuelmbabhazi/shipkeep/lib/buildinfo"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
 	"github.com/samuelmbabhazi/shipkeep/lib/secret"
 )
 
@@ -34,7 +32,9 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		}
 		name = hostname
 	}
-	facts := &agentv1.NodeFacts{Hostname: name, Os: runtime.GOOS, Architecture: runtime.GOARCH}
+	// Capacity facts (CPU, memory, disk) feed scheduling (SPEC 6); the configured name wins.
+	facts := actions.Facts(ctx, a.cfg.Paths.StateDir, engine)
+	facts.Hostname = name
 	bundle, err := credentials.Load(a.cfg.Paths.StateDir, a.cfg.ControlPlane.CAFingerprint)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
