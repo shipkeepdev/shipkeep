@@ -62,7 +62,7 @@ export class ApiTokenPageQueryDto {
   @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
   @Matches(UUID)
   cursor?: string;
-  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 100 })
+  @ApiPropertyOptional({ type: 'integer', minimum: 1, maximum: 100, default: 100 })
   @Type(() => Number)
   @IsInt()
   @Min(1)

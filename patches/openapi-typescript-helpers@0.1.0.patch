@@ -1,0 +1,51 @@
+diff --git a/dist/index.d.cts b/dist/index.d.cts
+index 077c7b86d92878fe71b70d379f29027ae7bb2940..190967a7b744732f5cb1a1deb729bc297c483104 100644
+--- a/dist/index.d.cts
++++ b/dist/index.d.cts
+@@ -155,10 +155,10 @@ type $Read<T> = {
+ type $Write<T> = {
+     readonly $write: T;
+ };
+-type Readable<T> = T extends $Write<any> ? never : T extends $Read<infer U> ? Readable<U> : T extends (infer E)[] ? Readable<E>[] : T extends object ? {
++type Readable<T> = T extends $Write<any> ? never : T extends $Read<infer U> ? Readable<U> : T extends readonly unknown[] ? { [K in keyof T]: Readable<T[K]> } : T extends object ? {
+     [K in keyof T as NonNullable<T[K]> extends $Write<any> ? never : K]: Readable<T[K]>;
+ } : T;
+-type Writable<T> = T extends $Read<any> ? never : T extends $Write<infer U> ? Writable<U> : T extends (infer E)[] ? Writable<E>[] : T extends object ? {
++type Writable<T> = T extends $Read<any> ? never : T extends $Write<infer U> ? Writable<U> : T extends readonly unknown[] ? { [K in keyof T]: Writable<T[K]> } : T extends object ? {
+     [K in keyof T as NonNullable<T[K]> extends $Read<any> ? never : K]: Writable<T[K]>;
+ } & {
+     [K in keyof T as NonNullable<T[K]> extends $Read<any> ? K : never]?: never;
+diff --git a/dist/index.d.mts b/dist/index.d.mts
+index 077c7b86d92878fe71b70d379f29027ae7bb2940..190967a7b744732f5cb1a1deb729bc297c483104 100644
+--- a/dist/index.d.mts
++++ b/dist/index.d.mts
+@@ -155,10 +155,10 @@ type $Read<T> = {
+ type $Write<T> = {
+     readonly $write: T;
+ };
+-type Readable<T> = T extends $Write<any> ? never : T extends $Read<infer U> ? Readable<U> : T extends (infer E)[] ? Readable<E>[] : T extends object ? {
++type Readable<T> = T extends $Write<any> ? never : T extends $Read<infer U> ? Readable<U> : T extends readonly unknown[] ? { [K in keyof T]: Readable<T[K]> } : T extends object ? {
+     [K in keyof T as NonNullable<T[K]> extends $Write<any> ? never : K]: Readable<T[K]>;
+ } : T;
+-type Writable<T> = T extends $Read<any> ? never : T extends $Write<infer U> ? Writable<U> : T extends (infer E)[] ? Writable<E>[] : T extends object ? {
++type Writable<T> = T extends $Read<any> ? never : T extends $Write<infer U> ? Writable<U> : T extends readonly unknown[] ? { [K in keyof T]: Writable<T[K]> } : T extends object ? {
+     [K in keyof T as NonNullable<T[K]> extends $Read<any> ? never : K]: Writable<T[K]>;
+ } & {
+     [K in keyof T as NonNullable<T[K]> extends $Read<any> ? K : never]?: never;
+diff --git a/dist/index.d.ts b/dist/index.d.ts
+index 077c7b86d92878fe71b70d379f29027ae7bb2940..190967a7b744732f5cb1a1deb729bc297c483104 100644
+--- a/dist/index.d.ts
++++ b/dist/index.d.ts
+@@ -155,10 +155,10 @@ type $Read<T> = {
+ type $Write<T> = {
+     readonly $write: T;
+ };
+-type Readable<T> = T extends $Write<any> ? never : T extends $Read<infer U> ? Readable<U> : T extends (infer E)[] ? Readable<E>[] : T extends object ? {
++type Readable<T> = T extends $Write<any> ? never : T extends $Read<infer U> ? Readable<U> : T extends readonly unknown[] ? { [K in keyof T]: Readable<T[K]> } : T extends object ? {
+     [K in keyof T as NonNullable<T[K]> extends $Write<any> ? never : K]: Readable<T[K]>;
+ } : T;
+-type Writable<T> = T extends $Read<any> ? never : T extends $Write<infer U> ? Writable<U> : T extends (infer E)[] ? Writable<E>[] : T extends object ? {
++type Writable<T> = T extends $Read<any> ? never : T extends $Write<infer U> ? Writable<U> : T extends readonly unknown[] ? { [K in keyof T]: Writable<T[K]> } : T extends object ? {
+     [K in keyof T as NonNullable<T[K]> extends $Read<any> ? never : K]: Writable<T[K]>;
+ } & {
+     [K in keyof T as NonNullable<T[K]> extends $Read<any> ? K : never]?: never;

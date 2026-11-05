@@ -38,3 +38,8 @@ blockExoticSubdeps: true
 overrides:
   # CVE-2026-113872: DoS via aborted request during async file filtering (via @nestjs/platform-express).
   multer: '>=2.5.0'
+
+patchedDependencies:
+  # Type declarations only: preserve readonly arrays/tuples until upstream fixes #2615.
+  # https://github.com/openapi-ts/openapi-typescript/issues/2615
+  openapi-typescript-helpers@0.1.0: patches/openapi-typescript-helpers@0.1.0.patch
