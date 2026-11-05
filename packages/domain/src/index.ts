@@ -2,3 +2,4 @@
 export * from './lib/errors.js';
 export * from './lib/events.js';
 export * from './lib/secret.js';
+export * from './lib/api-token-policy.js';
