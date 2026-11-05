@@ -195,7 +195,7 @@ Anything not in this table does not exist. There is no generic exec, shell or fi
 
 ## 4. Data model
 
-PostgreSQL, one schema `shipkeep`. All tables have `id uuid` (UUIDv7), `created_at`, `updated_at`. Tenant-scoped tables carry `organization_id` and every query filters on it, enforced twice:
+PostgreSQL. Application tables live in the `public` schema; pg-boss owns `shipkeep_jobs`. All tables have `id uuid` (UUIDv7), `created_at`, `updated_at`. Tenant-scoped tables carry `organization_id` and every query filters on it, enforced twice:
 
 - In repositories, which always take the organization id from the request context.
 - By PostgreSQL row-level security. The API connects with a role that has RLS enforced. Tenant operations run through `PrismaUnitOfWork.runTenant`, which binds `SELECT set_config('app.org_id', $1, true)` to the same transaction as repository and audit writes. Policies compare the organization id with that transaction-local setting. Cross-tenant jobs (scheduler, reconciler) use a separate role and are reviewed as security-sensitive code.
@@ -474,6 +474,8 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - M2.3 implementation defaults: an explicit environment role overrides a project role rather than adding to it; organization admins cannot grant or change ownership. These conservative defaults prevent privilege escalation and are recorded for maintainer review.
 
 - Fleet and audit tables carry `organization_id` but are not yet under row-level security, so they rely on repository filters alone. SPEC 4 requires both layers; PLAN M2.3g tracks the change. Open point: which cross-tenant operations (enrollment by join-token hash, gateway certificate lookup, audit appends from system actors) run under the separate reviewed role, and how that role is provisioned next to `shipkeep_runtime`.
+
+- `RestoreVolume` and `RestoreDatabase` overwrite existing data but carry no `confirmation_token`, unlike `RemoveVolume`. Proposal: add the field and require a token for in-place restores; restoring into a new volume or database stays token-free. This changes the action list (CLAUDE.md rule 2): it needs a maintainer decision and the `security-review` label before M5.3.
 
 - Retry-safe certificate renewal after a response is lost: a recovery protocol must preserve the one-active-certificate invariant without accepting a revoked identity.
 
