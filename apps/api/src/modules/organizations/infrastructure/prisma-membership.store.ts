@@ -3,7 +3,11 @@ import { NotFoundError, parseOrganizationRole, type OrganizationRole } from '@sh
 
 import type { Membership } from '../../../platform/prisma/generated/client';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
-import type { MembershipRecord, MembershipStore } from '../application/membership-store';
+import type {
+  MembershipCandidate,
+  MembershipRecord,
+  MembershipStore,
+} from '../application/membership-store';
 
 @Injectable()
 export class PrismaMembershipStore implements MembershipStore {
@@ -26,6 +30,15 @@ export class PrismaMembershipStore implements MembershipStore {
     return record(
       await this.database.client.membership.findFirst({ where: { organizationId, userId } }),
     );
+  }
+  async forEmail(organizationId: string, email: string): Promise<MembershipCandidate | null> {
+    const member = await this.database.client.membership.findFirst({
+      where: { organizationId, user: { email, status: 'active', emailVerifiedAt: { not: null } } },
+      include: { user: { select: { email: true } } },
+    });
+    if (!member) return null;
+    const { user, ...membership } = member;
+    return { ...membership, orgRole: parseOrganizationRole(membership.orgRole), email: user.email };
   }
   ownerCount(organizationId: string): Promise<number> {
     return this.database.client.membership.count({ where: { organizationId, orgRole: 'owner' } });

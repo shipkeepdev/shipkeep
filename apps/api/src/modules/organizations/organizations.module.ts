@@ -14,6 +14,9 @@ import { PrismaCatalogStore } from './infrastructure/prisma-catalog.store';
 import { MembershipCommands } from './application/membership-commands';
 import { MEMBERSHIP_STORE } from './application/membership-store';
 import { PrismaMembershipStore } from './infrastructure/prisma-membership.store';
+import { BindingCommands } from './application/binding-commands';
+import { BINDING_STORE } from './application/binding-store';
+import { PrismaBindingStore } from './infrastructure/prisma-binding.store';
 import { TenantAccessModule } from './tenant-access.module';
 
 @Module({
@@ -23,6 +26,8 @@ import { TenantAccessModule } from './tenant-access.module';
     ResourceCommands,
     CatalogQueries,
     MembershipCommands,
+    BindingCommands,
+    { provide: BINDING_STORE, useClass: PrismaBindingStore },
     { provide: MEMBERSHIP_STORE, useClass: PrismaMembershipStore },
     { provide: CATALOG_STORE, useClass: PrismaCatalogStore },
     { provide: RESOURCE_STORE, useClass: PrismaResourceStore },
