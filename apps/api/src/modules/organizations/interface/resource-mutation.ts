@@ -28,12 +28,17 @@ function headers(sessionOnly: boolean): MethodDecorator {
   );
 }
 
+/** OpenAPI headers of a session-only mutation (Origin, CSRF, optional idempotency key). */
+export function BrowserHeaders(): MethodDecorator {
+  return headers(true);
+}
+
 export function BrowserMutation(path: string, status = 200): MethodDecorator {
   return applyDecorators(
     Post(path),
     HttpCode(status),
     IdentityAttemptLimit('token'),
-    headers(true),
+    BrowserHeaders(),
   );
 }
 
