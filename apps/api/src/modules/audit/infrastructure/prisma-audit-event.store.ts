@@ -4,13 +4,17 @@ import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { AuditEventStore } from '../application/audit-event-store';
 import type { AuditRecord } from '../domain/audit-record';
 
-/** Append-only Prisma implementation. Database permissions enforce the rest in task M2.4. */
+/**
+ * Append-only Prisma implementation. The runtime role may only SELECT and INSERT, and row
+ * security hides events outside the active tenant, so the insert must not read the row back.
+ */
 @Injectable()
 export class PrismaAuditEventStore implements AuditEventStore {
   constructor(private readonly database: PrismaUnitOfWork) {}
 
   async append(record: AuditRecord): Promise<void> {
-    await this.database.client.auditEvent.create({
+    // `createMany` issues no RETURNING clause, which row security would check as a read.
+    await this.database.client.auditEvent.createMany({
       data: {
         id: record.id,
         organizationId: record.organizationId,
