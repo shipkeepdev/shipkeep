@@ -5,12 +5,17 @@ import { IdentityModule } from '../identity/identity.module';
 import { OrganizationCommands } from './application/organization-commands';
 import { ORGANIZATION_STORE } from './application/organization-store';
 import { PrismaOrganizationStore } from './infrastructure/prisma-organization.store';
+import { ResourceCommands } from './application/resource-commands';
+import { RESOURCE_STORE } from './application/resource-store';
+import { PrismaResourceStore } from './infrastructure/prisma-resource.store';
 import { TenantAccessModule } from './tenant-access.module';
 
 @Module({
   imports: [IdentityModule, TenantAccessModule],
   providers: [
     OrganizationCommands,
+    ResourceCommands,
+    { provide: RESOURCE_STORE, useClass: PrismaResourceStore },
     { provide: ORGANIZATION_STORE, useClass: PrismaOrganizationStore },
   ],
 })
