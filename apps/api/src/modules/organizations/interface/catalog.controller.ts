@@ -9,16 +9,18 @@ import { CatalogQueries } from '../application/catalog-queries';
 
 import {
   CatalogQueryDto,
+  environmentDto,
   EnvironmentDto,
   EnvironmentPageDto,
   EnvironmentPathDto,
+  organizationDto,
   OrganizationDto,
   OrganizationPageDto,
   OrganizationPathDto,
+  projectDto,
   ProjectDto,
   ProjectPageDto,
   ProjectPathDto,
-  resourceDto,
 } from './resource.dto';
 
 @ApiTags('organizations')
@@ -36,7 +38,7 @@ export class CatalogController {
     @Query() query: CatalogQueryDto,
   ): Promise<OrganizationPageDto> {
     const page = await this.queries.organizations(resourceContext(request), query);
-    return { ...page, items: page.items.map(resourceDto) };
+    return { ...page, items: page.items.map(organizationDto) };
   }
   @Get(':organizationId')
   @RequireTenant('organization.read', 'organization')
@@ -47,7 +49,7 @@ export class CatalogController {
     @Req() request: IdentityRequest,
     @Param() path: OrganizationPathDto,
   ): Promise<OrganizationDto> {
-    return resourceDto(
+    return organizationDto(
       await this.queries.organization(resourceContext(request), path.organizationId),
     );
   }
@@ -60,7 +62,7 @@ export class CatalogController {
     @Query() query: CatalogQueryDto,
   ): Promise<ProjectPageDto> {
     const page = await this.queries.projects(resourceContext(request), path.organizationId, query);
-    return { ...page, items: page.items.map(resourceDto) };
+    return { ...page, items: page.items.map(projectDto) };
   }
   @Get(':organizationId/projects/:projectId')
   @RequireTenant('project.read', 'project')
@@ -71,7 +73,7 @@ export class CatalogController {
     @Req() request: IdentityRequest,
     @Param() path: ProjectPathDto,
   ): Promise<ProjectDto> {
-    return resourceDto(await this.queries.project(resourceContext(request), path));
+    return projectDto(await this.queries.project(resourceContext(request), path));
   }
   @Get(':organizationId/projects/:projectId/environments')
   @RequireTenant('project.read', 'project')
@@ -82,7 +84,7 @@ export class CatalogController {
     @Query() query: CatalogQueryDto,
   ): Promise<EnvironmentPageDto> {
     const page = await this.queries.environments(resourceContext(request), path, query);
-    return { ...page, items: page.items.map(resourceDto) };
+    return { ...page, items: page.items.map(environmentDto) };
   }
   @Get(':organizationId/projects/:projectId/environments/:environmentId')
   @RequireTenant('environment.read', 'environment')
@@ -93,6 +95,6 @@ export class CatalogController {
     @Req() request: IdentityRequest,
     @Param() path: EnvironmentPathDto,
   ): Promise<EnvironmentDto> {
-    return resourceDto(await this.queries.environment(resourceContext(request), path));
+    return environmentDto(await this.queries.environment(resourceContext(request), path));
   }
 }

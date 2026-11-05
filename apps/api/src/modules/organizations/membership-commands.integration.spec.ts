@@ -268,6 +268,15 @@ describe('organization membership commands with restricted PostgreSQL', () => {
     ).toBe(1);
   });
 
+  it('answers unknown and existing accounts identically when the password is wrong', async () => {
+    const wrong = new Secret('not the actor password at all');
+    for (const email of ['missing@example.com', `${actors[3].userId}@example.com`])
+      await expect(
+        commands.add(actors[0], organizationId, email, 'member', wrong, {}),
+      ).rejects.toThrow('Authentication failed.');
+    expect(await prisma.membership.count({ where: { userId: actors[3].userId } })).toBe(0);
+  });
+
   it('rejects unknown/foreign members, invalid roles, inactive recipients and stale actors', async () => {
     for (const id of [uuidv7(), 'invalid'])
       await expect(

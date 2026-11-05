@@ -60,12 +60,59 @@ export class EnvironmentPageDto extends PageDto {
   @ApiProperty({ type: [EnvironmentDto] }) items!: EnvironmentDto[];
 }
 
-export function resourceDto<T extends { createdAt: Date; updatedAt: Date }>(
-  record: T,
-): Omit<T, 'createdAt' | 'updatedAt'> & { createdAt: string; updatedAt: string } {
+/**
+ * Response mappers list every field explicitly: a column added to a table must never reach API
+ * clients (sessions or bearer tokens) without being declared here and in the DTO.
+ */
+interface Timestamps {
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+}
+function timestamps(record: Timestamps): { createdAt: string; updatedAt: string } {
+  return { createdAt: record.createdAt.toISOString(), updatedAt: record.updatedAt.toISOString() };
+}
+export function organizationDto(
+  record: Timestamps & { readonly id: string; readonly name: string; readonly slug: string },
+): OrganizationDto {
+  return { id: record.id, name: record.name, slug: record.slug, ...timestamps(record) };
+}
+export function projectDto(
+  record: Timestamps & {
+    readonly id: string;
+    readonly organizationId: string;
+    readonly name: string;
+    readonly slug: string;
+    readonly gitWriteMode: 'commit' | 'pull_request';
+  },
+): ProjectDto {
   return {
-    ...record,
-    createdAt: record.createdAt.toISOString(),
-    updatedAt: record.updatedAt.toISOString(),
+    id: record.id,
+    organizationId: record.organizationId,
+    name: record.name,
+    slug: record.slug,
+    gitWriteMode: record.gitWriteMode,
+    ...timestamps(record),
+  };
+}
+export function environmentDto(
+  record: Timestamps & {
+    readonly id: string;
+    readonly organizationId: string;
+    readonly projectId: string;
+    readonly name: string;
+    readonly kind: 'standard' | 'preview';
+    readonly failoverPolicy: 'none' | 'restore-from-backup';
+    readonly protected: boolean;
+  },
+): EnvironmentDto {
+  return {
+    id: record.id,
+    organizationId: record.organizationId,
+    projectId: record.projectId,
+    name: record.name,
+    kind: record.kind,
+    failoverPolicy: record.failoverPolicy,
+    protected: record.protected,
+    ...timestamps(record),
   };
 }

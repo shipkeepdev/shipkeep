@@ -48,7 +48,8 @@ func Enroll(ctx context.Context, address, fingerprint string, dev bool, token se
 	defer conn.Close() //nolint:errcheck // no pending RPC after the call below
 	response, err := agentv1.NewAgentGatewayServiceClient(conn).Enroll(ctx, &agentv1.EnrollRequest{JoinToken: token.Expose(), CsrPem: csr, Facts: facts, AgentVersion: version})
 	if err != nil {
-		return nodecredentials.Bundle{}, fmt.Errorf("enrollment failed (%s)", status.Code(err))
+		// Keep the gRPC code for callers (status.Code works through %w) but never the remote text.
+		return nodecredentials.Bundle{}, fmt.Errorf("enrollment failed: %w", status.Error(status.Code(err), "enrollment rejected"))
 	}
 	b := nodecredentials.Bundle{Key: key, Certificate: response.CertPem, CA: response.CaPem, NodeID: response.NodeId, OrganizationID: response.OrganizationId, LeaseEpoch: response.LeaseEpoch, ConfirmationPublicKey: response.ConfirmationPublicKey}
 	if _, err := b.Validate(nodecredentials.Fingerprint(ca)); err != nil {

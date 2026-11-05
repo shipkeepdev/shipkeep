@@ -199,6 +199,10 @@ func TestEnrollmentErrorsNeverEchoTokens(t *testing.T) {
 	if err == nil || strings.Contains(err.Error(), rejected.Expose()) {
 		t.Fatal("RPC error disclosed token")
 	}
+	// The gRPC code survives wrapping so callers can tell a rejected token from an outage.
+	if status.Code(err) != codes.InvalidArgument {
+		t.Fatalf("enrollment error lost its gRPC code: %v", status.Code(err))
+	}
 }
 
 func TestExpiredGatewayAndOversizedMessagesAreRejected(t *testing.T) {

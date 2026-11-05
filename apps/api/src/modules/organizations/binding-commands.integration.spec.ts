@@ -186,6 +186,23 @@ describe('resource role commands with restricted PostgreSQL', () => {
     expect(await version(2)).toBe(2);
   });
 
+  it('keeps environment admins from overriding project admins and hides membership on wrong passwords', async () => {
+    // Actor 3 administers only envs[0]; actor 2 administers the whole project.
+    await expect(assign(3, environment, 'viewer', 2)).rejects.toMatchObject({
+      code: 'resource_not_found',
+    });
+    expect(await access.allows(actors[2].userId, 'member.manage', environment)).toBe(true);
+    expect(await version(2)).toBe(0);
+    // A project admin may still restrict another project admin's environment access.
+    await assign(0, environment, 'viewer', 2);
+    // Non-member and member addresses give the same answer when the password is wrong.
+    const wrong = new Secret('not the actor password at all');
+    for (const email of ['nobody@example.com', `${actors[5].userId}@example.com`])
+      await expect(
+        commands.assign(actors[3], environment, email, 'viewer', wrong, {}),
+      ).rejects.toThrow('Authentication failed.');
+  });
+
   it('rejects outsiders, owner/admin recipients, unknown accounts, invalid roles and forged ancestry', async () => {
     for (const actor of [4, 5, 6]) {
       await expect(assign(actor, project, 'admin')).rejects.toMatchObject({

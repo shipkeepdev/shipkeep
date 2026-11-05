@@ -131,15 +131,31 @@ describe('tenant catalog HTTP with restricted PostgreSQL', () => {
       name: 'Catalog',
       createdAt: expect.stringMatching(/Z$/),
     });
-    expect((await get(project()).expect(200)).body).toMatchObject({
-      organizationId,
-      gitWriteMode: 'pull_request',
-    });
-    expect((await get(environment()).expect(200)).body).toMatchObject({
-      organizationId,
-      projectId,
-      protected: true,
-    });
+    // Responses are explicit allowlists: a new column must never leak without a DTO change.
+    const projectBody = (await get(project()).expect(200)).body as object;
+    expect(Object.keys(projectBody).sort()).toEqual([
+      'createdAt',
+      'gitWriteMode',
+      'id',
+      'name',
+      'organizationId',
+      'slug',
+      'updatedAt',
+    ]);
+    expect(projectBody).toMatchObject({ organizationId, gitWriteMode: 'pull_request' });
+    const environmentBody = (await get(environment()).expect(200)).body as object;
+    expect(Object.keys(environmentBody).sort()).toEqual([
+      'createdAt',
+      'failoverPolicy',
+      'id',
+      'kind',
+      'name',
+      'organizationId',
+      'projectId',
+      'protected',
+      'updatedAt',
+    ]);
+    expect(environmentBody).toMatchObject({ organizationId, projectId, protected: true });
   });
 
   it('filters member lists before pagination while preserving parent navigation', async () => {
