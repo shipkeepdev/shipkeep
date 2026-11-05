@@ -301,6 +301,8 @@ Session-only token management uses `POST /api-tokens` (201, secret plus metadata
 
 The browser identity transport uses the generated SDK against the current origin only, with same-origin cookies, no response caching and no redirects. Requests time out after twenty seconds and preserve caller cancellation. It reads exactly one matching CSRF cookie (the `__Host-` variant on HTTPS), supplies caller-owned idempotency keys for mutations and never sets bearer credentials. Browser session state retains only user ID, email and expiry in memory. It discards late responses after newer state changes and distinguishes unauthenticated access from temporary service failure. UI errors use fixed messages and bounded retry delays rather than forwarding arbitrary server/transport diagnostics.
 
+Form submissions suppress concurrent requests and retain their retry key for an unchanged body after uncertain transport/server failures. They require an explicit restart after four minutes (before the server's five-minute cache expires), a backward clock change or a replay conflict. Known client rejections release the attempt; HTTP 408 remains uncertain. A bounded server-requested wait survives a form restart. Private retry snapshots live only in native private fields for the form's lifetime, are cleared after success/restart/destruction and cannot appear in object serialization. Leaving or resetting a form invalidates its pending results.
+
 - Base path `/api/v1`. OpenAPI 3.1 generated from NestJS decorators and published at `/api/v1/openapi.json`.
 - Auth: session cookie (UI, `SameSite=Strict`, CSRF token) or `Authorization: Bearer <api_token>`.
 - Errors: RFC 9457 problem details with a stable `type` URI per error.
