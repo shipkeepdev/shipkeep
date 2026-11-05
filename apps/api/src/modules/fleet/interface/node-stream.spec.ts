@@ -10,10 +10,18 @@ import {
 
 import type { AgentActions } from '../application/agent-actions';
 import { AuthenticateNode } from '../application/authenticate-node';
+import type { NodeLiveness } from '../application/node-liveness';
 import { NodeStream } from './node-stream';
 
 const idle = { deliverable: () => Promise.resolve([]), record: () => Promise.resolve() };
 const queue = (fake: object) => fake as unknown as AgentActions;
+const heartbeats: string[] = [];
+const liveness = {
+  heartbeat: (node: { nodeId: string }) => {
+    heartbeats.push(node.nodeId);
+    return Promise.resolve();
+  },
+} as unknown as NodeLiveness;
 
 const identity = { nodeId: 'node', organizationId: 'org', serial: 'serial' };
 
@@ -40,7 +48,11 @@ describe('stream timeouts and failure boundaries', () => {
     const input: AsyncIterable<ConnectRequest> = {
       [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }),
     };
-    const stream = new NodeStream(authenticate, queue(idle)).connect(input, context, identity);
+    const stream = new NodeStream(authenticate, queue(idle), liveness).connect(
+      input,
+      context,
+      identity,
+    );
     const rejected = expect(stream.next()).rejects.toMatchObject({ code: 4 });
     await vi.advanceTimersByTimeAsync(15_000);
     await rejected;
@@ -57,7 +69,7 @@ describe('stream timeouts and failure boundaries', () => {
       [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(new Error('socket closed')) }),
     };
     await expect(
-      new NodeStream(authenticate, queue(idle)).connect(input, context, identity).next(),
+      new NodeStream(authenticate, queue(idle), liveness).connect(input, context, identity).next(),
     ).rejects.toMatchObject({ code: 13, rawMessage: 'agent stream failed' });
   });
 
@@ -109,7 +121,7 @@ describe('stream timeouts and failure boundaries', () => {
       }),
     };
     const responses = [];
-    for await (const response of new NodeStream(authenticate, queue(fake)).connect(
+    for await (const response of new NodeStream(authenticate, queue(fake), liveness).connect(
       input,
       context,
       identity,
@@ -117,5 +129,7 @@ describe('stream timeouts and failure boundaries', () => {
       responses.push(response.msg.case);
     expect(responses).toEqual(['welcome', 'actionRequest']);
     expect(recorded.map((update) => update.state)).toEqual([OperationState.SUCCEEDED]);
+    // The hello counts as a heartbeat: the node becomes ready as soon as its agent connects.
+    expect(heartbeats).toContain('node');
   });
 });

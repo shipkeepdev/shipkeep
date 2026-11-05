@@ -1,6 +1,6 @@
 import type { AgentActionChange, AgentActionRecord } from '../domain/agent-action';
 import type { JoinTokenRecord } from '../domain/join-token';
-import type { NodeCertificateRecord, NodeRecord } from '../domain/node';
+import type { NodeCertificateRecord, NodeRecord, NodeStatus } from '../domain/node';
 import type { NodeCredential, NodeIdentity } from '../domain/node-identity';
 
 export interface NodeCredentialStore {
@@ -42,6 +42,17 @@ export interface NodeStore {
    * certificate. False when the node was already removed.
    */
   remove(organizationId: string, id: string, now: Date): Promise<boolean>;
+  /**
+   * Run under `runTenant(organizationId)`: records a heartbeat and the status it implies if the
+   * node is still in `expected`. False when the status changed meanwhile.
+   */
+  heartbeat(
+    organizationId: string,
+    id: string,
+    expected: NodeStatus,
+    next: NodeStatus,
+    now: Date,
+  ): Promise<boolean>;
   /** Run under `runTenant(organizationId)`: at most 100 nodes, newest first, exclusive cursor. */
   list(organizationId: string, beforeId?: string): Promise<NodeRecord[]>;
 }

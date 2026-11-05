@@ -101,7 +101,8 @@ export class FleetAdministrationController {
       path.organizationId,
       query.cursor,
     );
-    const items = nodes.slice(0, query.limit).map(nodeDto);
+    const now = new Date();
+    const items = nodes.slice(0, query.limit).map((node) => nodeDto(node, now));
     return { items, nextCursor: items.length === query.limit ? (items.at(-1)?.id ?? null) : null };
   }
 }

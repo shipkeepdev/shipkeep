@@ -76,6 +76,30 @@ export function sanitizeFacts(input: Readonly<Record<string, unknown>>): NodeFac
   return out;
 }
 
+/** SPEC 5.2: a node is suspect 15 s after its last heartbeat and down at lease expiry (60 s). */
+export const SUSPECT_AFTER_MS = 15_000;
+export const DOWN_AFTER_MS = 60_000;
+
+/**
+ * The status as observed at `now`: a ready node whose heartbeats stopped reads as suspect, then
+ * down. Persisting those transitions with fencing is M4.5; until then this view drives the API and
+ * scheduling.
+ */
+export function observedStatus(
+  node: Pick<NodeRecord, 'status' | 'lastHeartbeatAt'>,
+  now: Date,
+): NodeStatus {
+  if (node.status !== 'ready') return node.status;
+  const age = node.lastHeartbeatAt ? now.getTime() - node.lastHeartbeatAt.getTime() : Infinity;
+  if (age >= DOWN_AFTER_MS) return 'down';
+  return age >= SUSPECT_AFTER_MS ? 'suspect' : 'ready';
+}
+
+/** A connected agent's heartbeat makes a node ready, except while draining or once removed. */
+export function statusAfterHeartbeat(status: NodeStatus): NodeStatus {
+  return status === 'draining' || status === 'removed' ? status : 'ready';
+}
+
 /** SPIFFE identity encoded in every node certificate (SPEC section 3.2). */
 export function nodeSpiffeId(organizationId: string, nodeId: string): string {
   return `spiffe://shipkeep/${organizationId}/node/${nodeId}`;

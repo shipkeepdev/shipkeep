@@ -4,8 +4,10 @@ import {
   assertNodeName,
   nodeNameFromHostname,
   nodeSpiffeId,
+  observedStatus,
   parseNodeSpiffeId,
   sanitizeFacts,
+  statusAfterHeartbeat,
 } from './node';
 
 describe('node names', () => {
@@ -72,5 +74,33 @@ describe('SPIFFE ids', () => {
     expect(parseNodeSpiffeId(`spiffe://shipkeep/${org}/user/${node}`)).toBeUndefined();
     expect(parseNodeSpiffeId(`spiffe://shipkeep/${org}/node/../${node}`)).toBeUndefined();
     expect(parseNodeSpiffeId('')).toBeUndefined();
+  });
+});
+
+describe('node liveness', () => {
+  const now = new Date('2026-11-05T12:00:00Z');
+  const ago = (ms: number) => new Date(now.getTime() - ms);
+
+  it('reads a ready node as suspect after 15 s and down after 60 s without heartbeat', () => {
+    expect(observedStatus({ status: 'ready', lastHeartbeatAt: ago(14_999) }, now)).toBe('ready');
+    expect(observedStatus({ status: 'ready', lastHeartbeatAt: ago(15_000) }, now)).toBe('suspect');
+    expect(observedStatus({ status: 'ready', lastHeartbeatAt: ago(60_000) }, now)).toBe('down');
+    expect(observedStatus({ status: 'ready', lastHeartbeatAt: null }, now)).toBe('down');
+    // A clock skewed into the future never makes a node look healthier than ready.
+    expect(observedStatus({ status: 'ready', lastHeartbeatAt: ago(-5_000) }, now)).toBe('ready');
+  });
+
+  it('keeps other stored statuses as they are', () => {
+    for (const status of ['enrolling', 'draining', 'removed', 'suspect', 'down'] as const)
+      expect(observedStatus({ status, lastHeartbeatAt: ago(120_000) }, now)).toBe(status);
+  });
+
+  it('makes a heartbeating node ready unless it is draining or removed', () => {
+    expect(statusAfterHeartbeat('enrolling')).toBe('ready');
+    expect(statusAfterHeartbeat('suspect')).toBe('ready');
+    expect(statusAfterHeartbeat('down')).toBe('ready');
+    expect(statusAfterHeartbeat('ready')).toBe('ready');
+    expect(statusAfterHeartbeat('draining')).toBe('draining');
+    expect(statusAfterHeartbeat('removed')).toBe('removed');
   });
 });

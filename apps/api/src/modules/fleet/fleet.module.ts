@@ -28,6 +28,7 @@ import {
 import { PrismaJoinTokenStore, PrismaNodeStore } from './infrastructure/prisma-fleet.stores';
 import { PrismaAgentActionStore } from './infrastructure/prisma-agent-action.store';
 import { AgentActions } from './application/agent-actions';
+import { NodeLiveness } from './application/node-liveness';
 
 /**
  * Fleet: nodes, enrollment, certificates (SPEC section 3.2). Agents use the gRPC gateway;
@@ -49,6 +50,7 @@ import { AgentActions } from './application/agent-actions';
     { provide: NODE_STORE, useClass: PrismaNodeStore },
     { provide: AGENT_ACTION_STORE, useClass: PrismaAgentActionStore },
     AgentActions,
+    NodeLiveness,
     IssueJoinToken,
     EnrollNode,
   ],

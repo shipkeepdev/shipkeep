@@ -67,3 +67,18 @@ export function nodeRemoved(input: {
     payload: { name: input.name, confirmationId: input.confirmationId },
   });
 }
+
+/** A connected agent made its node ready again (SPEC 5.2); recorded on transitions only. */
+export function nodeReady(input: {
+  organizationId: string;
+  nodeId: string;
+  from: string;
+}): DomainEvent {
+  return createEvent({
+    type: 'fleet.node.ready',
+    organizationId: input.organizationId,
+    actor: { kind: 'node', id: input.nodeId },
+    target: { type: 'node', id: input.nodeId },
+    payload: { from: input.from },
+  });
+}

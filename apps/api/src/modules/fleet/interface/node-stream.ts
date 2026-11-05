@@ -10,15 +10,18 @@ import {
 
 import { AgentActions } from '../application/agent-actions';
 import { AuthenticateNode } from '../application/authenticate-node';
+import { NodeLiveness } from '../application/node-liveness';
 import { NodeAuthenticationError, type NodeIdentity } from '../domain/node-identity';
 
 const pollMs = 1000;
 const idleMs = 15_000;
+/** Heartbeats arrive every 5 s; recording every 10 s stays well inside the 15 s suspect window. */
+const recordEveryMs = 10_000;
 const tick = Symbol('tick');
 
 /**
- * Agent stream: identity, heartbeats and at-least-once action delivery (M1.4a2). Durable leases
- * and state reports belong to M4.5 and M1.6.
+ * Agent stream: identity, heartbeats (node liveness, M3.4c1) and at-least-once action delivery
+ * (M1.4a2). Durable leases and state reports belong to M4.5 and M1.6.
  */
 @Injectable()
 export class NodeStream {
@@ -27,6 +30,7 @@ export class NodeStream {
   constructor(
     private readonly authenticate: AuthenticateNode,
     private readonly actions: AgentActions,
+    private readonly liveness: NodeLiveness,
   ) {}
 
   async *connect(
@@ -43,6 +47,7 @@ export class NodeStream {
     let pending = nextFrame(reader);
     let lastMessage = Date.now();
     let hello = false;
+    let recordedAt = 0;
     // Actions sent on this stream; a new stream redelivers every unfinished one.
     const sent = new Set<string>();
     try {
@@ -73,6 +78,8 @@ export class NodeStream {
           )
             throw new ConnectError('invalid agent hello or stale epoch', Code.FailedPrecondition);
           hello = true;
+          await this.liveness.heartbeat(identity);
+          recordedAt = Date.now();
           yield create(ConnectResponseSchema, {
             msg: {
               case: 'welcome',
@@ -95,6 +102,9 @@ export class NodeStream {
             'expected a heartbeat with the current epoch',
             Code.InvalidArgument,
           );
+        } else if (Date.now() - recordedAt >= recordEveryMs) {
+          await this.liveness.heartbeat(identity);
+          recordedAt = Date.now();
         }
         pending = nextFrame(reader);
       }
