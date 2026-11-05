@@ -57,6 +57,9 @@ Browser acceptance requires Docker and always creates a fresh PostgreSQL contain
 and a local TLS SMTP fixture; no external email is sent. Self-signed certificate acceptance is
 limited to that browser context. The suite checks public forms, signup, email verification,
 login/logout, cookie/CSRF/Origin boundaries, CSP, automated WCAG rules and horizontal overflow
-at widths from 320 to 1440 pixels. It records no traces, HAR files or screenshots. Password-reset,
-MFA/recovery and token-management browser workflows, plus manual visual/accessibility review,
-remain tracked in `docs/PLAN.md`.
+at widths from 320 to 1440 pixels. Security scenarios cover password reset and code reuse,
+session/token invalidation, TOTP and recovery-code login, token creation/revocation, lost-response
+retries, concurrent-write prevention and temporary-grant cleanup. Fault injection drops an actual
+committed response and throttles its retry; real services and authorization remain enabled.
+Browser time advances only for display-expiry checks. The suite records no traces, HAR files or
+screenshots. Manual visual/accessibility review remains tracked in `docs/PLAN.md`.

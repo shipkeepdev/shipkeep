@@ -12,6 +12,7 @@ import { smtpServer } from './smtp-server';
 /** Real production assets, HTTPS, PostgreSQL and TLS SMTP, all disposable and loopback-only. */
 export async function browserApp(): Promise<{
   context: BrowserContext;
+  newContext: () => Promise<BrowserContext>;
   origin: string;
   messages: string[];
   close: () => Promise<void>;
@@ -70,17 +71,20 @@ export async function browserApp(): Promise<{
     backend.app.get(ConfigService).set('API_PUBLIC_URL', origin);
     const browser = await chromium.launch();
     cleanups.push(() => browser.close());
-    const context = await browser.newContext({
-      baseURL: origin,
-      // Only this isolated self-signed HTTPS fixture; production TLS validation is unchanged.
-      ignoreHTTPSErrors: true,
-      viewport: { width: 1440, height: 1000 },
-    });
-    await context.route('**/*', (route) =>
-      new URL(route.request().url()).origin === origin ? route.continue() : route.abort(),
-    );
-    context.setDefaultTimeout(15_000);
-    return { context, origin, messages: smtp.messages, close };
+    const newContext = async (): Promise<BrowserContext> => {
+      const context = await browser.newContext({
+        baseURL: origin,
+        // Only this isolated self-signed HTTPS fixture; production TLS validation is unchanged.
+        ignoreHTTPSErrors: true,
+        viewport: { width: 1440, height: 1000 },
+      });
+      await context.route('**/*', (route) =>
+        new URL(route.request().url()).origin === origin ? route.continue() : route.abort(),
+      );
+      context.setDefaultTimeout(15_000);
+      return context;
+    };
+    return { context: await newContext(), newContext, origin, messages: smtp.messages, close };
   } catch (error: unknown) {
     await close();
     throw error;
