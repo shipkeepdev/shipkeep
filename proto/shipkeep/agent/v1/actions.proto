@@ -369,12 +369,15 @@ message BackupVolume {
   S3Target s3_target = 2;
 }
 
-// Restore a volume from S3.
+// Restore a volume from S3. Overwriting an existing volume is destructive: the agent then requires a
+// confirmation token whose action is `restore_volume` and whose target is the volume name (ADR 0013).
+// Restoring into a volume that does not exist yet needs no token.
 message RestoreVolume {
   string volume = 1;
   S3Target s3_target = 2;
   // Expected SHA-256 of the encrypted archive, verified before extraction.
   string expected_sha256 = 3;
+  string confirmation_token = 4 [debug_redact = true];
 }
 
 // Engine-native logical dump of a managed database to S3.
@@ -386,13 +389,17 @@ message DumpDatabase {
   string database = 4;
 }
 
-// Engine-native restore of a managed database from S3.
+// Engine-native restore of a managed database from S3. Overwriting an existing database is
+// destructive: the agent then requires a confirmation token whose action is `restore_database` and
+// whose target is `<container_id>/<database>` (ADR 0013). A database that does not exist yet needs
+// no token.
 message RestoreDatabase {
   DatabaseEngine engine = 1;
   string container_id = 2;
   S3Target s3_target = 3;
   string database = 4;
   string expected_sha256 = 5;
+  string confirmation_token = 6 [debug_redact = true];
 }
 
 // Replace the WireGuard peer set of the node.

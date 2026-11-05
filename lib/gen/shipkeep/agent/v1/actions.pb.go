@@ -2409,15 +2409,18 @@ func (x *BackupVolume) GetS3Target() *S3Target {
 	return nil
 }
 
-// Restore a volume from S3.
+// Restore a volume from S3. Overwriting an existing volume is destructive: the agent then requires a
+// confirmation token whose action is `restore_volume` and whose target is the volume name (ADR 0013).
+// Restoring into a volume that does not exist yet needs no token.
 type RestoreVolume struct {
 	state    protoimpl.MessageState `protogen:"open.v1"`
 	Volume   string                 `protobuf:"bytes,1,opt,name=volume,proto3" json:"volume,omitempty"`
 	S3Target *S3Target              `protobuf:"bytes,2,opt,name=s3_target,json=s3Target,proto3" json:"s3_target,omitempty"`
 	// Expected SHA-256 of the encrypted archive, verified before extraction.
-	ExpectedSha256 string `protobuf:"bytes,3,opt,name=expected_sha256,json=expectedSha256,proto3" json:"expected_sha256,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	ExpectedSha256    string `protobuf:"bytes,3,opt,name=expected_sha256,json=expectedSha256,proto3" json:"expected_sha256,omitempty"`
+	ConfirmationToken string `protobuf:"bytes,4,opt,name=confirmation_token,json=confirmationToken,proto3" json:"confirmation_token,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *RestoreVolume) Reset() {
@@ -2467,6 +2470,13 @@ func (x *RestoreVolume) GetS3Target() *S3Target {
 func (x *RestoreVolume) GetExpectedSha256() string {
 	if x != nil {
 		return x.ExpectedSha256
+	}
+	return ""
+}
+
+func (x *RestoreVolume) GetConfirmationToken() string {
+	if x != nil {
+		return x.ConfirmationToken
 	}
 	return ""
 }
@@ -2541,16 +2551,20 @@ func (x *DumpDatabase) GetDatabase() string {
 	return ""
 }
 
-// Engine-native restore of a managed database from S3.
+// Engine-native restore of a managed database from S3. Overwriting an existing database is
+// destructive: the agent then requires a confirmation token whose action is `restore_database` and
+// whose target is `<container_id>/<database>` (ADR 0013). A database that does not exist yet needs
+// no token.
 type RestoreDatabase struct {
-	state          protoimpl.MessageState `protogen:"open.v1"`
-	Engine         DatabaseEngine         `protobuf:"varint,1,opt,name=engine,proto3,enum=shipkeep.agent.v1.DatabaseEngine" json:"engine,omitempty"`
-	ContainerId    string                 `protobuf:"bytes,2,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
-	S3Target       *S3Target              `protobuf:"bytes,3,opt,name=s3_target,json=s3Target,proto3" json:"s3_target,omitempty"`
-	Database       string                 `protobuf:"bytes,4,opt,name=database,proto3" json:"database,omitempty"`
-	ExpectedSha256 string                 `protobuf:"bytes,5,opt,name=expected_sha256,json=expectedSha256,proto3" json:"expected_sha256,omitempty"`
-	unknownFields  protoimpl.UnknownFields
-	sizeCache      protoimpl.SizeCache
+	state             protoimpl.MessageState `protogen:"open.v1"`
+	Engine            DatabaseEngine         `protobuf:"varint,1,opt,name=engine,proto3,enum=shipkeep.agent.v1.DatabaseEngine" json:"engine,omitempty"`
+	ContainerId       string                 `protobuf:"bytes,2,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
+	S3Target          *S3Target              `protobuf:"bytes,3,opt,name=s3_target,json=s3Target,proto3" json:"s3_target,omitempty"`
+	Database          string                 `protobuf:"bytes,4,opt,name=database,proto3" json:"database,omitempty"`
+	ExpectedSha256    string                 `protobuf:"bytes,5,opt,name=expected_sha256,json=expectedSha256,proto3" json:"expected_sha256,omitempty"`
+	ConfirmationToken string                 `protobuf:"bytes,6,opt,name=confirmation_token,json=confirmationToken,proto3" json:"confirmation_token,omitempty"`
+	unknownFields     protoimpl.UnknownFields
+	sizeCache         protoimpl.SizeCache
 }
 
 func (x *RestoreDatabase) Reset() {
@@ -2614,6 +2628,13 @@ func (x *RestoreDatabase) GetDatabase() string {
 func (x *RestoreDatabase) GetExpectedSha256() string {
 	if x != nil {
 		return x.ExpectedSha256
+	}
+	return ""
+}
+
+func (x *RestoreDatabase) GetConfirmationToken() string {
+	if x != nil {
+		return x.ConfirmationToken
 	}
 	return ""
 }
@@ -3757,22 +3778,24 @@ const file_shipkeep_agent_v1_actions_proto_rawDesc = "" +
 	"\x04user\x18\x06 \x01(\tR\x04user\"`\n" +
 	"\fBackupVolume\x12\x16\n" +
 	"\x06volume\x18\x01 \x01(\tR\x06volume\x128\n" +
-	"\ts3_target\x18\x02 \x01(\v2\x1b.shipkeep.agent.v1.S3TargetR\bs3Target\"\x8a\x01\n" +
+	"\ts3_target\x18\x02 \x01(\v2\x1b.shipkeep.agent.v1.S3TargetR\bs3Target\"\xbe\x01\n" +
 	"\rRestoreVolume\x12\x16\n" +
 	"\x06volume\x18\x01 \x01(\tR\x06volume\x128\n" +
 	"\ts3_target\x18\x02 \x01(\v2\x1b.shipkeep.agent.v1.S3TargetR\bs3Target\x12'\n" +
-	"\x0fexpected_sha256\x18\x03 \x01(\tR\x0eexpectedSha256\"\xc2\x01\n" +
+	"\x0fexpected_sha256\x18\x03 \x01(\tR\x0eexpectedSha256\x122\n" +
+	"\x12confirmation_token\x18\x04 \x01(\tB\x03\x80\x01\x01R\x11confirmationToken\"\xc2\x01\n" +
 	"\fDumpDatabase\x129\n" +
 	"\x06engine\x18\x01 \x01(\x0e2!.shipkeep.agent.v1.DatabaseEngineR\x06engine\x12!\n" +
 	"\fcontainer_id\x18\x02 \x01(\tR\vcontainerId\x128\n" +
 	"\ts3_target\x18\x03 \x01(\v2\x1b.shipkeep.agent.v1.S3TargetR\bs3Target\x12\x1a\n" +
-	"\bdatabase\x18\x04 \x01(\tR\bdatabase\"\xee\x01\n" +
+	"\bdatabase\x18\x04 \x01(\tR\bdatabase\"\xa2\x02\n" +
 	"\x0fRestoreDatabase\x129\n" +
 	"\x06engine\x18\x01 \x01(\x0e2!.shipkeep.agent.v1.DatabaseEngineR\x06engine\x12!\n" +
 	"\fcontainer_id\x18\x02 \x01(\tR\vcontainerId\x128\n" +
 	"\ts3_target\x18\x03 \x01(\v2\x1b.shipkeep.agent.v1.S3TargetR\bs3Target\x12\x1a\n" +
 	"\bdatabase\x18\x04 \x01(\tR\bdatabase\x12'\n" +
-	"\x0fexpected_sha256\x18\x05 \x01(\tR\x0eexpectedSha256\"\x8e\x01\n" +
+	"\x0fexpected_sha256\x18\x05 \x01(\tR\x0eexpectedSha256\x122\n" +
+	"\x12confirmation_token\x18\x06 \x01(\tB\x03\x80\x01\x01R\x11confirmationToken\"\x8e\x01\n" +
 	"\x0eConfigurePeers\x126\n" +
 	"\x05peers\x18\x01 \x03(\v2 .shipkeep.agent.v1.WireGuardPeerR\x05peers\x12#\n" +
 	"\rlocal_address\x18\x02 \x01(\tR\flocalAddress\x12\x1f\n" +
