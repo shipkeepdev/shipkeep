@@ -71,7 +71,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - Acceptance: `/api/v1/health` up; OpenAPI document generated in CI; `packages/api-client` generated from it.
   - [x] **M2.1b** Shared foundations used by every later module: KEK loading and the envelope encryption library (SPEC 9), the domain event bus, and the `AuditEvent` table with an append-only writer, so that every command from M1.2 onward emits audit events.
     - Acceptance: encryption library round-trip and tamper tests pass; an example command emits an audit event end to end.
-- [ ] **M2.2 Identity** (C + W). Depends: M2.1. Split into reviewable foundations, persistence, account/session flows, MFA/tokens and web flows.
+- [x] **M2.2 Identity** (C + W). Depends: M2.1. Split into reviewable foundations, persistence, account/session flows, MFA/tokens and web flows.
   - [x] **M2.2a** Pure identity policy, bounded Argon2id hashing, purpose-bound token hashes, TOTP counters and recovery-code generation.
   - [x] **M2.2b** Transactional identity persistence and audit, database migrations and concurrent-use tests.
     - [x] **M2.2b1** Request-local unit of work; audit writes join command transactions; real PostgreSQL rollback and isolation tests.
@@ -106,25 +106,26 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
         - [x] **M2.2d4c2** Session-only token management, default-deny bearer guard and HTTP acceptance tests.
           - [x] **M2.2d4c2a** Default-deny bearer guard, shared traffic limits and profile-read HTTP acceptance.
           - [x] **M2.2d4c2b** Session-only token management endpoints, encrypted retries and generated contract.
-  - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.
+  - [x] **M2.2e** Web identity flows and end-to-end acceptance tests.
     - [x] **M2.2e1** Typed browser identity transport, CSRF/idempotency handling and session state.
       - [x] **M2.2e1a** Correct pagination schema and preserve immutable request/response arrays in the generated SDK.
       - [x] **M2.2e1b** Same-origin identity transport and race-safe in-memory session state.
-    - [ ] **M2.2e2** Accessible signup, verification, login and password-reset screens.
+    - [x] **M2.2e2** Accessible signup, verification, login and password-reset screens.
       - [x] **M2.2e2a** Component-scoped submission state, bounded retries, cooldowns and stale-result protection.
       - [x] **M2.2e2b** Validated account forms and private-input lifecycle.
       - [x] **M2.2e2c** Account routes, labeled forms, focus feedback and responsive navigation; browser verification in M2.2e4.
-    - [ ] **M2.2e3** Account security screens for MFA/recovery and API-token lifecycle.
+    - [x] **M2.2e3** Account security screens for MFA/recovery and API-token lifecycle.
       - [x] **M2.2e3a** MFA enrollment/recovery form state and temporary private grants.
       - [x] **M2.2e3b** MFA status, manual enrollment and recovery screens; browser verification in M2.2e4.
       - [x] **M2.2e3c** Token creation/revocation form state and paginated metadata.
       - [x] **M2.2e3d** Token-management screens and one-time credential display; browser verification in M2.2e4.
-    - [ ] **M2.2e4** Browser acceptance and accessibility checks against the real backend, responsive verification and production static serving.
+    - [x] **M2.2e4** Browser acceptance and accessibility checks against the real backend, responsive verification and production static serving.
       - [x] **M2.2e4a** Same-origin production web serving and development origin configuration.
       - [x] **M2.2e4b** Real-browser identity/security acceptance with PostgreSQL, accessibility and secret-boundary checks.
         - [x] **M2.2e4b1** Isolated HTTPS/PostgreSQL/SMTP Chromium fixture; public forms, signup/verification/login/logout, secure cookies, CSRF, CSP and automated accessibility checks in CI.
         - [x] **M2.2e4b2** Browser password-reset, MFA/recovery and API-token workflows, failure/retry paths and private-grant lifecycle verification.
-      - [ ] **M2.2e4c** Desktop/mobile inspection, independent finish review and built design-system documentation.
+      - [x] **M2.2e4c** Desktop/mobile inspection, independent finish review and built design-system documentation.
+        - Acceptance: input-boundary contrast and narrow-table cues reviewed at desktop/tablet/mobile sizes; real-browser keyboard navigation preserves form state and reaches token actions. Design system recorded in `apps/web/DESIGN.md`.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.
   - Acceptance: auth E2E tests; brute-force protection (rate limit and progressive delay); session rotation on privilege change.
 - [ ] **M2.3 Organizations, projects, environments, RBAC** (C + W). Depends: M2.2
