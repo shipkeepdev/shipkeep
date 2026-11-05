@@ -9,6 +9,7 @@
   "include": [
     "vitest.config.mts",
     "vitest.integration.config.mts",
+    "vitest.browser.config.mts",
     "prisma.config.ts",
     "src/**/*.test.ts",
     "src/**/*.spec.ts",

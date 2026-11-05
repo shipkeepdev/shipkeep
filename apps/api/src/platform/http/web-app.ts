@@ -76,10 +76,8 @@ export async function installWebApp(app: INestApplication, directory: string): P
     };
     await walk('', 0);
     index = assets.get('/index.html')?.body.toString('utf8') ?? '';
-    if (
-      index.split(WEB_NONCE_PLACEHOLDER).length !== 2 ||
-      !index.includes(`ngCspNonce="${WEB_NONCE_PLACEHOLDER}"`)
-    )
+    // Angular normalizes attribute case and copies its root nonce to generated asset tags.
+    if (!new RegExp(`\\bngcspnonce="${WEB_NONCE_PLACEHOLDER}"`, 'i').test(index))
       throw new Error('Invalid build.');
     assets.delete('/index.html');
   } catch {
@@ -143,6 +141,6 @@ export async function installWebApp(app: INestApplication, directory: string): P
         "require-trusted-types-for 'script'",
       ].join('; '),
     );
-    response.type('html').send(index.replace(WEB_NONCE_PLACEHOLDER, nonce));
+    response.type('html').send(index.replaceAll(WEB_NONCE_PLACEHOLDER, nonce));
   });
 }

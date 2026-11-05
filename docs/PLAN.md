@@ -122,6 +122,8 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - [ ] **M2.2e4** Browser acceptance and accessibility checks against the real backend, responsive verification and production static serving.
       - [x] **M2.2e4a** Same-origin production web serving and development origin configuration.
       - [ ] **M2.2e4b** Real-browser identity/security acceptance with PostgreSQL, accessibility and secret-boundary checks.
+        - [x] **M2.2e4b1** Isolated HTTPS/PostgreSQL/SMTP Chromium fixture; public forms, signup/verification/login/logout, secure cookies, CSRF, CSP and automated accessibility checks in CI.
+        - [ ] **M2.2e4b2** Browser password-reset, MFA/recovery and API-token workflows, failure/retry paths and private-grant lifecycle verification.
       - [ ] **M2.2e4c** Desktop/mobile inspection, independent finish review and built design-system documentation.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.
   - Acceptance: auth E2E tests; brute-force protection (rate limit and progressive delay); session rotation on privilege change.
