@@ -71,15 +71,15 @@ describe('runtime-role provisioning against PostgreSQL', () => {
   });
 
   it('denies audit rewrites, tenant DDL and access to administrative migration state', async () => {
-    for (const sql of [
-      'DELETE FROM public.audit_events',
-      "UPDATE public.audit_events SET action='forged'",
-      'TRUNCATE public.projects',
-      'ALTER TABLE public.projects DISABLE ROW LEVEL SECURITY',
-      'CREATE TABLE public.untrusted (id integer)',
-      'SELECT * FROM public._shipkeep_test_migrations',
+    for (const execute of [
+      () => prisma.$executeRaw`DELETE FROM public.audit_events`,
+      () => prisma.$executeRaw`UPDATE public.audit_events SET action='forged'`,
+      () => prisma.$executeRaw`TRUNCATE public.projects`,
+      () => prisma.$executeRaw`ALTER TABLE public.projects DISABLE ROW LEVEL SECURITY`,
+      () => prisma.$executeRaw`CREATE TABLE public.untrusted (id integer)`,
+      () => prisma.$executeRaw`SELECT * FROM public._shipkeep_test_migrations`,
     ])
-      await expect(prisma.$executeRawUnsafe(sql)).rejects.toThrow();
+      await expect(execute()).rejects.toThrow();
     expect(await prisma.auditEvent.count()).toBe(2);
   });
 
