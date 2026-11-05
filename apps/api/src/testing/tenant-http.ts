@@ -18,21 +18,9 @@ import { PrismaService } from '../platform/prisma/prisma.service';
 import { PrismaUnitOfWork } from '../platform/prisma/prisma-unit-of-work';
 
 import { integrationApp } from './integration-app';
+import { tenantActors, type TenantActor } from './tenant-personas';
 
-export const tenantActors = [
-  'owner',
-  'admin',
-  'member',
-  'projectAdmin',
-  'projectDeveloper',
-  'projectViewer',
-  'environmentAdmin',
-  'environmentDeveloper',
-  'environmentViewer',
-  'restrictedAdmin',
-  'outsider',
-] as const;
-export type TenantActor = (typeof tenantActors)[number];
+export { tenantActors, type TenantActor };
 
 type TenantHttpFixture = Awaited<ReturnType<typeof integrationApp>> & {
   prisma: PrismaService;
@@ -42,6 +30,8 @@ type TenantHttpFixture = Awaited<ReturnType<typeof integrationApp>> & {
   owner: SecurityContext;
   http: () => ReturnType<typeof request>;
   get: (path: string, actor?: TenantActor) => Test;
+  /** Session POST with the actor's Origin, cookie and CSRF proof. */
+  post: (path: string, actor: TenantActor, body: object) => Test;
   organizationId: string;
   foreignId: string;
   projectId: string;
@@ -182,6 +172,13 @@ export async function tenantHttpFixture(): Promise<TenantHttpFixture> {
       environment,
       get: (path: string, actor: TenantActor = 'owner') =>
         http().get(path).set('Cookie', sessions[actor].cookie),
+      post: (path: string, actor: TenantActor, body: object) =>
+        http()
+          .post(path)
+          .set('Origin', origin)
+          .set('Cookie', sessions[actor].cookie)
+          .set('X-Shipkeep-CSRF', sessions[actor].csrf)
+          .send(body),
     };
   } catch (error) {
     await fixture.close();
