@@ -1,0 +1,85 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+import { Inject, Injectable } from '@nestjs/common';
+import { isTenantId, type Secret } from '@shipkeep/domain';
+
+import { AuthenticationError } from '../domain/identity-policy';
+import type { UserRecord } from '../domain/identity-records';
+
+import { IDENTITY_STORE, type IdentityStore } from './identity-store';
+import { PASSWORD_HASHER, type PasswordHashing } from './identity-ports';
+import type { SecurityContext } from './mfa-commands';
+import type { MfaProofInput } from './mfa-crypto';
+import { MfaProof } from './mfa-proof';
+import { SessionCommands, type SessionGrant } from './session-commands';
+
+/** Public identity boundary for authenticated resource commands. The transport supplies context;
+ * the callback must authorize the resource, perform its writes and publish its audit events.
+ * Account mutation locks serialize against password resets and permission changes.
+ */
+@Injectable()
+export class AccountMutationAuthority {
+  private readonly proof = new AsyncLocalStorage<{ userId: string; version: number }>();
+
+  constructor(
+    @Inject(IDENTITY_STORE) private readonly users: IdentityStore,
+    @Inject(PASSWORD_HASHER) private readonly passwords: PasswordHashing,
+    private readonly mfa: MfaProof,
+    private readonly sessions: SessionCommands,
+  ) {}
+
+  async run<T>(context: SecurityContext, operation: () => Promise<T>): Promise<T> {
+    assertContextShape(context);
+    return this.users.withUserLock(context.userId, async (user) => {
+      assertAccount(user, context);
+      return operation();
+    });
+  }
+
+  async reauthenticated<T>(
+    context: SecurityContext,
+    password: Secret,
+    factor: MfaProofInput,
+    operation: () => Promise<T>,
+    now = new Date(),
+  ): Promise<T> {
+    assertContextShape(context);
+    const user = await this.users.transaction(() => this.users.findUser(context.userId));
+    const matched = await this.passwords.verify(user?.passwordHash, password);
+    if (!user || !matched) throw new AuthenticationError();
+    assertAccount(user, context);
+    return this.run(context, async () => {
+      await this.mfa.verify(context.userId, factor, now);
+      return this.proof.run(
+        { userId: context.userId, version: context.securityVersion },
+        operation,
+      );
+    });
+  }
+
+  /** Only the same reauthenticated callback can rotate its caller after gaining/changing roles. */
+  async rotate(context: SecurityContext, now = new Date()): Promise<SessionGrant> {
+    assertContextShape(context);
+    const proof = this.proof.getStore();
+    if (proof?.userId !== context.userId || proof.version !== context.securityVersion)
+      throw new AuthenticationError();
+    return this.sessions.rotateAuthenticated(context.userId, context.securityVersion, context, now);
+  }
+}
+
+function assertContextShape(context: SecurityContext): void {
+  if (
+    !isTenantId(context.userId) ||
+    !Number.isSafeInteger(context.securityVersion) ||
+    context.securityVersion < 0
+  )
+    throw new AuthenticationError();
+}
+function assertAccount(user: UserRecord, context: SecurityContext): void {
+  if (
+    user.status !== 'active' ||
+    user.emailVerifiedAt === null ||
+    user.securityVersion !== context.securityVersion
+  )
+    throw new AuthenticationError();
+}
