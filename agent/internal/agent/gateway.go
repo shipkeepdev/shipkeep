@@ -22,7 +22,7 @@ import (
 	"github.com/samuelmbabhazi/shipkeep/lib/secret"
 )
 
-func (a *Agent) runGateway(ctx context.Context, store *journal.Store) error {
+func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *docker.Client) error {
 	if ctx.Err() != nil {
 		return nil //nolint:nilerr // Parent cancellation is a clean shutdown.
 	}
@@ -66,10 +66,6 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store) error {
 		a.logger.Info("agent enrolled", "node_id", bundle.NodeID)
 	}
 	epoch := bundle.LeaseEpoch
-	engine, err := docker.New(a.cfg.Docker.Host)
-	if err != nil {
-		return err
-	}
 	confirmations, err := confirm.NewVerifier(bundle.ConfirmationPublicKey, bundle.OrganizationID, store)
 	if err != nil {
 		return err
@@ -78,7 +74,9 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store) error {
 	if err != nil {
 		return err
 	}
-	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router), Epoch: func() uint64 { return epoch }}
+	// Facts are read when the result is built, after the action's context ended.
+	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine) //nolint:contextcheck // see above
+	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts), Epoch: func() uint64 { return epoch }}
 	runner := gateway.Runner{Address: a.cfg.ControlPlane.Address, StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher}
 	return runner.Run(ctx, bundle)
 }

@@ -10,10 +10,13 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/config"
+	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
+	"github.com/samuelmbabhazi/shipkeep/agent/internal/reconcile"
 	"github.com/samuelmbabhazi/shipkeep/lib/buildinfo"
 )
 
@@ -66,6 +69,21 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 		return err
 	}
 	a.logger.Info("journal ready", "unfinished_operations", len(unfinished))
+	engine, err := docker.New(a.cfg.Docker.Host)
+	if err != nil {
+		return err
+	}
+	// The reconciler keeps workloads in their recorded state even while the control plane is
+	// unreachable (CLAUDE.md rule 10). It stops before the journal closes.
+	reconcileCtx, stopReconcile := context.WithCancel(ctx)
+	var reconciling sync.WaitGroup
+	reconciling.Go(func() {
+		reconcile.Reconciler{Engine: engine, State: store, Logger: a.logger}.Run(reconcileCtx)
+	})
+	defer func() {
+		stopReconcile()
+		reconciling.Wait()
+	}()
 
 	a.logger.Info("agent started",
 		"version", buildinfo.Version,
@@ -78,7 +96,7 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 		a.logger.Warn("development mode: CA fingerprint pinning may be disabled, never use on a real server")
 	}
 
-	if err := a.runGateway(ctx, store); err != nil && ctx.Err() == nil {
+	if err := a.runGateway(ctx, store, engine); err != nil && ctx.Err() == nil {
 		return err
 	}
 
