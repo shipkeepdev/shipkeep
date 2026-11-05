@@ -82,8 +82,9 @@ export class MutationRunner {
       } else if (error instanceof IdentityRequestError) {
         this.failure.set(error.message);
         this.restart.set(error.status === 409);
-        // A transport/server timeout can occur after the command committed; preserve its key.
-        if (error.status >= 400 && error.status < 500 && ![408, 409].includes(error.status))
+        // A timeout may follow a commit, and a later retry can be throttled before replay lookup.
+        // Keep the original key through 429 too, or the next retry could duplicate that commit.
+        if (error.status >= 400 && error.status < 500 && ![408, 409, 429].includes(error.status))
           this.#attempt.reset();
         this.wait(error.retryAfterSeconds);
       } else {
