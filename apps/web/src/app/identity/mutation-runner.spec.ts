@@ -67,6 +67,23 @@ describe('identity mutation runner', () => {
     expect(JSON.stringify(runner)).not.toContain('private grant');
   });
 
+  it('retains the original key when a retry of an uncertain command is rate-limited', async () => {
+    const call = vi
+      .fn<(key: string) => Promise<void>>()
+      .mockRejectedValueOnce(new IdentityRequestError(0))
+      .mockRejectedValueOnce(new IdentityRequestError(429, 1))
+      .mockResolvedValue(undefined);
+    const body = { name: 'fixture token' };
+    await runner.run(body, call);
+    await runner.run(body, call);
+    expect(runner.cooldown()).toBe(1);
+    await runner.run(body, call);
+    expect(call).toHaveBeenCalledTimes(2);
+    vi.advanceTimersByTime(1000);
+    expect(await runner.run(body, call)).toEqual({ ok: true, value: undefined });
+    expect(new Set(call.mock.calls.map(([key]) => key)).size).toBe(1);
+  });
+
   it('requires an explicit restart after a conflict or an expired uncertain attempt', async () => {
     const call = vi.fn<(key: string) => Promise<void>>();
     call.mockRejectedValueOnce(new IdentityRequestError(409));

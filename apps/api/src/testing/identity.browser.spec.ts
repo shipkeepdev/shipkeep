@@ -1,7 +1,5 @@
-import AxeBuilder from '@axe-core/playwright';
-import type { Locator, Page } from 'playwright';
-
 import { browserApp } from './browser-app';
+import { accessible, fillPrivate } from './browser-identity';
 
 // These names are used only inside callbacks serialized into Chromium. Keep DOM lib globals
 // out of the Node test project (notably its WebCrypto/X.509 types).
@@ -12,23 +10,6 @@ declare const document: {
 };
 declare const window: object;
 declare const innerWidth: number;
-
-// Playwright failure call logs can include fill arguments. Keep private values out of diagnostics.
-async function fillPrivate(field: Locator, value: string): Promise<void> {
-  try {
-    await field.fill(value);
-  } catch {
-    throw new Error('Private field could not be filled.');
-  }
-}
-
-async function accessible(page: Page): Promise<void> {
-  const result = await new AxeBuilder({ page })
-    .withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa'])
-    .analyze();
-  // Report rule IDs, never snapshots that could contain private form values.
-  expect(result.violations.map(({ id }) => id)).toEqual([]);
-}
 
 describe('production identity in Chromium', () => {
   let fixture: Awaited<ReturnType<typeof browserApp>>;
