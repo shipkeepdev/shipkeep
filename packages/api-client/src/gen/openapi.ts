@@ -292,6 +292,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/join-tokens": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["issueJoinToken"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/members": {
         readonly parameters: {
             readonly query?: never;
@@ -334,6 +350,22 @@ export type paths = {
         readonly get?: never;
         readonly put?: never;
         readonly post: operations["setRole"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/nodes": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listNodes"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -794,6 +826,16 @@ export type components = {
             /** @example 0.1.0 */
             readonly version: string;
         };
+        readonly JoinTokenIssuedDto: {
+            /** @description Installation CA fingerprint the agent pins before sending the token. */
+            readonly caFingerprint: string;
+            /** Format: date-time */
+            readonly expiresAt: string;
+            /** Format: uuid */
+            readonly id: string;
+            /** @description Single-use enrollment secret, shown once. Give it to the agent through its join token file, never on a command line. */
+            readonly token: string;
+        };
         readonly LoginCredentialsDto: {
             /**
              * Format: email
@@ -882,6 +924,30 @@ export type components = {
             /** Format: date-time */
             readonly pendingExpiresAt: string | null;
             readonly recoveryCodesRemaining: number;
+        };
+        readonly NodeDto: {
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** @description Sanitized host facts. */
+            readonly facts: {
+                readonly [key: string]: unknown;
+            };
+            /** Format: uuid */
+            readonly id: string;
+            readonly labels: {
+                readonly [key: string]: string;
+            };
+            /** Format: date-time */
+            readonly lastHeartbeatAt: string | null;
+            readonly leaseEpoch: number;
+            readonly name: string;
+            /** @enum {string} */
+            readonly status: "enrolling" | "ready" | "suspect" | "down" | "draining" | "removed";
+        };
+        readonly NodePageDto: {
+            readonly items: readonly components["schemas"]["NodeDto"][];
+            /** Format: uuid */
+            readonly nextCursor: string | null;
         };
         readonly OrganizationCreatedDto: {
             readonly organization: components["schemas"]["OrganizationDto"];
@@ -1529,6 +1595,34 @@ export interface operations {
             };
         };
     };
+    readonly issueJoinToken: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                readonly Origin: string;
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReauthenticateMfaDto"];
+            };
+        };
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["JoinTokenIssuedDto"];
+                };
+            };
+        };
+    };
     readonly members: {
         readonly parameters: {
             readonly query?: {
@@ -1647,6 +1741,30 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["MembershipMutationDto"];
+                };
+            };
+        };
+    };
+    readonly listNodes: {
+        readonly parameters: {
+            readonly query?: {
+                readonly cursor?: string;
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["NodePageDto"];
                 };
             };
         };
