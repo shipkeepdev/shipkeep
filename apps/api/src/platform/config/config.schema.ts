@@ -31,6 +31,13 @@ export const configSchema = z
     LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
     /** Serve the interactive OpenAPI UI at /api/v1/docs. Off by default outside development. */
     OPENAPI_UI: z.stringbool().optional(),
+    /** Built browser files; defaults to dist/apps/web/browser in production only. */
+    WEB_DIST_DIR: z
+      .string()
+      .min(1)
+      .max(4096)
+      .refine((value) => !value.includes(String.fromCharCode(0)))
+      .optional(),
     DATABASE_URL: postgresUrl,
     /** Key-encryption key file for envelope encryption (SPEC section 9). Used from task M2.1b. */
     SHIPKEEP_KEK_FILE: z.string().min(1),

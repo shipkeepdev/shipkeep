@@ -5,6 +5,7 @@
 // in sync (CLAUDE.md, rule 9).
 
 import { writeFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
 
 import { Logger } from 'nestjs-pino';
 
@@ -12,6 +13,7 @@ import { createApp } from './bootstrap';
 import { AppConfig } from './platform/config/app-config';
 import { API_VERSION } from './platform/health/health.controller';
 import { API_PREFIX } from './platform/http/constants';
+import { installWebApp } from './platform/http/web-app';
 import { buildOpenApiDocument, OPENAPI_JSON_PATH } from './platform/openapi/openapi';
 
 async function main(): Promise<void> {
@@ -27,8 +29,17 @@ async function main(): Promise<void> {
   }
 
   const config = app.get(AppConfig);
+  const webDirectory =
+    config.get('WEB_DIST_DIR') ??
+    (config.isProduction ? resolve('dist/apps/web/browser') : undefined);
   const port = config.get('API_PORT');
-  await app.listen(port);
+  try {
+    if (webDirectory) await installWebApp(app, webDirectory);
+    await app.listen(port);
+  } catch (error: unknown) {
+    await app.close();
+    throw error;
+  }
   logger.log(
     `control plane listening on http://localhost:${String(port)}${API_PREFIX}, OpenAPI at ${OPENAPI_JSON_PATH}`,
   );

@@ -12,6 +12,7 @@ describe('parseConfig', () => {
     expect(cfg.API_PORT).toBe(3000);
     expect(cfg.LOG_LEVEL).toBe('info');
     expect(cfg.AGENT_GATEWAY_ADDR).toBe('0.0.0.0:7443');
+    expect(cfg.WEB_DIST_DIR).toBeUndefined();
   });
 
   it('wraps the database URL in a Secret', () => {
@@ -51,6 +52,15 @@ describe('parseConfig', () => {
     expect(() => parseConfig({ ...minimal, AGENT_GATEWAY_ADDR: 'nope' })).toThrow(
       /AGENT_GATEWAY_ADDR/,
     );
+  });
+  it('accepts an explicit built web directory and rejects invalid paths without echoing them', () => {
+    expect(
+      parseConfig({ ...minimal, WEB_DIST_DIR: '/opt/shipkeep/web/browser' }).WEB_DIST_DIR,
+    ).toBe('/opt/shipkeep/web/browser');
+    expect(() => parseConfig({ ...minimal, WEB_DIST_DIR: '' })).toThrow('WEB_DIST_DIR');
+    expect(() =>
+      parseConfig({ ...minimal, WEB_DIST_DIR: `private-fixture${String.fromCharCode(0)}` }),
+    ).toThrow('WEB_DIST_DIR');
   });
 
   it('requires a safe public origin and HTTPS in production', () => {

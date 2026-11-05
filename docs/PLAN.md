@@ -120,7 +120,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
       - [x] **M2.2e3c** Token creation/revocation form state and paginated metadata.
       - [x] **M2.2e3d** Token-management screens and one-time credential display; browser verification in M2.2e4.
     - [ ] **M2.2e4** Browser acceptance and accessibility checks against the real backend, responsive verification and production static serving.
-      - [ ] **M2.2e4a** Same-origin production web serving and development origin configuration.
+      - [x] **M2.2e4a** Same-origin production web serving and development origin configuration.
       - [ ] **M2.2e4b** Real-browser identity/security acceptance with PostgreSQL, accessibility and secret-boundary checks.
       - [ ] **M2.2e4c** Desktop/mobile inspection, independent finish review and built design-system documentation.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.
