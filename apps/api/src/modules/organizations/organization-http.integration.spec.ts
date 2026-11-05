@@ -8,6 +8,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { AppConfig } from '../../platform/config/app-config';
 import { PrismaService } from '../../platform/prisma/prisma.service';
+import { auditLog } from '../../testing/audit-log';
 import { integrationApp } from '../../testing/integration-app';
 import { ApiTokenCommands } from '../identity/application/api-token-commands';
 import { PASSWORD_HASHER, type PasswordHashing } from '../identity/application/identity-ports';
@@ -124,7 +125,7 @@ describe('organization mutations over HTTP', () => {
       .set('Cookie', cookie)
       .expect(200);
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { action: 'organization.created', targetId: created.organization.id },
       }),
     ).toBe(1);
@@ -191,12 +192,12 @@ describe('organization mutations over HTTP', () => {
     await update().expect(200).expect('Idempotency-Replayed', 'true');
     await update({ ...body, name: 'Different' }).expect(409);
     expect(
-      await prisma.auditEvent.findFirst({
+      await auditLog().findFirst({
         where: { action: 'organization.updated', targetId: id },
       }),
     ).toMatchObject({ actorKind: 'api_token', actorId: grant.metadata.id });
     expect(
-      await prisma.auditEvent.count({ where: { action: 'organization.updated', targetId: id } }),
+      await auditLog().count({ where: { action: 'organization.updated', targetId: id } }),
     ).toBe(1);
     await http()
       .post('/api/v1/organizations')

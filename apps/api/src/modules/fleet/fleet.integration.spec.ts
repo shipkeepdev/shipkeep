@@ -8,6 +8,7 @@ import * as x509 from '@peculiar/x509';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 
 import { PrismaService } from '../../platform/prisma/prisma.service';
+import { auditLog } from '../../testing/audit-log';
 import { applyMigrations } from '../../testing/apply-migrations';
 import { fleetDatabase, type FleetDatabase } from '../../testing/fleet-database';
 import { resetDatabase } from '../../testing/reset-database';
@@ -123,7 +124,7 @@ describe('fleet enrollment against PostgreSQL', () => {
       expect(Buffer.from(key.privateKeyEnc).toString('utf8')).not.toContain('PRIVATE KEY');
     }
 
-    const audit = await prisma.auditEvent.findMany({
+    const audit = await auditLog().findMany({
       where: { organizationId: org },
       orderBy: { id: 'asc' },
     });
@@ -173,7 +174,7 @@ describe('fleet enrollment against PostgreSQL', () => {
     await expect(
       app.get(AuthenticateNode).execute({ ...identity, serial: renewed.serial }),
     ).resolves.toMatchObject({ nodeId: identity.nodeId });
-    const rows = await app.get(PrismaService).auditEvent.findMany({
+    const rows = await auditLog().findMany({
       where: { targetId: identity.nodeId, action: 'fleet.node.certificate_renewed' },
     });
     expect(rows).toHaveLength(1);
@@ -200,7 +201,7 @@ describe('fleet enrollment against PostgreSQL', () => {
       ]),
     ).toHaveLength(1);
     expect(
-      await app.get(PrismaService).auditEvent.count({
+      await auditLog().count({
         where: { targetId: identity.nodeId, action: 'fleet.node.certificate_renewed' },
       }),
     ).toBe(1);
@@ -244,7 +245,7 @@ describe('fleet enrollment against PostgreSQL', () => {
       await rows('SELECT id FROM node_certificates WHERE node_id=$1', [identity.nodeId]),
     ).toHaveLength(1);
     expect(
-      await app.get(PrismaService).auditEvent.count({
+      await auditLog().count({
         where: { targetId: identity.nodeId, action: 'fleet.node.certificate_renewed' },
       }),
     ).toBe(0);

@@ -8,6 +8,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { AppConfig } from '../../platform/config/app-config';
 import { PrismaService } from '../../platform/prisma/prisma.service';
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
+import { auditLog } from '../../testing/audit-log';
 import { integrationApp } from '../../testing/integration-app';
 import { ApiTokenCommands } from '../identity/application/api-token-commands';
 import { PASSWORD_HASHER, type PasswordHashing } from '../identity/application/identity-ports';
@@ -152,9 +153,7 @@ describe('project and environment mutations over HTTP', () => {
       .expect(201)
       .expect('Idempotency-Replayed', 'true');
     expect(retry.body).toEqual(created.body);
-    expect(
-      await prisma.auditEvent.count({ where: { action: 'project.created', targetId: id } }),
-    ).toBe(1);
+    expect(await auditLog().count({ where: { action: 'project.created', targetId: id } })).toBe(1);
     const createdEnvironment = await post(`${root()}/projects/${id}/environments`, {
       name: 'production',
     }).expect(201);
@@ -182,7 +181,7 @@ describe('project and environment mutations over HTTP', () => {
       failoverPolicy: 'restore-from-backup',
     });
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { action: 'environment.updated', targetId: target.environmentId, actorKind: 'user' },
       }),
     ).toBe(1);
@@ -230,7 +229,7 @@ describe('project and environment mutations over HTTP', () => {
     await bearer(`${project()}/environments`, { name: 'token-created' }).expect(201);
     await bearer(`${environment()}/settings`, { name: 'token-updated' }).expect(200);
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { actorKind: 'api_token', actorId: grant.metadata.id },
       }),
     ).toBe(4);
@@ -302,7 +301,7 @@ describe('project and environment mutations over HTTP', () => {
         where: { id: target.environmentId },
       }),
     }));
-    const audits = await prisma.auditEvent.count();
+    const audits = await auditLog().count();
     await admin.query(
       'ALTER TABLE identity_replays ADD CONSTRAINT resource_http_retry_failure CHECK (false) NOT VALID',
     );
@@ -326,6 +325,6 @@ describe('project and environment mutations over HTTP', () => {
       }),
     }));
     expect(after).toEqual(before);
-    expect(await prisma.auditEvent.count()).toBe(audits);
+    expect(await auditLog().count()).toBe(audits);
   });
 });

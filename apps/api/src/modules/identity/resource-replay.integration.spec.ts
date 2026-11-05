@@ -7,6 +7,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../../platform/prisma/prisma.service';
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
+import { auditLog } from '../../testing/audit-log';
 import { integrationApp } from '../../testing/integration-app';
 import { CatalogQueries } from '../organizations/application/catalog-queries';
 import { OrganizationCommands } from '../organizations/application/organization-commands';
@@ -172,7 +173,7 @@ describe('resource retry interceptor with real authorization and PostgreSQL', ()
     expect(results[0].value).toEqual({ id: target.projectId, name: settings.name });
     expect(results[1].value).toEqual(results[0].value);
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { action: 'project.updated', targetId: target.projectId },
       }),
     ).toBe(1);
@@ -192,7 +193,7 @@ describe('resource retry interceptor with real authorization and PostgreSQL', ()
       code: 'idempotency_key_reused',
     });
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { action: 'project.updated', targetId: target.projectId },
       }),
     ).toBe(1);
@@ -266,7 +267,7 @@ describe('resource retry interceptor with real authorization and PostgreSQL', ()
     }
     expect(await fixture.app.get(CatalogQueries).project(owner, target)).toEqual(before);
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { action: 'project.updated', targetId: target.projectId },
       }),
     ).toBe(0);

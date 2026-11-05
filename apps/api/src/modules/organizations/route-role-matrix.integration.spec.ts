@@ -1,6 +1,7 @@
 import { ModulesContainer, Reflector } from '@nestjs/core';
 import { allowsTenantAction } from '@shipkeep/domain';
 
+import { auditLog } from '../../testing/audit-log';
 import { routeInventory } from '../../testing/route-inventory';
 import { tenantHttpFixture } from '../../testing/tenant-http';
 import { tenantActors, tenantPersona, tenantTarget } from '../../testing/tenant-personas';
@@ -35,7 +36,7 @@ describe('registered tenant routes for every role', () => {
       fixture.app.get(Reflector),
     ).filter((route) => route.access?.kind === 'tenant');
     expect(routes.length).toBeGreaterThan(15);
-    const auditsBefore = await fixture.prisma.auditEvent.count();
+    const auditsBefore = await auditLog().count();
     for (const route of routes) {
       if (route.access?.kind !== 'tenant') continue;
       const path = `/api/v1${route.path}`
@@ -61,7 +62,7 @@ describe('registered tenant routes for every role', () => {
       }
     }
     // Neither denied calls nor rejected bodies change state.
-    expect(await fixture.prisma.auditEvent.count()).toBe(auditsBefore);
+    expect(await auditLog().count()).toBe(auditsBefore);
   });
 
   it('hides every tenant route of another organization, even from its owner elsewhere', async () => {

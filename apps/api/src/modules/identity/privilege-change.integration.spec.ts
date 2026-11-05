@@ -6,6 +6,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { DomainEventBus } from '../../platform/events/domain-event-bus';
 import { PrismaService } from '../../platform/prisma/prisma.service';
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
+import { auditLog } from '../../testing/audit-log';
 import { integrationApp } from '../../testing/integration-app';
 
 import { AccountMutationAuthority } from './application/account-mutation-authority';
@@ -101,7 +102,7 @@ describe('ordered privilege changes against restricted PostgreSQL', () => {
     );
     expect((await sessions.authenticate(callerSession.token)).user.securityVersion).toBe(0);
     expect(
-      await prisma.auditEvent.findFirst({
+      await auditLog().findFirst({
         where: { targetId: affected.userId, action: 'identity.permissions_changed' },
       }),
     ).toMatchObject({ actorId: actor.userId });
@@ -116,7 +117,7 @@ describe('ordered privilege changes against restricted PostgreSQL', () => {
     });
     expect((await sessions.authenticate(old.token)).user.securityVersion).toBe(0);
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { targetId: actor.userId, action: 'identity.privilege_change_confirmed' },
       }),
     ).toBe(1);
@@ -170,7 +171,7 @@ describe('ordered privilege changes against restricted PostgreSQL', () => {
       email: `${affected.userId}@example.com`,
     });
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { targetId: affected.userId, action: 'test.role_changed' },
       }),
     ).toBe(0);
@@ -246,7 +247,7 @@ describe('ordered privilege changes against restricted PostgreSQL', () => {
     ).toEqual({ value: null });
     expect((await sessions.authenticate(enabled.session.token)).user.securityVersion).toBe(1);
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { targetId: affected.userId, action: 'identity.privilege_change_confirmed' },
       }),
     ).toBe(1);
