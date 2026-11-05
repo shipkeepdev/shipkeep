@@ -1,0 +1,117 @@
+import { Inject, Injectable } from '@nestjs/common';
+import {
+  InvalidInputError,
+  isTenantId,
+  NotFoundError,
+  type ResourceContext,
+} from '@shipkeep/domain';
+
+import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
+import type { SecurityContext } from '../../identity/application/mfa-commands';
+
+import {
+  CATALOG_STORE,
+  type CatalogBounds,
+  type CatalogPage,
+  type CatalogStore,
+} from './catalog-store';
+import type { OrganizationRecord } from './organization-store';
+import type {
+  EnvironmentRecord,
+  EnvironmentTarget,
+  ProjectRecord,
+  ProjectTarget,
+} from './resource-store';
+import { TenantAccess } from './tenant-access';
+
+@Injectable()
+export class CatalogQueries {
+  constructor(
+    @Inject(CATALOG_STORE) private readonly store: CatalogStore,
+    private readonly accounts: AccountMutationAuthority,
+    private readonly access: TenantAccess,
+  ) {}
+  async organizations(
+    context: SecurityContext,
+    input: Partial<CatalogBounds> = {},
+  ): Promise<CatalogPage<OrganizationRecord>> {
+    const bounds = pagination(input);
+    return this.accounts.run(context, () =>
+      this.store.account(context.userId, async () =>
+        page(await this.store.organizations(context.userId, bounds), bounds),
+      ),
+    );
+  }
+  async projects(
+    context: SecurityContext,
+    organizationId: string,
+    input: Partial<CatalogBounds> = {},
+  ): Promise<CatalogPage<ProjectRecord>> {
+    const bounds = pagination(input);
+    return this.read(context, { organizationId }, 'organization.read', async () =>
+      page(await this.store.projects(context.userId, organizationId, bounds), bounds),
+    );
+  }
+  async environments(
+    context: SecurityContext,
+    target: ProjectTarget,
+    input: Partial<CatalogBounds> = {},
+  ): Promise<CatalogPage<EnvironmentRecord>> {
+    const bounds = pagination(input);
+    return this.read(context, target, 'project.read', async () =>
+      page(await this.store.environments(context.userId, target, bounds), bounds),
+    );
+  }
+  organization(context: SecurityContext, organizationId: string): Promise<OrganizationRecord> {
+    return this.read(context, { organizationId }, 'organization.read', async () =>
+      required(await this.store.organization(organizationId)),
+    );
+  }
+  project(context: SecurityContext, target: ProjectTarget): Promise<ProjectRecord> {
+    return this.read(context, target, 'project.read', async () =>
+      required(await this.store.project(target)),
+    );
+  }
+  environment(context: SecurityContext, target: EnvironmentTarget): Promise<EnvironmentRecord> {
+    return this.read(context, target, 'environment.read', async () =>
+      required(await this.store.environment(target)),
+    );
+  }
+  private read<T>(
+    context: SecurityContext,
+    target: ResourceContext & { organizationId: string },
+    permission: string,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return this.accounts.run(context, () =>
+      this.store.tenant(target.organizationId, async () => {
+        await this.access.require(context.userId, permission, target);
+        return operation();
+      }),
+    );
+  }
+}
+function pagination(input: Partial<CatalogBounds>): CatalogBounds {
+  const limit = input.limit ?? 100;
+  if (
+    !Number.isSafeInteger(limit) ||
+    limit < 1 ||
+    limit > 100 ||
+    (input.cursor !== undefined && !isTenantId(input.cursor))
+  )
+    throw new InvalidInputError(
+      'invalid_catalog_page',
+      'Use a valid cursor and a limit between 1 and 100.',
+    );
+  return { limit, ...(input.cursor ? { cursor: input.cursor } : {}) };
+}
+function page<T extends { readonly id: string }>(
+  items: T[],
+  bounds: CatalogBounds,
+): CatalogPage<T> {
+  return { items, nextCursor: items.length === bounds.limit ? (items.at(-1)?.id ?? null) : null };
+}
+function required<T>(value: T | null): T {
+  if (value === null) throw new NotFoundError('resource');
+  return value;
+}
