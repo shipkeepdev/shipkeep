@@ -7,3 +7,4 @@ export * from './lib/organization-policy.js';
 export * from './lib/membership-role.js';
 export * from './lib/tenant-settings.js';
 export * from './lib/scheduler.js';
+export * from './lib/deployment.js';
