@@ -35,6 +35,8 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | GET | `/organizations/:organizationId/projects` | organization.read @ organization | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
 | POST | `/organizations/:organizationId/projects` | project.create @ organization | project.create | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/projects/:projectId` | project.read @ project | project.read | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
+| GET | `/organizations/:organizationId/projects/:projectId/api-tokens` | member.manage @ project | - | yes | yes | no | yes | no | no | no | no | no | yes | no |
+| POST | `/organizations/:organizationId/projects/:projectId/api-tokens/:id/revoke` | member.manage @ project | - | yes | yes | no | yes | no | no | no | no | no | yes | no |
 | GET | `/organizations/:organizationId/projects/:projectId/bindings` | member.manage @ project | - | yes | yes | no | yes | no | no | no | no | no | yes | no |
 | POST | `/organizations/:organizationId/projects/:projectId/bindings` | member.manage @ project | - | yes | yes | no | yes | no | no | no | no | no | yes | no |
 | POST | `/organizations/:organizationId/projects/:projectId/bindings/:membershipId/remove` | member.manage @ project | - | yes | yes | no | yes | no | no | no | no | no | yes | no |

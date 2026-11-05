@@ -113,7 +113,7 @@ describe('route and role matrix', () => {
       if (route.access?.kind === 'tenant')
         expect(route.bearer, route.path).toBe(route.access.permission);
       else expect(route.bearer, route.path).toBe('profile.read');
-      expect(route.path, route.path).not.toMatch(/\/(members|bindings)(\/|$)/);
+      expect(route.path, route.path).not.toMatch(/\/(members|bindings|api-tokens)(\/|$)/);
     }
   });
 
