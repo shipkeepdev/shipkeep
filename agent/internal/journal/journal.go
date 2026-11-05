@@ -64,8 +64,9 @@ type Operation struct {
 
 // Store owns one SQLite connection and an exclusive agent-process lock.
 type Store struct {
-	db   *sql.DB
-	lock *os.File
+	db        *sql.DB
+	lock      *os.File
+	executing chan struct{}
 }
 
 const schema = `CREATE TABLE IF NOT EXISTS operations (
@@ -93,7 +94,7 @@ func Open(ctx context.Context, dir string) (*Store, error) {
 		_ = lock.Close()
 		return nil, errors.New("agent state is already in use")
 	}
-	store := &Store{lock: lock}
+	store := &Store{lock: lock, executing: make(chan struct{}, 1)}
 	success := false
 	defer func() {
 		if !success {
@@ -155,7 +156,7 @@ var digest = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 // Begin durably records pending intent or returns the existing result for the same key/hash/kind.
 func (s *Store) Begin(ctx context.Context, request Request) (Operation, error) {
 	id, err := uuid.Parse(request.ID)
-	if err != nil || id.Version() != 7 || !identifier.MatchString(request.Key) || !slices.Contains(agentproto.ActionKinds(), request.Kind) {
+	if err != nil || id.Version() != 7 || id.Variant() != uuid.RFC4122 || !identifier.MatchString(request.Key) || !slices.Contains(agentproto.ActionKinds(), request.Kind) {
 		return Operation{}, errors.New("invalid journal request metadata")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)
@@ -276,7 +277,8 @@ func allowed(from, to State) bool {
 	case Running:
 		return to == Running || to == Succeeded || to == Failed || to == Compensating || to == Cancelled
 	case Compensating:
-		return to == Compensating || to == Compensated
+		// Failed only after bounded compensation attempts (see maxCompensationAttempts).
+		return to == Compensating || to == Compensated || to == Failed
 	case Succeeded, Failed, Cancelled, Compensated:
 		return false
 	default:

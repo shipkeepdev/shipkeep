@@ -14,6 +14,20 @@ import (
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/config"
 )
 
+// startupBuffer signals only after startup has completed; readers wait for Run to stop.
+type startupBuffer struct {
+	bytes.Buffer
+	started chan struct{}
+}
+
+func (b *startupBuffer) Write(data []byte) (int, error) {
+	n, err := b.Buffer.Write(data)
+	if bytes.Contains(data, []byte("agent started")) {
+		close(b.started)
+	}
+	return n, err
+}
+
 func TestNewRejectsInvalidConfig(t *testing.T) {
 	t.Parallel()
 	cfg := config.Default() // no control plane set
@@ -26,7 +40,7 @@ func TestRunStartsAndStopsCleanly(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
 	cfg := config.DevDefault(dir)
-	var buf bytes.Buffer
+	buf := startupBuffer{started: make(chan struct{})}
 	logger := slog.New(slog.NewJSONHandler(&buf, nil))
 
 	a, err := agent.New(cfg, logger)
@@ -37,8 +51,15 @@ func TestRunStartsAndStopsCleanly(t *testing.T) {
 	done := make(chan error, 1)
 	go func() { done <- a.Run(ctx) }()
 
-	// Give Run a moment to start, then ask it to stop.
-	time.Sleep(50 * time.Millisecond)
+	// SQLite initialization must finish before testing a running agent shutdown.
+	select {
+	case <-buf.started:
+	case err := <-done:
+		t.Fatalf("startup failed: %v", err)
+	case <-time.After(5 * time.Second):
+		cancel()
+		t.Fatal("agent did not start")
+	}
 	cancel()
 	select {
 	case err := <-done:
