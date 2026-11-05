@@ -3,6 +3,8 @@ package actions
 import (
 	"context"
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -23,7 +25,12 @@ type fakeEngine struct {
 	images   map[string]docker.Image
 	pulls    []string
 	removed  []string
-	auth     *docker.Auth
+
+	containers        []docker.Container
+	created           []docker.ContainerConfig
+	started, stopped  []string
+	removedContainers []string
+	auth              *docker.Auth
 }
 
 func newFakeEngine() *fakeEngine {
@@ -67,6 +74,49 @@ func (f *fakeEngine) RemoveVolume(_ context.Context, name string) error {
 	defer f.mu.Unlock()
 	delete(f.volumes, name)
 	f.removed = append(f.removed, name)
+	return nil
+}
+
+func (f *fakeEngine) Container(_ context.Context, ref string) (docker.Container, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	for _, container := range f.containers {
+		if container.ID == ref || container.Name == "/"+ref {
+			return container, nil
+		}
+	}
+	return docker.Container{}, docker.ErrNotFound
+}
+
+func (f *fakeEngine) CreateContainer(_ context.Context, name string, config docker.ContainerConfig) (string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	container := docker.Container{ID: "c" + name, Name: "/" + name}
+	container.Config.Labels = config.Labels
+	f.containers = append(f.containers, container)
+	f.created = append(f.created, config)
+	return container.ID, nil
+}
+
+func (f *fakeEngine) StartContainer(_ context.Context, id string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.started = append(f.started, id)
+	return nil
+}
+
+func (f *fakeEngine) StopContainer(_ context.Context, id string, _ int) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.stopped = append(f.stopped, id)
+	return nil
+}
+
+func (f *fakeEngine) RemoveContainer(_ context.Context, id string, volumes bool) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.containers = slices.DeleteFunc(f.containers, func(c docker.Container) bool { return c.ID == id })
+	f.removedContainers = append(f.removedContainers, fmt.Sprintf("%s:%t", id, volumes))
 	return nil
 }
 

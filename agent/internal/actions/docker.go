@@ -27,6 +27,11 @@ type Engine interface {
 	RemoveVolume(ctx context.Context, name string) error
 	Image(ctx context.Context, ref string) (docker.Image, error)
 	PullImage(ctx context.Context, repository, digest string, auth *docker.Auth) error
+	Container(ctx context.Context, ref string) (docker.Container, error)
+	CreateContainer(ctx context.Context, name string, config docker.ContainerConfig) (string, error)
+	StartContainer(ctx context.Context, id string) error
+	StopContainer(ctx context.Context, id string, timeout int) error
+	RemoveContainer(ctx context.Context, id string, volumes bool) error
 }
 
 var (
@@ -61,6 +66,9 @@ func DockerHandlers(engine Engine, confirmations Confirmer) map[string]Handler {
 		"pull_image": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) { return pullImage(engine, req.GetPullImage()) }, Result: digestResult},
 		"ensure_volume": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return ensureVolume(engine, req.GetEnsureVolume())
+		}, Result: resourceResult},
+		"create_container": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
+			return createContainer(engine, req.GetCreateContainer().GetSpec())
 		}, Result: resourceResult},
 	}
 }

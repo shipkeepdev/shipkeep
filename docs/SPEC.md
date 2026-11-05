@@ -184,6 +184,20 @@ The agent reaches Docker through `agent/internal/docker`, a minimal typed Engine
 - Responses are capped at 1 MiB, and daemon error text is never echoed.
 - Networks are matched by exact name, never by id prefix.
 
+Containers are created from the typed create body in `agent/internal/docker`. That body has no field for privileged mode, host namespaces, devices or bind mounts, so none of them can be requested. The agent always sets:
+
+- `no-new-privileges`, a private IPC namespace and an init process;
+- a pids limit (1024 unless specified, at most 65,536);
+- bounded `json-file` logs;
+- added capabilities from the allow-list only.
+
+The agent also enforces these rules:
+
+- Mounts are managed volumes or bounded tmpfs only, at absolute clean paths outside `/proc`, `/sys`, `/dev`, `/etc`, `/var/run` and `/run`.
+- Ports are exposed on the Docker network and never published on the host.
+- `secrets_as_files` is refused until the tmpfs writer exists. Secret values are only sent to the local daemon as environment variables.
+- Each container is labelled with its name and an `sk.spec` fingerprint of its spec, computed with secret values replaced by their versions. A replay reuses the same container; a different spec under the same name is refused.
+
 The agent only adopts or changes resources that carry its `sk.managed=true` label; a same-named unmanaged network or volume is refused. Image pulls accept only digest-pinned references, plus optional credentials that are short-lived and scoped to the image's own registry. The `sk.` label namespace is reserved for the agent.
 
 ### 3.6 Confirmation tokens
