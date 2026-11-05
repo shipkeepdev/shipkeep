@@ -344,6 +344,7 @@ succeeded -> rolled_back (when a later rollback targets the previous release)
 - `releasing` is skipped when no release command is defined.
 - A failure before `switching` never changes routing.
 - A failure during `switching` restores the previous upstream set atomically.
+- The aggregate is `packages/domain/src/lib/deployment.ts`. A deployment's plan, fixed when it is queued, records whether it builds (image sources skip `building` and `built`) and whether it runs a release command. Stopping it as failed or cancelled reports whether traffic is untouched (before `switching`), must be restored (during it) or already on the new release (`draining`). Failure reasons are stored bounded to 512 characters, without control characters.
 
 ### 5.2 Node
 
