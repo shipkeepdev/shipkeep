@@ -516,6 +516,17 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - The agent never writes secret values to its SQLite database or its own files; the journal stores a hash of the payload and `desired` stores secret references only.
 - Known limitation, documented for users: Docker itself persists a container's environment variables in its container configuration on disk (readable by root only). This is what lets Docker restart a container after a crash or a reboot without the control plane. With `secrets_as_files: true` nothing is persisted, but after a node reboot those containers can only start once the agent has fetched the values from the control plane again.
 - The API never returns secret values after creation. The UI shows names, versions and who changed them.
+- HTTP:
+  - `GET …/environments/{environmentId}/secrets` lists names, versions, author and dates (`environment.read`).
+  - `POST …/secrets` with `{name, value}` creates version 1 or stores the next version (`secret.write`).
+  - `POST …/secrets/{name}/remove` removes a secret (204).
+  - All three accept sessions or scoped tokens, and writes have no encrypted retry.
+- Rules:
+  - names match `^[A-Z_][A-Z0-9_]{0,127}$`, and values are 1 byte to 64 KiB without NUL;
+  - developers may write only unprotected environments (SPEC 7);
+  - each value is encrypted with the environment DEK and bound to its name and version;
+  - concurrent writers are serialized by a version compare-and-swap;
+  - `secret.set` and `secret.removed` audit events carry the name and version only.
 - Rotation of the KEK is a documented admin command that re-encrypts DEKs.
 
 ## 10. Backups

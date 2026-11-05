@@ -299,6 +299,8 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - [ ] **M3.7 Secrets** (C + W). Depends: M2.3
   - Envelope encryption from SPEC 9; write-only API; env and file injection.
   - Acceptance: secret values never appear in API responses, logs or agent SQLite (test greps for fixtures).
+  - [x] **M3.7a** Secrets API: write-only, versioned, environment-encrypted, audited, with the protected-environment rule.
+  - [ ] **M3.7b** Secrets screen in the web UI (with M2.3f1).
 - [ ] **M3.8 Compose applications** (C). Depends: M3.4
   - Compose parser and validator (SPEC 2.2), translated to typed `ContainerSpec`s.
   - Acceptance: 15 popular Compose files deploy; 20 malicious Compose files rejected with clear errors.
