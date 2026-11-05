@@ -4,7 +4,10 @@ import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { IdentityModule } from '../identity/identity.module';
 import { TenantAccessModule } from '../organizations/tenant-access.module';
 
+import { ConfirmationsModule } from '../confirmations/confirmations.module';
+
 import { FleetAdministration } from './application/fleet-administration';
+import { NodeConfirmationTarget } from './application/node-confirmation-target';
 import { FleetAdministrationController } from './interface/fleet-administration.controller';
 import { InstallationKeysModule } from './installation-keys.module';
 import { AuthenticateNode } from './application/authenticate-node';
@@ -28,10 +31,11 @@ import { PrismaJoinTokenStore, PrismaNodeStore } from './infrastructure/prisma-f
  * organization administrators use the session-only REST routes of M2.7.
  */
 @Module({
-  imports: [IdentityModule, TenantAccessModule, InstallationKeysModule],
+  imports: [IdentityModule, TenantAccessModule, InstallationKeysModule, ConfirmationsModule],
   controllers: [FleetAdministrationController],
   providers: [
     FleetAdministration,
+    NodeConfirmationTarget,
     AgentGateway,
     NodeStream,
     AuthenticateNode,

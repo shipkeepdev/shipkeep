@@ -324,6 +324,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/confirmations": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["requestConfirmation"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/join-tokens": {
         readonly parameters: {
             readonly query?: never;
@@ -790,6 +806,14 @@ export type components = {
             /** Format: uuid */
             readonly userId: string;
         };
+        readonly ConfirmationIssuedDto: {
+            /** Format: date-time */
+            readonly expiresAt: string;
+            /** Format: uuid */
+            readonly id: string;
+            /** @description Single-use EdDSA JWT (SPEC 3.6), valid five minutes. Shown once. */
+            readonly token: string;
+        };
         readonly CreateApiTokenDto: {
             /**
              * Format: date-time
@@ -1109,6 +1133,13 @@ export type components = {
             readonly password: string;
             readonly recovery?: string;
             readonly totp?: string;
+        };
+        readonly RequestConfirmationDto: {
+            /** @enum {string} */
+            readonly action: "node.remove";
+            /** @description The resource's exact current name, typed by the user. */
+            readonly name: string;
+            readonly target: string;
         };
         readonly ResetPasswordDto: {
             /** Format: password */
@@ -1706,6 +1737,36 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    readonly requestConfirmation: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Required for session requests. */
+                readonly Origin?: string;
+                /** @description Required for session requests. */
+                readonly "X-Shipkeep-CSRF"?: string;
+            };
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RequestConfirmationDto"];
+            };
+        };
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ConfirmationIssuedDto"];
+                };
             };
         };
     };
