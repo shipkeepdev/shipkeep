@@ -18,6 +18,9 @@ import {
   ValidateNested,
 } from 'class-validator';
 
+import type { ApiTokenMetadata } from '../application/api-token-commands';
+import type { ProjectApiTokenMetadata } from '../application/project-api-token-commands';
+
 import { ReauthenticateMfaDto } from './mfa.dto';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -105,4 +108,38 @@ export class ApiTokenCreatedDto extends ApiTokenDto {
 export class ApiTokenPageDto {
   @ApiProperty({ type: [ApiTokenDto] }) items!: ApiTokenDto[];
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) nextCursor!: string | null;
+}
+export class ProjectApiTokenDto extends ApiTokenDto {
+  @ApiProperty({ format: 'uuid', description: 'Account that created the token.' })
+  createdBy!: string;
+}
+export class ProjectApiTokenPageDto {
+  @ApiProperty({ type: [ProjectApiTokenDto] }) items!: ProjectApiTokenDto[];
+  @ApiProperty({ type: String, format: 'uuid', nullable: true }) nextCursor!: string | null;
+}
+export class ProjectTokensPathDto {
+  @ApiProperty({ format: 'uuid' }) @Matches(UUID) organizationId!: string;
+  @ApiProperty({ format: 'uuid' }) @Matches(UUID) projectId!: string;
+}
+export class ProjectTokenPathDto extends ProjectTokensPathDto {
+  @ApiProperty({ format: 'uuid' }) @Matches(UUID) id!: string;
+}
+
+export function apiTokenDto(record: ApiTokenMetadata): ApiTokenDto {
+  return {
+    id: record.id,
+    name: record.name,
+    scopes: record.scopes.map((scope) => ({ ...scope })),
+    project: record.project
+      ? { organizationId: record.project.organizationId, projectId: record.project.projectId }
+      : null,
+    status: record.status,
+    createdAt: record.createdAt.toISOString(),
+    expiresAt: record.expiresAt.toISOString(),
+    revokedAt: record.revokedAt?.toISOString() ?? null,
+    lastUsedAt: record.lastUsedAt?.toISOString() ?? null,
+  };
+}
+export function projectApiTokenDto(record: ProjectApiTokenMetadata): ProjectApiTokenDto {
+  return Object.assign(apiTokenDto(record), { createdBy: record.createdBy });
 }

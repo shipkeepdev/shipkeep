@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
-import { parseApiScopes } from '@shipkeep/domain';
+import { type ApiTokenProject, parseApiScopes } from '@shipkeep/domain';
 
 import type { ApiToken } from '../../../platform/prisma/generated/client';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
-import type { ApiTokenRecord, ApiTokenStore } from '../application/api-token-store';
+import type {
+  ApiTokenRecord,
+  ApiTokenStore,
+  ProjectApiTokenRecord,
+} from '../application/api-token-store';
 
 @Injectable()
 export class PrismaApiTokenStore implements ApiTokenStore {
@@ -48,6 +52,28 @@ export class PrismaApiTokenStore implements ApiTokenStore {
   async revoke(userId: string, id: string, now: Date): Promise<boolean> {
     const result = await this.database.client.apiToken.updateMany({
       where: { userId, id, revokedAt: null, createdAt: { lte: now } },
+      data: { revokedAt: now },
+    });
+    return result.count === 1;
+  }
+  async listProject(project: ApiTokenProject, beforeId?: string): Promise<ProjectApiTokenRecord[]> {
+    const rows = await this.database.client.apiToken.findMany({
+      where: { ...project, ...(beforeId ? { id: { lt: beforeId } } : {}) },
+      include: { user: { select: { securityVersion: true } } },
+      orderBy: { id: 'desc' },
+      take: 100,
+    });
+    return rows.map(({ user, ...row }) => ({
+      ...toRecord(row),
+      creatorSecurityVersion: user.securityVersion,
+    }));
+  }
+  async findInProject(project: ApiTokenProject, id: string): Promise<ApiTokenRecord | null> {
+    return fromRow(await this.database.client.apiToken.findFirst({ where: { ...project, id } }));
+  }
+  async revokeInProject(project: ApiTokenProject, id: string, now: Date): Promise<boolean> {
+    const result = await this.database.client.apiToken.updateMany({
+      where: { ...project, id, revokedAt: null, createdAt: { lte: now } },
       data: { revokedAt: now },
     });
     return result.count === 1;
