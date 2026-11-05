@@ -1,8 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { NotFoundError, type ResourceContext } from '@shipkeep/domain';
+import { NotFoundError, type Permission, type ResourceContext } from '@shipkeep/domain';
 
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
-import type { SecurityContext } from '../../identity/application/mfa-commands';
+import type { ResourceSecurityContext as SecurityContext } from '../../identity/application/resource-security-context';
 
 import {
   CATALOG_STORE,
@@ -59,31 +59,48 @@ export class CatalogQueries {
     );
   }
   organization(context: SecurityContext, organizationId: string): Promise<OrganizationRecord> {
-    return this.read(context, { organizationId }, 'organization.read', async () =>
-      required(await this.store.organization(organizationId)),
+    return this.read(
+      context,
+      { organizationId },
+      'organization.read',
+      async () => required(await this.store.organization(organizationId)),
+      true,
     );
   }
   project(context: SecurityContext, target: ProjectTarget): Promise<ProjectRecord> {
-    return this.read(context, target, 'project.read', async () =>
-      required(await this.store.project(target)),
+    return this.read(
+      context,
+      target,
+      'project.read',
+      async () => required(await this.store.project(target)),
+      true,
     );
   }
   environment(context: SecurityContext, target: EnvironmentTarget): Promise<EnvironmentRecord> {
-    return this.read(context, target, 'environment.read', async () =>
-      required(await this.store.environment(target)),
+    return this.read(
+      context,
+      target,
+      'environment.read',
+      async () => required(await this.store.environment(target)),
+      true,
     );
   }
   private read<T>(
     context: SecurityContext,
     target: ResourceContext & { organizationId: string },
-    permission: string,
+    permission: Permission,
     operation: () => Promise<T>,
+    allowApiToken = false,
   ): Promise<T> {
-    return this.accounts.run(context, () =>
-      this.store.tenant(target.organizationId, async () => {
-        await this.access.require(context.userId, permission, target);
-        return operation();
-      }),
+    return this.accounts.run(
+      context,
+      () =>
+        this.store.tenant(target.organizationId, async () => {
+          await this.access.require(context.userId, permission, target);
+          return operation();
+        }),
+      // Collections need per-item scope filtering before pagination; they remain session-only.
+      allowApiToken ? { permission, target } : undefined,
     );
   }
 }

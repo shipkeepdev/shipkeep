@@ -100,12 +100,14 @@ export class IdentityGuard implements CanActivate {
     ]);
     const expected = access.kind === 'tenant' ? access.permission : 'profile.read';
     if (!value || permission !== expected) throw new AuthenticationError();
-    const { user, token } = await this.tokens.authenticate(new Secret(value), permission, target);
+    const credential = new Secret(value);
+    const { user, token } = await this.tokens.authenticate(credential, permission, target);
     request.identity = {
       kind: 'api_token',
       userId: user.id,
       email: user.email,
       tokenId: token.id,
+      token: credential,
       securityVersion: user.securityVersion,
       expiresAt: token.expiresAt,
     };
