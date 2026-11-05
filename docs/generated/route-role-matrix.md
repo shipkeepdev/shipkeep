@@ -49,6 +49,10 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | GET | `/organizations/:organizationId/projects/:projectId/environments` | project.read @ project | - | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
 | POST | `/organizations/:organizationId/projects/:projectId/environments` | environment.create @ project | environment.create | yes | yes | no | yes | no | no | no | no | no | yes | no |
 | GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId` | environment.read @ environment | environment.read | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
+| GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/applications` | environment.read @ environment | environment.read | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
+| POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/applications` | deploy.run @ environment | deploy.run | yes | yes | no | yes | no | no | yes | no | no | no | no |
+| GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId` | environment.read @ environment | environment.read | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
+| POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/config` | deploy.run @ environment | deploy.run | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/bindings` | member.manage @ environment | - | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/bindings` | member.manage @ environment | - | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/bindings/:membershipId/remove` | member.manage @ environment | - | yes | yes | no | yes | no | no | yes | no | no | no | no |

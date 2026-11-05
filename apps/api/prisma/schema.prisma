@@ -96,7 +96,8 @@ model Environment {
   project        Project       @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade)
   roleBindings   RoleBinding[]
 
-  secrets Secret[]
+  secrets      Secret[]
+  applications Application[]
 
   @@unique([projectId, name])
   @@unique([organizationId, projectId, id])
@@ -395,4 +396,24 @@ model Secret {
   @@unique([environmentId, name])
   @@index([organizationId, environmentId])
   @@map("secrets")
+}
+
+model Application {
+  id             String      @id @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  projectId      String      @map("project_id") @db.Uuid
+  environmentId  String      @map("environment_id") @db.Uuid
+  name           String      @db.VarChar(40)
+  source         String      @db.VarChar(16)
+  config         Json
+  configSha      String      @map("config_sha") @db.Char(64)
+  createdBy      String?     @map("created_by") @db.VarChar(128)
+  createdAt      DateTime    @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @map("updated_at") @db.Timestamptz(6)
+  environment    Environment @relation(fields: [organizationId, projectId, environmentId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Restrict, map: "applications_environment_fkey")
+
+  @@unique([environmentId, name])
+  @@unique([organizationId, id])
+  @@index([organizationId, environmentId])
+  @@map("applications")
 }

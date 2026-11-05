@@ -117,6 +117,7 @@
     "@peculiar/x509": "^2.2.0",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
+    "@shipkeep/config-schema": "workspace:*",
     "@shipkeep/domain": "workspace:*",
     "@shipkeep/proto-ts": "workspace:*",
     "argon2": "0.44.0",

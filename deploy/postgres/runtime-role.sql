@@ -23,6 +23,8 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON
   nodes,node_certificates,join_tokens,secrets TO shipkeep_runtime;
 -- Single-use state only moves forward; rows are never deleted by the API.
 GRANT SELECT,INSERT,UPDATE ON confirmation_tokens,agent_actions TO shipkeep_runtime;
+-- Applications are removed only with their environment (cascade); no API delete path yet.
+GRANT SELECT,INSERT,UPDATE ON applications TO shipkeep_runtime;
 -- Append-only from the API: audit history, and wrapped key material that is never rewritten
 -- (SPEC 9: rotation inserts new rows). Losing a DEK row would make its secrets unrecoverable.
 GRANT SELECT,INSERT ON audit_events,data_encryption_keys,installation_keys TO shipkeep_runtime;
