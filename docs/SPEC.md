@@ -313,8 +313,8 @@ Membership writes serialize on the organization through a no-op row update, prod
 | `Application`         | environment_id, name, source (git, image, compose), repo, branch, config_path, config (jsonb), config_sha    | name unique per environment                                                              |
 | `Domain`              | application_id, hostname, tls_mode, verification_status                                                      | hostname unique per org                                                                  |
 | `Secret`              | environment_id, name, value_enc, version                                                                     | value never returned by the API after creation, only masked                              |
-| `Release`             | application_id, image_digest, config_snapshot, commit_sha                                                    | immutable                                                                                |
-| `Deployment`          | application_id, release_id, state, trigger, actor_id, started_at, finished_at, error                         | one active deployment per application                                                    |
+| `Release`             | application_id, number, image, image_digest, config, config_sha (commit_sha with git sources)                | immutable; the image digest is recorded once                                             |
+| `Deployment`          | application_id, release_id, state, plan (build, release), trigger, actor_id, started_at, finished_at, error  | one active deployment per application                                                    |
 | `Allocation`          | release_id or database_id, node_id, container_id, state, lease_epoch                                         | stateful allocations bound to one node                                                   |
 | `Volume`              | environment_id, name, node_id, size_bytes                                                                    | removal needs confirmation                                                               |
 | `ManagedDatabase`     | environment_id, engine, version, node_id, credentials_enc, backup_policy                                     |                                                                                          |
@@ -505,6 +505,17 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - the canonical JSON (sorted keys) is limited to 64 KiB and hashed with SHA-256 into `configSha`;
     - a duplicate name in the environment is 409 `application_name_taken`.
   - `application.created` and `application.updated` audit events carry the name, source and configuration hashes, not the configuration.
+- Deployments (PLAN M3.4b2), under `…/applications/{applicationId}`:
+  - `POST …/deployments` (201, `deploy.run`) snapshots the configuration as the next release (numbered per application) and queues a deployment.
+    - The plan skips `building` and `built` for image sources, and runs `releasing` only when `release.command` is set.
+    - It is refused with 409 `secrets_missing` (listing the names) while a referenced secret is unset, and with 409 `deployment_in_progress` while another deployment is unfinished.
+  - `GET …/deployments` lists the 50 most recent deployments; `GET …/deployments/{deploymentId}` reads one; `GET …/releases` lists the 50 most recent releases (`environment.read`).
+  - `POST …/deployments/{deploymentId}/cancel` (`deploy.run`) cancels an unfinished deployment through the aggregate. The pipeline (M3.4c) acts on the reported routing outcome.
+  - Database guarantees:
+    - a partial unique index keeps one unfinished deployment per application;
+    - releases are immutable: a trigger and the runtime grants allow only recording the image digest, once;
+    - finished states and `finished_at` go together (CHECK).
+  - Audit events: `release.created`, `deployment.queued` and `deployment.cancelled`.
 
 ### 8.1 Identity security parameters
 
