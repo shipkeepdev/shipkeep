@@ -53,7 +53,11 @@ export class BindingCommands {
     const candidate = await this.members.transaction(target.organizationId, () =>
       this.members.forEmail(target.organizationId, normalized),
     );
-    if (!candidate) throw new NotFoundError('resource');
+    if (!candidate) {
+      // Same answer as for a member with a wrong password: no organization-membership oracle.
+      await this.accounts.confirmPassword(context, password);
+      throw new NotFoundError('resource');
+    }
     return this.change(
       context,
       target,
@@ -136,10 +140,27 @@ export class BindingCommands {
           await this.requireScope(context, target);
           const member = await this.members.find(target.organizationId, membershipId);
           if (!member || member.userId !== subject.userId) throw new NotFoundError('resource');
+          await this.guardProjectAuthority(context, target, member);
           return operation(member, subject);
         }),
       now,
     );
+  }
+  /**
+   * An environment-only administrator may not create or remove an environment override for a
+   * member who administers the whole project: the project admin could not undo it (SPEC 7).
+   */
+  private async guardProjectAuthority(
+    context: SecurityContext,
+    target: BindingTarget,
+    member: MembershipRecord,
+  ): Promise<void> {
+    if (!target.environmentId) return;
+    const project = { organizationId: target.organizationId, projectId: target.projectId };
+    // A target without environment designates the project-wide binding.
+    const projectBinding = await this.bindings.find(project, member.id);
+    if (projectBinding?.role !== 'admin') return;
+    await this.access.require(context.userId, 'member.manage', project);
   }
   private async requireScope(context: SecurityContext, target: BindingTarget): Promise<void> {
     if (!isTenantId(target.projectId)) throw new NotFoundError('resource');

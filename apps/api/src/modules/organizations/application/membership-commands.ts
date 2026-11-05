@@ -45,7 +45,11 @@ export class MembershipCommands {
     // Read-only preliminary checks: never acquire an actor lock before the ordered pair.
     await this.access.require(context.userId, 'member.manage', { organizationId });
     const candidate = await this.accounts.findVerifiedAccount(email);
-    if (!candidate) throw new NotFoundError('resource');
+    if (!candidate) {
+      // Same answer as for an existing account with a wrong password: no existence oracle.
+      await this.accounts.confirmPassword(context, password);
+      throw new NotFoundError('resource');
+    }
     return this.accounts.changePrivileges(
       context,
       candidate.userId,

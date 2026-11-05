@@ -168,6 +168,15 @@ export class AccountMutationAuthority {
     );
   }
 
+  /**
+   * Checks the caller's current password without taking any lock. Callers use it before revealing
+   * the outcome of a directory lookup, so an unknown address and a wrong password give the same
+   * response and the lookup cannot be used as an account-existence oracle.
+   */
+  async confirmPassword(context: SecurityContext, password: Secret): Promise<void> {
+    await this.verifyPassword(context, password);
+  }
+
   private async verifyPassword(context: SecurityContext, password: Secret): Promise<void> {
     assertContextShape(context);
     if (context.apiCredential) throw new AuthenticationError();
