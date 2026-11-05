@@ -14,6 +14,8 @@ const snapshotSchema = z
   .strict();
 const SCOPE = 'identity:replay';
 const TTL_MS = 300000;
+const TOKEN_ROUTE =
+  /^api-tokens(?:\/[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}\/revoke)?$/;
 
 /** The command, audit and encrypted retry result commit together across API instances. */
 @Injectable()
@@ -32,7 +34,7 @@ export class PrivateIdentityReplay {
   ): Promise<{ response: Secret; replayed: boolean }> {
     if (
       !IDEMPOTENCY_KEY_PATTERN.test(key) ||
-      !/^auth\/[a-z/-]{1,64}$/.test(route) ||
+      (!/^auth\/[a-z/-]{1,64}$/.test(route) && !TOKEN_ROUTE.test(route)) ||
       request.expose().length > 32768
     )
       throw new InvalidInputError(
