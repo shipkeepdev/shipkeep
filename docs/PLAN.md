@@ -145,7 +145,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - [x] **M2.3b1** Tenant tables, composite foreign keys, unique role scopes and database constraint tests.
     - [x] **M2.3b2** Enforced row-level security and concurrent last-owner database guards.
     - [x] **M2.3b3** Bind existing fleet records to organizations without assigning orphan records to an arbitrary owner.
-  - [ ] **M2.3c** Tenant transaction context, repositories and audited commands with concurrent last-owner protection.
+  - [x] **M2.3c** Tenant transaction context, repositories and audited commands with concurrent last-owner protection.
     - [x] **M2.3c1** Transaction-local tenant context, restricted runtime-role checks and pooled/nested/concurrent transaction tests.
     - [x] **M2.3c2** Runtime-role provisioning, account-bound organization discovery and tenant repositories.
       - [x] **M2.3c2a** Separate runtime/migration credentials, restricted grants, queue upgrade preservation and full-app role acceptance.
@@ -160,12 +160,12 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
       - [x] **M2.3c3c** Audited project/environment creation/settings and filtered catalog queries.
         - [x] **M2.3c3c1** Tenant-scoped project/environment writes, live role checks and audit rollback acceptance.
         - [x] **M2.3c3c2** Bounded account/tenant catalog queries filtered by current resource grants.
-    - [ ] **M2.3c4** Membership/binding commands, live authority and privilege-change session invalidation.
+    - [x] **M2.3c4** Membership/binding commands, live authority and privilege-change session invalidation.
       - [x] **M2.3c4a** Ordered actor/subject account locks, reauthenticated privilege changes and atomic credential invalidation.
       - [x] **M2.3c4b** Audited organization membership commands with serialized last-owner protection.
-      - [ ] **M2.3c4c** Scoped resource-role binding commands and membership/binding queries.
+      - [x] **M2.3c4c** Scoped resource-role binding commands and membership/binding queries.
         - [x] **M2.3c4c1** Audited project/environment role assignments, removals and credential invalidation.
-        - [ ] **M2.3c4c2** Bounded, scope-authorized member/binding administration queries.
+        - [x] **M2.3c4c2** Bounded, scope-authorized member/binding administration queries.
   - [ ] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.
   - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
   - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.

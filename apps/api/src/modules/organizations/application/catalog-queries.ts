@@ -1,10 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import {
-  InvalidInputError,
-  isTenantId,
-  NotFoundError,
-  type ResourceContext,
-} from '@shipkeep/domain';
+import { NotFoundError, type ResourceContext } from '@shipkeep/domain';
 
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
 import type { SecurityContext } from '../../identity/application/mfa-commands';
@@ -23,6 +18,7 @@ import type {
   ProjectTarget,
 } from './resource-store';
 import { TenantAccess } from './tenant-access';
+import { page, pagination } from './catalog-page';
 
 @Injectable()
 export class CatalogQueries {
@@ -90,26 +86,6 @@ export class CatalogQueries {
       }),
     );
   }
-}
-function pagination(input: Partial<CatalogBounds>): CatalogBounds {
-  const limit = input.limit ?? 100;
-  if (
-    !Number.isSafeInteger(limit) ||
-    limit < 1 ||
-    limit > 100 ||
-    (input.cursor !== undefined && !isTenantId(input.cursor))
-  )
-    throw new InvalidInputError(
-      'invalid_catalog_page',
-      'Use a valid cursor and a limit between 1 and 100.',
-    );
-  return { limit, ...(input.cursor ? { cursor: input.cursor } : {}) };
-}
-function page<T extends { readonly id: string }>(
-  items: T[],
-  bounds: CatalogBounds,
-): CatalogPage<T> {
-  return { items, nextCursor: items.length === bounds.limit ? (items.at(-1)?.id ?? null) : null };
 }
 function required<T>(value: T | null): T {
   if (value === null) throw new NotFoundError('resource');

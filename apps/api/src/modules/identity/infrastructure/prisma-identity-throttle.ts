@@ -90,7 +90,7 @@ export class PrismaIdentityThrottle implements IdentityThrottle {
         next_allowed_at = ${now}::timestamptz + (CASE WHEN identity_throttles.window_ends_at <= ${now}
           THEN ${initialDelay} ELSE ${initialDelay} * power(2, LEAST(identity_throttles.hits, ${policy.maxDelaySteps})) END) * interval '1 millisecond',
         updated_at = ${now}
-      WHERE identity_throttles.next_allowed_at <= ${now}
+      WHERE (${policy.progressive} = false OR identity_throttles.next_allowed_at <= ${now})
         AND (identity_throttles.window_ends_at <= ${now} OR identity_throttles.hits < ${policy.limit})
       RETURNING hits, window_ends_at AS "windowEndsAt", next_allowed_at AS "nextAllowedAt"`;
     const admitted = rows.at(0);
