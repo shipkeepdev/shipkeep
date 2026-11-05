@@ -107,6 +107,7 @@ export class EnrollNode {
     });
     await this.nodes.insertCertificate({
       id: uuidv7(),
+      organizationId,
       nodeId,
       serial: issued.serial,
       notBefore: issued.notBefore,

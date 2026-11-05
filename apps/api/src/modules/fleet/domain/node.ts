@@ -20,6 +20,8 @@ export interface NodeRecord {
 
 export interface NodeCertificateRecord {
   readonly id: string;
+  /** Always the node's organization (composite foreign key). */
+  readonly organizationId: string;
   readonly nodeId: string;
   /** Hex serial, unique per installation CA. */
   readonly serial: string;
