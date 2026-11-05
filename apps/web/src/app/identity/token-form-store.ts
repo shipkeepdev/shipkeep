@@ -29,7 +29,6 @@ export class TokenFormStore {
   readonly submission = inject(MutationRunner);
   #revision = 0;
   #cursors: (string | undefined)[] = [undefined];
-  #timer: ReturnType<typeof setTimeout> | undefined;
   private readonly now = signal(Date.now());
   #credential = signal<Credential | null>(null);
   readonly credential = this.#credential.asReadonly();
@@ -202,13 +201,9 @@ export class TokenFormStore {
     if (result.value) {
       const { id, name, token, expiresAt } = result.value;
       this.#credential.set({ id, name, token, expiresAt });
+      // No timer: the server shows the token once, so it stays until the user acknowledges it,
+      // leaves the page or rotates the session (WCAG 2.2.1, timing adjustable).
       this.message.set('Your API token has been created.');
-      this.#timer = setTimeout(() => {
-        this.#credential.set(null);
-        this.message.set(
-          'The credential is now hidden. Your saved token remains valid until its expiry or revocation.',
-        );
-      }, 600000);
     } else this.message.set('The API token has been revoked.');
     await this.refresh();
   }
@@ -229,7 +224,6 @@ export class TokenFormStore {
     this.configureProof();
   }
   private clearPrivate(): void {
-    clearTimeout(this.#timer);
     this.#credential.set(null);
     this.target.set(null);
     this.expiry.set(null);

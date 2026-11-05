@@ -130,8 +130,9 @@ describe('MFA form lifecycle', () => {
       { password, totp: '123456' },
       expect.any(String),
     );
-    vi.advanceTimersByTime(600000);
-    expect(store.recoveryCodes()).toEqual([]);
+    // Recovery codes are shown once by the server: no timer may hide them before acknowledgement.
+    vi.advanceTimersByTime(3600000);
+    expect(store.recoveryCodes()).toEqual(codes);
   });
   it('shares the account mutation gate and prevents cancel/restart while a request is pending', async () => {
     await stage();
