@@ -23,7 +23,8 @@ import {
 
 // Distinct from the organization used by the audit integration test: the database may be shared.
 const org = '0192f0c0-0000-7000-8000-0000000000ab';
-const actor = { kind: 'user' as const, id: 'usr_1', ip: '203.0.113.5' };
+const owner = '0192f0c0-0000-7000-8000-0000000000ac';
+const actor = { kind: 'user' as const, id: owner, ip: '203.0.113.5' };
 
 async function agentCsr(): Promise<string> {
   const pair = await generateEd25519KeyPair();
@@ -72,6 +73,29 @@ describe('fleet enrollment against PostgreSQL', () => {
   it('enrolls a node with a single-use token and a CA-signed certificate', async () => {
     if (!app) throw new Error('application did not start');
     const prisma = app.get(PrismaService);
+    await prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT set_config('app.org_id', ${org}, true)`;
+      await tx.user.create({
+        data: {
+          id: owner,
+          email: 'fleet-owner@example.com',
+          passwordHash: 'fixture-hash',
+          status: 'active',
+          emailVerifiedAt: new Date(),
+        },
+      });
+      await tx.organization.create({
+        data: { id: org, name: 'Fleet fixture', slug: 'fleet-fixture' },
+      });
+      await tx.membership.create({
+        data: {
+          id: '0192f0c0-0000-7000-8000-0000000000ad',
+          organizationId: org,
+          userId: owner,
+          orgRole: 'owner',
+        },
+      });
+    });
     const token = await app.get(IssueJoinToken).execute({ organizationId: org, actor });
     expect(token.caFingerprint).toMatch(/^sha256:[0-9a-f]{64}$/);
 

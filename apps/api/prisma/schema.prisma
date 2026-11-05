@@ -39,6 +39,8 @@ model Organization {
   projects     Project[]
   environments Environment[]
   roleBindings RoleBinding[]
+  nodes        Node[]
+  joinTokens   JoinToken[]
 
   @@map("organizations")
 }
@@ -273,16 +275,16 @@ model InstallationKey {
 }
 
 /// Single-use enrollment tokens (SPEC 3.2). Only the SHA-256 of the value is stored.
-/// `organization_id` gains its foreign key when organizations land (M2.3).
 model JoinToken {
-  id             String    @id @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  tokenHash      String    @unique @map("token_hash") @db.Char(64)
-  createdBy      String?   @map("created_by") @db.VarChar(128)
-  createdAt      DateTime  @map("created_at") @db.Timestamptz(6)
-  expiresAt      DateTime  @map("expires_at") @db.Timestamptz(6)
-  usedAt         DateTime? @map("used_at") @db.Timestamptz(6)
-  usedByNodeId   String?   @map("used_by_node_id") @db.Uuid
+  id             String       @id @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  tokenHash      String       @unique @map("token_hash") @db.Char(64)
+  createdBy      String?      @map("created_by") @db.VarChar(128)
+  createdAt      DateTime     @map("created_at") @db.Timestamptz(6)
+  expiresAt      DateTime     @map("expires_at") @db.Timestamptz(6)
+  usedAt         DateTime?    @map("used_at") @db.Timestamptz(6)
+  usedByNodeId   String?      @map("used_by_node_id") @db.Uuid
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([organizationId, expiresAt])
   @@map("join_tokens")
@@ -300,6 +302,7 @@ model Node {
   createdAt       DateTime          @map("created_at") @db.Timestamptz(6)
   lastHeartbeatAt DateTime?         @map("last_heartbeat_at") @db.Timestamptz(6)
   certificates    NodeCertificate[]
+  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([organizationId, name])
   @@map("nodes")
