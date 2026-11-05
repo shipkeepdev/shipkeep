@@ -9,12 +9,14 @@ import { PostgreSqlContainer } from '@testcontainers/postgresql';
 
 import { applyMigrations } from './apply-migrations';
 import { resetDatabase } from './reset-database';
+import { runtimeDatabase } from './runtime-database';
 
 /** Integration files run serially and must only receive a disposable DATABASE_URL. */
 export async function integrationApp(
   overrides: { token: InjectionToken; value: unknown }[] = [],
   options: {
     isolatedDatabase?: boolean;
+    restrictedDatabase?: boolean;
     httpsOptions?: NestApplicationOptions['httpsOptions'];
     beforeInit?: (app: INestApplication) => Promise<void>;
   } = {},
@@ -29,12 +31,17 @@ export async function integrationApp(
     SHIPKEEP_KEK_FILE: process.env['SHIPKEEP_KEK_FILE'],
     LOG_LEVEL: process.env['LOG_LEVEL'],
   };
+  let closeRuntime: (() => Promise<void>) | undefined;
   const cleanup = async () => {
     for (const [key, value] of Object.entries(previous)) {
       if (value === undefined) Reflect.deleteProperty(process.env, key);
       else process.env[key] = value;
     }
-    await container?.stop();
+    try {
+      await closeRuntime?.();
+    } finally {
+      await container?.stop();
+    }
     await rm(directory, { recursive: true, force: true });
   };
   try {
@@ -45,6 +52,11 @@ export async function integrationApp(
     await writeFile(process.env['SHIPKEEP_KEK_FILE'], randomBytes(32), { mode: 0o400 });
     await resetDatabase(databaseUrl);
     await applyMigrations(databaseUrl, resolve(__dirname, '../../prisma/migrations'));
+    if (options.restrictedDatabase) {
+      const runtime = await runtimeDatabase(databaseUrl);
+      closeRuntime = runtime.close;
+      process.env['DATABASE_URL'] = runtime.url;
+    }
     const { AppModule } = await import('../app.module.js');
     const { configureApp } = await import('../bootstrap.js');
     let builder = Test.createTestingModule({ imports: [AppModule] });

@@ -50,7 +50,7 @@ go test ./agent/... ./cli/... ./lib/...
 pnpm gen               # regenerate code from proto/ and shipkeep.schema.json
 ```
 
-Service ports on the host: PostgreSQL 5432, VictoriaLogs 9428, VictoriaMetrics 8428, registry 5000. If one is already taken, set the matching `SHIPKEEP_DEV_*_PORT` in `.env` (see `.env.example`) and adjust `DATABASE_URL`. Data lives in named Docker volumes.
+Service ports on the host: PostgreSQL 5432, VictoriaLogs 9428, VictoriaMetrics 8428, registry 5000. If one is already taken, set the matching `SHIPKEEP_DEV_*_PORT` in `.env` (see `.env.example`) and adjust both PostgreSQL URLs. Data lives in named Docker volumes. `pnpm dev` provisions a restricted API login after migrations; existing `.env` files need separate runtime and migration URLs as described in [database roles](docs/DATABASE_ROLES.md).
 
 Browser acceptance requires Docker and always creates a fresh PostgreSQL container, even when
 `DATABASE_URL` is set. Chromium uses the production Angular assets against a loopback HTTPS API
