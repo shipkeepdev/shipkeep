@@ -310,6 +310,7 @@ model Node {
   createdAt       DateTime          @map("created_at") @db.Timestamptz(6)
   lastHeartbeatAt DateTime?         @map("last_heartbeat_at") @db.Timestamptz(6)
   certificates    NodeCertificate[]
+  actions         AgentAction[]
   organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([organizationId, name])
@@ -347,4 +348,30 @@ model ConfirmationToken {
 
   @@index([organizationId, issuedAt])
   @@map("confirmation_tokens")
+}
+
+/// Durable action queued for one node (PLAN M1.4a2); the action message is encrypted.
+model AgentAction {
+  id             String    @id @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  nodeId         String    @map("node_id") @db.Uuid
+  kind           String    @db.VarChar(64)
+  idempotencyKey String    @map("idempotency_key") @db.VarChar(128)
+  payloadEnc     Bytes     @map("payload_enc")
+  leaseEpoch     Int       @map("lease_epoch")
+  deadline       DateTime  @db.Timestamptz(6)
+  state          String    @db.VarChar(16)
+  step           String    @default("") @db.VarChar(64)
+  attempts       Int       @default(0)
+  result         Json?
+  error          String?   @db.VarChar(256)
+  requestedBy    String?   @map("requested_by") @db.VarChar(128)
+  createdAt      DateTime  @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @map("updated_at") @db.Timestamptz(6)
+  completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
+  node           Node      @relation(fields: [organizationId, nodeId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@unique([nodeId, idempotencyKey])
+  @@index([organizationId, nodeId, state])
+  @@map("agent_actions")
 }
