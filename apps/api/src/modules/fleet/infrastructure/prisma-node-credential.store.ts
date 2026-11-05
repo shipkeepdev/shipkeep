@@ -9,11 +9,13 @@ import type { NodeCredential, NodeIdentity } from '../domain/node-identity';
 export class PrismaNodeCredentialStore implements NodeCredentialStore {
   constructor(private readonly database: PrismaUnitOfWork) {}
 
-  async find(serial: string): Promise<NodeCredential | undefined> {
-    const row = await this.database.client.nodeCertificate.findUnique({
-      where: { serial },
-      include: { node: true },
-    });
+  async find(organizationId: string, serial: string): Promise<NodeCredential | undefined> {
+    const row = await this.database.runTenant(organizationId, () =>
+      this.database.client.nodeCertificate.findUnique({
+        where: { serial },
+        include: { node: true },
+      }),
+    );
     if (!row) return undefined;
     return {
       serial: row.serial,
@@ -32,7 +34,7 @@ export class PrismaNodeCredentialStore implements NodeCredentialStore {
     certificate: NodeCertificateRecord,
     now: Date,
   ): Promise<boolean> {
-    return this.database.run(async () => {
+    return this.database.runTenant(identity.organizationId, async () => {
       const result = await this.database.client.nodeCertificate.updateMany({
         where: {
           serial: identity.serial,

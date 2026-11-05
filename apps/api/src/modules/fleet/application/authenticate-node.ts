@@ -13,6 +13,10 @@ export class AuthenticateNode {
   constructor(@Inject(NODE_CREDENTIAL_STORE) private readonly credentials: NodeCredentialStore) {}
 
   async execute(identity: NodeIdentity, now = new Date()): Promise<NodeCredential> {
-    return authenticateCertificate(identity, await this.credentials.find(identity.serial), now);
+    return authenticateCertificate(
+      identity,
+      await this.credentials.find(identity.organizationId, identity.serial),
+      now,
+    );
   }
 }

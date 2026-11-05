@@ -9,6 +9,7 @@ import {
   hashJoinToken,
   isWellFormedJoinToken,
   JoinTokenRejectedError,
+  type JoinTokenRecord,
 } from '../domain/join-token';
 import {
   assertNodeName,
@@ -24,6 +25,7 @@ import {
   type ConfirmationKeyProvider,
   FLEET_TRANSACTION,
   type FleetTransaction,
+  type IssuedCertificate,
   JOIN_TOKEN_STORE,
   type JoinTokenStore,
   NODE_STORE,
@@ -79,20 +81,41 @@ export class EnrollNode {
     if (Buffer.byteLength(command.csrPem, 'utf8') > MAX_CSR_BYTES) {
       throw new InvalidInputError('csr_too_large', 'certificate request exceeds the size limit');
     }
-    const record = await this.tokens.findByHash(hashJoinToken(command.joinToken.expose()));
+    const tokenHash = hashJoinToken(command.joinToken.expose());
+    // Only this token's row is visible until its organization is known (ADR 0015).
+    const record = await this.transaction.runEnrollment(tokenHash, () =>
+      this.tokens.findByHash(tokenHash),
+    );
     const verdict = evaluateJoinToken(command.joinToken.expose(), record, now);
     if (!verdict.ok) throw new JoinTokenRejectedError(verdict.reason);
-    const organizationId = verdict.record.organizationId;
+    const token = verdict.record;
+    const nodeId = uuidv7();
+    // The CA verifies the CSR signature and ignores every name it carries. It touches no table,
+    // so its rejections reach the caller unchanged instead of as a storage failure.
+    const issued = await this.ca.issueNodeCertificate(command.csrPem, {
+      organizationId: token.organizationId,
+      nodeId,
+    });
+    return this.transaction.runTenant(token.organizationId, () =>
+      this.register(command, token, nodeId, issued, now),
+    );
+  }
+
+  /** Every write of an enrollment runs in the token's organization. */
+  private async register(
+    command: EnrollNodeCommand,
+    token: JoinTokenRecord,
+    nodeId: string,
+    issued: IssuedCertificate,
+    now: Date,
+  ): Promise<EnrollNodeResult> {
+    const organizationId = token.organizationId;
 
     const facts = sanitizeFacts(command.facts);
     const name = this.resolveName(command.name, facts);
     if (await this.nodes.findByName(organizationId, name)) {
       throw new ConflictError('node_name_taken', `a node named ${name} already exists`, { name });
     }
-
-    const nodeId = uuidv7();
-    // The CA verifies the CSR signature and ignores every name it carries.
-    const issued = await this.ca.issueNodeCertificate(command.csrPem, { organizationId, nodeId });
 
     await this.nodes.insert({
       id: nodeId,
@@ -115,7 +138,7 @@ export class EnrollNode {
       revokedAt: null,
     });
     // Consuming last and atomically means a token can never enroll two nodes.
-    if (!(await this.tokens.consume(verdict.record.id, nodeId, now))) {
+    if (!(await this.tokens.consume(token.id, nodeId, now))) {
       throw new JoinTokenRejectedError('used');
     }
 
@@ -124,7 +147,7 @@ export class EnrollNode {
         organizationId,
         nodeId,
         name,
-        tokenId: verdict.record.id,
+        tokenId: token.id,
         certificateSerial: issued.serial,
         certificateNotAfter: issued.notAfter,
         ...(command.ip ? { ip: command.ip } : {}),

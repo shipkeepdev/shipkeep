@@ -10,9 +10,10 @@ import * as x509 from '@peculiar/x509';
 import { AgentGatewayService } from '@shipkeep/proto-ts';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 
-import { PrismaService } from '../../platform/prisma/prisma.service';
 import { DomainEventBus } from '../../platform/events/domain-event-bus';
 import { applyMigrations } from '../../testing/apply-migrations';
+import { fleetDatabase, type FleetDatabase } from '../../testing/fleet-database';
+import { POSTGRES_TEST_IMAGE } from '../../testing/postgres-image';
 import { resetDatabase } from '../../testing/reset-database';
 
 import { IssueJoinToken } from './application/issue-join-token';
@@ -51,8 +52,14 @@ async function requestCertificate() {
 describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
   let app: INestApplication;
   let container: StartedPostgreSqlContainer | undefined;
+  let db: FleetDatabase;
   let caPem: string;
   let baseUrl: string;
+  const previousUrl = process.env['DATABASE_URL'];
+  const rows = async (sql: string, values: readonly unknown[]) =>
+    (await db.admin.query<Record<string, unknown>>(sql, [...values])).rows;
+  const revoke = (nodeId: string) =>
+    db.admin.query('UPDATE node_certificates SET revoked_at=now() WHERE node_id=$1', [nodeId]);
 
   function client(
     credentials?: { cert: string; key: string },
@@ -83,15 +90,14 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
   }
 
   beforeAll(async () => {
-    if (!process.env['DATABASE_URL']) {
-      container = await new PostgreSqlContainer('postgres:17').start();
-      process.env['DATABASE_URL'] = container.getConnectionUri();
-    }
-    await resetDatabase(process.env['DATABASE_URL']);
-    await applyMigrations(
-      process.env['DATABASE_URL'],
-      resolve(__dirname, '../../../prisma/migrations'),
-    );
+    if (!previousUrl) container = await new PostgreSqlContainer(POSTGRES_TEST_IMAGE).start();
+    const adminUrl = container?.getConnectionUri() ?? previousUrl ?? '';
+    await resetDatabase(adminUrl);
+    await applyMigrations(adminUrl, resolve(__dirname, '../../../prisma/migrations'));
+    // The gateway runs on the restricted login, under the fleet row security (ADR 0015).
+    db = await fleetDatabase(adminUrl);
+    await db.createOrganization(org);
+    process.env['DATABASE_URL'] = db.runtimeUrl;
     const path = join(await mkdtemp(join(tmpdir(), 'shipkeep-gateway-')), 'kek');
     await writeFile(path, randomBytes(32), { mode: 0o400 });
     process.env['SHIPKEEP_KEK_FILE'] = path;
@@ -111,7 +117,10 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
 
   afterAll(async () => {
     await app.close();
+    await db.close();
     await container?.stop();
+    if (previousUrl === undefined) Reflect.deleteProperty(process.env, 'DATABASE_URL');
+    else process.env['DATABASE_URL'] = previousUrl;
   });
 
   it('enrolls without a client certificate, exposes the pinned CA fingerprint and rejects reuse', async () => {
@@ -152,12 +161,12 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
       ),
     );
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
-    const nodes = await app.get(PrismaService).node.findMany({
-      where: { name: { in: ['tls-race-a', 'tls-race-b'] } },
-      include: { certificates: true },
-    });
-    expect(nodes).toHaveLength(1);
-    expect(nodes[0]?.certificates).toHaveLength(1);
+    expect(
+      await rows(
+        'SELECT n.id, count(c.id)::int AS certificates FROM nodes n LEFT JOIN node_certificates c ON c.node_id=n.id WHERE n.name = ANY($1) GROUP BY n.id',
+        [['tls-race-a', 'tls-race-b']],
+      ),
+    ).toMatchObject([{ certificates: 1 }]);
   });
 
   it('rolls back enrollment and preserves the join token if audit delivery fails', async () => {
@@ -177,12 +186,10 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
     } finally {
       unsubscribe();
     }
-    expect(await app.get(PrismaService).node.count({ where: { name: 'tls-audit-failure' } })).toBe(
-      0,
-    );
-    expect(
-      await app.get(PrismaService).joinToken.findUnique({ where: { id: token.id } }),
-    ).toMatchObject({ usedAt: null });
+    expect(await rows('SELECT id FROM nodes WHERE name=$1', ['tls-audit-failure'])).toHaveLength(0);
+    expect(await rows('SELECT used_at FROM join_tokens WHERE id=$1', [token.id])).toEqual([
+      { used_at: null },
+    ]);
     await expect(
       client().enroll({
         joinToken: token.value.expose(),
@@ -276,10 +283,7 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
         [Symbol.asyncIterator]();
       await expect(stream.next()).resolves.toMatchObject({ value: { msg: { case: 'welcome' } } });
       const closed = stream.next();
-      await app.get(PrismaService).nodeCertificate.updateMany({
-        where: { nodeId: enrolled.result.nodeId },
-        data: { revokedAt: new Date() },
-      });
+      await revoke(enrolled.result.nodeId);
       await expect(closed).rejects.toMatchObject({ code: Code.Unauthenticated });
     } finally {
       abort.abort();
@@ -347,10 +351,7 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
     await expect(current.renewCertificate({ csrPem: 'bad CSR' })).rejects.toMatchObject({
       code: Code.InvalidArgument,
     });
-    await app.get(PrismaService).nodeCertificate.updateMany({
-      where: { nodeId: enrolled.result.nodeId },
-      data: { revokedAt: new Date() },
-    });
+    await revoke(enrolled.result.nodeId);
     await expect(current.renewCertificate({ csrPem: 'bad CSR' })).rejects.toMatchObject({
       code: Code.Unauthenticated,
     });

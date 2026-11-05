@@ -8,9 +8,10 @@ import type { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 
-import { startGoAgent } from '../../testing/go-agent';
-import { PrismaService } from '../../platform/prisma/prisma.service';
 import { applyMigrations } from '../../testing/apply-migrations';
+import { fleetDatabase, type FleetDatabase } from '../../testing/fleet-database';
+import { startGoAgent } from '../../testing/go-agent';
+import { POSTGRES_TEST_IMAGE } from '../../testing/postgres-image';
 import { resetDatabase } from '../../testing/reset-database';
 import { IssueJoinToken } from './application/issue-join-token';
 import { AgentGateway } from './interface/agent-gateway';
@@ -18,19 +19,21 @@ import { AgentGateway } from './interface/agent-gateway';
 it('enrolls the real Go daemon, reconnects after API restart and rejects reuse/revocation', async () => {
   let app: INestApplication | undefined;
   let container: StartedPostgreSqlContainer | undefined;
+  let db: FleetDatabase | undefined;
+  const previousUrl = process.env['DATABASE_URL'];
+  const organizationId = '0192f0c0-0000-7000-8000-0000000000ad';
   const dir = await mkdtemp(join(tmpdir(), 'shipkeep-agent-integration-'));
   const abort = new AbortController();
   let child: Promise<void> | undefined;
   try {
-    if (!process.env['DATABASE_URL']) {
-      container = await new PostgreSqlContainer('postgres:17').start();
-      process.env['DATABASE_URL'] = container.getConnectionUri();
-    }
-    await resetDatabase(process.env['DATABASE_URL']);
-    await applyMigrations(
-      process.env['DATABASE_URL'],
-      resolve(__dirname, '../../../prisma/migrations'),
-    );
+    if (!previousUrl) container = await new PostgreSqlContainer(POSTGRES_TEST_IMAGE).start();
+    const adminUrl = container?.getConnectionUri() ?? previousUrl ?? '';
+    await resetDatabase(adminUrl);
+    await applyMigrations(adminUrl, resolve(__dirname, '../../../prisma/migrations'));
+    // Both API instances run on the restricted login, under the fleet row security (ADR 0015).
+    db = await fleetDatabase(adminUrl);
+    await db.createOrganization(organizationId);
+    process.env['DATABASE_URL'] = db.runtimeUrl;
     const kek = join(dir, 'kek');
     await writeFile(kek, randomBytes(32), { mode: 0o400 });
     process.env['SHIPKEEP_KEK_FILE'] = kek;
@@ -44,7 +47,7 @@ it('enrolls the real Go daemon, reconnects after API restart and rejects reuse/r
     const address = app.get(AgentGateway).address();
     if (!address || typeof address === 'string') throw new Error('missing gateway address');
     const token = await app.get(IssueJoinToken).execute({
-      organizationId: '0192f0c0-0000-7000-8000-0000000000ad',
+      organizationId,
       actor: { kind: 'user', id: 'usr_test' },
     });
     const fixture = join(dir, 'fixture.json');
@@ -88,13 +91,16 @@ it('enrolls the real Go daemon, reconnects after API restart and rejects reuse/r
     await app.init();
     await app.get(AgentGateway).start();
     await marker('reconnected');
-    await app.get(PrismaService).nodeCertificate.updateMany({ data: { revokedAt: new Date() } });
+    await db.admin.query('UPDATE node_certificates SET revoked_at=now()');
     await child;
   } finally {
     abort.abort();
     await child?.catch(() => undefined);
     await app?.close();
+    await db?.close();
     await container?.stop();
+    if (previousUrl === undefined) Reflect.deleteProperty(process.env, 'DATABASE_URL');
+    else process.env['DATABASE_URL'] = previousUrl;
     await rm(dir, { recursive: true, force: true });
   }
 });

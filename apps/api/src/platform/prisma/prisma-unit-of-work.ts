@@ -7,10 +7,12 @@ import type { Prisma } from './generated/client';
 import { PrismaService } from './prisma.service';
 import { assertTenantDatabaseRole } from './tenant-database-role';
 
+type ScopeKind = 'tenant' | 'account' | 'enrollment';
 interface TransactionContext {
   client: Prisma.TransactionClient;
-  scope?: { kind: 'tenant' | 'account'; id: string; lease: symbol };
+  scope?: { kind: ScopeKind; id: string; lease: symbol };
 }
+const TOKEN_HASH = /^[a-f0-9]{64}$/;
 
 /**
  * Repositories participating in a command use `client`, including the synchronous audit
@@ -54,12 +56,16 @@ export class PrismaUnitOfWork {
     return this.runScoped('account', userId, operation);
   }
 
-  private async runScoped<T>(
-    kind: 'tenant' | 'account',
-    id: string,
-    operation: () => Promise<T>,
-  ): Promise<T> {
-    if (!isTenantId(id))
+  /** Read the single join token whose SHA-256 hash is `tokenHash` (ADR 0015). The hash must be
+   * computed from a presented token. No tenant or account context is active, so no other fleet
+   * row is visible and nothing can be written; enrollment continues under `runTenant`.
+   */
+  runEnrollment<T>(tokenHash: string, operation: () => Promise<T>): Promise<T> {
+    return this.runScoped('enrollment', tokenHash, operation);
+  }
+
+  private async runScoped<T>(kind: ScopeKind, id: string, operation: () => Promise<T>): Promise<T> {
+    if (kind === 'enrollment' ? !TOKEN_HASH.test(id) : !isTenantId(id))
       throw new InvalidInputError(`invalid_${kind}_context`, 'Invalid database context.');
     try {
       return await this.run(async () => {
@@ -84,7 +90,8 @@ export class PrismaUnitOfWork {
           await assertTenantDatabaseRole(current.client);
           await current.client.$queryRaw`SELECT
             pg_catalog.set_config('app.org_id', ${kind === 'tenant' ? id : ''}, true) AS organization_context,
-            pg_catalog.set_config('app.user_id', ${kind === 'account' ? id : ''}, true) AS account_context`;
+            pg_catalog.set_config('app.user_id', ${kind === 'account' ? id : ''}, true) AS account_context,
+            pg_catalog.set_config('app.join_token_hash', ${kind === 'enrollment' ? id : ''}, true) AS enrollment_context`;
           result = await this.tenantLease.run(scope.lease, operation);
         } catch (error: unknown) {
           // An aborted SQL transaction also rejects cleanup. Preserve the original domain
@@ -112,5 +119,6 @@ export class PrismaUnitOfWork {
 async function clearScope(client: Prisma.TransactionClient): Promise<void> {
   await client.$queryRaw`SELECT
     pg_catalog.set_config('app.org_id', '', true) AS organization_context,
-    pg_catalog.set_config('app.user_id', '', true) AS account_context`;
+    pg_catalog.set_config('app.user_id', '', true) AS account_context,
+    pg_catalog.set_config('app.join_token_hash', '', true) AS enrollment_context`;
 }

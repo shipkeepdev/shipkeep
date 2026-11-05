@@ -5,10 +5,37 @@ import type { NodeCertificateRecord, NodeRecord } from '../domain/node';
 import type {
   CertificateAuthority,
   ConfirmationKeyProvider,
+  FleetTransaction,
   IssuedCertificate,
   JoinTokenStore,
   NodeStore,
 } from './ports';
+
+/** Runs work inline and records every database context it was asked to open, in order. */
+export class RecordingTransaction implements FleetTransaction {
+  readonly scopes: string[] = [];
+  /** The innermost context, or `none` outside any scoped call. */
+  current = 'none';
+  run<T>(work: () => Promise<T>): Promise<T> {
+    return work();
+  }
+  runTenant<T>(organizationId: string, work: () => Promise<T>): Promise<T> {
+    return this.scoped(`tenant:${organizationId}`, work);
+  }
+  runEnrollment<T>(tokenHash: string, work: () => Promise<T>): Promise<T> {
+    return this.scoped(`enrollment:${tokenHash}`, work);
+  }
+  private async scoped<T>(scope: string, work: () => Promise<T>): Promise<T> {
+    this.scopes.push(scope);
+    const previous = this.current;
+    this.current = scope;
+    try {
+      return await work();
+    } finally {
+      this.current = previous;
+    }
+  }
+}
 
 export class MemoryJoinTokenStore implements JoinTokenStore {
   readonly records = new Map<string, JoinTokenRecord>();

@@ -142,6 +142,27 @@ describe('tenant transactions with a restricted PostgreSQL login', () => {
     expect(operation).not.toHaveBeenCalled();
   });
 
+  it('accepts only a SHA-256 hex hash as enrollment context and never inside a tenant', async () => {
+    const operation = vi.fn();
+    for (const hash of ['', 'a'.repeat(63), 'A'.repeat(64), `${'a'.repeat(63)}'`])
+      await expect(database.runEnrollment(hash, operation)).rejects.toMatchObject({
+        code: 'invalid_enrollment_context',
+      });
+    await database.runTenant(orgs[0], async () => {
+      await expect(database.runEnrollment('a'.repeat(64), operation)).rejects.toMatchObject({
+        code: 'tenant_context_conflict',
+      });
+    });
+    expect(operation).not.toHaveBeenCalled();
+    // The setting is local to its transaction and cleared afterwards.
+    await database.run(async () => {
+      await database.runEnrollment('b'.repeat(64), () => Promise.resolve());
+      const rows = await database.client.$queryRaw<{ hash: string }[]>`
+        SELECT coalesce(current_setting('app.join_token_hash', true), '') AS hash`;
+      expect(rows[0]?.hash).toBe('');
+    });
+  });
+
   it('rejects overlapping sibling scopes sharing an outer transaction', async () => {
     const entered = barrierSignal();
     const release = barrierSignal();

@@ -45,7 +45,7 @@ export class IssueJoinToken {
     const value = new Secret(generateJoinTokenValue());
     const expiresAt = new Date(now.getTime() + JOIN_TOKEN_TTL_MS);
     // The token row and its audit event commit together (rule 6): a failed audit leaves no token.
-    await this.transaction.run(async () => {
+    await this.transaction.runTenant(command.organizationId, async () => {
       await this.tokens.insert({
         id,
         organizationId: command.organizationId,

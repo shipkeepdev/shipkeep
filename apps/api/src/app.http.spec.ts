@@ -33,7 +33,11 @@ describe('HTTP pipeline', () => {
       .overrideProvider(INSTALLATION_KEY_STORE)
       .useValue(new MemoryInstallationKeyStore())
       .overrideProvider(FLEET_TRANSACTION)
-      .useValue({ run: <T>(work: () => Promise<T>) => work() })
+      .useValue({
+        run: <T>(work: () => Promise<T>) => work(),
+        runTenant: <T>(_organizationId: string, work: () => Promise<T>) => work(),
+        runEnrollment: <T>(_tokenHash: string, work: () => Promise<T>) => work(),
+      })
       .overrideProvider(AUDIT_EVENT_STORE)
       .useValue({ append: () => Promise.resolve() })
       .overrideProvider(JobQueue)

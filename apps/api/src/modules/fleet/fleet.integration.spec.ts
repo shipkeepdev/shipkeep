@@ -9,6 +9,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 
 import { PrismaService } from '../../platform/prisma/prisma.service';
 import { applyMigrations } from '../../testing/apply-migrations';
+import { fleetDatabase, type FleetDatabase } from '../../testing/fleet-database';
 import { resetDatabase } from '../../testing/reset-database';
 
 import { EnrollNode } from './application/enroll-node';
@@ -47,18 +48,21 @@ async function agentCsr(): Promise<string> {
 describe('fleet enrollment against PostgreSQL', () => {
   let app: INestApplication | undefined;
   let container: StartedPostgreSqlContainer | undefined;
+  let db: FleetDatabase;
+  const previousUrl = process.env['DATABASE_URL'];
+  const rows = async (sql: string, values: readonly unknown[]) =>
+    (await db.admin.query<Record<string, unknown>>(sql, [...values])).rows;
 
   beforeAll(async () => {
-    if (!process.env['DATABASE_URL']) {
-      container = await new PostgreSqlContainer(POSTGRES_TEST_IMAGE).start();
-      process.env['DATABASE_URL'] = container.getConnectionUri();
-    }
+    if (!previousUrl) container = await new PostgreSqlContainer(POSTGRES_TEST_IMAGE).start();
+    const adminUrl = container?.getConnectionUri() ?? previousUrl ?? '';
     // Shared CI database: start from an empty schema so this file's KEK matches every row.
-    await resetDatabase(process.env['DATABASE_URL']);
-    await applyMigrations(
-      process.env['DATABASE_URL'],
-      resolve(__dirname, '../../../prisma/migrations'),
-    );
+    await resetDatabase(adminUrl);
+    await applyMigrations(adminUrl, resolve(__dirname, '../../../prisma/migrations'));
+    // The API runs on the restricted login, under the fleet row security (ADR 0015).
+    db = await fleetDatabase(adminUrl);
+    await db.createOrganization(org);
+    process.env['DATABASE_URL'] = db.runtimeUrl;
     const kekPath = join(await mkdtemp(join(tmpdir(), 'shipkeep-fleet-')), 'kek');
     await writeFile(kekPath, randomBytes(32), { mode: 0o400 });
     process.env['SHIPKEEP_KEK_FILE'] = kekPath;
@@ -71,35 +75,15 @@ describe('fleet enrollment against PostgreSQL', () => {
 
   afterAll(async () => {
     await app?.close();
+    await db.close();
     await container?.stop();
+    if (previousUrl === undefined) Reflect.deleteProperty(process.env, 'DATABASE_URL');
+    else process.env['DATABASE_URL'] = previousUrl;
   });
 
   it('enrolls a node with a single-use token and a CA-signed certificate', async () => {
     if (!app) throw new Error('application did not start');
     const prisma = app.get(PrismaService);
-    await prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT set_config('app.org_id', ${org}, true)`;
-      await tx.user.create({
-        data: {
-          id: owner,
-          email: 'fleet-owner@example.com',
-          passwordHash: 'fixture-hash',
-          status: 'active',
-          emailVerifiedAt: new Date(),
-        },
-      });
-      await tx.organization.create({
-        data: { id: org, name: 'Fleet fixture', slug: 'fleet-fixture' },
-      });
-      await tx.membership.create({
-        data: {
-          id: '0192f0c0-0000-7000-8000-0000000000ad',
-          organizationId: org,
-          userId: owner,
-          orgRole: 'owner',
-        },
-      });
-    });
     const token = await app.get(IssueJoinToken).execute({ organizationId: org, actor });
     expect(token.caFingerprint).toMatch(/^sha256:[0-9a-f]{64}$/);
 
@@ -117,19 +101,21 @@ describe('fleet enrollment against PostgreSQL', () => {
     expect(cert.subjectAltName).toBe(`URI:spiffe://shipkeep/${org}/node/${result.nodeId}`);
     expect(result.confirmationPublicKeyPem).toContain('BEGIN PUBLIC KEY');
 
-    const node = await prisma.node.findUniqueOrThrow({ where: { id: result.nodeId } });
-    expect(node).toMatchObject({
-      organizationId: org,
-      name: 'edge-1',
-      status: 'enrolling',
-      leaseEpoch: 1,
-    });
-    const certs = await prisma.nodeCertificate.findMany({ where: { nodeId: result.nodeId } });
-    expect(certs).toHaveLength(1);
-    expect(certs[0]?.revokedAt).toBeNull();
-    const stored = await prisma.joinToken.findUniqueOrThrow({ where: { id: token.id } });
-    expect(stored.usedByNodeId).toBe(result.nodeId);
-    expect(stored.tokenHash).not.toBe(token.value.expose());
+    expect(
+      await rows('SELECT organization_id,name,status,lease_epoch FROM nodes WHERE id=$1', [
+        result.nodeId,
+      ]),
+    ).toEqual([{ organization_id: org, name: 'edge-1', status: 'enrolling', lease_epoch: 1 }]);
+    expect(
+      await rows('SELECT organization_id,revoked_at FROM node_certificates WHERE node_id=$1', [
+        result.nodeId,
+      ]),
+    ).toEqual([{ organization_id: org, revoked_at: null }]);
+    const stored = await rows('SELECT used_by_node_id,token_hash FROM join_tokens WHERE id=$1', [
+      token.id,
+    ]);
+    expect(stored[0]?.['used_by_node_id']).toBe(result.nodeId);
+    expect(stored[0]?.['token_hash']).not.toBe(token.value.expose());
 
     const keys = await prisma.installationKey.findMany();
     expect(keys.map((k) => k.kind).sort()).toEqual(['ca', 'confirmation']);
@@ -165,10 +151,14 @@ describe('fleet enrollment against PostgreSQL', () => {
       agentVersion: '0.1.0',
       name,
     });
-    const cert = await app
-      .get(PrismaService)
-      .nodeCertificate.findFirstOrThrow({ where: { nodeId: result.nodeId } });
-    return { organizationId: org, nodeId: result.nodeId, serial: cert.serial };
+    const certificates = await rows('SELECT serial FROM node_certificates WHERE node_id=$1', [
+      result.nodeId,
+    ]);
+    return {
+      organizationId: org,
+      nodeId: result.nodeId,
+      serial: String(certificates[0]?.['serial']),
+    };
   }
 
   it('renews with the authenticated identity, revokes the previous certificate and audits once', async () => {
@@ -205,10 +195,10 @@ describe('fleet enrollment against PostgreSQL', () => {
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter((r) => r.status === 'rejected')).toHaveLength(1);
     expect(
-      await app
-        .get(PrismaService)
-        .nodeCertificate.count({ where: { nodeId: identity.nodeId, revokedAt: null } }),
-    ).toBe(1);
+      await rows('SELECT id FROM node_certificates WHERE node_id=$1 AND revoked_at IS NULL', [
+        identity.nodeId,
+      ]),
+    ).toHaveLength(1);
     expect(
       await app.get(PrismaService).auditEvent.count({
         where: { targetId: identity.nodeId, action: 'fleet.node.certificate_renewed' },
@@ -218,19 +208,20 @@ describe('fleet enrollment against PostgreSQL', () => {
 
   it('leaves no join token behind when its issuance cannot be audited', async () => {
     if (!app) throw new Error('application did not start');
-    const prisma = app.get(PrismaService);
-    const before = await prisma.joinToken.count({ where: { organizationId: org } });
+    const tokens = () => rows('SELECT id FROM join_tokens WHERE organization_id=$1', [org]);
+    const before = (await tokens()).length;
     const unsubscribe = app
       .get(DomainEventBus)
       .subscribe(() => Promise.reject(new Error('injected failure')));
     try {
+      // Tenant-scoped storage reports any non-domain failure as unavailable, without details.
       await expect(app.get(IssueJoinToken).execute({ organizationId: org, actor })).rejects.toThrow(
-        'injected failure',
+        'Tenant storage temporarily unavailable.',
       );
     } finally {
       unsubscribe();
     }
-    expect(await prisma.joinToken.count({ where: { organizationId: org } })).toBe(before);
+    expect(await tokens()).toHaveLength(before);
   });
 
   it('rolls back the new certificate, revocation and audit if an event subscriber fails', async () => {
@@ -250,8 +241,8 @@ describe('fleet enrollment against PostgreSQL', () => {
       nodeId: identity.nodeId,
     });
     expect(
-      await app.get(PrismaService).nodeCertificate.count({ where: { nodeId: identity.nodeId } }),
-    ).toBe(1);
+      await rows('SELECT id FROM node_certificates WHERE node_id=$1', [identity.nodeId]),
+    ).toHaveLength(1);
     expect(
       await app.get(PrismaService).auditEvent.count({
         where: { targetId: identity.nodeId, action: 'fleet.node.certificate_renewed' },
