@@ -151,6 +151,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
   - [ ] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.
   - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
   - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.
+  - [ ] **M2.3g** Row-level security for the remaining tenant-scoped tables (`nodes`, `join_tokens`, `node_certificates`, `audit_events`), with enrollment token lookup and the agent gateway moved to a separate reviewed cross-tenant role (SPEC 4). Must land before any node, join-token or audit read endpoint is exposed (M2.4, M8).
   - Integrate API-token owner authorization with live membership/role bindings; add project-owned tokens bounded to their project and creator's live authority/security version.
   - Entities from SPEC 4, RBAC matrix from SPEC 7 as a policy module, default-deny guard, row-level security.
   - Acceptance: generated RBAC matrix test covers every route and role; tenant isolation suite passes.

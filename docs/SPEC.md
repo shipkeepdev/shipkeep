@@ -433,6 +433,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 
 - M2.3 implementation defaults: an explicit environment role overrides a project role rather than adding to it; organization admins cannot grant or change ownership. These conservative defaults prevent privilege escalation and are recorded for maintainer review.
 
+- Fleet and audit tables carry `organization_id` but are not yet under row-level security, so they rely on repository filters alone. SPEC 4 requires both layers; PLAN M2.3g tracks the change. Open point: which cross-tenant operations (enrollment by join-token hash, gateway certificate lookup, audit appends from system actors) run under the separate reviewed role, and how that role is provisioned next to `shipkeep_runtime`.
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).
 - Wildcard certificates: which DNS providers to support first for DNS-01 (proposal: Cloudflare, Route 53, Hetzner DNS, OVH).
 - Exact Shipkeep Cloud pricing.
