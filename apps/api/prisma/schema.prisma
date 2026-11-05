@@ -22,8 +22,37 @@ model User {
   updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
   sessions        UserSession[]
   identityTokens  IdentityToken[]
+  mfa             UserMfa?
 
   @@map("users")
+}
+
+/// Encrypted active or pending TOTP seed; pending enrollment is tied to the security version.
+model UserMfa {
+  userId            String         @id @map("user_id") @db.Uuid
+  activeCiphertext  Bytes?         @map("active_ciphertext")
+  enabledAt         DateTime?      @map("enabled_at") @db.Timestamptz(6)
+  lastCounter       BigInt?        @map("last_counter")
+  pendingCiphertext Bytes?         @map("pending_ciphertext")
+  pendingVersion    Int?           @map("pending_version")
+  pendingCreatedAt  DateTime?      @map("pending_created_at") @db.Timestamptz(6)
+  pendingExpiresAt  DateTime?      @map("pending_expires_at") @db.Timestamptz(6)
+  updatedAt         DateTime       @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user              User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recoveryCodes     RecoveryCode[]
+
+  @@map("user_mfa")
+}
+
+model RecoveryCode {
+  userId    String    @map("user_id") @db.Uuid
+  codeHash  String    @map("code_hash") @db.Char(64)
+  createdAt DateTime  @map("created_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  mfa       UserMfa   @relation(fields: [userId], references: [userId], onDelete: Cascade)
+
+  @@id([userId, codeHash])
+  @@map("recovery_codes")
 }
 
 /// Opaque browser credential and CSRF verifier. Privilege changes invalidate older versions.
