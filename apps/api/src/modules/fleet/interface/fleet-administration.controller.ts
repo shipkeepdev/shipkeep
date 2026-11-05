@@ -1,13 +1,16 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
 import {
+  ApiBearerAuth,
   ApiCookieAuth,
   ApiCreatedResponse,
   ApiHeader,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
 import { Secret } from '@shipkeep/domain';
 
+import { AllowApiToken } from '../../identity/interface/api-token-access';
 import { IdentityAttemptLimit } from '../../identity/interface/identity-rate.guard';
 import { factorInput, ReauthenticateMfaDto } from '../../identity/interface/mfa.dto';
 import { RequireTenant } from '../../identity/interface/route-access';
@@ -21,6 +24,8 @@ import {
   nodeDto,
   NodePageDto,
   NodePageQueryDto,
+  NodePathDto,
+  RemoveNodeDto,
 } from './fleet-administration.dto';
 
 /**
@@ -52,6 +57,33 @@ export class FleetAdministrationController {
         new Secret(body.password),
         factorInput(body),
       ),
+    );
+  }
+
+  /** Destructive: requires a confirmation token for this node (SPEC 3.6, rule 7). */
+  @Post(':organizationId/nodes/:nodeId/remove')
+  @HttpCode(204)
+  @RequireTenant('node.manage', 'organization')
+  @AllowApiToken('node.manage')
+  @IdentityAttemptLimit('api')
+  @ApiBearerAuth('apiToken')
+  @ApiHeader({ name: 'Origin', required: false, description: 'Required for session requests.' })
+  @ApiHeader({
+    name: 'X-Shipkeep-CSRF',
+    required: false,
+    description: 'Required for session requests.',
+  })
+  @ApiNoContentResponse()
+  async removeNode(
+    @Req() request: IdentityRequest,
+    @Param() path: NodePathDto,
+    @Body() body: RemoveNodeDto,
+  ): Promise<void> {
+    await this.fleet.removeNode(
+      resourceContext(request),
+      path.organizationId,
+      path.nodeId,
+      new Secret(body.confirmation),
     );
   }
 

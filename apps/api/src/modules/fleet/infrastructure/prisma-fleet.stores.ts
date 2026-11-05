@@ -81,6 +81,19 @@ export class PrismaNodeStore implements NodeStore {
     return row ? nodeRecord(row) : undefined;
   }
 
+  async remove(organizationId: string, id: string, now: Date): Promise<boolean> {
+    const result = await this.database.client.node.updateMany({
+      where: { organizationId, id, status: { not: 'removed' } },
+      data: { status: 'removed' },
+    });
+    if (result.count !== 1) return false;
+    await this.database.client.nodeCertificate.updateMany({
+      where: { organizationId, nodeId: id, revokedAt: null },
+      data: { revokedAt: now },
+    });
+    return true;
+  }
+
   async list(organizationId: string, beforeId?: string): Promise<NodeRecord[]> {
     const rows = await this.database.client.node.findMany({
       where: { organizationId, ...(beforeId ? { id: { lt: beforeId } } : {}) },

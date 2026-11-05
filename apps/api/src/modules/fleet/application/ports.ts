@@ -36,6 +36,11 @@ export interface NodeStore {
   insertCertificate(certificate: NodeCertificateRecord): Promise<void>;
   /** Run under `runTenant(organizationId)`. */
   findById(organizationId: string, id: string): Promise<NodeRecord | undefined>;
+  /**
+   * Run under `runTenant(organizationId)`: marks the node removed and revokes every current
+   * certificate. False when the node was already removed.
+   */
+  remove(organizationId: string, id: string, now: Date): Promise<boolean>;
   /** Run under `runTenant(organizationId)`: at most 100 nodes, newest first, exclusive cursor. */
   list(organizationId: string, beforeId?: string): Promise<NodeRecord[]>;
 }

@@ -1260,6 +1260,75 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/nodes/{nodeId}/remove": {
+      "post": {
+        "operationId": "removeNode",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "description": "Required for session requests.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Required for session requests.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveNodeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/nodes": {
       "get": {
         "operationId": "listNodes",
@@ -3803,6 +3872,19 @@
           "token",
           "expiresAt",
           "caFingerprint"
+        ]
+      },
+      "RemoveNodeDto": {
+        "type": "object",
+        "properties": {
+          "confirmation": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Confirmation token for `node.remove` on this node (SPEC 3.6)."
+          }
+        },
+        "required": [
+          "confirmation"
         ]
       },
       "NodeDto": {
