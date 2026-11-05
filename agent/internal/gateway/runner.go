@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/big"
+	"sync"
 	"time"
 
 	"google.golang.org/grpc/codes"
@@ -23,6 +24,13 @@ var errIdentity = errors.New("gateway rejected the node identity or epoch; opera
 // shutdown is signalled: once the control plane commits a renewal, the old certificate is revoked.
 const renewalTimeout = 30 * time.Second
 
+// ActionHandler executes control-plane actions. Handle runs on the agent's lifetime, not the
+// stream's: a dropped connection never interrupts an action, only its progress updates.
+type ActionHandler interface {
+	Handle(ctx context.Context, req *agentv1.ActionRequest, send func(*agentv1.ActionUpdate))
+	Cancel(id string) bool
+}
+
 // Runner owns one outbound stream and its reconnect/renewal lifecycle.
 type Runner struct {
 	Address  string
@@ -30,19 +38,25 @@ type Runner struct {
 	Version  string
 	Facts    *agentv1.NodeFacts
 	Logger   *slog.Logger
+	// Actions executes ActionRequests; nil refuses them (identity and heartbeats only).
+	Actions ActionHandler
+
+	// inflight tracks running actions so Run returns only after they stopped.
+	inflight sync.WaitGroup
 
 	// save persists renewed credentials; nil means Bundle.Save. Tests inject disk failures here.
 	save func(nodecredentials.Bundle) error
 }
 
 // Run preserves local credentials during outages and never silently re-enrolls a rejected node.
-func (r Runner) Run(ctx context.Context, bundle nodecredentials.Bundle) error {
+func (r *Runner) Run(ctx context.Context, bundle nodecredentials.Bundle) error {
+	defer r.inflight.Wait()
 	attempt := 0
 	for ctx.Err() == nil {
 		started := time.Now()
 		updated, err := r.cycle(ctx, bundle)
 		if ctx.Err() != nil {
-			return nil //nolint:nilerr // Parent cancellation is a clean shutdown, not a failed connection.
+			return nil // Parent cancellation is a clean shutdown, not a failed connection.
 		}
 		if err == nil {
 			bundle = updated
@@ -73,7 +87,7 @@ func (r Runner) Run(ctx context.Context, bundle nodecredentials.Bundle) error {
 	return nil
 }
 
-func (r Runner) cycle(ctx context.Context, bundle nodecredentials.Bundle) (nodecredentials.Bundle, error) {
+func (r *Runner) cycle(ctx context.Context, bundle nodecredentials.Bundle) (nodecredentials.Bundle, error) {
 	pair, err := bundle.Validate("")
 	if err != nil {
 		return bundle, errIdentity
@@ -112,7 +126,7 @@ func (r Runner) cycle(ctx context.Context, bundle nodecredentials.Bundle) (nodec
 // bounded backoff. The renewed bundle exists only in memory and the old one is already revoked,
 // so giving up early would force a re-enrollment. After shutdown is requested, one final write is
 // attempted.
-func (r Runner) persist(ctx context.Context, renewed nodecredentials.Bundle) error {
+func (r *Runner) persist(ctx context.Context, renewed nodecredentials.Bundle) error {
 	save := r.save
 	if save == nil {
 		save = func(b nodecredentials.Bundle) error { return b.Save(r.StateDir) }
@@ -135,7 +149,7 @@ func (r Runner) persist(ctx context.Context, renewed nodecredentials.Bundle) err
 	}
 }
 
-func (r Runner) session(ctx context.Context, client agentv1.AgentGatewayServiceClient, bundle nodecredentials.Bundle, renewAt time.Time) error {
+func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayServiceClient, bundle nodecredentials.Bundle, renewAt time.Time) error {
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	stream, err := client.Connect(streamCtx)
@@ -191,6 +205,17 @@ func (r Runner) session(ctx context.Context, client agentv1.AgentGatewayServiceC
 		}
 	}
 	r.Logger.Info("agent connected", "node_id", bundle.NodeID)
+	// Action goroutines outlive the session; once it ends their updates are dropped and the
+	// control plane learns the journaled outcome from its redelivery with the same key.
+	updates := make(chan *agentv1.ActionUpdate, 64)
+	ended := make(chan struct{})
+	defer close(ended)
+	send := func(update *agentv1.ActionUpdate) {
+		select {
+		case updates <- update:
+		case <-ended:
+		}
+	}
 	heartbeat := time.NewTicker(interval)
 	defer heartbeat.Stop()
 	renewal := time.NewTimer(time.Until(renewAt))
@@ -205,14 +230,37 @@ func (r Runner) session(ctx context.Context, client agentv1.AgentGatewayServiceC
 			if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_Heartbeat{Heartbeat: &agentv1.Heartbeat{SentAt: timestamppb.Now(), LeaseEpoch: bundle.LeaseEpoch}}}); err != nil {
 				return fmt.Errorf("send heartbeat: %w", err)
 			}
+		case update := <-updates:
+			if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_ActionUpdate{ActionUpdate: update}}); err != nil {
+				return fmt.Errorf("send action update: %w", err)
+			}
 		case frame := <-incoming:
 			if frame.err != nil {
 				return fmt.Errorf("receive agent frame: %w", frame.err)
 			}
-			// Actions and lease fencing require their journal/handler milestones. Never pretend execution.
-			return fmt.Errorf("agent stream: %w", status.Error(codes.Unimplemented, "unsupported gateway frame"))
+			if err := r.dispatch(ctx, frame.message, send); err != nil {
+				return err
+			}
 		}
 	}
+}
+
+// dispatch starts or cancels actions. Routing, peers and leases arrive with their milestones;
+// until then the stream refuses them instead of pretending to apply them.
+func (r *Runner) dispatch(ctx context.Context, message *agentv1.ConnectResponse, send func(*agentv1.ActionUpdate)) error {
+	switch msg := message.GetMsg().(type) {
+	case *agentv1.ConnectResponse_ActionRequest:
+		if r.Actions != nil {
+			r.inflight.Go(func() { r.Actions.Handle(ctx, msg.ActionRequest, send) })
+			return nil
+		}
+	case *agentv1.ConnectResponse_CancelAction:
+		if r.Actions != nil {
+			r.Actions.Cancel(msg.CancelAction.GetActionId())
+			return nil
+		}
+	}
+	return fmt.Errorf("agent stream: %w", status.Error(codes.Unimplemented, "unsupported gateway frame"))
 }
 
 func retryDelay(attempt int) time.Duration {

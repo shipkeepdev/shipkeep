@@ -10,14 +10,16 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/samuelmbabhazi/shipkeep/agent/internal/actions"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/credentials"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/gateway"
+	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
 	"github.com/samuelmbabhazi/shipkeep/lib/buildinfo"
 	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
 	"github.com/samuelmbabhazi/shipkeep/lib/secret"
 )
 
-func (a *Agent) runGateway(ctx context.Context) error {
+func (a *Agent) runGateway(ctx context.Context, store *journal.Store) error {
 	if ctx.Err() != nil {
 		return nil //nolint:nilerr // Parent cancellation is a clean shutdown.
 	}
@@ -60,7 +62,9 @@ func (a *Agent) runGateway(ctx context.Context) error {
 		}
 		a.logger.Info("agent enrolled", "node_id", bundle.NodeID)
 	}
-	runner := gateway.Runner{Address: a.cfg.ControlPlane.Address, StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger}
+	epoch := bundle.LeaseEpoch
+	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(), Epoch: func() uint64 { return epoch }}
+	runner := gateway.Runner{Address: a.cfg.ControlPlane.Address, StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher}
 	return runner.Run(ctx, bundle)
 }
 

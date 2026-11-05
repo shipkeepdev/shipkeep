@@ -78,7 +78,7 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 		a.logger.Warn("development mode: CA fingerprint pinning may be disabled, never use on a real server")
 	}
 
-	if err := a.runGateway(ctx); err != nil && ctx.Err() == nil {
+	if err := a.runGateway(ctx, store); err != nil && ctx.Err() == nil {
 		return err
 	}
 
