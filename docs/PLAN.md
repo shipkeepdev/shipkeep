@@ -172,6 +172,9 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
       - [x] **M2.3d2a** Live tenant scope grants and account-locked command credential validation.
       - [x] **M2.3d2b** Resource-command token permissions, actor auditing and bounded query access.
     - [ ] **M2.3d3** Organization/project/environment HTTP endpoints and encrypted mutation retries.
+      - [x] **M2.3d3a** Session catalogs, scoped resource detail endpoints and generated OpenAPI/client contracts.
+      - [ ] **M2.3d3b** Resource mutation retry contracts and credential-bound cached-result authorization.
+      - [ ] **M2.3d3c** Audited resource creation/settings HTTP endpoints and mutation acceptance.
     - [ ] **M2.3d4** Membership/binding HTTP endpoints and generated route/role acceptance matrix.
   - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
   - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.

@@ -35,6 +35,8 @@ export class IdentityRateGuard implements CanActivate {
     ]);
     if (!attempt) return true;
     const request = context.switchToHttp().getRequest<IdentityRequest>();
+    // IdentityGuard already consumed the token/IP API quota before credential validation.
+    if (attempt === 'api' && request.identity?.kind === 'api_token') return true;
     const response = context.switchToHttp().getResponse<Response>();
     const decision = await this.throttle.acquire(
       attempt,

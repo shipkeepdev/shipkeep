@@ -260,6 +260,102 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listOrganizations"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getOrganization"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listProjects"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getProject"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listEnvironments"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getEnvironment"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/ready": {
         readonly parameters: {
             readonly query?: never;
@@ -363,6 +459,29 @@ export type components = {
             readonly password: string;
             readonly totp: string;
         };
+        readonly EnvironmentDto: {
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** @enum {string} */
+            readonly failoverPolicy: "none" | "restore-from-backup";
+            /** Format: uuid */
+            readonly id: string;
+            /** @enum {string} */
+            readonly kind: "standard" | "preview";
+            readonly name: string;
+            /** Format: uuid */
+            readonly organizationId: string;
+            /** Format: uuid */
+            readonly projectId: string;
+            readonly protected: boolean;
+            /** Format: date-time */
+            readonly updatedAt: string;
+        };
+        readonly EnvironmentPageDto: {
+            readonly items: readonly components["schemas"]["EnvironmentDto"][];
+            /** Format: uuid */
+            readonly nextCursor: string | null;
+        };
         readonly HealthDto: {
             /** @enum {string} */
             readonly status: "ok";
@@ -407,6 +526,40 @@ export type components = {
             /** Format: date-time */
             readonly pendingExpiresAt: string | null;
             readonly recoveryCodesRemaining: number;
+        };
+        readonly OrganizationDto: {
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** Format: uuid */
+            readonly id: string;
+            readonly name: string;
+            readonly slug: string;
+            /** Format: date-time */
+            readonly updatedAt: string;
+        };
+        readonly OrganizationPageDto: {
+            readonly items: readonly components["schemas"]["OrganizationDto"][];
+            /** Format: uuid */
+            readonly nextCursor: string | null;
+        };
+        readonly ProjectDto: {
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** @enum {string} */
+            readonly gitWriteMode: "commit" | "pull_request";
+            /** Format: uuid */
+            readonly id: string;
+            readonly name: string;
+            /** Format: uuid */
+            readonly organizationId: string;
+            readonly slug: string;
+            /** Format: date-time */
+            readonly updatedAt: string;
+        };
+        readonly ProjectPageDto: {
+            readonly items: readonly components["schemas"]["ProjectDto"][];
+            /** Format: uuid */
+            readonly nextCursor: string | null;
         };
         readonly ReadinessChecksDto: {
             /** @enum {string} */
@@ -884,6 +1037,143 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["HealthDto"];
+                };
+            };
+        };
+    };
+    readonly listOrganizations: {
+        readonly parameters: {
+            readonly query?: {
+                readonly cursor?: string;
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["OrganizationPageDto"];
+                };
+            };
+        };
+    };
+    readonly getOrganization: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["OrganizationDto"];
+                };
+            };
+        };
+    };
+    readonly listProjects: {
+        readonly parameters: {
+            readonly query?: {
+                readonly cursor?: string;
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ProjectPageDto"];
+                };
+            };
+        };
+    };
+    readonly getProject: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ProjectDto"];
+                };
+            };
+        };
+    };
+    readonly listEnvironments: {
+        readonly parameters: {
+            readonly query?: {
+                readonly cursor?: string;
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["EnvironmentPageDto"];
+                };
+            };
+        };
+    };
+    readonly getEnvironment: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["EnvironmentDto"];
                 };
             };
         };
