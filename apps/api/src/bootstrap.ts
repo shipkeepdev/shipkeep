@@ -8,6 +8,11 @@ import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { AppConfig } from './platform/config/app-config';
 import { API_VERSION } from './platform/health/health.controller';
+import {
+  acceptsLargeJson,
+  DEFAULT_BODY_LIMIT,
+  LARGE_JSON_LIMIT,
+} from './platform/http/body-limits';
 import { API_PREFIX } from './platform/http/constants';
 import { ProblemDetailsFilter } from './platform/http/problem-details.filter';
 import { createValidationPipe } from './platform/http/validation.pipe';
@@ -32,8 +37,14 @@ export function configureApp(app: INestApplication): INestApplication {
     response.setHeader('Cache-Control', 'no-store');
     next();
   });
-  http.useBodyParser('json', { limit: '16kb' });
-  http.useBodyParser('urlencoded', { limit: '16kb', extended: false, parameterLimit: 32 });
+  // The large parser reads only its routes; the default one skips bodies already read.
+  http.useBodyParser('json', { limit: LARGE_JSON_LIMIT, type: acceptsLargeJson });
+  http.useBodyParser('json', { limit: DEFAULT_BODY_LIMIT });
+  http.useBodyParser('urlencoded', {
+    limit: DEFAULT_BODY_LIMIT,
+    extended: false,
+    parameterLimit: 32,
+  });
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalFilters(new ProblemDetailsFilter());
 
