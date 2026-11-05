@@ -119,6 +119,8 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
     - [x] **M1.4a1** Agent side: validated, journaled dispatch with progress updates, idempotent redelivery and cancellation; handlers registered per kind.
     - [x] **M1.4a2** Control-plane side: durable per-node action queue, delivery over the stream, update persistence, redelivery after reconnect, audit.
   - [ ] **M1.4b** Docker Engine SDK adapter: `EnsureNetwork`, `PullImage`, `EnsureVolume`, `RemoveVolume` (confirmation token verified with the enrollment public key, `jti` single use).
+    - [x] **M1.4b1** Typed Engine API client; `EnsureNetwork`, `PullImage`, `EnsureVolume` handlers with malicious-input and fuzz tests.
+    - [ ] **M1.4b2** Go confirmation-token verifier (SPEC 3.6) and `RemoveVolume`.
   - [ ] **M1.4c** `CreateContainer`, `StartContainer`, `StopContainer`, `RemoveContainer`, `HealthCheck`, `RunReleaseTask`, with validator fuzz tests.
   - `EnsureNetwork`, `PullImage`, `CreateContainer`, `StartContainer`, `StopContainer`, `RemoveContainer`, `EnsureVolume`, `RemoveVolume`, `HealthCheck`, `RunReleaseTask` through the Docker Engine SDK, with all validations from SPEC 3.3.
   - Acceptance: integration tests against real Docker; malicious-input tests (privileged, host mounts, path traversal, oversized fields) all rejected; fuzz tests for validators.
