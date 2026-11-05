@@ -20,7 +20,8 @@ const localSchema = `CREATE TABLE IF NOT EXISTS desired(resource_id TEXT PRIMARY
  CREATE TABLE IF NOT EXISTS actual(resource_id TEXT PRIMARY KEY,status_json TEXT NOT NULL,observed_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS routing(singleton INTEGER PRIMARY KEY CHECK(singleton=1),version INTEGER NOT NULL,table_json TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS lease(singleton INTEGER PRIMARY KEY CHECK(singleton=1),epoch INTEGER NOT NULL,expires_at INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS used_confirmations(jti TEXT PRIMARY KEY,expires_at INTEGER NOT NULL);`
+ CREATE TABLE IF NOT EXISTS used_confirmations(jti TEXT PRIMARY KEY,expires_at INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS intent(container TEXT PRIMARY KEY,running INTEGER NOT NULL CHECK(running IN (0,1)),updated_at INTEGER NOT NULL);`
 
 // PutDesired stores a typed container specification, stripping every debug_redact field recursively.
 func (s *Store) PutDesired(ctx context.Context, id string, version int64, spec *agentv1.ContainerSpec) error {
@@ -244,4 +245,50 @@ func clearSecrets(message protoreflect.Message) {
 		}
 		return true
 	})
+}
+
+// SetIntent records whether a managed container should be running. The reconciler restores this
+// state on its own, even while the control plane is unreachable (PLAN M1.6).
+func (s *Store) SetIntent(ctx context.Context, container string, running bool, now time.Time) error {
+	if !identifier.MatchString(container) {
+		return errors.New("invalid container name")
+	}
+	value := 0
+	if running {
+		value = 1
+	}
+	if _, err := s.db.ExecContext(ctx, "INSERT INTO intent(container,running,updated_at) VALUES(?,?,?) ON CONFLICT(container) DO UPDATE SET running=excluded.running,updated_at=excluded.updated_at", container, value, now.UnixMilli()); err != nil {
+		return fmt.Errorf("record intent: %w", err)
+	}
+	return nil
+}
+
+// ClearIntent forgets a removed container.
+func (s *Store) ClearIntent(ctx context.Context, container string) error {
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM intent WHERE container=?", container); err != nil {
+		return fmt.Errorf("clear intent: %w", err)
+	}
+	return nil
+}
+
+// Intents returns every recorded container intent.
+func (s *Store) Intents(ctx context.Context) (map[string]bool, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT container,running FROM intent ORDER BY container")
+	if err != nil {
+		return nil, fmt.Errorf("read intents: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck // read-only cursor
+	intents := map[string]bool{}
+	for rows.Next() {
+		var name string
+		var running int
+		if err := rows.Scan(&name, &running); err != nil {
+			return nil, fmt.Errorf("scan intent: %w", err)
+		}
+		intents[name] = running == 1
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read intents: %w", err)
+	}
+	return intents, nil
 }
