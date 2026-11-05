@@ -14,6 +14,7 @@ import (
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 
 	nodecredentials "github.com/samuelmbabhazi/shipkeep/agent/internal/credentials"
@@ -80,7 +81,7 @@ func Renew(ctx context.Context, client agentv1.AgentGatewayServiceClient, b node
 	}
 	response, err := client.RenewCertificate(ctx, &agentv1.RenewCertificateRequest{CsrPem: csr})
 	if err != nil {
-		return nodecredentials.Bundle{}, fmt.Errorf("certificate renewal failed (%s)", status.Code(err))
+		return nodecredentials.Bundle{}, fmt.Errorf("certificate renewal: %w", status.Error(status.Code(err), "renewal failed"))
 	}
 	b.Key, b.Certificate = key, response.CertPem
 	if _, err := b.Validate(""); err != nil {
@@ -92,7 +93,7 @@ func Renew(ctx context.Context, client agentv1.AgentGatewayServiceClient, b node
 func dial(address string, ca *x509.Certificate, certificates []tls.Certificate) (*grpc.ClientConn, error) {
 	roots := x509.NewCertPool()
 	roots.AddCert(ca)
-	conn, err := grpc.NewClient("passthrough:///"+address, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: roots, Certificates: certificates, MinVersion: tls.VersionTLS13})), grpc.WithDisableRetry(), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(nodecredentials.MaxBytes), grpc.MaxCallSendMsgSize(nodecredentials.MaxBytes)))
+	conn, err := grpc.NewClient("passthrough:///"+address, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: roots, Certificates: certificates, MinVersion: tls.VersionTLS13})), grpc.WithDisableRetry(), grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: 20 * time.Second, Timeout: 10 * time.Second}), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(nodecredentials.MaxBytes), grpc.MaxCallSendMsgSize(nodecredentials.MaxBytes)))
 	if err != nil {
 		return nil, fmt.Errorf("create gateway connection: %w", err)
 	}

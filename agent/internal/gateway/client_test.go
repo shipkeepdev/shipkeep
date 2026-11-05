@@ -34,9 +34,14 @@ var testToken = secret.NewString(strings.Repeat("a", 43))
 
 type testGateway struct {
 	agentv1.UnimplementedAgentGatewayServiceServer
-	ca    *x509.Certificate
-	key   ed25519.PrivateKey
-	calls atomic.Int32
+	ca         *x509.Certificate
+	key        ed25519.PrivateKey
+	calls      atomic.Int32
+	connects   atomic.Int32
+	heartbeats atomic.Int32
+	disconnect atomic.Bool
+	rejected   atomic.Bool
+	renewSoon  atomic.Bool
 }
 
 func (g *testGateway) certificate(csrPEM string) (string, error) {
@@ -54,6 +59,10 @@ func (g *testGateway) certificate(csrPEM string) (string, error) {
 		return "", err
 	}
 	leaf := &x509.Certificate{SerialNumber: serial, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour), URIs: []*url.URL{identity}, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}, KeyUsage: x509.KeyUsageDigitalSignature}
+	if g.renewSoon.Swap(false) {
+		leaf.NotBefore = time.Now().Add(-2 * time.Hour)
+		leaf.NotAfter = time.Now().Add(10 * time.Minute)
+	}
 	der, err := x509.CreateCertificate(rand.Reader, leaf, g.ca, csr.PublicKey, g.key)
 	if err != nil {
 		return "", err
