@@ -225,6 +225,9 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	switch {
 	case response.StatusCode == http.StatusNotFound:
 		return ErrNotFound
+	case response.StatusCode == http.StatusNotModified:
+		// Start of a running or stop of a stopped container: already in the wanted state.
+		return nil
 	case response.StatusCode/100 != 2:
 		// The daemon's message can contain paths or registry details: report the status only.
 		return fmt.Errorf("docker %s: status %d", method, response.StatusCode)
