@@ -85,6 +85,10 @@ export class PrismaMfaStore implements MfaStore {
   async remove(userId: string): Promise<void> {
     await this.database.client.userMfa.deleteMany({ where: { userId } });
   }
+
+  async remainingRecovery(userId: string): Promise<number> {
+    return this.database.client.recoveryCode.count({ where: { userId, usedAt: null } });
+  }
 }
 
 function assertCounter(counter: number): void {

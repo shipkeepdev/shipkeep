@@ -95,7 +95,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - [x] **M2.2d2** Audited MFA commands, login proof and session rotation on security changes.
       - [x] **M2.2d2a** Require atomic TOTP/recovery proof before session creation; rotate sessions and reset links on security changes.
       - [x] **M2.2d2b** Password reauthentication, TOTP setup/activation/disable and recovery-code regeneration.
-    - [ ] **M2.2d3** MFA HTTP endpoints and acceptance tests.
+    - [x] **M2.2d3** MFA HTTP endpoints and acceptance tests.
     - [ ] **M2.2d4** Scoped API tokens and bearer authentication.
   - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.
