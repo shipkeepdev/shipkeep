@@ -23,10 +23,11 @@ import { PrismaAdministrationStore } from './infrastructure/prisma-administratio
 import { TenantAccessModule } from './tenant-access.module';
 import { CatalogController } from './interface/catalog.controller';
 import { OrganizationMutationController } from './interface/organization-mutation.controller';
+import { ResourceMutationController } from './interface/resource-mutation.controller';
 
 @Module({
   imports: [IdentityModule, TenantAccessModule],
-  controllers: [CatalogController, OrganizationMutationController],
+  controllers: [CatalogController, OrganizationMutationController, ResourceMutationController],
   providers: [
     OrganizationCommands,
     ResourceCommands,
