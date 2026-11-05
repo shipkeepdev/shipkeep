@@ -307,6 +307,8 @@ Account forms cover signup, verification, verification resend, login and both pa
 
 Web routes are `/auth/login`, `/auth/register`, `/auth/verify-email`, `/auth/request-verification`, `/auth/forgot-password` and `/auth/reset-password`. Public email links `/verify-email` and `/reset-password` redirect to their matching forms. Successful login opens `/account/security`; sign-out returns to login only after server confirmation. Forms use associated labels/help/errors, an error summary, keyboard focus on route/results, optional native MFA disclosure and a content skip link. Navigation moves above the working column on narrow screens. Tailwind and Angular CDK provide the shared styles and programmatic focus primitive, following ADR 0009.
 
+MFA forms distinguish unknown/unavailable status from disabled protection and require current password/proof for the chosen operation. Account security mutations share one submission gate, including sign-out, to avoid overlapping rotations. Provisioning seeds are hidden at their server expiry (with a ten-minute client cap); recovery codes are hidden after ten minutes without changing their server validity. Successful rotation updates only public session fields. Private grants and inputs clear on dismissal/destruction and serialize as an opaque store label. A setup display timeout hides the seed but preserves a running activation's confirmed recovery-code result.
+
 - Base path `/api/v1`. OpenAPI 3.1 generated from NestJS decorators and published at `/api/v1/openapi.json`.
 - Auth: session cookie (UI, `SameSite=Strict`, CSRF token) or `Authorization: Bearer <api_token>`.
 - Errors: RFC 9457 problem details with a stable `type` URI per error.
