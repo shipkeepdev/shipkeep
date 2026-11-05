@@ -169,6 +169,37 @@ export class AccountMutationAuthority {
   }
 
   /**
+   * Reauthenticates the caller and holds both the caller's and `otherUserId`'s account locks, in
+   * canonical order, around `operation`. Neither account's privileges or security version change;
+   * use it to act on credentials another account owns, such as revoking a project token, so the
+   * action serializes with that owner's bearer authentication.
+   */
+  async reauthenticatedWith<T>(
+    context: SecurityContext,
+    otherUserId: string,
+    password: Secret,
+    factor: MfaProofInput,
+    operation: (other: AccountSubject) => Promise<T>,
+    now = new Date(),
+  ): Promise<T> {
+    if (!isTenantId(otherUserId)) throw new AuthenticationError();
+    await this.verifyPassword(context, password);
+    const ids = [context.userId, otherUserId].sort();
+    const execute = async (first: UserRecord, second: UserRecord): Promise<T> => {
+      const actor = first.id === context.userId ? first : second;
+      const other = first.id === otherUserId ? first : second;
+      assertAccount(actor, context);
+      await this.mfa.verify(context.userId, factor, now);
+      return this.withProof(context, () => operation(subject(other)));
+    };
+    return this.users.withUserLock(ids[0], (first) =>
+      ids[0] === ids[1]
+        ? execute(first, first)
+        : this.users.withUserLock(ids[1], (second) => execute(first, second)),
+    );
+  }
+
+  /**
    * Checks the caller's current password without taking any lock. Callers use it before revealing
    * the outcome of a directory lookup, so an unknown address and a wrong password give the same
    * response and the lookup cannot be used as an account-existence oracle.

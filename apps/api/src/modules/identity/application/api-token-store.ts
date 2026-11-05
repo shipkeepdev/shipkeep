@@ -15,6 +15,10 @@ export interface ApiTokenRecord {
   readonly revokedAt: Date | null;
   readonly lastUsedAt: Date | null;
 }
+/** A project token with its creator's current security version, for status reporting. */
+export interface ProjectApiTokenRecord extends ApiTokenRecord {
+  readonly creatorSecurityVersion: number;
+}
 export const API_TOKEN_STORE = Symbol('ApiTokenStore');
 /** Mutations and their audit events run under IdentityStore.withUserLock. */
 export interface ApiTokenStore {
@@ -26,4 +30,9 @@ export interface ApiTokenStore {
   countActive(userId: string, securityVersion: number, now: Date): Promise<number>;
   revoke(userId: string, id: string, now: Date): Promise<boolean>;
   touch(id: string, now: Date): Promise<boolean>;
+  /** Tokens bound to `project`, any creator; at most 100, newest UUID first, exclusive cursor. */
+  listProject(project: ApiTokenProject, beforeId?: string): Promise<ProjectApiTokenRecord[]>;
+  findInProject(project: ApiTokenProject, id: string): Promise<ApiTokenRecord | null>;
+  /** Run under the creator's account lock (see AccountMutationAuthority.reauthenticatedWith). */
+  revokeInProject(project: ApiTokenProject, id: string, now: Date): Promise<boolean>;
 }

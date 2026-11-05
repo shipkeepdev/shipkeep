@@ -18,6 +18,9 @@ export function resourceReplayRoute(route: string): boolean {
   // inside one environment (without `environments`).
   const project = rest.slice(2);
   if (project[0] === 'bindings') return memberRoute(project.slice(1), ['remove']);
+  // Only revocation: listing is a GET and creation goes through `/api-tokens`.
+  if (project[0] === 'api-tokens')
+    return project.length === 3 && isTenantId(project[1]) && project[2] === 'revoke';
   if (project.length === 1) return project[0] === 'settings' || project[0] === 'environments';
   if (project[0] !== 'environments' || !isTenantId(project[1])) return false;
   const environment = project.slice(2);

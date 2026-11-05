@@ -28,12 +28,11 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
-1. M2.3e2 (project token administration).
-2. M2.7 (fleet administration endpoints).
-3. M2.4a, then M2.5a (audit query/export API, confirmation token issuance).
-4. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
-5. M1.4a, M1.4b and M1.4c (container actions).
-6. M1.5 (Caddy routes) and M4.3 (scheduler, pure function). They can start in parallel with the items above, because their dependencies are met.
+1. M2.7 (fleet administration endpoints).
+2. M2.4a, then M2.5a (audit query/export API, confirmation token issuance).
+3. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
+4. M1.4a, M1.4b and M1.4c (container actions).
+5. M1.5 (Caddy routes) and M4.3 (scheduler, pure function). They can start in parallel with the items above, because their dependencies are met.
 
 **Work that no task owned yet, now assigned:**
 
@@ -228,9 +227,9 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
       - [x] **M2.3d4b** Membership mutation HTTP, fresh proof, credential rotation and encrypted retries.
       - [x] **M2.3d4c** Project/environment binding mutation HTTP and privilege-change acceptance.
       - [x] **M2.3d4d** Generated registered-route/role matrix and full tenant acceptance checkpoint.
-  - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
+  - [x] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
     - [x] **M2.3e1** Project-bound tokens: schema with a composite project key, scopes confined to the project, creator `member.manage` check, per-use project check, cascade on project deletion.
-    - [ ] **M2.3e2** Project token directory and revocation by project administrators (ordered account locks, audit), plus the web scope picker in M2.3f1.
+    - [x] **M2.3e2** Project token directory and revocation by project administrators (ordered account locks, audit), plus the web scope picker in M2.3f1.
   - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.
     - [ ] **M2.3f1** Organization switcher, project/environment catalog and settings, member and binding screens, API-token scope picker.
     - [ ] **M2.3f2** Real-browser acceptance: two organizations, cross-tenant URLs answer 404, role changes take effect on the next request.

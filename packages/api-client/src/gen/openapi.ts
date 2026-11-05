@@ -372,6 +372,38 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/api-tokens": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listProjectApiTokens"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/api-tokens/{id}/revoke": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["revokeProjectApiToken"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/bindings": {
         readonly parameters: {
             readonly query?: never;
@@ -875,6 +907,33 @@ export type components = {
             /** @description Trimmed to a display name of 1–80 Unicode code points. */
             readonly name: string;
             readonly slug: string;
+        };
+        readonly ProjectApiTokenDto: {
+            /** Format: date-time */
+            readonly createdAt: string;
+            /**
+             * Format: uuid
+             * @description Account that created the token.
+             */
+            readonly createdBy: string;
+            /** Format: date-time */
+            readonly expiresAt: string;
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: date-time */
+            readonly lastUsedAt: string | null;
+            readonly name: string;
+            readonly project: components["schemas"]["ApiTokenProjectDto"] | null;
+            /** Format: date-time */
+            readonly revokedAt: string | null;
+            readonly scopes: readonly components["schemas"]["ApiScopeDto"][];
+            /** @enum {string} */
+            readonly status: "active" | "revoked" | "expired" | "invalidated";
+        };
+        readonly ProjectApiTokenPageDto: {
+            readonly items: readonly components["schemas"]["ProjectApiTokenDto"][];
+            /** Format: uuid */
+            readonly nextCursor: string | null;
         };
         readonly ProjectDto: {
             /** Format: date-time */
@@ -1667,6 +1726,61 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["ProjectDto"];
                 };
+            };
+        };
+    };
+    readonly listProjectApiTokens: {
+        readonly parameters: {
+            readonly query?: {
+                readonly cursor?: string;
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ProjectApiTokenPageDto"];
+                };
+            };
+        };
+    };
+    readonly revokeProjectApiToken: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7; credential-bound encrypted result for five minutes. */
+                readonly "Idempotency-Key"?: string;
+                readonly Origin: string;
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly id: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReauthenticateMfaDto"];
+            };
+        };
+        readonly responses: {
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -8,6 +8,8 @@ import { TenantAccessModule } from '../organizations/tenant-access.module';
 import { AccountCommands } from './application/account-commands';
 import { AccountMutationAuthority } from './application/account-mutation-authority';
 import { ApiTokenCommands } from './application/api-token-commands';
+import { ProjectApiTokenCommands } from './application/project-api-token-commands';
+import { ProjectApiTokenController } from './interface/project-api-token.controller';
 import { ApiTokenAuthentication } from './application/api-token-authentication';
 import { API_TOKEN_AUTHORITY } from './application/api-token-authority';
 import { LiveApiTokenAuthority } from './application/live-api-token-authority';
@@ -41,11 +43,12 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
 
 @Module({
   imports: [JobsModule, TenantAccessModule],
-  controllers: [IdentityController, MfaController, ApiTokenController],
+  controllers: [IdentityController, MfaController, ApiTokenController, ProjectApiTokenController],
   providers: [
     AccountCommands,
     AccountMutationAuthority,
     ApiTokenCommands,
+    ProjectApiTokenCommands,
     ApiTokenAuthentication,
     { provide: API_TOKEN_STORE, useClass: PrismaApiTokenStore },
     { provide: API_TOKEN_AUTHORITY, useClass: LiveApiTokenAuthority },

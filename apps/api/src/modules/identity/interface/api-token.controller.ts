@@ -20,7 +20,7 @@ import {
 } from '@nestjs/swagger';
 import { Secret } from '@shipkeep/domain';
 
-import { ApiTokenCommands, type ApiTokenMetadata } from '../application/api-token-commands';
+import { ApiTokenCommands } from '../application/api-token-commands';
 import type { SecurityContext } from '../application/mfa-commands';
 
 import {
@@ -29,7 +29,7 @@ import {
   ApiTokenPageDto,
   ApiTokenPageQueryDto,
   CreateApiTokenDto,
-  type ApiTokenDto,
+  apiTokenDto,
 } from './api-token.dto';
 import { IdentityAttemptLimit } from './identity-rate.guard';
 import { IdentityReplayInterceptor } from './identity-replay.interceptor';
@@ -66,7 +66,7 @@ export class ApiTokenController {
     @Query() query: ApiTokenPageQueryDto,
   ): Promise<ApiTokenPageDto> {
     const records = await this.commands.list(context(request), query.cursor);
-    const items = records.slice(0, query.limit).map(toDto);
+    const items = records.slice(0, query.limit).map(apiTokenDto);
     return { items, nextCursor: items.length === query.limit ? (items.at(-1)?.id ?? null) : null };
   }
   @TokenMutation('')
@@ -100,7 +100,7 @@ export class ApiTokenController {
       new Secret(body.password),
       factorInput(body),
     );
-    return Object.assign(toDto(result.metadata), { token: result.token.expose() });
+    return Object.assign(apiTokenDto(result.metadata), { token: result.token.expose() });
   }
   @TokenMutation(':id/revoke')
   @HttpCode(204)
@@ -125,20 +125,5 @@ function context(request: IdentityRequest): SecurityContext {
     securityVersion: user.securityVersion,
     ip: clientIp(request),
     userAgent: request.headers['user-agent'] ?? '',
-  };
-}
-function toDto(record: ApiTokenMetadata): ApiTokenDto {
-  return {
-    id: record.id,
-    name: record.name,
-    scopes: record.scopes.map((scope) => ({ ...scope })),
-    project: record.project
-      ? { organizationId: record.project.organizationId, projectId: record.project.projectId }
-      : null,
-    status: record.status,
-    createdAt: record.createdAt.toISOString(),
-    expiresAt: record.expiresAt.toISOString(),
-    revokedAt: record.revokedAt?.toISOString() ?? null,
-    lastUsedAt: record.lastUsedAt?.toISOString() ?? null,
   };
 }
