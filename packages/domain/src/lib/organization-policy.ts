@@ -52,7 +52,7 @@ export function allowsTenantAction(
     bindings.some(
       (binding) =>
         !resourceRoles.has(binding.role) ||
-        (binding.environmentId !== undefined && !validId(binding.environmentId)),
+        (binding.environmentId !== undefined && !isTenantId(binding.environmentId)),
     )
   )
     return false;
@@ -94,16 +94,16 @@ export function canChangeMembership(
   return currentRole !== 'owner' || nextRole === 'owner' || ownerCount > 1;
 }
 
-function validId(value: string): boolean {
+export function isTenantId(value: unknown): value is string {
   return typeof value === 'string' && UUID.test(value);
 }
 function validTarget(target: TenantResource): boolean {
   return (
     target.organizationId !== undefined &&
-    validId(target.organizationId) &&
-    (target.projectId === undefined || validId(target.projectId)) &&
+    isTenantId(target.organizationId) &&
+    (target.projectId === undefined || isTenantId(target.projectId)) &&
     (target.environmentId === undefined ||
-      (target.projectId !== undefined && validId(target.environmentId)))
+      (target.projectId !== undefined && isTenantId(target.environmentId)))
   );
 }
 function validPermissionScope(permission: string, target: TenantResource): boolean {

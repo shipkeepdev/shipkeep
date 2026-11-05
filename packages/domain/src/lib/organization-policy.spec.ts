@@ -2,6 +2,7 @@ import { PERMISSIONS, type Permission } from './api-token-policy.js';
 import {
   allowsTenantAction,
   canChangeMembership,
+  isTenantId,
   type TenantMembership,
   type TenantResource,
 } from './organization-policy.js';
@@ -10,6 +11,11 @@ const org = '018f4400-0000-7000-8000-000000000001';
 const project = '018f4400-0000-7000-8000-000000000002';
 const env = '018f4400-0000-7000-8000-000000000003';
 const other = '018f4400-0000-7000-8000-000000000004';
+it('accepts only canonical UUIDv7 tenant identifiers', () => {
+  expect(isTenantId(org)).toBe(true);
+  for (const value of [undefined, null, 1, '', org.toUpperCase(), org.replace('-7000-', '-4000-')])
+    expect(isTenantId(value)).toBe(false);
+});
 const organization = { organizationId: org };
 const projectTarget = { ...organization, projectId: project };
 const environment = { ...projectTarget, environmentId: env, protected: false };

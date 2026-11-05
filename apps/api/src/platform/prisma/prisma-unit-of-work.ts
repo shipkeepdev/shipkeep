@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 
 import { Injectable, ServiceUnavailableException } from '@nestjs/common';
-import { ConflictError, InvalidInputError, isDomainError } from '@shipkeep/domain';
+import { ConflictError, InvalidInputError, isDomainError, isTenantId } from '@shipkeep/domain';
 
 import type { Prisma } from './generated/client';
 import { PrismaService } from './prisma.service';
@@ -59,7 +59,7 @@ export class PrismaUnitOfWork {
     id: string,
     operation: () => Promise<T>,
   ): Promise<T> {
-    if (!/^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(id))
+    if (!isTenantId(id))
       throw new InvalidInputError(`invalid_${kind}_context`, 'Invalid database context.');
     try {
       return await this.run(async () => {
