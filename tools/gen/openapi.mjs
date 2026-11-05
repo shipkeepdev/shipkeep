@@ -15,6 +15,7 @@ const result = spawnSync(process.execPath, [join(root, 'apps', 'api', 'dist', 'm
   env: {
     ...process.env,
     NODE_ENV: 'production',
+    API_PUBLIC_URL: 'https://openapi.example.com',
     SHIPKEEP_OPENAPI_OUT: out,
     DATABASE_URL: 'postgresql://openapi:openapi@localhost:5432/openapi',
     SHIPKEEP_KEK_FILE: '/dev/null',

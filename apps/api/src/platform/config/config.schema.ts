@@ -17,24 +17,67 @@ const postgresUrl = z
  * start when a value is missing or malformed. Values that embed credentials are wrapped in
  * `Secret` so they can never reach a log line (CLAUDE.md, rule 8).
  */
-export const configSchema = z.object({
-  NODE_ENV: nodeEnv,
-  API_PORT: port.default(3000),
-  API_PUBLIC_URL: httpUrl.default('http://localhost:3000'),
-  LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
-  /** Serve the interactive OpenAPI UI at /api/v1/docs. Off by default outside development. */
-  OPENAPI_UI: z.stringbool().optional(),
-  DATABASE_URL: postgresUrl,
-  /** Key-encryption key file for envelope encryption (SPEC section 9). Used from task M2.1b. */
-  SHIPKEEP_KEK_FILE: z.string().min(1),
-  AGENT_GATEWAY_ADDR: z
-    .string()
-    .regex(/^[^\s:]+:\d{1,5}$/, 'must be host:port')
-    .default('0.0.0.0:7443'),
-  VICTORIALOGS_URL: httpUrl.default('http://localhost:9428'),
-  VICTORIAMETRICS_URL: httpUrl.default('http://localhost:8428'),
-  REGISTRY_URL: httpUrl.default('http://localhost:5000'),
-});
+export const configSchema = z
+  .object({
+    NODE_ENV: nodeEnv,
+    API_PORT: port.default(3000),
+    API_PUBLIC_URL: httpUrl
+      .refine((value) => {
+        const url = new URL(value);
+        return !url.username && !url.password && !url.search && !url.hash && url.pathname === '/';
+      }, 'must be an origin without credentials, path, query or fragment')
+      .default('http://localhost:3000'),
+    LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
+    /** Serve the interactive OpenAPI UI at /api/v1/docs. Off by default outside development. */
+    OPENAPI_UI: z.stringbool().optional(),
+    DATABASE_URL: postgresUrl,
+    /** Key-encryption key file for envelope encryption (SPEC section 9). Used from task M2.1b. */
+    SHIPKEEP_KEK_FILE: z.string().min(1),
+    AGENT_GATEWAY_ADDR: z
+      .string()
+      .regex(/^[^\s:]+:\d{1,5}$/, 'must be host:port')
+      .default('0.0.0.0:7443'),
+    VICTORIALOGS_URL: httpUrl.default('http://localhost:9428'),
+    VICTORIAMETRICS_URL: httpUrl.default('http://localhost:8428'),
+    REGISTRY_URL: httpUrl.default('http://localhost:5000'),
+    SMTP_HOST: z
+      .string()
+      .min(1)
+      .max(253)
+      .regex(/^[A-Za-z0-9.:-]+$/)
+      .optional(),
+    SMTP_PORT: port.default(465),
+    SMTP_FROM: z.email().max(254).optional(),
+    SMTP_USER: z.string().min(1).max(254).optional(),
+    SMTP_PASSWORD: z
+      .string()
+      .min(1)
+      .max(4096)
+      .transform((value) => new Secret(value))
+      .optional(),
+    SMTP_CA_FILE: z.string().min(1).optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.NODE_ENV === 'production' && new URL(value.API_PUBLIC_URL).protocol !== 'https:') {
+      context.addIssue({
+        code: 'custom',
+        path: ['API_PUBLIC_URL'],
+        message: 'must use HTTPS in production',
+      });
+    }
+    if (value.SMTP_HOST && !value.SMTP_FROM)
+      context.addIssue({
+        code: 'custom',
+        path: ['SMTP_FROM'],
+        message: 'required when SMTP_HOST is configured',
+      });
+    if (Boolean(value.SMTP_USER) !== Boolean(value.SMTP_PASSWORD))
+      context.addIssue({
+        code: 'custom',
+        path: ['SMTP_PASSWORD'],
+        message: 'SMTP_USER and SMTP_PASSWORD must be configured together',
+      });
+  });
 
 export type RawConfig = z.input<typeof configSchema>;
 export type ParsedConfig = z.output<typeof configSchema>;
