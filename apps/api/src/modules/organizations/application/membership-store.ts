@@ -9,11 +9,15 @@ export interface MembershipRecord {
   readonly updatedAt: Date;
 }
 export const MEMBERSHIP_STORE = Symbol('MembershipStore');
+export interface MembershipCandidate extends MembershipRecord {
+  readonly email: string;
+}
 export interface MembershipStore {
   transaction<T>(organizationId: string, operation: () => Promise<T>): Promise<T>;
   lockOrganization(organizationId: string): Promise<void>;
   find(organizationId: string, id: string): Promise<MembershipRecord | null>;
   forUser(organizationId: string, userId: string): Promise<MembershipRecord | null>;
+  forEmail(organizationId: string, email: string): Promise<MembershipCandidate | null>;
   ownerCount(organizationId: string): Promise<number>;
   insert(record: MembershipRecord): Promise<void>;
   setRole(
