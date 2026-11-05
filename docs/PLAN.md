@@ -301,7 +301,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
     - [x] **M3.4c3b** The pure pipeline planner (next agent actions per state, failure injection at every state).
     - [ ] **M3.4c4** Allocations table and the pg-boss worker: drives queued deployments with the planner (placement, agent actions with secrets injection, wake-up on action results).
       - [x] **M3.4c4a** Allocations table (forced RLS), pipeline store (placement, load, digests, step outcomes by key prefix) and the scheduler adapter.
-      - [ ] **M3.4c4b** Planner steps as agent actions, with secret values injected at enqueue time.
+      - [x] **M3.4c4b** Planner steps as agent actions, with secret values injected at enqueue time.
       - [ ] **M3.4c4c** The pg-boss worker: one job per deployment, woken by action results, audited transitions and recovery.
 - [ ] **M3.5 Rollback and release history** (C + W). Depends: M3.4
   - Keep N images; one-click rollback; release diff view (image, config).
