@@ -3,7 +3,7 @@ import { Type } from 'class-transformer';
 import { IsInt, IsString, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
 
 import type { IssueJoinTokenResult } from '../application/issue-join-token';
-import type { NodeRecord } from '../domain/node';
+import { type NodeRecord, observedStatus } from '../domain/node';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
@@ -79,11 +79,12 @@ export function joinTokenIssuedDto(result: IssueJoinTokenResult): JoinTokenIssue
     caFingerprint: result.caFingerprint,
   };
 }
-export function nodeDto(node: NodeRecord): NodeDto {
+export function nodeDto(node: NodeRecord, now = new Date()): NodeDto {
   return {
     id: node.id,
     name: node.name,
-    status: node.status,
+    // Missed heartbeats read as suspect or down until leases persist them (M4.5).
+    status: observedStatus(node, now),
     labels: { ...node.labels },
     facts: { ...node.facts },
     leaseEpoch: node.leaseEpoch,

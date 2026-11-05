@@ -6,6 +6,7 @@ import { auditLog } from '../../testing/audit-log';
 import { tenantHttpFixture } from '../../testing/tenant-http';
 
 import { EnrollNode } from './application/enroll-node';
+import { NodeLiveness } from './application/node-liveness';
 import {
   generateEd25519KeyPair,
   importPrivateKey,
@@ -93,6 +94,21 @@ describe('fleet administration over HTTP', () => {
       .get(`/api/v1/organizations/${fixture.foreignId}/nodes`, 'owner')
       .expect(200);
     expect(foreign.body).toEqual({ items: [], nextCursor: null });
+
+    // A connected agent's heartbeat makes the node ready, audited once (M3.4c1).
+    const identity = {
+      organizationId: fixture.organizationId,
+      nodeId: enrolled.nodeId,
+      serial: '',
+    };
+    await fixture.app.get(NodeLiveness).heartbeat(identity);
+    await fixture.app.get(NodeLiveness).heartbeat(identity);
+    const ready = await fixture.get(`${fixture.root}/nodes`, 'admin').expect(200);
+    expect((ready.body as { items: { status: string }[] }).items[0]?.status).toBe('ready');
+    const events = await auditLog().findMany({
+      where: { action: 'fleet.node.ready', targetId: enrolled.nodeId },
+    });
+    expect(events.map((event) => event.metadata)).toEqual([{ from: 'enrolling' }]);
   });
 
   it('removes a node only with a confirmation for that node, revoking its certificates', async () => {
