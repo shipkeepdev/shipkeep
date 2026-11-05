@@ -33,6 +33,7 @@ import {
 } from './api-token.dto';
 import { IdentityAttemptLimit } from './identity-rate.guard';
 import { IdentityReplayInterceptor } from './identity-replay.interceptor';
+import { AllowAccount } from './route-access';
 import { factorInput, ReauthenticateMfaDto } from './mfa.dto';
 import { clientIp, type IdentityRequest, principal } from './session-http';
 
@@ -53,6 +54,7 @@ function TokenMutation(path: string): MethodDecorator {
 @ApiCookieAuth('session')
 @Controller('api-tokens')
 @UseInterceptors(IdentityReplayInterceptor)
+@AllowAccount()
 export class ApiTokenController {
   constructor(private readonly commands: ApiTokenCommands) {}
 

@@ -21,6 +21,7 @@ import type { SessionGrant } from '../application/session-commands';
 import { SessionDto } from './identity.dto';
 import { IdentityAttemptLimit } from './identity-rate.guard';
 import { IdentityReplayInterceptor } from './identity-replay.interceptor';
+import { AllowAccount } from './route-access';
 import {
   EnableMfaDto,
   factorInput,
@@ -57,6 +58,7 @@ function SecurityMutation(path: string): MethodDecorator {
 @ApiCookieAuth('session')
 @Controller('auth/mfa')
 @UseInterceptors(IdentityReplayInterceptor)
+@AllowAccount()
 export class MfaController {
   constructor(
     private readonly commands: MfaCommands,

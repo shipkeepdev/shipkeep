@@ -4,9 +4,10 @@ import { Controller, Get, type INestApplication, Post, Req } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { Secret } from '@shipkeep/domain';
+import { NotFoundError, Secret } from '@shipkeep/domain';
 import request from 'supertest';
 
+import { TenantAccess } from '../../organizations/application/tenant-access';
 import { AppConfig } from '../../../platform/config/app-config';
 import { parseConfig, type ParsedConfig } from '../../../platform/config/config.schema';
 import { ProblemDetailsFilter } from '../../../platform/http/problem-details.filter';
@@ -17,13 +18,34 @@ import { AuthenticationError } from '../domain/identity-policy';
 
 import { AllowAnonymous, IdentityGuard } from './identity.guard';
 import { AllowApiToken } from './api-token-access';
+import { AllowAccount, RequireTenant } from './route-access';
 import { IdentityAttemptLimit, IdentityRateGuard } from './identity-rate.guard';
 import { authenticatedPrincipal, type IdentityRequest, principal } from './session-http';
 
 @Controller('fixture')
 class FixtureController {
-  @Post('token') @AllowApiToken('profile.read') tokenWrite(@Req() input: IdentityRequest) {
+  @Post('token') @AllowAccount() @AllowApiToken('profile.read') tokenWrite(
+    @Req() input: IdentityRequest,
+  ) {
     return { kind: authenticatedPrincipal(input).kind };
+  }
+  @Get('undeclared') @AllowApiToken('profile.read') undeclared() {
+    return { ok: true };
+  }
+  @Get('resources/:organizationId/:projectId/:environmentId')
+  @RequireTenant('environment.read', 'environment')
+  @AllowApiToken('environment.read')
+  resourceRead() {
+    return { ok: true };
+  }
+  @Get('mismatch/:organizationId/:projectId')
+  @RequireTenant('project.update', 'project')
+  @AllowApiToken('project.read')
+  mismatchRead() {
+    return { ok: true };
+  }
+  @Get('account/:organizationId') @AllowAccount() accountResource() {
+    return { ok: true };
   }
   @Get('public') @AllowAnonymous() publicRead() {
     return { ok: true };
@@ -31,10 +53,10 @@ class FixtureController {
   @Post('public') @AllowAnonymous() @IdentityAttemptLimit('login') publicWrite() {
     return { ok: true };
   }
-  @Get('private') privateRead(@Req() input: IdentityRequest) {
+  @Get('private') @AllowAccount() privateRead(@Req() input: IdentityRequest) {
     return { id: principal(input).userId };
   }
-  @Post('private') privateWrite(@Req() input: IdentityRequest) {
+  @Post('private') @AllowAccount() privateWrite(@Req() input: IdentityRequest) {
     return { id: principal(input).userId };
   }
 }
@@ -56,6 +78,7 @@ describe('identity HTTP guards', () => {
   );
   const authenticate = vi.fn<SessionCommands['authenticate']>();
   const authenticateToken = vi.fn<ApiTokenAuthentication['authenticate']>();
+  const requireTenant = vi.fn<TenantAccess['require']>();
   const acquire = vi.fn<IdentityThrottle['acquire']>();
   const http = () => request(app.getHttpServer() as Server);
 
@@ -64,6 +87,7 @@ describe('identity HTTP guards', () => {
       controllers: [FixtureController],
       providers: [
         { provide: AppConfig, useValue: config },
+        { provide: TenantAccess, useValue: { require: requireTenant } },
         { provide: SessionCommands, useValue: { authenticate } },
         { provide: ApiTokenAuthentication, useValue: { authenticate: authenticateToken } },
         { provide: IDENTITY_THROTTLE, useValue: { acquire } },
@@ -80,6 +104,7 @@ describe('identity HTTP guards', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+    requireTenant.mockResolvedValue(undefined);
     authenticate.mockImplementation((token, supplied) => {
       if (token.expose() !== value || (supplied && supplied.expose() !== csrf))
         return Promise.reject(new AuthenticationError());
@@ -126,6 +151,70 @@ describe('identity HTTP guards', () => {
     const response = await http().get('/fixture/private').set('Cookie', cookie).expect(200);
     expect(response.body).toEqual({ id: 'user-id' });
     expect(JSON.stringify(response.body)).not.toContain('test-hash');
+  });
+
+  it('denies undeclared routes even with valid session or bearer credentials', async () => {
+    await http().get('/fixture/undeclared').set('Cookie', cookie).expect(401);
+    await http().get('/fixture/undeclared').set('Authorization', `Bearer ${value}`).expect(401);
+    expect(authenticate).not.toHaveBeenCalled();
+    expect(authenticateToken).not.toHaveBeenCalled();
+  });
+
+  const organizationId = '019d0000-0000-7000-8000-000000000001';
+  const projectId = '019d0000-0000-7000-8000-000000000002';
+  const environmentId = '019d0000-0000-7000-8000-000000000003';
+  const resourcePath = `/fixture/resources/${organizationId}/${projectId}/${environmentId}`;
+  const target = { organizationId, projectId, environmentId };
+
+  it('uses path ancestry and live authorization on every session resource request', async () => {
+    await http()
+      .get(resourcePath)
+      .set('Cookie', cookie)
+      .query({ organizationId: 'attacker', role: 'owner', protected: false })
+      .expect(200);
+    expect(requireTenant).toHaveBeenCalledWith('user-id', 'environment.read', target);
+    requireTenant.mockRejectedValue(new NotFoundError('resource'));
+    const denied = await http().get(resourcePath).set('Cookie', cookie).expect(404);
+    expect(denied.body).toMatchObject({ code: 'resource_not_found' });
+    expect(requireTenant).toHaveBeenCalledTimes(2);
+  });
+
+  it('rejects malformed ancestry and account declarations on resource paths', async () => {
+    await http()
+      .get(`/fixture/resources/${organizationId}/invalid/${environmentId}`)
+      .set('Cookie', cookie)
+      .expect(404);
+    await http().get(`/fixture/account/${organizationId}`).set('Cookie', cookie).expect(401);
+    expect(authenticate).not.toHaveBeenCalled();
+    expect(requireTenant).not.toHaveBeenCalled();
+  });
+
+  it('binds bearer authorization to the exact tenant target and declared permission', async () => {
+    const session = await authenticate(new Secret(value));
+    authenticateToken.mockResolvedValue({
+      user: session.user,
+      token: {
+        id: 'api-token-id',
+        userId: session.user.id,
+        name: 'Fixture',
+        tokenHash: 'hash',
+        scopes: [{ permission: 'environment.read', ...target }],
+        securityVersion: 1,
+        createdAt: new Date(),
+        expiresAt: session.session.expiresAt,
+        revokedAt: null,
+        lastUsedAt: null,
+      },
+    });
+    await http().get(resourcePath).set('Authorization', `Bearer ${value}`).expect(200);
+    expect(authenticateToken).toHaveBeenCalledWith(expect.any(Secret), 'environment.read', target);
+    authenticateToken.mockClear();
+    await http()
+      .get(`/fixture/mismatch/${organizationId}/${projectId}`)
+      .set('Authorization', `Bearer ${value}`)
+      .expect(401);
+    expect(authenticateToken).not.toHaveBeenCalled();
+    expect(acquire).toHaveBeenCalledTimes(2);
   });
 
   it('requires matching origin and session-bound CSRF for cookie mutations', async () => {

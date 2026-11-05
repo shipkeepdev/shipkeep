@@ -39,6 +39,7 @@ import { AllowAnonymous } from './identity.guard';
 import { AllowApiToken } from './api-token-access';
 import { IdentityAttemptLimit } from './identity-rate.guard';
 import { IdentityReplayInterceptor } from './identity-replay.interceptor';
+import { AllowAccount } from './route-access';
 import { factorInput, LoginCredentialsDto } from './mfa.dto';
 import {
   clearSessionCookies,
@@ -59,6 +60,7 @@ import {
 })
 @Controller('auth')
 @UseInterceptors(IdentityReplayInterceptor)
+@AllowAccount()
 export class IdentityController {
   constructor(
     private readonly accounts: AccountCommands,

@@ -167,6 +167,10 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
         - [x] **M2.3c4c1** Audited project/environment role assignments, removals and credential invalidation.
         - [x] **M2.3c4c2** Bounded, scope-authorized member/binding administration queries.
   - [ ] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.
+    - [x] **M2.3d1** Explicit account/tenant route declarations, canonical path scopes and fail-closed session/bearer guard.
+    - [ ] **M2.3d2** Live token authority and credential revalidation inside resource commands.
+    - [ ] **M2.3d3** Organization/project/environment HTTP endpoints and encrypted mutation retries.
+    - [ ] **M2.3d4** Membership/binding HTTP endpoints and generated route/role acceptance matrix.
   - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
   - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.
   - [ ] **M2.3g** Row-level security for the remaining tenant-scoped tables (`nodes`, `join_tokens`, `node_certificates`, `audit_events`), with enrollment token lookup and the agent gateway moved to a separate reviewed cross-tenant role (SPEC 4). Must land before any node, join-token or audit read endpoint is exposed (M2.4, M8).
