@@ -13,10 +13,11 @@ import { Router, RouterLink } from '@angular/router';
 import { AccountStore } from './account-store';
 import { MfaPanel } from './mfa-panel';
 import { MutationRunner } from './mutation-runner';
+import { TokenPanel } from './token-panel';
 
 @Component({
   selector: 'sk-account-page',
-  imports: [RouterLink, MfaPanel],
+  imports: [RouterLink, MfaPanel, TokenPanel],
   providers: [AccountStore, MutationRunner],
   templateUrl: './account-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,

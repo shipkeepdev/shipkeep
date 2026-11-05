@@ -30,6 +30,7 @@ export class TokenFormStore {
   #revision = 0;
   #cursors: (string | undefined)[] = [undefined];
   #timer: ReturnType<typeof setTimeout> | undefined;
+  private readonly now = signal(Date.now());
   #credential = signal<Credential | null>(null);
   readonly credential = this.#credential.asReadonly();
   private readonly rows = signal<readonly Token[]>([]);
@@ -69,6 +70,9 @@ export class TokenFormStore {
   });
 
   constructor() {
+    const clock = setInterval(() => {
+      this.now.set(Date.now());
+    }, 30000);
     this.form.controls.lifetimeDays.valueChanges.pipe(takeUntilDestroyed()).subscribe((days) => {
       this.updateExpiry(days);
     });
@@ -77,6 +81,7 @@ export class TokenFormStore {
       this.configureProof();
     });
     this.destroyRef.onDestroy(() => {
+      clearInterval(clock);
       this.resetForSession();
     });
   }
@@ -115,11 +120,16 @@ export class TokenFormStore {
     return true;
   }
   beginRevoke(id: string): boolean {
-    const token = this.items().find((item) => item.id === id && item.status === 'active');
+    const token = this.items().find((item) => item.id === id && this.statusFor(item) === 'active');
     if (!token || !this.canEdit()) return false;
     this.begin('revoke');
     this.target.set(token);
     return true;
+  }
+  statusFor(token: Token): Token['status'] {
+    return token.status === 'active' && Date.parse(token.expiresAt) <= this.now()
+      ? 'expired'
+      : token.status;
   }
   dismiss(): void {
     if (this.submission.busy()) return;

@@ -14,6 +14,7 @@ describe('account route presentation', () => {
     logout: vi.fn<IdentityApi['logout']>(),
     verifyEmail: vi.fn<IdentityApi['verifyEmail']>(),
     mfaStatus: vi.fn<IdentityApi['mfaStatus']>(),
+    listTokens: vi.fn<IdentityApi['listTokens']>(),
   };
   let harness: RouterTestingHarness;
   const profile = {
@@ -23,6 +24,7 @@ describe('account route presentation', () => {
   };
   beforeEach(async () => {
     vi.resetAllMocks();
+    api.listTokens.mockResolvedValue({ items: [], nextCursor: null });
     api.mfaStatus.mockResolvedValue({
       enabled: false,
       pendingExpiresAt: null,

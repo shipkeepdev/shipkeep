@@ -173,4 +173,14 @@ describe('API-token forms', () => {
     expect(store.form.controls.password.value).toBe('');
     expect(vi.getTimerCount()).toBe(0);
   });
+  it('updates expired status without a network request and stops offering revocation', async () => {
+    const expiring = { ...token, expiresAt: new Date(Date.now() + 1000).toISOString() };
+    api.listTokens.mockResolvedValueOnce({ items: [expiring], nextCursor: null });
+    await store.refresh();
+    expect(store.statusFor(expiring)).toBe('active');
+    vi.advanceTimersByTime(30000);
+    expect(store.statusFor(expiring)).toBe('expired');
+    expect(store.beginRevoke(expiring.id)).toBe(false);
+    expect(api.listTokens).toHaveBeenCalledTimes(1);
+  });
 });
