@@ -359,6 +359,7 @@ succeeded -> rolled_back (when a later rollback targets the previous release)
     - stops the new replicas that were created;
     - if the switch was interrupted, restores the previous upstreams and removes the route from nodes that only hosted new replicas;
     - does nothing once draining began, because the new release already serves.
+  - Steps become proto actions in `deployments/infrastructure/agent-steps.ts`. Secret values are injected there at enqueue time, so they travel only inside the encrypted action payload. A full pipeline run is kept as golden vectors (`agent/internal/actions/testdata/control-plane-actions.txt`), and a Go test plans each one with the agent's own handlers, so the planner and the agent validators cannot drift apart.
   - Containers are named `sk-<name[0:24]>-<application id suffix>-r<release>-<replica|task>`, on the network `sk-env-<environment id>`. They carry the labels `shipkeep.application`, `shipkeep.release` and `shipkeep.deployment`; secrets are listed by name, and the worker injects their values.
 
 ### 5.2 Node
