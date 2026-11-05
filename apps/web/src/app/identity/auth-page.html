@@ -78,21 +78,36 @@
         @if (store.hasPassword()) {
           <div>
             <label for="password">{{
-              store.mode() === 'reset-password' ? 'New password' : 'Password'
+              store.mode() === 'reset-password'
+                ? 'New password'
+                : store.mode() === 'verify-email'
+                  ? 'Password you chose when signing up'
+                  : 'Password'
             }}</label>
             <input
               id="password"
               name="password"
               type="password"
-              [autocomplete]="store.mode() === 'login' ? 'current-password' : 'new-password'"
+              [autocomplete]="
+                store.mode() === 'login' || store.mode() === 'verify-email'
+                  ? 'current-password'
+                  : 'new-password'
+              "
               formControlName="password"
               aria-describedby="password-hint password-error"
               [attr.aria-invalid]="!!store.errorFor('password')"
               required
             />
-            <p id="password-hint" class="hint">
-              Use 15–128 characters. Spaces and long passphrases are welcome.
-            </p>
+            @if (store.mode() === 'verify-email') {
+              <p id="password-hint" class="hint">
+                Did not create this account, or forgot its password?
+                <a routerLink="/auth/forgot-password">Reset the password</a> to choose your own.
+              </p>
+            } @else {
+              <p id="password-hint" class="hint">
+                Use 15–128 characters. Spaces and long passphrases are welcome.
+              </p>
+            }
             <p id="password-error" class="field-error">{{ store.errorFor('password') }}</p>
           </div>
         }

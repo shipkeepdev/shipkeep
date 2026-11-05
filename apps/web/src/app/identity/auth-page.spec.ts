@@ -97,9 +97,16 @@ describe('account route presentation', () => {
   it('honors public email links and submits their codes without changing the URL', async () => {
     await harness.navigateByUrl('/verify-email');
     expect(TestBed.inject(Router).url).toBe('/auth/verify-email');
-    store().form.controls.code.setValue('B'.repeat(43));
+    expect(element().querySelector('#password')?.getAttribute('autocomplete')).toBe(
+      'current-password',
+    );
+    expect(element().querySelector('a[href="/auth/forgot-password"]')).not.toBeNull();
+    store().form.patchValue({ code: 'B'.repeat(43), password: 'correct horse browser fixture' });
     await submit();
-    expect(api.verifyEmail).toHaveBeenCalledWith('B'.repeat(43), expect.any(String));
+    expect(api.verifyEmail).toHaveBeenCalledWith(
+      { token: 'B'.repeat(43), password: 'correct horse browser fixture' },
+      expect.any(String),
+    );
     expect(TestBed.inject(Router).url).toBe('/auth/verify-email');
     expect(element().querySelector('[role="status"]')?.textContent).toContain('verified');
     await harness.navigateByUrl('/reset-password');

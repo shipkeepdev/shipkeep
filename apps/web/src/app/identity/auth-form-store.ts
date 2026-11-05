@@ -55,7 +55,7 @@ export class AuthFormStore {
     ['login', 'register', 'request-verification', 'forgot-password'].includes(this.mode()),
   );
   readonly hasPassword = computed(() =>
-    ['login', 'register', 'reset-password'].includes(this.mode()),
+    ['login', 'register', 'verify-email', 'reset-password'].includes(this.mode()),
   );
   readonly hasConfirmation = computed(() => ['register', 'reset-password'].includes(this.mode()));
   readonly hasCode = computed(() => ['verify-email', 'reset-password'].includes(this.mode()));
@@ -159,7 +159,7 @@ export class AuthFormStore {
           : mode === 'reset-password'
             ? { token, password }
             : mode === 'verify-email'
-              ? { token }
+              ? { token, password }
               : { email };
     const result = await this.submission.run(body, (key) => {
       switch (mode) {
@@ -171,7 +171,7 @@ export class AuthFormStore {
         case 'register':
           return this.api.register({ email, password }, key);
         case 'verify-email':
-          return this.api.verifyEmail(token, key);
+          return this.api.verifyEmail({ token, password }, key);
         case 'request-verification':
           return this.api.requestVerification(email, key);
         case 'forgot-password':
