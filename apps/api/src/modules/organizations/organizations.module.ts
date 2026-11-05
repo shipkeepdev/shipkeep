@@ -21,9 +21,11 @@ import { AdministrationQueries } from './application/administration-queries';
 import { ADMINISTRATION_STORE } from './application/administration-store';
 import { PrismaAdministrationStore } from './infrastructure/prisma-administration.store';
 import { TenantAccessModule } from './tenant-access.module';
+import { CatalogController } from './interface/catalog.controller';
 
 @Module({
   imports: [IdentityModule, TenantAccessModule],
+  controllers: [CatalogController],
   providers: [
     OrganizationCommands,
     ResourceCommands,

@@ -24,9 +24,11 @@ import { authenticatedPrincipal, type IdentityRequest, principal } from './sessi
 
 @Controller('fixture')
 class FixtureController {
-  @Post('token') @AllowAccount() @AllowApiToken('profile.read') tokenWrite(
-    @Req() input: IdentityRequest,
-  ) {
+  @Post('token')
+  @AllowAccount()
+  @AllowApiToken('profile.read')
+  @IdentityAttemptLimit('api')
+  tokenWrite(@Req() input: IdentityRequest) {
     return { kind: authenticatedPrincipal(input).kind };
   }
   @Get('undeclared') @AllowApiToken('profile.read') undeclared() {
@@ -281,6 +283,7 @@ describe('identity HTTP guards', () => {
     expect(response.body).toEqual({ kind: 'api_token' });
     expect(authenticate).not.toHaveBeenCalled();
     expect(authenticateToken).toHaveBeenCalledWith(expect.any(Secret), 'profile.read', {});
+    expect(acquire).toHaveBeenCalledTimes(1);
     await http().post('/fixture/token').set('Cookie', cookie).expect(403);
   });
 
