@@ -28,7 +28,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
-1. M2.3g1, then M2.3g2 (row-level security for fleet and audit tables). They must land before M2.4 and M2.7 expose any reads.
+1. M2.3g2 (row-level security for audit events). It must land before M2.4 exposes audit reads.
 2. M2.3e (project-owned tokens).
 3. M2.7 (fleet administration endpoints).
 4. M2.4a, then M2.5a (audit query/export API, confirmation token issuance).
@@ -234,9 +234,9 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
     - [ ] **M2.3f1** Organization switcher, project/environment catalog and settings, member and binding screens, API-token scope picker.
     - [ ] **M2.3f2** Real-browser acceptance: two organizations, cross-tenant URLs answer 404, role changes take effect on the next request.
   - [ ] **M2.3g** Row-level security for the remaining tenant-scoped tables (`nodes`, `join_tokens`, `node_certificates`, `audit_events`), with enrollment token lookup and the agent gateway moved to a separate reviewed cross-tenant role (SPEC 4). Must land before any node, join-token or audit read endpoint is exposed (M2.4, M2.7).
-    - [ ] **M2.3g1** Fleet tables. `node_certificates` has no `organization_id`: add it with a composite foreign key to `nodes`, rather than relying on a join policy. Gateway lookups use the organization of the verified certificate; enrollment uses a context-bound, SELECT-only token lookup instead of a separate role (ADR 0015).
+    - [x] **M2.3g1** Fleet tables. `node_certificates` has no `organization_id`: add it with a composite foreign key to `nodes`, rather than relying on a join policy. Gateway lookups use the organization of the verified certificate; enrollment uses a context-bound, SELECT-only token lookup instead of a separate role (ADR 0015).
       - [x] **M2.3g1a** `node_certificates.organization_id` with a composite foreign key to its node, backfilled by migration (ADR 0015).
-      - [ ] **M2.3g1b** Forced RLS on `nodes`, `join_tokens` and `node_certificates`; tenant-scoped gateway lookups; context-bound enrollment lookup; fleet integration tests on the restricted login.
+      - [x] **M2.3g1b** Forced RLS on `nodes`, `join_tokens` and `node_certificates`; tenant-scoped gateway lookups; context-bound enrollment lookup; fleet integration tests on the restricted login.
     - [ ] **M2.3g2** `audit_events`: tenant rows readable only in their organization context. System rows (`organization_id` null, for example `fleet.installation_key.created`) are readable by installation administrators only. INSERT stays allowed for every command transaction.
   - Entities from SPEC 4, RBAC matrix from SPEC 7 as a policy module, default-deny guard, row-level security.
   - Acceptance: generated RBAC matrix test covers every route and role; tenant isolation suite passes.
