@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { AppsModule } from './modules/apps/apps.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { ConfirmationsModule } from './modules/confirmations/confirmations.module';
+import { DeploymentsModule } from './modules/deployments/deployments.module';
 import { FleetModule } from './modules/fleet/fleet.module';
 import { SecretsModule } from './modules/secrets/secrets.module';
 import { IdentityModule } from './modules/identity/identity.module';
@@ -32,6 +33,7 @@ import { PrismaModule } from './platform/prisma/prisma.module';
     ConfirmationsModule,
     SecretsModule,
     AppsModule,
+    DeploymentsModule,
     IdentityModule,
     TenantAccessModule,
     OrganizationsModule,
