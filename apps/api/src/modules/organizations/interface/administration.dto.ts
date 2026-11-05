@@ -2,6 +2,7 @@ import { ApiProperty } from '@nestjs/swagger';
 import type { OrganizationRole, ResourceRole } from '@shipkeep/domain';
 
 import type { BindingView, MemberView } from '../application/administration-store';
+import type { MembershipRecord } from '../application/membership-store';
 
 import { PageDto, ResourceDto } from './resource.dto';
 
@@ -30,6 +31,16 @@ export class BindingPageDto extends PageDto {
   @ApiProperty({ type: [BindingViewDto] }) items!: BindingViewDto[];
 }
 
+export function membershipDto(record: MembershipRecord): MembershipDto {
+  return {
+    id: record.id,
+    organizationId: record.organizationId,
+    userId: record.userId,
+    orgRole: record.orgRole,
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+  };
+}
 export function memberViewDto(view: MemberView): MemberViewDto {
   return {
     id: view.id,
