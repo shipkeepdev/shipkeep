@@ -12,6 +12,7 @@ import (
 
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/actions"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/credentials"
+	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/gateway"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
 	"github.com/samuelmbabhazi/shipkeep/lib/buildinfo"
@@ -63,7 +64,11 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store) error {
 		a.logger.Info("agent enrolled", "node_id", bundle.NodeID)
 	}
 	epoch := bundle.LeaseEpoch
-	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(), Epoch: func() uint64 { return epoch }}
+	engine, err := docker.New(a.cfg.Docker.Host)
+	if err != nil {
+		return err
+	}
+	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine), Epoch: func() uint64 { return epoch }}
 	runner := gateway.Runner{Address: a.cfg.ControlPlane.Address, StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher}
 	return runner.Run(ctx, bundle)
 }
