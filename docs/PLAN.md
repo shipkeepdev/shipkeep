@@ -28,7 +28,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
-1. M2.7b (node revocation with confirmation) and M2.4c (audit coverage test).
+1. M2.4c (audit coverage test).
 2. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
 3. M1.4a, M1.4b and M1.4c (container actions).
 4. M1.5 (Caddy routes) and M4.3 (scheduler, pure function). They can start in parallel with the items above, because their dependencies are met.
@@ -257,7 +257,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - Acceptance: Lighthouse accessibility score at least 95 on login and dashboard; core flows keyboard-navigable.
 - [ ] **M2.7 Fleet administration endpoints** (C + W). Depends: M2.3d, M2.3g1. Moved from M1.2b.
   - [x] **M2.7a** Join-token issuance (fresh proof, `node.manage`) and node listing, session-only.
-  - [ ] **M2.7b** Node revocation with a confirmation token and active stream disconnection. Depends: M2.5a.
+  - [x] **M2.7b** Node revocation with a confirmation token and active stream disconnection. Depends: M2.5a.
   - [ ] **M2.7c** Install command with the CA fingerprint in the web UI. Depends: M2.3f1.
   - Join-token issuance endpoint (fresh proof, `nodes.manage` permission), node list, node revocation (confirmation token, active stream disconnected), and an install command that shows the CA fingerprint.
   - Acceptance: an organization admin enrolls a node with the copied command; another organization neither sees the node nor can revoke it.
