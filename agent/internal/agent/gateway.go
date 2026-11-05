@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/actions"
+	"github.com/samuelmbabhazi/shipkeep/agent/internal/caddy"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/confirm"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/credentials"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
@@ -73,7 +74,11 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store) error {
 	if err != nil {
 		return err
 	}
-	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations), Epoch: func() uint64 { return epoch }}
+	router, err := caddy.New(a.cfg.Caddy.AdminSocket)
+	if err != nil {
+		return err
+	}
+	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router), Epoch: func() uint64 { return epoch }}
 	runner := gateway.Runner{Address: a.cfg.ControlPlane.Address, StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher}
 	return runner.Run(ctx, bundle)
 }
