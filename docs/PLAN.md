@@ -51,7 +51,10 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
   - [ ] **M1.2b** API `AgentGatewayService` gRPC server over TLS from the installation CA (Connect-RPC): `Enroll`, `RenewCertificate`, client-certificate authentication with the revocation list, CA fingerprint in the install command, join-token REST endpoint once RBAC exists.
   - [ ] **M1.2c** Agent: key generation, CSR, `Enroll`, cert storage (0600), CA fingerprint pinning, `Connect` stream with reconnect and exponential backoff with jitter, cert renewal.
     - Acceptance: integration test enrolls an agent, reconnects after control plane restart, rejects reused token and revoked cert.
-- [ ] **M1.3 Operation journal and local state** (A). Depends: M1.1
+- [ ] **M1.3 Operation journal and local state** (A). Depends: M1.1. Split into M1.3a/b/c for review.
+  - [x] **M1.3a** Private SQLite store, exclusive process ownership, durable operation intent/checkpoints/history, idempotency and stale-writer checks.
+  - [ ] **M1.3b** Versioned desired/actual/routing state, leases and single-use confirmation persistence.
+  - [ ] **M1.3c** Resumable/compensating step executor, transition notifications, daemon ownership and interruption tests.
   - SQLite schema from SPEC 3.4 and 3.5, journal API, resume and compensation framework, idempotency keys.
   - Acceptance: tests kill the agent mid-action (simulated) and verify resume or compensation for each step type.
 - [ ] **M1.4 Container actions** (A). Depends: M1.3

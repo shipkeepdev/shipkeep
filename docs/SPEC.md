@@ -172,7 +172,8 @@ Anything not in this table does not exist. There is no generic exec, shell or fi
 
 ### 3.4 Operation journal
 
-- Local SQLite table `operations(action_id PK, kind, payload_hash, state, step, attempts, started_at, updated_at, last_error)`.
+- Local SQLite table `operations(action_id PK, idempotency_key UNIQUE, kind, payload_hash, state, step, completed, attempts, revision, result_json, started_at, updated_at, last_error)`. SQLite uses WAL and FULL synchronous writes in a private state directory. An exclusive process lock prevents two agents from executing against the same journal. The database file is 0600 and symlinks are rejected.
+- Checkpoints use revision compare-and-swap and append an `operation_history` row in the same transaction. Payloads are never stored: only SHA-256 hashes and bounded metadata. Results contain resource ID, image digest and exit code; arbitrary output and raw errors are excluded. Replaying an idempotency key with a different action kind or payload hash fails.
 - States: `pending`, `running`, `succeeded`, `failed`, `cancelled`, `compensating`, `compensated`.
 - The agent writes `pending` before doing anything, updates `step` after each side effect, and sends `ActionUpdate` on every transition.
 - On restart, `running` operations are resumed from `step` if the action is idempotent at that step, otherwise compensated (for example: a half-created container is removed).
