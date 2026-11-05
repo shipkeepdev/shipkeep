@@ -65,6 +65,7 @@ export async function createAccount(page: Page, messages: string[], email: strin
   const code = await mailCode(messages, count + 1);
   await page.goto('/verify-email');
   await fillPrivate(page.getByLabel('Verification code'), code);
+  await fillPrivate(page.getByLabel('Password you chose when signing up'), FIXTURE_PASSWORD);
   await submit(page, 'Verify email', '/api/v1/auth/verify', 204);
   await signIn(page, email);
 }

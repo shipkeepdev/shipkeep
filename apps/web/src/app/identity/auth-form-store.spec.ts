@@ -114,7 +114,12 @@ describe('account forms', () => {
     store.configure('verify-email');
     store.form.controls.code.setValue(` ${token} `);
     await store.submit();
-    expect(api.verifyEmail).toHaveBeenCalledWith(token, expect.any(String));
+    // The registration password is required: a mailbox link alone cannot activate an account.
+    expect(api.verifyEmail).not.toHaveBeenCalled();
+    store.form.controls.password.setValue(password);
+    await store.submit();
+    expect(api.verifyEmail).toHaveBeenCalledWith({ token, password }, expect.any(String));
+    expect(store.form.controls.password.value).toBe('');
     store.configure('reset-password');
     store.form.patchValue({ code: token, password, confirmation: password });
     api.resetPassword.mockRejectedValueOnce(new IdentityRequestError(0));

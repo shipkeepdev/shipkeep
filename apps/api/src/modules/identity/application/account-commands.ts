@@ -82,7 +82,13 @@ export class AccountCommands {
       now.getTime() + (purpose === 'verify' ? EMAIL_TOKEN_MS : RESET_TOKEN_MS),
     );
     await this.store.withUserLock(user.id, async (current) => {
-      if (current.status !== (purpose === 'verify' ? 'pending' : 'active')) return false;
+      // A pending account may also be reset: the mailbox owner can always claim an address that
+      // someone else registered first (pre-hijacking defence).
+      const eligible =
+        purpose === 'verify'
+          ? current.status === 'pending'
+          : current.status === 'active' || current.status === 'pending';
+      if (!eligible) return false;
       // Reissuing does not invalidate a link already in transit. Each token remains single-use;
       // successful verification/reset invalidates every outstanding credential of its purpose.
       await this.store.insertToken({
@@ -104,12 +110,24 @@ export class AccountCommands {
     });
   }
 
-  async verifyEmail(value: Secret, now = new Date()): Promise<void> {
+  /**
+   * Activates a pending account. The link proves the mailbox; the password proves the person who
+   * clicks it is the one who registered. Without it, an attacker could register someone else's
+   * address with their own password and wait for the owner to click the link (account
+   * pre-hijacking). An owner who never chose that password uses the reset flow instead.
+   */
+  async verifyEmail(value: Secret, password: Secret, now = new Date()): Promise<void> {
     const token = await this.credential(value, 'verify');
+    const registered = await this.store.findUser(token.userId);
+    // Hash work happens before the user lock and outside any transaction.
+    const matched = await this.passwords.verify(registered?.passwordHash, password);
+    if (!registered || !matched) throw new AuthenticationError();
     await this.store.withUserLock(token.userId, async (user) => {
       if (
         user.status !== 'pending' ||
         token.securityVersion !== user.securityVersion ||
+        // The password checked above must still be the stored one.
+        user.passwordHash.expose() !== registered.passwordHash.expose() ||
         !(await this.store.consumeToken(token.id, now))
       )
         throw new AuthenticationError();
@@ -125,13 +143,21 @@ export class AccountCommands {
     const passwordHash = await this.passwords.hash(password);
     await this.store.withUserLock(token.userId, async (user) => {
       if (
-        user.status !== 'active' ||
+        (user.status !== 'active' && user.status !== 'pending') ||
         token.securityVersion !== user.securityVersion ||
         !(await this.store.consumeToken(token.id, now))
       )
         throw new AuthenticationError();
+      const events = [identityEvent('password_reset', user.id, SYSTEM_ACTOR, now)];
+      if (user.status === 'pending') {
+        // The reset link proves the mailbox and the owner chose the password: activate.
+        await this.store.activateUser(user.id, now);
+        await this.store.invalidateTokens(user.id, 'verify', now);
+        events.unshift(identityEvent('email_verified', user.id, SYSTEM_ACTOR, now));
+      }
+      // Advances the security version: sessions and links issued before the reset stop working.
       await this.store.changePassword(user.id, passwordHash, now);
-      await this.events.publish([identityEvent('password_reset', user.id, SYSTEM_ACTOR, now)]);
+      await this.events.publish(events);
     });
   }
 

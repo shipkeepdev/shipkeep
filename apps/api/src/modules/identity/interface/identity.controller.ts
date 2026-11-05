@@ -30,10 +30,10 @@ import { AuthenticationError, normalizeEmail } from '../domain/identity-policy';
 
 import {
   CredentialsDto,
-  EmailCodeDto,
   EmailDto,
   ResetPasswordDto,
   SessionDto,
+  VerifyEmailDto,
 } from './identity.dto';
 import { AllowAnonymous } from './identity.guard';
 import { AllowApiToken } from './api-token-access';
@@ -110,8 +110,8 @@ export class IdentityController {
   @AllowAnonymous()
   @IdentityAttemptLimit('verify')
   @ApiNoContentResponse()
-  async verifyEmail(@Body() body: EmailCodeDto): Promise<void> {
-    await this.accounts.verifyEmail(new Secret(body.token));
+  async verifyEmail(@Body() body: VerifyEmailDto): Promise<void> {
+    await this.accounts.verifyEmail(new Secret(body.token), new Secret(body.password));
   }
 
   @ApiHeader({

@@ -160,7 +160,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/EmailCodeDto"
+                "$ref": "#/components/schemas/VerifyEmailDto"
               }
             }
           }
@@ -954,7 +954,7 @@
           "email"
         ]
       },
-      "EmailCodeDto": {
+      "VerifyEmailDto": {
         "type": "object",
         "properties": {
           "token": {
@@ -962,10 +962,19 @@
             "minLength": 43,
             "maxLength": 43,
             "writeOnly": true
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password",
+            "description": "The password chosen at registration."
           }
         },
         "required": [
-          "token"
+          "token",
+          "password"
         ]
       },
       "ResetPasswordDto": {

@@ -112,9 +112,9 @@ export class IdentityApi {
       }),
     );
   }
-  async verifyEmail(token: string, key: string): Promise<void> {
+  async verifyEmail(body: IdentitySchema<'VerifyEmailDto'>, key: string): Promise<void> {
     await this.execute(() =>
-      this.client.POST('/api/v1/auth/verify', { body: { token }, params: this.params(key) }),
+      this.client.POST('/api/v1/auth/verify', { body, params: this.params(key) }),
     );
   }
   async requestPasswordReset(email: string, key: string): Promise<void> {

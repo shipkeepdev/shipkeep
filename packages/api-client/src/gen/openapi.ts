@@ -351,9 +351,6 @@ export type components = {
             /** Format: password */
             readonly password: string;
         };
-        readonly EmailCodeDto: {
-            readonly token: string;
-        };
         readonly EmailDto: {
             /**
              * Format: email
@@ -438,6 +435,14 @@ export type components = {
             readonly expiresAt: string;
             /** Format: uuid */
             readonly userId: string;
+        };
+        readonly VerifyEmailDto: {
+            /**
+             * Format: password
+             * @description The password chosen at registration.
+             */
+            readonly password: string;
+            readonly token: string;
         };
     };
     responses: never;
@@ -852,7 +857,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["EmailCodeDto"];
+                readonly "application/json": components["schemas"]["VerifyEmailDto"];
             };
         };
         readonly responses: {

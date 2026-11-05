@@ -52,7 +52,7 @@ describe('runtime-role provisioning against PostgreSQL', () => {
     const accounts = fixture.app.get(AccountCommands);
     await accounts.register('runtime@example.com', new Secret('runtime fixture password phrase'));
     if (!verify) throw new Error('missing verification fixture');
-    await accounts.verifyEmail(verify);
+    await accounts.verifyEmail(verify, new Secret('runtime fixture password phrase'));
     const user = await prisma.user.findUniqueOrThrow({ where: { email: 'runtime@example.com' } });
     expect(user.status).toBe('active');
     expect(

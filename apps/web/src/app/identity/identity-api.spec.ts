@@ -112,7 +112,9 @@ describe('browser identity transport', () => {
   });
   it('handles empty successful responses without parsing a credential into state', async () => {
     send.mockResolvedValue(new Response(null, { status: 204 }));
-    await expect(api.verifyEmail('B'.repeat(43), 'request-key')).resolves.toBeUndefined();
+    await expect(
+      api.verifyEmail({ token: 'B'.repeat(43), password: 'private fixture' }, 'request-key'),
+    ).resolves.toBeUndefined();
     await expect(api.logout('request-key')).resolves.toBeUndefined();
     await expect(api.session()).rejects.toThrow('temporarily unavailable');
   });
