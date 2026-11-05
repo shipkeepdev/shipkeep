@@ -1,6 +1,6 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
-import { InvalidInputError } from '@shipkeep/domain';
+import { InvalidInputError, type Secret } from '@shipkeep/domain';
 
 /** Lifetime of a join token (SPEC section 3.2). */
 export const JOIN_TOKEN_TTL_MS = 15 * 60 * 1000;
@@ -10,8 +10,8 @@ const TOKEN_RE = /^[A-Za-z0-9_-]{43}$/;
 /** Plain join token as shown once to the operator. Never stored. */
 export interface IssuedJoinToken {
   readonly id: string;
-  /** base64url of 32 random bytes. */
-  readonly value: string;
+  /** base64url of 32 random bytes; shown once, wrapped so it can never be logged by accident. */
+  readonly value: Secret;
   readonly expiresAt: Date;
 }
 

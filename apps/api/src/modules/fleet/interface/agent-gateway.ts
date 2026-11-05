@@ -11,7 +11,7 @@ import {
 } from '@connectrpc/connect';
 import { connectNodeAdapter } from '@connectrpc/connect-node';
 import { Injectable, Logger, type OnModuleDestroy } from '@nestjs/common';
-import { isDomainError } from '@shipkeep/domain';
+import { isDomainError, Secret } from '@shipkeep/domain';
 import { AgentGatewayService } from '@shipkeep/proto-ts';
 
 import { NodeStream } from './node-stream';
@@ -65,7 +65,7 @@ export class AgentGateway implements OnModuleDestroy {
       routes: (router) => {
         router.rpc(AgentGatewayService.method.enroll, async (request, context) => {
           const result = await this.enroll.execute({
-            joinToken: request.joinToken,
+            joinToken: new Secret(request.joinToken),
             csrPem: request.csrPem,
             facts: { ...request.facts },
             agentVersion: request.agentVersion,

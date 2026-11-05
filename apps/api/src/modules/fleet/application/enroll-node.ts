@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ConflictError, InvalidInputError } from '@shipkeep/domain';
+import { ConflictError, InvalidInputError, type Secret } from '@shipkeep/domain';
 import { v7 as uuidv7 } from 'uuid';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
@@ -31,7 +31,7 @@ import {
 } from './ports';
 
 export interface EnrollNodeCommand {
-  joinToken: string;
+  joinToken: Secret;
   csrPem: string;
   facts: Readonly<Record<string, unknown>>;
   agentVersion: string;
@@ -74,12 +74,13 @@ export class EnrollNode {
   }
 
   private async enroll(command: EnrollNodeCommand, now: Date): Promise<EnrollNodeResult> {
-    if (!isWellFormedJoinToken(command.joinToken)) throw new JoinTokenRejectedError('malformed');
+    if (!isWellFormedJoinToken(command.joinToken.expose()))
+      throw new JoinTokenRejectedError('malformed');
     if (Buffer.byteLength(command.csrPem, 'utf8') > MAX_CSR_BYTES) {
       throw new InvalidInputError('csr_too_large', 'certificate request exceeds the size limit');
     }
-    const record = await this.tokens.findByHash(hashJoinToken(command.joinToken));
-    const verdict = evaluateJoinToken(command.joinToken, record, now);
+    const record = await this.tokens.findByHash(hashJoinToken(command.joinToken.expose()));
+    const verdict = evaluateJoinToken(command.joinToken.expose(), record, now);
     if (!verdict.ok) throw new JoinTokenRejectedError(verdict.reason);
     const organizationId = verdict.record.organizationId;
 
