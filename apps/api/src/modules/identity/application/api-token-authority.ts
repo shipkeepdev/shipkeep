@@ -12,7 +12,7 @@ export interface ApiTokenAuthority {
   ): boolean | Promise<boolean>;
 }
 
-/** Fail closed for tenant capabilities until the M2.3 live RBAC adapter is installed. */
+/** Account-only part of token authority; tenant permissions require live resource resolution. */
 export class AccountTokenAuthority implements ApiTokenAuthority {
   allows(_userId: string, permission: Permission, target: ResourceContext): boolean {
     return (

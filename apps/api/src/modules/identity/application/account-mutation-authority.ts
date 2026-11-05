@@ -10,7 +10,11 @@ import type { UserRecord } from '../domain/identity-records';
 
 import { IDENTITY_STORE, type IdentityStore } from './identity-store';
 import { PASSWORD_HASHER, type PasswordHashing } from './identity-ports';
-import type { SecurityContext } from './mfa-commands';
+import { ApiTokenAuthentication } from './api-token-authentication';
+import type {
+  CommandAuthority,
+  ResourceSecurityContext as SecurityContext,
+} from './resource-security-context';
 import type { MfaProofInput } from './mfa-crypto';
 import { MfaProof } from './mfa-proof';
 import { SessionCommands, type SessionGrant } from './session-commands';
@@ -43,12 +47,27 @@ export class AccountMutationAuthority {
     private readonly mfa: MfaProof,
     private readonly sessions: SessionCommands,
     private readonly events: DomainEventBus,
+    private readonly tokens: ApiTokenAuthentication,
   ) {}
 
-  async run<T>(context: SecurityContext, operation: () => Promise<T>): Promise<T> {
+  async run<T>(
+    context: SecurityContext,
+    operation: () => Promise<T>,
+    authority?: CommandAuthority,
+  ): Promise<T> {
     assertContextShape(context);
     return this.users.withUserLock(context.userId, async (user) => {
       assertAccount(user, context);
+      if (context.apiCredential) {
+        if (!authority) throw new AuthenticationError();
+        await this.tokens.assertCommandAuthority(
+          context.userId,
+          context.apiCredential.id,
+          context.apiCredential.value,
+          authority.permission,
+          authority.target,
+        );
+      }
       return operation();
     });
   }
@@ -151,6 +170,7 @@ export class AccountMutationAuthority {
 
   private async verifyPassword(context: SecurityContext, password: Secret): Promise<void> {
     assertContextShape(context);
+    if (context.apiCredential) throw new AuthenticationError();
     const user = await this.users.transaction(() => this.users.findUser(context.userId));
     const matched = await this.passwords.verify(user?.passwordHash, password);
     if (!user || !matched) throw new AuthenticationError();

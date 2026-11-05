@@ -40,7 +40,7 @@ describe('API token management HTTP acceptance', () => {
     expiresAt: new Date(Date.now() + 3600000).toISOString(),
   });
   beforeAll(async () => {
-    fixture = await integrationApp();
+    fixture = await integrationApp([], { restrictedDatabase: true });
     close = fixture.close;
     prisma = fixture.app.get(PrismaService);
     origin = new URL(fixture.app.get(AppConfig).get('API_PUBLIC_URL')).origin;

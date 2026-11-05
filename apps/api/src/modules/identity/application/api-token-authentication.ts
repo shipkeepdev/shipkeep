@@ -32,14 +32,27 @@ export class ApiTokenAuthentication {
     now = new Date(),
   ): Promise<AuthenticatedToken> {
     return this.withCredential(value, now, async (current) => {
-      if (
-        !current.token.scopes.some((scope) => scopeCovers(scope, permission, target)) ||
-        !(await this.authority.allows(current.user.id, permission, target))
-      )
-        throw new TokenPermissionError();
+      await this.requireAuthority(current, permission, target);
       if (!(await this.tokens.touch(current.token.id, now))) throw new AuthenticationError();
       return current;
     });
+  }
+
+  /** The caller holds this account's lock through the command and its audit transaction. */
+  async assertCommandAuthority(
+    userId: string,
+    tokenId: string,
+    value: Secret,
+    permission: Permission,
+    target: ResourceContext,
+    now = new Date(),
+  ): Promise<void> {
+    await this.withCredential(
+      value,
+      now,
+      (current) => this.requireAuthority(current, permission, target),
+      { userId, tokenId },
+    );
   }
 
   /** Before revealing an encrypted creation retry, recheck ownership, liveness and all grants. */
@@ -61,11 +74,17 @@ export class ApiTokenAuthentication {
     value: Secret,
     now: Date,
     operation: (current: AuthenticatedToken) => Promise<T>,
+    expected?: { userId: string; tokenId: string },
   ): Promise<T> {
     if (!TOKEN_PATTERN.test(value.expose())) throw new AuthenticationError();
     const hash = this.secrets.hash('api', value);
     const initial = await this.tokens.findByHash(hash);
-    if (!initial) throw new AuthenticationError();
+    // Reject a substituted principal before acquiring another account's lock.
+    if (
+      !initial ||
+      (expected && (initial.userId !== expected.userId || initial.id !== expected.tokenId))
+    )
+      throw new AuthenticationError();
     return this.users.withUserLock(initial.userId, async (user) => {
       // Re-read under the same lock used by revocation, password resets and role changes.
       const token = await this.tokens.findOwned(user.id, initial.id);
@@ -81,5 +100,17 @@ export class ApiTokenAuthentication {
         throw new AuthenticationError();
       return operation({ user, token });
     });
+  }
+
+  private async requireAuthority(
+    current: AuthenticatedToken,
+    permission: Permission,
+    target: ResourceContext,
+  ): Promise<void> {
+    if (
+      !current.token.scopes.some((scope) => scopeCovers(scope, permission, target)) ||
+      !(await this.authority.allows(current.user.id, permission, target))
+    )
+      throw new TokenPermissionError();
   }
 }
