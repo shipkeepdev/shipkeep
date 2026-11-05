@@ -76,6 +76,11 @@ export class PrismaNodeStore implements NodeStore {
     return row ? nodeRecord(row) : undefined;
   }
 
+  async findById(organizationId: string, id: string): Promise<NodeRecord | undefined> {
+    const row = await this.database.client.node.findFirst({ where: { organizationId, id } });
+    return row ? nodeRecord(row) : undefined;
+  }
+
   async list(organizationId: string, beforeId?: string): Promise<NodeRecord[]> {
     const rows = await this.database.client.node.findMany({
       where: { organizationId, ...(beforeId ? { id: { lt: beforeId } } : {}) },

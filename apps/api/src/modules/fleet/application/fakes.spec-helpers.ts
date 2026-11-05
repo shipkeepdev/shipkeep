@@ -66,6 +66,11 @@ export class MemoryNodeStore implements NodeStore {
       this.nodes.find((n) => n.organizationId === organizationId && n.name === name),
     );
   }
+  findById(organizationId: string, id: string): Promise<NodeRecord | undefined> {
+    return Promise.resolve(
+      this.nodes.find((node) => node.organizationId === organizationId && node.id === id),
+    );
+  }
   list(organizationId: string, beforeId?: string): Promise<NodeRecord[]> {
     return Promise.resolve(
       this.nodes

@@ -34,6 +34,8 @@ export interface NodeStore {
   insert(node: NodeRecord): Promise<void>;
   findByName(organizationId: string, name: string): Promise<NodeRecord | undefined>;
   insertCertificate(certificate: NodeCertificateRecord): Promise<void>;
+  /** Run under `runTenant(organizationId)`. */
+  findById(organizationId: string, id: string): Promise<NodeRecord | undefined>;
   /** Run under `runTenant(organizationId)`: at most 100 nodes, newest first, exclusive cursor. */
   list(organizationId: string, beforeId?: string): Promise<NodeRecord[]>;
 }
