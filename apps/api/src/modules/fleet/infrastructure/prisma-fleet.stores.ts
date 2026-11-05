@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConflictError } from '@shipkeep/domain';
 
-import { Prisma } from '../../../platform/prisma/generated/client';
+import { type Node, Prisma } from '../../../platform/prisma/generated/client';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { JoinTokenStore, NodeStore } from '../application/ports';
 import type { JoinTokenRecord } from '../domain/join-token';
@@ -73,23 +73,35 @@ export class PrismaNodeStore implements NodeStore {
     const row = await this.database.client.node.findUnique({
       where: { organizationId_name: { organizationId, name } },
     });
-    if (!row) return undefined;
-    return {
-      id: row.id,
-      organizationId: row.organizationId,
-      name: row.name,
-      status: row.status as NodeStatus,
-      labels: row.labels as Record<string, string>,
-      facts: row.facts as NodeFacts,
-      leaseEpoch: row.leaseEpoch,
-      createdAt: row.createdAt,
-      lastHeartbeatAt: row.lastHeartbeatAt,
-    };
+    return row ? nodeRecord(row) : undefined;
+  }
+
+  async list(organizationId: string, beforeId?: string): Promise<NodeRecord[]> {
+    const rows = await this.database.client.node.findMany({
+      where: { organizationId, ...(beforeId ? { id: { lt: beforeId } } : {}) },
+      orderBy: { id: 'desc' },
+      take: 100,
+    });
+    return rows.map(nodeRecord);
   }
 
   async insertCertificate(certificate: NodeCertificateRecord): Promise<void> {
     await this.database.client.nodeCertificate.create({ data: certificate });
   }
+}
+
+function nodeRecord(row: Node): NodeRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    name: row.name,
+    status: row.status as NodeStatus,
+    labels: row.labels as Record<string, string>,
+    facts: row.facts as NodeFacts,
+    leaseEpoch: row.leaseEpoch,
+    createdAt: row.createdAt,
+    lastHeartbeatAt: row.lastHeartbeatAt,
+  };
 }
 
 @Injectable()

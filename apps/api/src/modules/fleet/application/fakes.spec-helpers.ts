@@ -66,6 +66,16 @@ export class MemoryNodeStore implements NodeStore {
       this.nodes.find((n) => n.organizationId === organizationId && n.name === name),
     );
   }
+  list(organizationId: string, beforeId?: string): Promise<NodeRecord[]> {
+    return Promise.resolve(
+      this.nodes
+        .filter(
+          (node) => node.organizationId === organizationId && (!beforeId || node.id < beforeId),
+        )
+        .sort((a, b) => b.id.localeCompare(a.id))
+        .slice(0, 100),
+    );
+  }
   insertCertificate(certificate: NodeCertificateRecord): Promise<void> {
     this.certificates.push(certificate);
     return Promise.resolve();
