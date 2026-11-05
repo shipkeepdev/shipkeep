@@ -297,7 +297,8 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - [ ] **M3.4c** Orchestration: pg-boss job driving agent actions per state (schedule, pull, create, start, health, switch, drain, stop the old release), restoring routing on failure.
     - [x] **M3.4c1** Minimal node liveness: heartbeats make connected nodes ready (audited); missed heartbeats read as suspect or down.
     - [x] **M3.4c2** Image digest resolution on the control plane (ADR 0012), with SSRF guards: HTTPS only, public addresses only, bounded time and size.
-    - [ ] **M3.4c3** Allocations and the pure pipeline planner (next agent actions per state, failure injection at every state).
+    - [x] **M3.4c3a** Route upstreams that name a local container, resolved by the agent (ADR 0017), so the pipeline can switch routes without knowing container addresses.
+    - [ ] **M3.4c3b** Allocations and the pure pipeline planner (next agent actions per state, failure injection at every state).
     - [ ] **M3.4c4** pg-boss worker: drives queued deployments with agent actions, secrets injection, route switch and drain.
 - [ ] **M3.5 Rollback and release history** (C + W). Depends: M3.4
   - Keep N images; one-click rollback; release diff view (image, config).
