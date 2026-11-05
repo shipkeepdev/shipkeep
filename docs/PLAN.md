@@ -11,6 +11,51 @@
 
 Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), **X** cross-cutting.
 
+## Status (2026-11-05)
+
+**Done:**
+
+- M0, M1.1, M1.2 (except fleet administration endpoints, moved to M2.7), M1.3, M2.1 and M2.2.
+- M2.3 up to M2.3d4a.
+
+**Verification gap.** GitHub Actions has been blocked by the account spending limit since PR #87. PRs #30 to #39 and #87 to #110 were merged after a local gate instead of CI:
+
+- nx lint, typecheck, unit tests and build;
+- `go vet`, `go test -race` and golangci-lint;
+- generation drift, Semgrep and Prettier.
+
+Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **not** run on that code. The first task once Actions is available again is **CI-1**: run the full `ci` and `security` workflows on `main`, then fix every failure in its own `fix/...` PR before any new feature merges.
+
+**Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
+
+1. M2.3d4b, then M2.3d4c and M2.3d4d (membership and binding HTTP, route/role matrix).
+2. M2.3g1, then M2.3g2 (row-level security for fleet and audit tables). They must land before M2.4 and M2.7 expose any reads.
+3. M2.3e (project-owned tokens).
+4. M2.7 (fleet administration endpoints).
+5. M2.4a, then M2.5a (audit query/export API, confirmation token issuance).
+6. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
+7. M1.4a, M1.4b and M1.4c (container actions).
+8. M1.5 (Caddy routes) and M4.3 (scheduler, pure function). They can start in parallel with the items above, because their dependencies are met.
+
+**Work that no task owned yet, now assigned:**
+
+| Work                                                                       | Task   |
+| -------------------------------------------------------------------------- | ------ |
+| Action dispatch over the `Connect` stream (`ActionRequest`/`ActionUpdate`) | M1.4a  |
+| `ExecStream`                                                               | M6.1   |
+| `CollectFacts`                                                             | M1.6   |
+| `UpgradeAgent`                                                             | M8.3   |
+| The SSE `/api/v1/events` endpoint                                          | M2.6   |
+| Retry-safe certificate renewal (SPEC 16)                                   | M4.5   |
+| The web token scope picker                                                 | M2.3f1 |
+
+**Decisions needed from the maintainer:**
+
+- Restore GitHub Actions billing (unblocks CI-1).
+- Whether `RestoreVolume` and `RestoreDatabase` require a confirmation token. This is an action-list change (rule 2, `security-review`). See SPEC 16.
+- Approve `argparse` (PSF-2.0, runtime transitive dependency through `js-yaml` from `@nestjs/swagger`), or replace it. PSF-2.0 is not on the allowed license list.
+- Confirm the M2.3 role defaults listed in SPEC 16.
+
 ---
 
 ## M0. Foundations
@@ -45,10 +90,10 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 - [x] **M1.1 Agent skeleton and config** (A). Depends: M0.3
   - `agent/cmd/shipkeep-agent`, config file `/etc/shipkeep/agent.yaml`, structured JSON logging, graceful shutdown, `--dev` mode.
   - Acceptance: binary under 30 MB; starts and stops cleanly; unit tests for config validation.
-- [ ] **M1.2 Enrollment and mTLS stream** (A + C). Depends: M1.1, M2.1. Split into M1.2a, M1.2b and M1.2c.
+- [x] **M1.2 Enrollment and mTLS stream** (A + C). Depends: M1.1, M2.1. Split into M1.2a, M1.2b and M1.2c. Acceptance met. The join-token REST endpoint, node list/revoke and the install command with the CA fingerprint moved to M2.7, because they need RBAC and tenant row-level security first.
   - [x] **M1.2a** API `fleet` module: join tokens (hashed, single use, 15 min), internal Ed25519 CA with private keys encrypted by the KEK, confirmation signing key, `EnrollNode` and `IssueJoinToken` commands, node and certificate records.
     - Acceptance: CA issues a client certificate from a CSR with the SPIFFE identity decided by the control plane; a reused or expired token is rejected; audit events emitted.
-  - [ ] **M1.2b** API `AgentGatewayService` gRPC server over TLS from the installation CA (Connect-RPC): `Enroll`, `RenewCertificate`, client-certificate authentication with the revocation list, CA fingerprint in the install command, join-token REST endpoint once RBAC exists.
+  - [x] **M1.2b** API `AgentGatewayService` gRPC server over TLS from the installation CA (Connect-RPC): `Enroll`, `RenewCertificate`, client-certificate authentication with the revocation list, CA fingerprint in the install command, join-token REST endpoint once RBAC exists (moved to M2.7).
     - [x] **M1.2b1** Certificate identity checks and atomic certificate renewal with revocation and audit; tests cover concurrent renewals and rollback on audit failure.
     - [x] **M1.2b2** TLS gateway and unary RPC adapters, default-deny client-certificate authentication, revocation checks and transport tests. The CA fingerprint is already returned by `IssueJoinToken`; displaying it in the install command and exposing join tokens remain gated on M2.3/M8.3. `Connect` lifecycle and revocation disconnection are implemented in M1.2c3. `ExecStream` remains authenticated and returns `Unimplemented` until authorized exec sessions exist.
   - [x] **M1.2c** Agent: key generation, CSR, `Enroll`, cert storage (0600), CA fingerprint pinning, `Connect` stream with reconnect and exponential backoff with jitter, cert renewal.
@@ -65,14 +110,17 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
   - [x] **M1.3c** Resumable/compensating step executor, transition notifications, daemon ownership and interruption tests.
   - SQLite schema from SPEC 3.4 and 3.5, journal API, resume and compensation framework, idempotency keys.
   - Acceptance: tests kill the agent mid-action (simulated) and verify resume or compensation for each step type.
-- [ ] **M1.4 Container actions** (A). Depends: M1.3
+- [ ] **M1.4 Container actions** (A). Depends: M1.3. Split:
+  - [ ] **M1.4a** Action dispatch over `Connect`: `ActionRequest` journaled before execution, `ActionUpdate` progress, `CancelAction`, control-plane dispatcher and audit, idempotent redelivery after reconnect.
+  - [ ] **M1.4b** Docker Engine SDK adapter: `EnsureNetwork`, `PullImage`, `EnsureVolume`, `RemoveVolume` (confirmation token verified with the enrollment public key, `jti` single use).
+  - [ ] **M1.4c** `CreateContainer`, `StartContainer`, `StopContainer`, `RemoveContainer`, `HealthCheck`, `RunReleaseTask`, with validator fuzz tests.
   - `EnsureNetwork`, `PullImage`, `CreateContainer`, `StartContainer`, `StopContainer`, `RemoveContainer`, `EnsureVolume`, `RemoveVolume`, `HealthCheck`, `RunReleaseTask` through the Docker Engine SDK, with all validations from SPEC 3.3.
   - Acceptance: integration tests against real Docker; malicious-input tests (privileged, host mounts, path traversal, oversized fields) all rejected; fuzz tests for validators.
 - [ ] **M1.5 Caddy route management** (A). Depends: M1.3
   - Caddy installed by the installer; agent manages routes through the admin Unix socket with typed JSON; `UpsertRoute`, `RemoveRoute` with switch-then-drain.
   - Acceptance: test deploys v1, switches to v2 under constant load (k6 or vegeta), zero failed requests.
 - [ ] **M1.6 Agent self-reconciliation** (A). Depends: M1.4, M1.5
-  - Reconcile loop every 30 s against `desired`; restart crashed managed containers; report `StateReport`.
+  - Reconcile loop every 30 s against `desired`; restart crashed managed containers; report `StateReport`; answer `CollectFacts`.
   - Acceptance: with control plane stopped, a killed container is restarted and routing keeps serving.
 
 ## M2. Control plane core
@@ -184,19 +232,29 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
       - [ ] **M2.3d4d** Generated registered-route/role matrix and full tenant acceptance checkpoint.
   - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
   - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.
-  - [ ] **M2.3g** Row-level security for the remaining tenant-scoped tables (`nodes`, `join_tokens`, `node_certificates`, `audit_events`), with enrollment token lookup and the agent gateway moved to a separate reviewed cross-tenant role (SPEC 4). Must land before any node, join-token or audit read endpoint is exposed (M2.4, M8).
-  - Integrate API-token owner authorization with live membership/role bindings; add project-owned tokens bounded to their project and creator's live authority/security version.
+    - [ ] **M2.3f1** Organization switcher, project/environment catalog and settings, member and binding screens, API-token scope picker.
+    - [ ] **M2.3f2** Real-browser acceptance: two organizations, cross-tenant URLs answer 404, role changes take effect on the next request.
+  - [ ] **M2.3g** Row-level security for the remaining tenant-scoped tables (`nodes`, `join_tokens`, `node_certificates`, `audit_events`), with enrollment token lookup and the agent gateway moved to a separate reviewed cross-tenant role (SPEC 4). Must land before any node, join-token or audit read endpoint is exposed (M2.4, M2.7).
+    - [ ] **M2.3g1** Fleet tables. `node_certificates` has no `organization_id`: add it with a composite foreign key to `nodes`, rather than relying on a join policy. This is a data-model invariant change, so record it in an ADR. Gateway and enrollment lookups move to a dedicated role with reviewed grants.
+    - [ ] **M2.3g2** `audit_events`: tenant rows readable only in their organization context. System rows (`organization_id` null, for example `fleet.installation_key.created`) are readable by installation administrators only. INSERT stays allowed for every command transaction.
   - Entities from SPEC 4, RBAC matrix from SPEC 7 as a policy module, default-deny guard, row-level security.
   - Acceptance: generated RBAC matrix test covers every route and role; tenant isolation suite passes.
-- [ ] **M2.4 Audit log guarantees and UI** (C + W). Depends: M2.3
+- [ ] **M2.4 Audit log guarantees and UI** (C + W). Depends: M2.3. Partly done: the runtime role has only SELECT/INSERT on `audit_events`, and `runtime-role.integration.spec.ts` proves that UPDATE, DELETE and TRUNCATE are denied.
   - Database permissions deny update and delete on `AuditEvent`; audit UI with filters; export endpoint.
+  - [ ] **M2.4a** Scoped audit query and export endpoints, plus a test that walks every registered command handler and asserts it publishes at least one event. Depends: M2.3g2.
+  - [ ] **M2.4b** Audit UI with filters.
   - Acceptance: test asserts every command handler emits at least one audit event.
 - [ ] **M2.5 Confirmation tokens** (C + W). Depends: M2.3
+  - [ ] **M2.5a** `POST /api/v1/confirmations`: EdDSA JWS from the installation confirmation key (SPEC 3.6), the typed resource name checked, `jti` stored and marked used, audited.
+  - [ ] **M2.5b** Confirmation dialog in the web UI.
   - `/confirmations` endpoint, UI confirmation dialog that requires typing the resource name.
   - Acceptance: destructive endpoints reject requests without a valid, unused, matching token.
-- [ ] **M2.6 Web UI shell** (W). Depends: M2.2
+- [ ] **M2.6 Web UI shell** (W). Depends: M2.2. Partly done in M2.2e: shell, routing, auth flows, design tokens, Tailwind and CDK. Remaining: org/project/environment navigation (with M2.3f1), empty states, the SSE `/api/v1/events` endpoint and its client, and the Lighthouse check.
   - Angular app shell, routing, auth flows, org/project/environment navigation, design tokens, Tailwind, CDK, empty states, SSE client.
   - Acceptance: Lighthouse accessibility score at least 95 on login and dashboard; core flows keyboard-navigable.
+- [ ] **M2.7 Fleet administration endpoints** (C + W). Depends: M2.3d, M2.3g1. Moved from M1.2b.
+  - Join-token issuance endpoint (fresh proof, `nodes.manage` permission), node list, node revocation (confirmation token, active stream disconnected), and an install command that shows the CA fingerprint.
+  - Acceptance: an organization admin enrolls a node with the copied command; another organization neither sees the node nor can revoke it.
 
 ## M3. Deploy pipeline
 
@@ -241,6 +299,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
   - Acceptance: request to any node reaches the app wherever it runs.
 - [ ] **M4.5 Heartbeats, leases, failover, fencing** (C + A). Depends: M4.4
   - ADR 0008 implemented.
+  - Retry-safe certificate renewal after a lost response (SPEC 16), so a lease holder is never fenced by its own renewal.
   - Acceptance: E2E kills a node; stateless app back on another node in under 90 s; stateful app never runs twice (partition test).
 
 ## M5. Data
@@ -262,6 +321,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 
 - [ ] **M6.1 Log shipping and search** (A + C + W). Depends: M1.4
   - Agent ships logs to VictoriaLogs with labels; UI live tail and search; 30-day retention.
+  - `ExecStream`: typed, RBAC-checked and audited container exec sessions (rule 3); the gateway currently answers `Unimplemented`.
 - [ ] **M6.2 Metrics** (A + C + W). Depends: M1.4
   - Container, node and Caddy metrics to VictoriaMetrics; charts in UI.
 - [ ] **M6.3 Alerts and notifications** (C + W). Depends: M6.1, M6.2
@@ -282,7 +342,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
   - Go CLI commands from ARCHITECTURE; `.goreleaser.yaml` for agent and CLI; Homebrew tap and Scoop bucket; first `release.yml` dry run via workflow_dispatch.
 - [ ] **M8.3 Installer and control plane upgrades** (X). Depends: M5.4
   - `get.shipkeep.dev` installer (CA fingerprint pinning, `shipkeep-build` user, cgroup v2 delegation, AppArmor profile on Ubuntu 24.04), signature checks, conflict detection.
-  - `deploy/control-plane.Dockerfile`, Trivy image scan in `release.yml`, `UpgradeControlPlane` action with snapshot and rollback.
+  - `deploy/control-plane.Dockerfile`, Trivy image scan in `release.yml`, `UpgradeControlPlane` action with snapshot and rollback; `UpgradeAgent` with signature check and rollback to the previous binary.
   - Acceptance: upgrade from previous release to current on a VM, then forced failure triggers automatic rollback.
 
 ## M9. Migration
