@@ -228,6 +228,8 @@ export interface operations {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
+                /** @description Lowercase UUIDv4/v7. Reuses the same request result for five minutes. */
+                readonly "Idempotency-Key"?: string;
                 /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
                 readonly Origin?: string;
             };
@@ -254,6 +256,8 @@ export interface operations {
         readonly parameters: {
             readonly query?: never;
             readonly header: {
+                /** @description Lowercase UUIDv4/v7. Reuses the same request result for five minutes. */
+                readonly "Idempotency-Key"?: string;
                 /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
                 readonly Origin?: string;
                 /** @description CSRF cookie value bound to this session. */
@@ -276,6 +280,8 @@ export interface operations {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
+                /** @description Lowercase UUIDv4/v7. Reuses the same request result for five minutes. */
+                readonly "Idempotency-Key"?: string;
                 /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
                 readonly Origin?: string;
             };
@@ -301,6 +307,8 @@ export interface operations {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
+                /** @description Lowercase UUIDv4/v7. Reuses the same request result for five minutes. */
+                readonly "Idempotency-Key"?: string;
                 /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
                 readonly Origin?: string;
             };
@@ -325,6 +333,8 @@ export interface operations {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
+                /** @description Lowercase UUIDv4/v7. Reuses the same request result for five minutes. */
+                readonly "Idempotency-Key"?: string;
                 /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
                 readonly Origin?: string;
             };
@@ -372,6 +382,8 @@ export interface operations {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
+                /** @description Lowercase UUIDv4/v7. Reuses the same request result for five minutes. */
+                readonly "Idempotency-Key"?: string;
                 /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
                 readonly Origin?: string;
             };
@@ -397,6 +409,8 @@ export interface operations {
         readonly parameters: {
             readonly query?: never;
             readonly header?: {
+                /** @description Lowercase UUIDv4/v7. Reuses the same request result for five minutes. */
+                readonly "Idempotency-Key"?: string;
                 /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
                 readonly Origin?: string;
             };

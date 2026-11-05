@@ -77,18 +77,18 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - [x] **M2.2b1** Request-local unit of work; audit writes join command transactions; real PostgreSQL rollback and isolation tests.
     - [x] **M2.2b2** Identity schema, case-insensitive email uniqueness, bounded credential lifetimes and real PostgreSQL constraint/concurrency tests.
     - [x] **M2.2b3** Identity repositories, per-user mutation locks, session invalidation and atomic token consumption.
-  - [ ] **M2.2c** Signup, verification, login, sessions, CSRF, reset and brute-force protection.
+  - [x] **M2.2c** Signup, verification, login, sessions, CSRF, reset and brute-force protection.
     - [x] **M2.2c1** Audited account/session commands, single-use email/reset flows, login rotation and concurrent password-reset protection.
     - [x] **M2.2c2** Persistent request limits and progressive login delays shared across API instances.
     - [x] **M2.2c3** Private email delivery with bounded retries.
       - [x] **M2.2c3a** Transactional pg-boss jobs with encrypted payloads, bounded retries and restart/tamper tests.
       - [x] **M2.2c3b** SMTP transport, configuration and TLS delivery tests.
-    - [ ] **M2.2c4** REST endpoints, secure cookies, origin checks, CSRF and HTTP acceptance tests.
+    - [x] **M2.2c4** REST endpoints, secure cookies, origin checks, CSRF and HTTP acceptance tests.
       - [x] **M2.2c4a** Default-deny session and rate-limit guards, host-bound cookies and HTTP boundary tests.
       - [x] **M2.2c4b** Account/session controllers, module wiring, generated API contract and HTTP acceptance tests.
-      - [ ] **M2.2c4c** Idempotent authentication mutations and concurrent retry tests.
+      - [x] **M2.2c4c** Idempotent authentication mutations and concurrent retry tests.
         - [x] **M2.2c4c1** Encrypted retry storage, transaction-bound concurrency control, expiry and rollback tests.
-        - [ ] **M2.2c4c2** HTTP idempotency keys, credential-bound replay and acceptance tests.
+        - [x] **M2.2c4c2** HTTP idempotency keys, credential-bound replay and acceptance tests.
   - [ ] **M2.2d** TOTP enrollment/recovery and scoped API tokens.
   - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.

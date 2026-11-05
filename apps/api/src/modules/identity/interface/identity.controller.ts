@@ -3,10 +3,12 @@ import {
   Controller,
   Get,
   HttpCode,
+  Inject,
   Post,
   Req,
   Res,
   ServiceUnavailableException,
+  UseInterceptors,
 } from '@nestjs/common';
 import {
   ApiCookieAuth,
@@ -22,9 +24,8 @@ import type { Response } from 'express';
 import { AppConfig } from '../../../platform/config/app-config';
 import { AccountCommands } from '../application/account-commands';
 import { IDENTITY_THROTTLE, type IdentityThrottle } from '../application/identity-throttle';
-import { Inject } from '@nestjs/common';
 import { SessionCommands } from '../application/session-commands';
-import { normalizeEmail } from '../domain/identity-policy';
+import { AuthenticationError, normalizeEmail } from '../domain/identity-policy';
 
 import {
   CredentialsDto,
@@ -35,10 +36,12 @@ import {
 } from './identity.dto';
 import { AllowAnonymous } from './identity.guard';
 import { IdentityAttemptLimit } from './identity-rate.guard';
+import { IdentityReplayInterceptor } from './identity-replay.interceptor';
 import {
   clearSessionCookies,
   clientIp,
   cookiePolicy,
+  headerCredential,
   type IdentityRequest,
   principal,
   readCredential,
@@ -52,6 +55,7 @@ import {
   required: false,
 })
 @Controller('auth')
+@UseInterceptors(IdentityReplayInterceptor)
 export class IdentityController {
   constructor(
     private readonly accounts: AccountCommands,
@@ -60,6 +64,11 @@ export class IdentityController {
     @Inject(IDENTITY_THROTTLE) private readonly throttle: IdentityThrottle,
   ) {}
 
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'Lowercase UUIDv4/v7. Reuses the same request result for five minutes.',
+  })
   @Post('register')
   @HttpCode(202)
   @AllowAnonymous()
@@ -73,6 +82,11 @@ export class IdentityController {
     await this.accounts.register(body.email, new Secret(body.password));
   }
 
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'Lowercase UUIDv4/v7. Reuses the same request result for five minutes.',
+  })
   @Post('verification/request')
   @HttpCode(202)
   @AllowAnonymous()
@@ -83,6 +97,11 @@ export class IdentityController {
     await this.accounts.requestEmail(body.email, 'verify');
   }
 
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'Lowercase UUIDv4/v7. Reuses the same request result for five minutes.',
+  })
   @Post('verify')
   @HttpCode(204)
   @AllowAnonymous()
@@ -92,6 +111,11 @@ export class IdentityController {
     await this.accounts.verifyEmail(new Secret(body.token));
   }
 
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'Lowercase UUIDv4/v7. Reuses the same request result for five minutes.',
+  })
   @Post('reset/request')
   @HttpCode(202)
   @AllowAnonymous()
@@ -102,6 +126,11 @@ export class IdentityController {
     await this.accounts.requestEmail(body.email, 'reset');
   }
 
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'Lowercase UUIDv4/v7. Reuses the same request result for five minutes.',
+  })
   @Post('reset')
   @HttpCode(204)
   @AllowAnonymous()
@@ -111,6 +140,11 @@ export class IdentityController {
     await this.accounts.resetPassword(new Secret(body.token), new Secret(body.password));
   }
 
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'Lowercase UUIDv4/v7. Reuses the same request result for five minutes.',
+  })
   @Post('login')
   @HttpCode(200)
   @AllowAnonymous()
@@ -146,7 +180,14 @@ export class IdentityController {
     return { userId: user.userId, email: user.email, expiresAt: user.expiresAt.toISOString() };
   }
 
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'Lowercase UUIDv4/v7. Reuses the same request result for five minutes.',
+  })
   @Post('logout')
+  @AllowAnonymous()
+  @IdentityAttemptLimit('token')
   @HttpCode(204)
   @ApiCookieAuth('session')
   @ApiNoContentResponse()
@@ -159,8 +200,18 @@ export class IdentityController {
     @Req() request: IdentityRequest,
     @Res({ passthrough: true }) response: Response,
   ): Promise<void> {
-    const user = principal(request);
-    await this.sessions.logout(user.userId, user.token);
+    // Authentication stays inside this handler so a committed logout can be replayed even
+    // after revocation. The interceptor requires the same session and CSRF proof on retries.
+    if (request.headers.authorization !== undefined) throw new AuthenticationError();
+    const token = readCredential(
+      request.headers.cookie,
+      cookiePolicy(this.config.get('API_PUBLIC_URL')).name,
+    );
+    const { user } = await this.sessions.authenticate(
+      token,
+      headerCredential(request.headers['x-shipkeep-csrf']),
+    );
+    await this.sessions.logout(user.id, token);
     clearSessionCookies(response, cookiePolicy(this.config.get('API_PUBLIC_URL')));
   }
 

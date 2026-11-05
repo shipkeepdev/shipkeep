@@ -12,6 +12,8 @@ import { SessionCommands } from './application/session-commands';
 import { IdentityMailWorker } from './infrastructure/identity-mail-worker';
 import { hashToken, issueToken, matchesTokenHash } from './infrastructure/identity-secrets';
 import { PasswordHasher } from './infrastructure/password-hasher';
+import { PrivateIdentityReplay } from './infrastructure/private-identity-replay';
+import { IdentityReplayInterceptor } from './interface/identity-replay.interceptor';
 import { PrismaIdentityStore } from './infrastructure/prisma-identity.store';
 import { PrismaIdentityThrottle } from './infrastructure/prisma-identity-throttle';
 import { IDENTITY_DELIVERY, PrivateIdentityMail } from './infrastructure/private-identity-mail';
@@ -27,6 +29,8 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
     AccountCommands,
     SessionCommands,
     PrivateIdentityMail,
+    PrivateIdentityReplay,
+    IdentityReplayInterceptor,
     IdentityMailWorker,
     { provide: IDENTITY_STORE, useClass: PrismaIdentityStore },
     { provide: PASSWORD_HASHER, useClass: PasswordHasher },
