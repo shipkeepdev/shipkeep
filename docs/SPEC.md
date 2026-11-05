@@ -285,6 +285,10 @@ Org roles: `owner`, `admin`, `member`. Project or environment roles for members:
 
 API tokens carry explicit scopes that can only narrow the owner's permissions.
 
+The shared tenant policy is default-deny for unknown permissions, roles and invalid resource hierarchies. Resource ancestry, membership and environment protection must be loaded from current database records by the authorization adapter. Account-only `profile.read` remains outside tenant RBAC. Organization members may read organization metadata; a resource binding permits parent-project navigation but does not grant access to sibling environments. An explicit environment binding replaces the inherited project role for that environment, including when it reduces access. Missing protection metadata denies deploy, secret-write and container-exec decisions even for administrators. Ambiguous duplicate effective bindings are denied.
+
+Organization admins may manage non-owner memberships, but only owners may grant or remove ownership. Removing or demoting the last owner is forbidden. Commands must lock the organization before reading the owner count and changing membership; the pure policy alone provides no concurrency guarantee. Project/environment administrators may only manage bindings within their authorized scope, never organization membership or ownership. Destructive-action authorization remains separate from the single-use confirmation required by M2.5.
+
 Token scopes use the closed permission vocabulary in `packages/domain/src/lib/api-token-policy.ts`: profile read, organization/project/environment reads and lifecycle capabilities, billing, members, nodes, deploy, secret write, container exec, volume/database deletion, observability and audit. No wildcard or secret-value-read permission exists. Each scope names a permission and UUIDv7 organization ID, optionally narrowed by project and environment IDs; environment bounds require their parent project. A token cannot span multiple organizations. `profile.read` is the only unscoped account permission. At most 32 input scopes are accepted, copied and deduplicated. Scope matching is never sufficient by itself: the owner's live RBAC policy must also allow the request. Token labels contain 1–64 Unicode code points without control/format characters; expiry is between one minute and ninety days, with at most 50 active tokens per user.
 
 ## 8. Public REST API
@@ -402,6 +406,8 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 | Internationalization | English only for v0.1; strings externalized for later translation                  |
 
 ## 16. Open questions
+
+- M2.3 implementation defaults: an explicit environment role overrides a project role rather than adding to it; organization admins cannot grant or change ownership. These conservative defaults prevent privilege escalation and are recorded for maintainer review.
 
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).
 - Wildcard certificates: which DNS providers to support first for DNS-01 (proposal: Cloudflare, Route 53, Hetzner DNS, OVH).

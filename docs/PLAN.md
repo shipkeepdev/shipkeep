@@ -129,6 +129,12 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.
   - Acceptance: auth E2E tests; brute-force protection (rate limit and progressive delay); session rotation on privilege change.
 - [ ] **M2.3 Organizations, projects, environments, RBAC** (C + W). Depends: M2.2
+  - [x] **M2.3a** Pure role matrix, resource-scope checks, protected-environment rules and last-owner policy.
+  - [ ] **M2.3b** Organization/membership/project/environment schema, tenant-bound relations and database isolation tests.
+  - [ ] **M2.3c** Tenant transaction context, repositories and audited commands with concurrent last-owner protection.
+  - [ ] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.
+  - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
+  - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.
   - Integrate API-token owner authorization with live membership/role bindings; add project-owned tokens bounded to their project and creator's live authority/security version.
   - Entities from SPEC 4, RBAC matrix from SPEC 7 as a policy module, default-deny guard, row-level security.
   - Acceptance: generated RBAC matrix test covers every route and role; tenant isolation suite passes.
