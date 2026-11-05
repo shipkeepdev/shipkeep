@@ -312,6 +312,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - Acceptance: backup and restore round trip for each engine and for a volume, checksum verified.
 - [ ] **M5.3 Restore anywhere** (C + A + W). Depends: M5.2
   - Restore into another node, a new database or volume; scheduled restore tests.
+  - Restoring over an existing volume or database requires a confirmation token, checked by the agent (ADR 0013); restores into new targets do not.
   - Acceptance: restore to a different node in E2E.
 - [ ] **M5.4 Instance backup** (C). Depends: M5.2
   - Control plane DB, CA, KEK to a separate target; documented disaster recovery procedure tested.
