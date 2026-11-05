@@ -40,6 +40,10 @@ pnpm test:integration                        # needs Docker: real PostgreSQL and
 
 Generated code (protobuf, JSON Schema types, `apps/api/openapi.json`, the API client) is committed but never edited by hand. Change the source (`proto/`, `packages/config-schema`, API decorators), then run `pnpm gen`. The route and role matrix in `docs/generated/` is refreshed by `pnpm nx test api -- -u`; review its diff.
 
+## License and sign-off
+
+Shipkeep is licensed under [Apache-2.0](LICENSE). By contributing, you agree that your contribution is licensed under the same terms. Every commit must certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/) with a `Signed-off-by:` line: commit with `git commit -s`. There is no contributor license agreement.
+
 ## Workflow
 
 - **Branches:** one branch per issue, never on `main`: `feat/<task-id>-short-name`, `fix/...` or `docs/...`.

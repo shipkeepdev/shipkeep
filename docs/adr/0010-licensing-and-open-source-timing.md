@@ -1,6 +1,6 @@
 # ADR 0010: Closed until v1, then Apache-2.0 without exceptions
 
-- Status: Accepted
+- Status: Accepted, amended by [ADR 0016](0016-license-now-publication-later.md) (Apache-2.0 applies now; publication date decided by the maintainer)
 - Date: 2026-11-03
 
 ## Decision

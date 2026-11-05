@@ -1,0 +1,8 @@
+Shipkeep
+Copyright 2026 Samuel Mbabhazi and the Shipkeep contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Third-party components keep their own licenses. Release artifacts include a bundle of the
+third-party license texts; per-package license exceptions are listed in
+docs/adr/0014-dependency-license-exceptions.md.
