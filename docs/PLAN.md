@@ -89,6 +89,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
       - [x] **M2.2c4c** Idempotent authentication mutations and concurrent retry tests.
         - [x] **M2.2c4c1** Encrypted retry storage, transaction-bound concurrency control, expiry and rollback tests.
         - [x] **M2.2c4c2** HTTP idempotency keys, credential-bound replay and acceptance tests.
+    - [x] **M2.2c5** Strip credential-bearing URL queries and opaque framework errors from HTTP diagnostics and responses.
   - [ ] **M2.2d** TOTP enrollment/recovery and scoped API tokens.
   - [ ] **M2.2e** Web identity flows and end-to-end acceptance tests.
   - Sign-up, email verification, login with argon2id, sessions, CSRF, TOTP 2FA with recovery codes, password reset, API tokens with scopes.

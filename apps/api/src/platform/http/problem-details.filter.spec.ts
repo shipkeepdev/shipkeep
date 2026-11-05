@@ -1,4 +1,11 @@
-import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  type ArgumentsHost,
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { ConflictError, InvalidInputError, NotFoundError } from '@shipkeep/domain';
 import type { Request } from 'express';
 
@@ -43,13 +50,15 @@ describe('ProblemDetailsFilter.toProblem', () => {
     expect(filter.toProblem(new NotFoundException('Cannot GET /x'), request)).toMatchObject({
       status: 404,
       code: 'not_found',
-      detail: 'Cannot GET /x',
+      detail: 'Not Found',
     });
     expect(filter.toProblem(new ForbiddenException(), request)).toMatchObject({
       status: 403,
       code: 'forbidden',
     });
-    expect(filter.toProblem(new BadRequestException(['a', 'b']), request).detail).toBe('a; b');
+    expect(filter.toProblem(new BadRequestException(['a', 'b']), request).detail).toBe(
+      'Bad Request',
+    );
   });
 
   it('hides internal errors behind an opaque 500', () => {
@@ -67,5 +76,33 @@ describe('ProblemDetailsFilter.toProblem', () => {
     const problem = filter.toProblem(new NotFoundException(), { url: '/x' } as Request);
     expect(problem.requestId).toBeUndefined();
     expect(problem.instance).toBe('/x');
+  });
+
+  it('does not echo query credentials, parser input or raw exceptions into responses and logs', () => {
+    const secret = 'test-private-password';
+    const input = {
+      ...request,
+      originalUrl: `/api/v1/auth/login?token=${secret}`,
+      url: `/api/v1/auth/login?token=${secret}`,
+    } as Request;
+    const error = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    const warn = vi.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const send = vi.fn();
+    const response = { status: () => response, type: () => response, send };
+    const host = {
+      switchToHttp: () => ({ getRequest: () => input, getResponse: () => response }),
+    } as unknown as ArgumentsHost;
+    try {
+      filter.catch(new Error(`database failed ${secret}`), host);
+      filter.catch(new HttpException(`parser input ${secret}`, 503), host);
+      const problem = filter.toProblem(new BadRequestException(`invalid JSON ${secret}`), input);
+      expect(problem.instance).toBe('/api/v1/auth/login');
+      expect(
+        JSON.stringify([problem, send.mock.calls, error.mock.calls, warn.mock.calls]),
+      ).not.toContain(secret);
+    } finally {
+      error.mockRestore();
+      warn.mockRestore();
+    }
   });
 });

@@ -5,6 +5,7 @@ import { Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 
 import { AppConfig } from '../config/app-config';
+import { requestPath } from '../http/request-path';
 
 /** Request and response fields that may carry credentials. Redacted before any line is written. */
 export const REDACTED_PATHS = [
@@ -48,7 +49,7 @@ const QUIET_PATHS = new Set(['/api/v1/health', '/api/v1/ready']);
             req: (req: { id: unknown; method: string; url: string; remoteAddress?: string }) => ({
               id: req.id,
               method: req.method,
-              url: req.url,
+              url: requestPath(req.url),
               remoteAddress: req.remoteAddress,
             }),
             res: (res: { statusCode: number }) => ({ statusCode: res.statusCode }),
