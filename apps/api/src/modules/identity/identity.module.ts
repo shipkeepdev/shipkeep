@@ -9,7 +9,8 @@ import { AccountCommands } from './application/account-commands';
 import { AccountMutationAuthority } from './application/account-mutation-authority';
 import { ApiTokenCommands } from './application/api-token-commands';
 import { ApiTokenAuthentication } from './application/api-token-authentication';
-import { API_TOKEN_AUTHORITY, AccountTokenAuthority } from './application/api-token-authority';
+import { API_TOKEN_AUTHORITY } from './application/api-token-authority';
+import { LiveApiTokenAuthority } from './application/live-api-token-authority';
 import { API_TOKEN_STORE } from './application/api-token-store';
 import { PrismaApiTokenStore } from './infrastructure/prisma-api-token.store';
 import { IDENTITY_MAILER, IDENTITY_SECRETS, PASSWORD_HASHER } from './application/identity-ports';
@@ -47,7 +48,7 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
     ApiTokenCommands,
     ApiTokenAuthentication,
     { provide: API_TOKEN_STORE, useClass: PrismaApiTokenStore },
-    { provide: API_TOKEN_AUTHORITY, useClass: AccountTokenAuthority },
+    { provide: API_TOKEN_AUTHORITY, useClass: LiveApiTokenAuthority },
     SessionCommands,
     MfaProof,
     MfaCommands,
