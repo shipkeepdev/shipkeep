@@ -6,12 +6,16 @@ import {
   type EnvironmentSettingsInput,
   type ProjectSettingsInput,
   type ResourceContext,
+  type Permission,
 } from '@shipkeep/domain';
 import { v7 as uuidv7 } from 'uuid';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
-import type { SecurityContext } from '../../identity/application/mfa-commands';
+import {
+  resourceActor,
+  type ResourceSecurityContext as SecurityContext,
+} from '../../identity/application/resource-security-context';
 
 import {
   RESOURCE_STORE,
@@ -118,31 +122,37 @@ export class ResourceCommands {
   private execute<T extends { readonly id: string }>(
     context: SecurityContext,
     target: ResourceContext & { organizationId: string },
-    permission: string,
+    permission: Permission,
     action: 'project.created' | 'project.updated' | 'environment.created' | 'environment.updated',
     settings: Record<string, unknown>,
     operation: () => Promise<T>,
     now: Date,
   ): Promise<T> {
-    return this.authority.run(context, () =>
-      this.store.transaction(target.organizationId, async () => {
-        await this.access.require(context.userId, permission, target);
-        const record = await operation();
-        await this.events.publish([
-          createEvent({
-            type: action,
-            organizationId: target.organizationId,
-            occurredAt: now,
-            actor: { kind: 'user', id: context.userId, ip: context.ip },
-            target: {
-              type: action.startsWith('project.') ? 'project' : 'environment',
-              id: record.id,
-            },
-            payload: { ...settings, ...(target.projectId ? { projectId: target.projectId } : {}) },
-          }),
-        ]);
-        return record;
-      }),
+    return this.authority.run(
+      context,
+      () =>
+        this.store.transaction(target.organizationId, async () => {
+          await this.access.require(context.userId, permission, target);
+          const record = await operation();
+          await this.events.publish([
+            createEvent({
+              type: action,
+              organizationId: target.organizationId,
+              occurredAt: now,
+              actor: resourceActor(context),
+              target: {
+                type: action.startsWith('project.') ? 'project' : 'environment',
+                id: record.id,
+              },
+              payload: {
+                ...settings,
+                ...(target.projectId ? { projectId: target.projectId } : {}),
+              },
+            }),
+          ]);
+          return record;
+        }),
+      { permission, target },
     );
   }
 }

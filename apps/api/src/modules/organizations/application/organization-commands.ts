@@ -9,7 +9,10 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
-import type { SecurityContext } from '../../identity/application/mfa-commands';
+import {
+  resourceActor,
+  type ResourceSecurityContext as SecurityContext,
+} from '../../identity/application/resource-security-context';
 import type { MfaProofInput } from '../../identity/application/mfa-crypto';
 import type { SessionGrant } from '../../identity/application/session-commands';
 
@@ -64,13 +67,16 @@ export class OrganizationCommands {
     now = new Date(),
   ): Promise<OrganizationRecord> {
     const settings = organizationSettings(input);
-    return this.authority.run(context, () =>
-      this.store.transaction(organizationId, async () => {
-        await this.access.require(context.userId, 'organization.update', { organizationId });
-        const organization = await this.store.update(organizationId, settings, now);
-        await this.audit('organization.updated', context, organization, now);
-        return organization;
-      }),
+    return this.authority.run(
+      context,
+      () =>
+        this.store.transaction(organizationId, async () => {
+          await this.access.require(context.userId, 'organization.update', { organizationId });
+          const organization = await this.store.update(organizationId, settings, now);
+          await this.audit('organization.updated', context, organization, now);
+          return organization;
+        }),
+      { permission: 'organization.update', target: { organizationId } },
     );
   }
 
@@ -85,7 +91,7 @@ export class OrganizationCommands {
         type,
         occurredAt: now,
         organizationId: organization.id,
-        actor: { kind: 'user', id: context.userId, ip: context.ip },
+        actor: resourceActor(context),
         target: { type: 'organization', id: organization.id },
         payload: {
           name: organization.name,

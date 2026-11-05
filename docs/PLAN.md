@@ -168,9 +168,9 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
         - [x] **M2.3c4c2** Bounded, scope-authorized member/binding administration queries.
   - [ ] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.
     - [x] **M2.3d1** Explicit account/tenant route declarations, canonical path scopes and fail-closed session/bearer guard.
-    - [ ] **M2.3d2** Live token authority and credential revalidation inside resource commands.
+    - [x] **M2.3d2** Live token authority and credential revalidation inside resource commands.
       - [x] **M2.3d2a** Live tenant scope grants and account-locked command credential validation.
-      - [ ] **M2.3d2b** Resource-command token permissions, actor auditing and bounded query access.
+      - [x] **M2.3d2b** Resource-command token permissions, actor auditing and bounded query access.
     - [ ] **M2.3d3** Organization/project/environment HTTP endpoints and encrypted mutation retries.
     - [ ] **M2.3d4** Membership/binding HTTP endpoints and generated route/role acceptance matrix.
   - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.

@@ -1,4 +1,4 @@
-import type { Permission, ResourceContext, Secret } from '@shipkeep/domain';
+import type { Actor, Permission, ResourceContext, Secret } from '@shipkeep/domain';
 
 import type { SecurityContext } from './mfa-commands';
 
@@ -11,4 +11,12 @@ export interface ResourceSecurityContext extends SecurityContext {
 export interface CommandAuthority {
   readonly permission: Permission;
   readonly target: ResourceContext;
+}
+
+export function resourceActor(context: ResourceSecurityContext): Actor {
+  return {
+    kind: context.apiCredential ? 'api_token' : 'user',
+    id: context.apiCredential?.id ?? context.userId,
+    ip: context.ip,
+  };
 }

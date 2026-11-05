@@ -5,6 +5,7 @@ import { Secret } from '@shipkeep/domain';
 import type { Request, Response } from 'express';
 
 import type { SessionGrant } from '../application/session-commands';
+import type { ResourceSecurityContext } from '../application/resource-security-context';
 import { AuthenticationError, TOKEN_PATTERN } from '../domain/identity-policy';
 
 export interface CookiePolicy {
@@ -28,6 +29,7 @@ export interface ApiTokenPrincipal {
   readonly tokenId: string;
   readonly securityVersion: number;
   readonly expiresAt: Date;
+  readonly token: Secret;
 }
 export type IdentityPrincipal = SessionPrincipal | ApiTokenPrincipal;
 export type IdentityRequest = Request<Record<string, string>, unknown, unknown> & {
@@ -98,4 +100,18 @@ export function principal(request: IdentityRequest): SessionPrincipal {
 export function authenticatedPrincipal(request: IdentityRequest): IdentityPrincipal {
   if (!request.identity) throw new AuthenticationError();
   return request.identity;
+}
+
+/** Preserve the authenticated credential for the command's transactional revalidation. */
+export function resourceContext(request: IdentityRequest): ResourceSecurityContext {
+  const actor = authenticatedPrincipal(request);
+  return {
+    userId: actor.userId,
+    securityVersion: actor.securityVersion,
+    ip: clientIp(request),
+    userAgent: request.headers['user-agent'] ?? '',
+    ...(actor.kind === 'api_token'
+      ? { apiCredential: { id: actor.tokenId, value: actor.token } }
+      : {}),
+  };
 }

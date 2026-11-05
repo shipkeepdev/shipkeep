@@ -1,10 +1,44 @@
 import { Secret } from '@shipkeep/domain';
 import type { Request, Response } from 'express';
 
-import { assertOrigin, cookiePolicy, readCredential, setSessionCookies } from './session-http';
+import {
+  assertOrigin,
+  cookiePolicy,
+  readCredential,
+  resourceContext,
+  setSessionCookies,
+  type IdentityRequest,
+} from './session-http';
 
 describe('HTTP session boundary', () => {
   const token = 'A'.repeat(43);
+  it('preserves only the authenticated principal and keeps bearer credentials redacted', () => {
+    const base = {
+      userId: 'user-id',
+      email: 'person@example.com',
+      securityVersion: 3,
+      expiresAt: new Date(),
+      token: new Secret(token),
+    };
+    const input = {
+      ip: '127.0.0.1',
+      headers: { 'user-agent': 'Fixture' },
+      body: { userId: 'forged', apiCredential: { id: 'forged', value: token } },
+    } as IdentityRequest;
+    expect(() => resourceContext(input)).toThrow('Authentication failed.');
+    input.identity = { ...base, kind: 'session', sessionId: 'session-id' };
+    expect(resourceContext(input)).toEqual({
+      userId: base.userId,
+      securityVersion: 3,
+      ip: '127.0.0.1',
+      userAgent: 'Fixture',
+    });
+    input.identity = { ...base, kind: 'api_token', tokenId: 'token-id' };
+    const context = resourceContext(input);
+    expect(context.apiCredential?.id).toBe('token-id');
+    expect(context.apiCredential?.value).toBe(base.token);
+    expect(JSON.stringify(context)).not.toContain(token);
+  });
   it('requires a unique, canonical cookie value', () => {
     expect(
       readCredential(`other=value; shipkeep_session=${token}`, 'shipkeep_session').expose(),
