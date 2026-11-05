@@ -6,7 +6,10 @@ import { join } from 'node:path';
 import * as x509 from '@peculiar/x509';
 
 import type { AppConfig } from '../../../../platform/config/app-config';
+import type { DomainEvent } from '@shipkeep/domain';
+
 import { EnvelopeService } from '../../../../platform/crypto/envelope.service';
+import { DomainEventBus } from '../../../../platform/events/domain-event-bus';
 import {
   MemoryDataKeyStore,
   MemoryInstallationKeyStore as MemoryInstallationKeys,
@@ -50,6 +53,8 @@ async function csrFor(keys = generateEd25519KeyPair()): Promise<string> {
   return csr.toString('pem');
 }
 
+const inline = { run: <T>(work: () => Promise<T>) => work() };
+
 const org = '0192f0c0-0000-7000-8000-0000000000aa';
 const nodeId = '0192f0c0-0000-7000-8000-0000000000bb';
 
@@ -57,8 +62,21 @@ describe('X509CertificateAuthority', () => {
   it('creates the CA and confirmation keys once and stores private keys encrypted', async () => {
     const store = new MemoryInstallationKeys();
     const env = await envelope();
-    const ca = new X509CertificateAuthority(store, env);
-    await ca.onModuleInit();
+    const bus = new DomainEventBus();
+    const published: DomainEvent[] = [];
+    bus.subscribe(async (event) => {
+      published.push(event);
+      await Promise.resolve();
+    });
+    const ca = new X509CertificateAuthority(store, env, bus, inline);
+    await ca.onApplicationBootstrap();
+    expect(published.map((event) => [event.type, event.actor.kind, event.payload['kind']])).toEqual(
+      [
+        ['fleet.installation_key.created', 'system', 'ca'],
+        ['fleet.installation_key.created', 'system', 'confirmation'],
+      ],
+    );
+    expect(JSON.stringify(published)).not.toContain('PRIVATE KEY');
 
     expect(store.keys.size).toBe(2);
     const caKey = store.keys.get('ca');
@@ -72,15 +90,41 @@ describe('X509CertificateAuthority', () => {
     expect(parsed.ca).toBe(true);
 
     // A second start reuses the stored keys.
-    const again = new X509CertificateAuthority(store, env);
-    await again.onModuleInit();
+    const again = new X509CertificateAuthority(store, env, new DomainEventBus(), inline);
+    await again.onApplicationBootstrap();
     expect(store.inserts).toBe(2);
+    expect(published).toHaveLength(2);
     expect(await again.caFingerprint()).toBe(await ca.caFingerprint());
   });
 
+  it('fails startup and keeps no key when the creation cannot be audited', async () => {
+    const store = new MemoryInstallationKeys();
+    const bus = new DomainEventBus();
+    bus.subscribe(() => Promise.reject(new Error('audit store down')));
+    // Emulates the rollback of a real transaction: whatever the work inserted is undone.
+    const rollback = {
+      run: async <T>(work: () => Promise<T>): Promise<T> => {
+        try {
+          return await work();
+        } catch (error: unknown) {
+          store.keys.clear();
+          throw error;
+        }
+      },
+    };
+    const ca = new X509CertificateAuthority(store, await envelope(), bus, rollback);
+    await expect(ca.onApplicationBootstrap()).rejects.toThrow('audit store down');
+    expect(store.keys.size).toBe(0);
+  });
+
   it('issues a 30-day client certificate with the identity it decides, not the CSR', async () => {
-    const ca = new X509CertificateAuthority(new MemoryInstallationKeys(), await envelope());
-    await ca.onModuleInit();
+    const ca = new X509CertificateAuthority(
+      new MemoryInstallationKeys(),
+      await envelope(),
+      new DomainEventBus(),
+      inline,
+    );
+    await ca.onApplicationBootstrap();
 
     const issued = await ca.issueNodeCertificate(await csrFor(), { organizationId: org, nodeId });
     const cert = new X509Certificate(issued.certificatePem);
@@ -104,8 +148,13 @@ describe('X509CertificateAuthority', () => {
   });
 
   it('issues distinct serials and keeps the node public key', async () => {
-    const ca = new X509CertificateAuthority(new MemoryInstallationKeys(), await envelope());
-    await ca.onModuleInit();
+    const ca = new X509CertificateAuthority(
+      new MemoryInstallationKeys(),
+      await envelope(),
+      new DomainEventBus(),
+      inline,
+    );
+    await ca.onApplicationBootstrap();
     const keys = await generateEd25519KeyPair();
     const a = await ca.issueNodeCertificate(await csrFor(Promise.resolve(keys)), {
       organizationId: org,
@@ -124,8 +173,13 @@ describe('X509CertificateAuthority', () => {
   });
 
   it('rejects malformed, forged and non-Ed25519 requests', async () => {
-    const ca = new X509CertificateAuthority(new MemoryInstallationKeys(), await envelope());
-    await ca.onModuleInit();
+    const ca = new X509CertificateAuthority(
+      new MemoryInstallationKeys(),
+      await envelope(),
+      new DomainEventBus(),
+      inline,
+    );
+    await ca.onApplicationBootstrap();
     const identity = { organizationId: org, nodeId };
 
     await expect(ca.issueNodeCertificate('garbage', identity)).rejects.toThrow(CsrError);
@@ -167,14 +221,24 @@ describe('X509CertificateAuthority', () => {
   });
 
   it('refuses to operate before initialization', async () => {
-    const ca = new X509CertificateAuthority(new MemoryInstallationKeys(), await envelope());
+    const ca = new X509CertificateAuthority(
+      new MemoryInstallationKeys(),
+      await envelope(),
+      new DomainEventBus(),
+      inline,
+    );
     await expect(ca.caCertificatePem()).rejects.toThrow(/not loaded/);
     await expect(ca.publicKeyPem()).rejects.toThrow(/not loaded/);
   });
 
   it('issues separate server-only credentials for DNS names and IP addresses', async () => {
-    const ca = new X509CertificateAuthority(new MemoryInstallationKeys(), await envelope());
-    await ca.onModuleInit();
+    const ca = new X509CertificateAuthority(
+      new MemoryInstallationKeys(),
+      await envelope(),
+      new DomainEventBus(),
+      inline,
+    );
+    await ca.onApplicationBootstrap();
     const root = new X509Certificate(await ca.caCertificatePem());
     for (const host of ['gateway.example.com', '127.0.0.1']) {
       const credentials = await ca.gatewayCredentials(host);

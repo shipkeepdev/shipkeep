@@ -8,6 +8,8 @@ import request from 'supertest';
 
 import { AppModule } from './app.module';
 import { configureApp } from './bootstrap';
+import { AUDIT_EVENT_STORE } from './modules/audit/application/audit-event-store';
+import { FLEET_TRANSACTION } from './modules/fleet/application/ports';
 import { INSTALLATION_KEY_STORE } from './modules/fleet/infrastructure/ca/installation-key-store';
 import { DATA_KEY_STORE } from './platform/crypto/data-key-store';
 import { PROBLEM_MEDIA_TYPE } from './platform/http/problem-details';
@@ -32,6 +34,10 @@ describe('HTTP pipeline', () => {
       .useValue(new MemoryDataKeyStore())
       .overrideProvider(INSTALLATION_KEY_STORE)
       .useValue(new MemoryInstallationKeyStore())
+      .overrideProvider(FLEET_TRANSACTION)
+      .useValue({ run: <T>(work: () => Promise<T>) => work() })
+      .overrideProvider(AUDIT_EVENT_STORE)
+      .useValue({ append: () => Promise.resolve() })
       .overrideProvider(JobQueue)
       .useValue({})
       .compile();

@@ -1,13 +1,19 @@
-import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
+import { createHash } from 'node:crypto';
+
+import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { Secret } from '@shipkeep/domain';
 import { v7 as uuidv7 } from 'uuid';
 
 import { EnvelopeService } from '../../../../platform/crypto/envelope.service';
-import type {
-  CertificateAuthority,
-  ConfirmationKeyProvider,
-  IssuedCertificate,
+import { DomainEventBus } from '../../../../platform/events/domain-event-bus';
+import {
+  type CertificateAuthority,
+  type ConfirmationKeyProvider,
+  FLEET_TRANSACTION,
+  type FleetTransaction,
+  type IssuedCertificate,
 } from '../../application/ports';
+import { installationKeyCreated } from '../../domain/events';
 import { nodeSpiffeId } from '../../domain/node';
 
 import {
@@ -30,6 +36,10 @@ import {
 
 const KEY_SCOPE = 'installation:keys';
 
+function publicKeyFingerprint(publicKeyPem: string): string {
+  return `sha256:${createHash('sha256').update(publicKeyPem.trim()).digest('hex')}`;
+}
+
 interface LoadedKey {
   certificatePem: string | null;
   publicKeyPem: string;
@@ -40,10 +50,13 @@ interface LoadedKey {
  * The installation CA and the confirmation signing key (SPEC sections 3.2 and 3.6). Both key
  * pairs are created on first start, stored with their private half encrypted by the KEK, and
  * never leave this class unencrypted.
+ *
+ * Keys are loaded at application bootstrap rather than module init: every `onModuleInit` (the
+ * audit recorder's subscription included) has run by then, so the creation event is recorded.
  */
 @Injectable()
 export class X509CertificateAuthority
-  implements CertificateAuthority, ConfirmationKeyProvider, OnModuleInit
+  implements CertificateAuthority, ConfirmationKeyProvider, OnApplicationBootstrap
 {
   private readonly logger = new Logger(X509CertificateAuthority.name);
   private ca: LoadedKey | undefined;
@@ -52,9 +65,11 @@ export class X509CertificateAuthority
   constructor(
     @Inject(INSTALLATION_KEY_STORE) private readonly store: InstallationKeyStore,
     private readonly envelope: EnvelopeService,
+    private readonly events: DomainEventBus,
+    @Inject(FLEET_TRANSACTION) private readonly transaction: FleetTransaction,
   ) {}
 
-  async onModuleInit(): Promise<void> {
+  async onApplicationBootstrap(): Promise<void> {
     this.ca = await this.loadOrCreate('ca');
     this.confirmation = await this.loadOrCreate('confirmation');
     this.logger.log({ caFingerprint: await this.caFingerprint() }, 'installation CA ready');
@@ -121,14 +136,25 @@ export class X509CertificateAuthority
     if (!stored) {
       const created = await this.create(kind);
       try {
-        await this.store.insert(created);
+        // The key and its audit row commit together (rule 6): no unaudited CA can exist.
+        await this.transaction.run(async () => {
+          await this.store.insert(created);
+          await this.events.publish([
+            installationKeyCreated({
+              keyId: created.id,
+              kind,
+              publicKeyFingerprint: publicKeyFingerprint(created.publicKeyPem),
+            }),
+          ]);
+        });
+        stored = created;
+        this.logger.log({ kind }, 'installation key created');
       } catch (error: unknown) {
-        // Another instance won the race: use its key, never a second CA.
+        // Another instance won the race: use its key, never a second CA. Anything else (an audit
+        // failure included) left nothing behind and fails startup.
         stored = await this.store.find(kind);
         if (!stored) throw error;
       }
-      stored ??= created;
-      this.logger.log({ kind }, 'installation key created');
     }
     const privateKeyPem = await this.envelope.decryptFor(
       KEY_SCOPE,
