@@ -517,6 +517,15 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - releases are immutable: a trigger and the runtime grants allow only recording the image digest, once;
     - finished states and `finished_at` go together (CHECK).
   - Audit events: `release.created`, `deployment.queued` and `deployment.cancelled`.
+- Image resolution (ADR 0012, PLAN M3.4c2): agents pull only by digest, so the pipeline resolves a release's tag before anything reaches a node. The digest is recorded once on the release.
+  - Docker rules name the registry (Docker Hub is `registry-1.docker.io`, with `library/` for single-name images) and `latest` is the default tag. A reference that already carries a digest is used as is, without any request.
+  - The control plane sends a `HEAD` for the manifest with the index and manifest media types. On 401 it fetches an anonymous token from the `Bearer` realm, scoped to `repository:<name>:pull`. When the `Docker-Content-Digest` header is missing, it hashes the manifest as served.
+  - SSRF guards on every request:
+    - HTTPS only, no credentials in URLs, no redirects;
+    - IP literals and every resolved address must be public: not loopback, private, link-local, CGNAT, multicast, reserved or documentation ranges, including IPv4-mapped and NAT64 forms;
+    - the socket connects to the address that was checked;
+    - a 10 s timeout and 1 MiB responses at most.
+  - Failures report `image_resolution_failed` with the registry and the status, never tokens. Private images and registries on private networks are not supported yet (open question).
 
 ### 8.1 Identity security parameters
 
@@ -609,6 +618,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 
 - Retry-safe certificate renewal after a response is lost: a recovery protocol must preserve the one-active-certificate invariant without accepting a revoked identity.
 
+- Private registries: credentials for private images, and an explicit allow-list for registries on private networks (the resolver refuses non-public addresses by default, SSRF).
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).
 - Wildcard certificates: which DNS providers to support first for DNS-01 (proposal: Cloudflare, Route 53, Hetzner DNS, OVH).
 - Exact Shipkeep Cloud pricing.

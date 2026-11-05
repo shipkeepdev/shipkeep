@@ -29,6 +29,13 @@ export interface DeploymentStore {
   finish(deployment: DeploymentRecord, expected: DeploymentState, now: Date): Promise<boolean>;
 }
 
+export const IMAGE_RESOLVER = Symbol('ImageResolver');
+/** Turns an image reference into the digest-pinned form agents accept (ADR 0012). */
+export interface ImageResolver {
+  /** Returns `<name>@sha256:…`; throws `image_resolution_failed` or `invalid_image_reference`. */
+  resolve(reference: string): Promise<string>;
+}
+
 export const DEPLOYMENT_TRANSACTION = Symbol('DeploymentTransaction');
 export interface DeploymentTransaction {
   runTenant<T>(organizationId: string, work: () => Promise<T>): Promise<T>;
