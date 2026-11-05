@@ -5,6 +5,11 @@ Your own cloud on your own servers, without leaving the root key in a web panel.
 Shipkeep is a self-hosted platform to deploy applications, databases and services on servers you own: git push to deploy, automatic HTTPS, managed databases with backups, preview environments, logs, metrics and alerts, across one or many servers.
 
 > Status: private, pre-v0.1. The code will be published under Apache-2.0 at v1.0.
+> Continuous integration is paused (GitHub Actions billing); pull requests are merged after the local checks listed in [CONTRIBUTING.md](CONTRIBUTING.md), and a full CI run on `main` is tracked in issue #137.
+
+## Contributing
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [`good first issue`](https://github.com/samuelmbabhazi/shipkeep/labels/good%20first%20issue) label. Remaining work is tracked in [docs/PLAN.md](docs/PLAN.md) and the GitHub milestones.
 
 ## Documentation
 
@@ -14,7 +19,9 @@ Shipkeep is a self-hosted platform to deploy applications, databases and service
 - [Threat model](docs/THREAT_MODEL.md)
 - [Implementation plan](docs/PLAN.md)
 - [Architecture decision records](docs/adr/)
-- [Contributor guide for Claude Code](CLAUDE.md)
+- [Contributing guide](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md)
+- [Route and role matrix](docs/generated/route-role-matrix.md) (generated)
+- [Rules and conventions for Claude Code](CLAUDE.md)
 - [GitHub setup](docs/GITHUB_SETUP.md)
 - [Kickoff prompts for Claude Code](docs/CLAUDE_CODE_KICKOFF.md)
 
@@ -35,9 +42,9 @@ For browser development, set `API_PUBLIC_URL=http://localhost:4200` in `.env` (a
 
 Production builds use `pnpm nx run-many -t build -p api web`. Start `node apps/api/dist/main.js` from the repository root with `NODE_ENV=production`, the database/KEK settings and an HTTPS `API_PUBLIC_URL` matching the public reverse proxy. The API serves the browser build from `dist/apps/web/browser`; set `WEB_DIST_DIR` for another packaged layout. Missing/invalid web builds fail startup. HTML uses fresh per-response CSP nonces and must not be cached by a proxy; hashed bundles may be cached immutably. API requests remain under `/api/v1`.
 
-The agent gateway listens on TLS port 7443 (`AGENT_GATEWAY_ADDR`). Set `AGENT_GATEWAY_SERVER_NAME` to the DNS name or IP agents use; it defaults to `localhost`. The installation CA signs a separate server certificate, and agents must pin that CA before sending a join token. Enrollment, certificate renewal and the agent stream are available. REST join-token issuance remains gated on RBAC (M2.3), and the installer remains M8.3.
+The agent gateway listens on TLS port 7443 (`AGENT_GATEWAY_ADDR`). Set `AGENT_GATEWAY_SERVER_NAME` to the DNS name or IP agents use; it defaults to `localhost`. The installation CA signs a separate server certificate, and agents must pin that CA before sending a join token. Enrollment, certificate renewal and the agent stream are available. Organization administrators issue join tokens with `POST /api/v1/organizations/{organizationId}/join-tokens`, list nodes and remove them with a confirmation token; the installer remains M8.3.
 
-For an agent with a token issued through the internal fleet command, copy `deploy/agent/agent.example.yaml`, set its gateway address and CA fingerprint, and set `control_plane.join_token_file` to a private 0600 file containing the token. Run `go run ./agent/cmd/shipkeep-agent --config /absolute/path/agent.yaml`. The agent consumes that file after saving its identity, reconnects after control-plane outages and renews its certificate automatically. `--dev` without a token keeps the unenrolled development process idle; production requires enrollment. The stream currently handles identity and heartbeats; workload execution arrives in later milestones.
+For an agent with an issued join token, copy `deploy/agent/agent.example.yaml`, set its gateway address and CA fingerprint, and set `control_plane.join_token_file` to a private 0600 file containing the token. Run `go run ./agent/cmd/shipkeep-agent --config /absolute/path/agent.yaml`. The agent consumes that file after saving its identity, reconnects after control-plane outages and renews its certificate automatically. `--dev` without a token keeps the unenrolled development process idle; production requires enrollment. The stream currently handles identity and heartbeats; workload execution arrives in later milestones.
 
 Other useful commands:
 
