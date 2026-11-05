@@ -84,14 +84,14 @@ describe('account route presentation', () => {
     expect(element().querySelector('[role="alert"]')?.textContent).toContain('marked fields');
     expect(api.login).not.toHaveBeenCalled();
   });
-  it('navigates to the actual account after login and clears the departed form', async () => {
+  it('navigates to the organizations after login and clears the departed form', async () => {
     api.login.mockResolvedValue(profile);
     await harness.navigateByUrl('/auth/login');
     const form = store();
     form.form.patchValue({ email: profile.email, password: 'correct horse browser fixture' });
     await submit();
-    expect(TestBed.inject(Router).url).toBe('/account/security');
-    expect(element().textContent).toContain(profile.email);
+    expect(TestBed.inject(Router).url).toBe('/orgs');
+    expect(element().textContent).toContain('Organizations');
     expect(form.form.controls.password.value).toBe('');
   });
   it('honors public email links and submits their codes without changing the URL', async () => {
