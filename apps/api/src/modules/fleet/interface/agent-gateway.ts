@@ -24,6 +24,7 @@ import { parseNodeSpiffeId } from '../domain/node';
 import { NodeAuthenticationError, type NodeIdentity } from '../domain/node-identity';
 import { CsrError } from '../infrastructure/ca/x509';
 import { X509CertificateAuthority } from '../infrastructure/ca/x509-certificate-authority';
+import { gatewaySecureContext } from './gateway-tls';
 
 const peer = createContextKey<TLSSocket | undefined>(undefined);
 const identity = createContextKey<NodeIdentity | undefined>(undefined);
@@ -112,13 +113,9 @@ export class AgentGateway implements OnModuleDestroy {
       // socket.authorized plus database identity on all other RPCs; rogue-CA tests cover this.
       // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
       {
-        cert: `${credentials.cert}
-${credentials.ca}`,
-        key: credentials.key.expose(),
-        ca: credentials.ca,
+        ...gatewaySecureContext(credentials),
         requestCert: true,
         rejectUnauthorized: false,
-        minVersion: 'TLSv1.3',
         allowHTTP1: false,
         settings: { maxConcurrentStreams: 32 },
       },
@@ -206,12 +203,7 @@ ${credentials.ca}`,
       const credentials = await this.ca.gatewayCredentials(
         this.config.get('AGENT_GATEWAY_SERVER_NAME'),
       );
-      this.server?.setSecureContext({
-        cert: `${credentials.cert}
-${credentials.ca}`,
-        key: credentials.key.expose(),
-        ca: credentials.ca,
-      });
+      this.server?.setSecureContext(gatewaySecureContext(credentials));
     } catch {
       this.logger.error('agent gateway certificate refresh failed');
     }
