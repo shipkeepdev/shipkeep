@@ -178,4 +178,4 @@ The repository will be public at v1 and git history is forever. Treat every comm
 
 - If the spec is ambiguous, choose the option that is more secure and more reversible, write the assumption in the PR description, and add it to "Open questions" in `docs/SPEC.md`.
 - If a task requires a decision not covered by an ADR (new dependency with a non-permissive license, new external service, change to the agent action list, change to data model invariants), stop and ask before implementing.
-- Allowed licenses for dependencies: MIT, Apache-2.0, BSD-2/3, ISC, MPL-2.0. Anything else needs approval.
+- Allowed licenses for dependencies: MIT, Apache-2.0, BSD-2/3, ISC, MPL-2.0. Anything else needs approval; approved per-package exceptions are listed in `docs/adr/0014-dependency-license-exceptions.md`.
