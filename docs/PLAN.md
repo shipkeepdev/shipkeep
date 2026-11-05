@@ -28,7 +28,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
-1. M2.5a2 (confirmation HTTP route), then M2.7b (node revocation) and M2.4c (audit coverage test).
+1. M2.7b (node revocation with confirmation) and M2.4c (audit coverage test).
 2. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
 3. M1.4a, M1.4b and M1.4c (container actions).
 4. M1.5 (Caddy routes) and M4.3 (scheduler, pure function). They can start in parallel with the items above, because their dependencies are met.
@@ -246,9 +246,9 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - [ ] **M2.4b** Audit UI with filters.
   - Acceptance: test asserts every command handler emits at least one audit event.
 - [ ] **M2.5 Confirmation tokens** (C + W). Depends: M2.3
-  - [ ] **M2.5a** `POST /api/v1/confirmations`: EdDSA JWS from the installation confirmation key (SPEC 3.6), the typed resource name checked, `jti` stored and marked used, audited.
+  - [x] **M2.5a** `POST /api/v1/confirmations`: EdDSA JWS from the installation confirmation key (SPEC 3.6), the typed resource name checked, `jti` stored and marked used, audited.
     - [x] **M2.5a1** Token format and catalog, Ed25519 signing in the installation key module, `confirmation_tokens` table under RLS, issuance and single-use consumption services.
-    - [ ] **M2.5a2** HTTP issuance route and the node target resolver.
+    - [x] **M2.5a2** HTTP issuance route and the node target resolver.
   - [ ] **M2.5b** Confirmation dialog in the web UI.
   - `/confirmations` endpoint, UI confirmation dialog that requires typing the resource name.
   - Acceptance: destructive endpoints reject requests without a valid, unused, matching token.

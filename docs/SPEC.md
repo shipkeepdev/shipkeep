@@ -170,7 +170,7 @@ Anything not in this table does not exist. There is no generic exec, shell or fi
 
 ### 3.6 Confirmation tokens
 
-- Issued by the control plane (`POST /api/v1/confirmations`) after the user types the resource name in the UI or passes `--confirm <name>` in the CLI.
+- Issued by the control plane (`POST /api/v1/organizations/{organizationId}/confirmations` with `action`, `target` and the typed `name`, 201) after the user types the resource name in the UI or passes `--confirm <name>` in the CLI. Any member may call it. A session needs Origin/CSRF; an API token needs `organization.read` to reach the route and the action's permission in its scopes. The command requires the action's live permission, answers 404 for unknown or hidden targets and 400 `confirmation_name_mismatch` for a wrong name. There is no encrypted retry: a lost response is answered with a new confirmation.
 - Format: compact JWS signed with EdDSA (Ed25519) by the installation's confirmation key. Claims: `jti`, `org`, `action`, `target`, `iat`, `exp` (5 minutes), `sub` (user).
 - The agent receives the public key at enrollment (`confirmation_public_key`), verifies the signature, the expiry, and that `action` and `target` match the request.
 - Single use is enforced on both sides: the control plane marks the token used; the agent stores used `jti` values in SQLite until `exp`.
