@@ -11,6 +11,9 @@ import { PrismaResourceStore } from './infrastructure/prisma-resource.store';
 import { CatalogQueries } from './application/catalog-queries';
 import { CATALOG_STORE } from './application/catalog-store';
 import { PrismaCatalogStore } from './infrastructure/prisma-catalog.store';
+import { MembershipCommands } from './application/membership-commands';
+import { MEMBERSHIP_STORE } from './application/membership-store';
+import { PrismaMembershipStore } from './infrastructure/prisma-membership.store';
 import { TenantAccessModule } from './tenant-access.module';
 
 @Module({
@@ -19,6 +22,8 @@ import { TenantAccessModule } from './tenant-access.module';
     OrganizationCommands,
     ResourceCommands,
     CatalogQueries,
+    MembershipCommands,
+    { provide: MEMBERSHIP_STORE, useClass: PrismaMembershipStore },
     { provide: CATALOG_STORE, useClass: PrismaCatalogStore },
     { provide: RESOURCE_STORE, useClass: PrismaResourceStore },
     { provide: ORGANIZATION_STORE, useClass: PrismaOrganizationStore },
