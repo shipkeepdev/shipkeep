@@ -131,6 +131,9 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 - [ ] **M2.3 Organizations, projects, environments, RBAC** (C + W). Depends: M2.2
   - [x] **M2.3a** Pure role matrix, resource-scope checks, protected-environment rules and last-owner policy.
   - [ ] **M2.3b** Organization/membership/project/environment schema, tenant-bound relations and database isolation tests.
+    - [x] **M2.3b1** Tenant tables, composite foreign keys, unique role scopes and database constraint tests.
+    - [ ] **M2.3b2** Enforced row-level security and concurrent last-owner database guards.
+    - [ ] **M2.3b3** Bind existing fleet records to organizations without assigning orphan records to an arbitrary owner.
   - [ ] **M2.3c** Tenant transaction context, repositories and audited commands with concurrent last-owner protection.
   - [ ] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.
   - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
