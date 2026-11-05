@@ -31,7 +31,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 1. M2.4c (audit coverage test).
 2. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
 3. M1.4a, M1.4b and M1.4c (container actions).
-4. M1.5 (Caddy routes) and M4.3 (scheduler, pure function). They can start in parallel with the items above, because their dependencies are met.
+4. M1.5 (Caddy routes). It can start in parallel with the items above, because its dependencies are met.
 
 **Work that no task owned yet, now assigned:**
 
@@ -297,7 +297,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - [ ] **M4.2 Internal DNS and service discovery** (A). Depends: M4.1
   - Embedded DNS on the WireGuard interface for `<app>.<env>.<project>.internal`.
   - Acceptance: app on node A reaches database on node B by name.
-- [ ] **M4.3 Scheduler** (C). Depends: M2.3 (pure function; can be built before M3.4, which uses it)
+- [x] **M4.3 Scheduler** (C). Depends: M2.3 (pure function; can be built before M3.4, which uses it)
   - SPEC 6 algorithm as a pure function with property-based tests.
   - Acceptance: deterministic placement; spread respected; constraints honored.
 - [ ] **M4.4 Routing table distribution** (C + A). Depends: M4.1, M1.5

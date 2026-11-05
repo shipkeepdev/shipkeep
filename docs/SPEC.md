@@ -300,6 +300,13 @@ starting -> unhealthy -> (restart within policy) -> starting | failed
 3. Stateful workloads are pinned to the node that holds their volume.
 4. Scheduling is deterministic given the same inputs (unit-testable without a cluster).
 
+The algorithm is `placeReplica` and `placeReplicas` in `packages/domain/src/lib/scheduler.ts`.
+
+- A stateful workload is pinned only when some node already stores its volume; otherwise it is placed like any other replica and its volume is created there.
+- Resource ratios compare exactly (integer cross-multiplication), never as rounded floats.
+- `placeReplicas` places replicas one after another, each seeing the reservations, ports and spread of the previous ones, and reports how many did not fit.
+- An unplaced replica returns one rejection reason per node: `not_ready`, `architecture`, `labels`, `not_allowed`, `volume`, `cpu`, `memory` or `ports`, checked in that order, for operator explanations.
+
 ## 7. RBAC
 
 Org roles: `owner`, `admin`, `member`. Project or environment roles for members: `admin`, `developer`, `viewer`.
