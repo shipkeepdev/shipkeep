@@ -176,6 +176,16 @@ Every field below is validated again by the agent. Names are proto message names
 
 Anything not in this table does not exist. There is no generic exec, shell or file-write action.
 
+The agent reaches Docker through `agent/internal/docker`, a minimal typed Engine API client.
+
+- It talks only to the local `unix://` socket, with API version `v1.47` pinned.
+- It exposes only the calls the catalog needs.
+- Names are path-escaped and request bodies are typed.
+- Responses are capped at 1 MiB, and daemon error text is never echoed.
+- Networks are matched by exact name, never by id prefix.
+
+The agent only adopts or changes resources that carry its `sk.managed=true` label; a same-named unmanaged network or volume is refused. Image pulls accept only digest-pinned references, plus optional credentials that are short-lived and scoped to the image's own registry. The `sk.` label namespace is reserved for the agent.
+
 ### 3.6 Confirmation tokens
 
 - Issued by the control plane (`POST /api/v1/organizations/{organizationId}/confirmations` with `action`, `target` and the typed `name`, 201) after the user types the resource name in the UI or passes `--confirm <name>` in the CLI. Any member may call it. A session needs Origin/CSRF; an API token needs `organization.read` to reach the route and the action's permission in its scopes. The command requires the action's live permission, answers 404 for unknown or hidden targets and 400 `confirmation_name_mismatch` for a wrong name. There is no encrypted retry: a lost response is answered with a new confirmation.

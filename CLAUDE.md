@@ -74,7 +74,7 @@ If a command in this table does not exist yet, creating it is part of the curren
 
 ## Architecture rules (never break these)
 
-1. **No shell string building, anywhere.** Never call `sh -c`, `bash -c`, `exec.Command` with user-influenced strings, or Node `child_process` with a shell. The agent talks to Docker through the Docker Engine API (Go SDK) and to Caddy through its admin API. If something truly needs a process, use an argv array with validated, allow-listed arguments, and add a test.
+1. **No shell string building, anywhere.** Never call `sh -c`, `bash -c`, `exec.Command` with user-influenced strings, or Node `child_process` with a shell. The agent talks to Docker through the Docker Engine API (the typed client in `agent/internal/docker`) and to Caddy through its admin API. If something truly needs a process, use an argv array with validated, allow-listed arguments, and add a test.
 2. **The agent action list is closed.** Every action is a message in `proto/shipkeep/agent/v1/actions.proto`. Adding or changing an action requires: an ADR or SPEC update, input validation in the agent, unit tests including malicious inputs, and the `security-review` label on the PR.
 3. **The agent never executes on the host.** Container exec sessions are allowed (typed, audited, RBAC-checked). Host shell access does not exist.
 4. **The control plane never holds SSH keys.** Agents enroll with a one-time join token and get a short-lived mTLS client certificate.
