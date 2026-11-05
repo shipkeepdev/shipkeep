@@ -1,0 +1,225 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-05T08:45:44.590791+00:00",
+  "title": "Design System: Shipkeep identity",
+  "extensions": {
+    "colorMeta": {
+      "accent": {
+        "role": "primary",
+        "displayName": "Action blue",
+        "tonalRamp": [
+          "oklch(15% 0.166 259.0)",
+          "oklch(26% 0.166 259.0)",
+          "oklch(38% 0.166 259.0)",
+          "oklch(49% 0.166 259.0)",
+          "oklch(61% 0.166 259.0)",
+          "oklch(72% 0.166 259.0)",
+          "oklch(84% 0.166 259.0)",
+          "oklch(95% 0.166 259.0)"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink slate",
+        "tonalRamp": [
+          "oklch(15% 0.038 246.5)",
+          "oklch(26% 0.038 246.5)",
+          "oklch(38% 0.038 246.5)",
+          "oklch(49% 0.038 246.5)",
+          "oklch(61% 0.038 246.5)",
+          "oklch(72% 0.038 246.5)",
+          "oklch(84% 0.038 246.5)",
+          "oklch(95% 0.038 246.5)"
+        ]
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted slate",
+        "tonalRamp": [
+          "oklch(15% 0.032 250.2)",
+          "oklch(26% 0.032 250.2)",
+          "oklch(38% 0.032 250.2)",
+          "oklch(49% 0.032 250.2)",
+          "oklch(61% 0.032 250.2)",
+          "oklch(72% 0.032 250.2)",
+          "oklch(84% 0.032 250.2)",
+          "oklch(95% 0.032 250.2)"
+        ]
+      },
+      "line": {
+        "role": "neutral",
+        "displayName": "Divider gray",
+        "tonalRamp": [
+          "oklch(15% 0.017 245.1)",
+          "oklch(26% 0.017 245.1)",
+          "oklch(38% 0.017 245.1)",
+          "oklch(49% 0.017 245.1)",
+          "oklch(61% 0.017 245.1)",
+          "oklch(72% 0.017 245.1)",
+          "oklch(84% 0.017 245.1)",
+          "oklch(95% 0.017 245.1)"
+        ]
+      },
+      "control": {
+        "role": "neutral",
+        "displayName": "Control gray",
+        "tonalRamp": [
+          "oklch(15% 0.027 248.3)",
+          "oklch(26% 0.027 248.3)",
+          "oklch(38% 0.027 248.3)",
+          "oklch(49% 0.027 248.3)",
+          "oklch(61% 0.027 248.3)",
+          "oklch(72% 0.027 248.3)",
+          "oklch(84% 0.027 248.3)",
+          "oklch(95% 0.027 248.3)"
+        ]
+      },
+      "panel": {
+        "role": "neutral",
+        "displayName": "Cool panel",
+        "tonalRamp": [
+          "oklch(15% 0.004 236.5)",
+          "oklch(26% 0.004 236.5)",
+          "oklch(38% 0.004 236.5)",
+          "oklch(49% 0.004 236.5)",
+          "oklch(61% 0.004 236.5)",
+          "oklch(72% 0.004 236.5)",
+          "oklch(84% 0.004 236.5)",
+          "oklch(95% 0.004 236.5)"
+        ]
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "White",
+        "tonalRamp": [
+          "oklch(15% 0.000 0.0)",
+          "oklch(26% 0.000 0.0)",
+          "oklch(38% 0.000 0.0)",
+          "oklch(49% 0.000 0.0)",
+          "oklch(61% 0.000 0.0)",
+          "oklch(72% 0.000 0.0)",
+          "oklch(84% 0.000 0.0)",
+          "oklch(95% 0.000 0.0)"
+        ]
+      },
+      "danger": {
+        "role": "semantic",
+        "displayName": "Danger red",
+        "tonalRamp": [
+          "oklch(15% 0.162 24.2)",
+          "oklch(26% 0.162 24.2)",
+          "oklch(38% 0.162 24.2)",
+          "oklch(49% 0.162 24.2)",
+          "oklch(61% 0.162 24.2)",
+          "oklch(72% 0.162 24.2)",
+          "oklch(84% 0.162 24.2)",
+          "oklch(95% 0.162 24.2)"
+        ]
+      },
+      "success": {
+        "role": "semantic",
+        "displayName": "Success green",
+        "tonalRamp": [
+          "oklch(15% 0.085 163.1)",
+          "oklch(26% 0.085 163.1)",
+          "oklch(38% 0.085 163.1)",
+          "oklch(49% 0.085 163.1)",
+          "oklch(61% 0.085 163.1)",
+          "oklch(72% 0.085 163.1)",
+          "oklch(84% 0.085 163.1)",
+          "oklch(95% 0.085 163.1)"
+        ]
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "button-background",
+        "value": "background-color 160ms ease-out",
+        "purpose": "Button state changes; disabled by prefers-reduced-motion: reduce."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "40rem"
+      },
+      {
+        "name": "md",
+        "value": "48rem"
+      },
+      {
+        "name": "lg",
+        "value": "64rem"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Submission and confirmation; src/styles.css and src/app/identity/auth-page.html.",
+      "html": "<button class=\"ds-primary\" type=\"button\">Sign in</button>",
+      "css": ".ds-primary{font-family:var(--font-sans,ui-sans-serif,system-ui,sans-serif);display:inline-flex;min-height:44px;align-items:center;justify-content:center;border:0;border-radius:6px;padding:10px 20px;font-size:14px;font-weight:600;line-height:20px;cursor:pointer;transition:background-color 160ms ease-out;background:var(--color-accent,#1759ba);color:#fff}.ds-primary:hover{background:#124895}.ds-primary:active{background:#103c7c}.ds-primary:focus-visible{outline:3px solid var(--color-accent,#1759ba);outline-offset:3px;}.ds-primary:disabled{background:var(--color-panel,#f2f5f7);color:var(--color-muted,#526171);cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none}}"
+    },
+    {
+      "name": "Secondary button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "Supporting actions; src/styles.css and src/app/identity/mfa-panel.html.",
+      "html": "<button class=\"ds-secondary\" type=\"button\">Cancel</button>",
+      "css": ".ds-secondary{font-family:var(--font-sans,ui-sans-serif,system-ui,sans-serif);display:inline-flex;min-height:44px;align-items:center;justify-content:center;border:0;border-radius:6px;padding:10px 20px;font-size:14px;font-weight:600;line-height:20px;cursor:pointer;transition:background-color 160ms ease-out;border:1px solid var(--color-line,#c6d0d9);background:#fff;color:var(--color-ink,#192b3b)}.ds-secondary:hover{background:var(--color-panel,#f2f5f7)}.ds-secondary:focus-visible{outline:3px solid var(--color-accent,#1759ba);outline-offset:3px;}.ds-secondary:disabled{background:var(--color-panel,#f2f5f7);color:var(--color-muted,#526171);cursor:not-allowed}@media(prefers-reduced-motion:reduce){.ds-secondary{transition:none}}"
+    },
+    {
+      "name": "Labeled field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Native input with persistent guidance; src/styles.css and src/app/identity/auth-page.html.",
+      "html": "<div class=\"ds-field\"><label for=\"ds-email\">Email address</label><input id=\"ds-email\" type=\"email\" autocomplete=\"email\" aria-describedby=\"ds-help\"><p id=\"ds-help\">Use the email address for your account.</p></div>",
+      "css": ".ds-field{font-family:var(--font-sans,ui-sans-serif,system-ui,sans-serif);color:var(--color-ink,#192b3b);max-width:28rem}.ds-field label{display:block;margin-bottom:8px;font-size:14px;font-weight:600;line-height:20px}.ds-field input{display:block;min-height:44px;width:100%;box-sizing:border-box;border:1px solid var(--color-control,#7a8896);border-radius:6px;background:#fff;padding:8px 12px;font:inherit;font-size:16px;line-height:24px;color:inherit;caret-color:var(--color-accent,#1759ba)}.ds-field input:focus-visible{outline:3px solid var(--color-accent,#1759ba);outline-offset:3px;}.ds-field input[aria-invalid=true]{border-color:var(--color-danger,#a02127)}.ds-field input:disabled{background:var(--color-panel,#f2f5f7);color:var(--color-muted,#526171)}.ds-field p{margin:8px 0 0;font-size:14px;line-height:1.625;color:var(--color-muted,#526171)}"
+    },
+    {
+      "name": "Account navigation",
+      "kind": "nav",
+      "refersTo": "navigation",
+      "description": "Current-page treatment on the navigation surface; src/app/app.html and src/styles.css.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Account\"><a href=\"#sign-in\" aria-current=\"page\">Sign in</a><a href=\"#register\">Create account</a><a href=\"#verify\">Verify email</a></nav>",
+      "css": ".ds-nav{font-family:var(--font-sans,ui-sans-serif,system-ui,sans-serif);display:flex;flex-wrap:wrap;gap:4px;background:var(--color-panel,#f2f5f7);padding:20px}.ds-nav a{display:flex;min-height:44px;box-sizing:border-box;align-items:center;border-radius:6px;padding:8px 12px;font-size:14px;line-height:20px;color:var(--color-ink,#192b3b);text-decoration:none}.ds-nav a:hover{background:#fff}.ds-nav a[aria-current=page]{background:#fff;color:var(--color-accent,#1759ba);font-weight:600}.ds-nav a:focus-visible{outline:3px solid var(--color-accent,#1759ba);outline-offset:3px;}@media(min-width:48rem){.ds-nav{flex-direction:column}}"
+    },
+    {
+      "name": "Task feedback",
+      "kind": "custom",
+      "refersTo": "feedback",
+      "description": "Focusable status or alert panel; src/styles.css and src/app/identity/mfa-panel.html.",
+      "html": "<div class=\"ds-feedback\" role=\"status\" tabindex=\"-1\"><p>Two-factor authentication is enabled.</p></div>",
+      "css": ".ds-feedback{font-family:var(--font-sans,ui-sans-serif,system-ui,sans-serif);margin:24px 0;border:1px solid var(--color-line,#c6d0d9);border-radius:6px;background:var(--color-panel,#f2f5f7);padding:16px;font-size:14px;line-height:1.625;color:var(--color-ink,#192b3b)}.ds-feedback p{margin:0}.ds-feedback:focus{outline:3px solid var(--color-accent,#1759ba);outline-offset:3px;}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Access ledger",
+    "overview": "The implemented identity UI uses a compact operator workspace: a cool navigation surface, white working area, ruled sections and explicit action results. The access-ledger description is an implementation assumption, not a user-approved aesthetic or a product-wide brand commitment.",
+    "keyCharacteristics": [
+      "Bounded forms and ruled settings sections.",
+      "Blue actions, slate text and literal status labels.",
+      "Keyboard-visible focus and nearby field guidance."
+    ],
+    "rules": [
+      {
+        "name": "The Explicit State Rule",
+        "body": "Pair state color with words; enabled, active, loading and unavailable states remain understandable without color.",
+        "section": "colors"
+      }
+    ],
+    "dos": [
+      "Do preserve the separate divider and enabled-control border colors.",
+      "Do pair status text with color and keep explanations beside their controls.",
+      "Do retain visible focus, minimum control heights and the overflow-aware token scroll cue."
+    ],
+    "donts": [
+      "Don't replace the observed ruled account sections with an invented card or chip system.",
+      "Don't present the access-ledger assumption as user-approved branding.",
+      "Don't treat generated swatch ramps as additional application tokens."
+    ]
+  }
+}

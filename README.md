@@ -62,4 +62,7 @@ session/token invalidation, TOTP and recovery-code login, token creation/revocat
 retries, concurrent-write prevention and temporary-grant cleanup. Fault injection drops an actual
 committed response and throttles its retry; real services and authorization remain enabled.
 Browser time advances only for display-expiry checks. The suite records no traces, HAR files or
-screenshots. Manual visual/accessibility review remains tracked in `docs/PLAN.md`.
+screenshots. Keyboard scenarios verify the skip link preserves the current form, validation
+returns focus to the error summary, and narrow token tables expose their actions after resizing.
+The web design system is documented in [apps/web/DESIGN.md](apps/web/DESIGN.md); implementation
+and acceptance progress is tracked in [docs/PLAN.md](docs/PLAN.md).

@@ -219,7 +219,19 @@
       </button>
     </div>
     @if (store.items().length) {
-      <div class="overflow-x-auto" role="region" aria-label="API token list" tabindex="0">
+      @if (tableOverflows()) {
+        <p id="token-scroll-hint" class="mb-3 text-sm text-muted">
+          Scroll horizontally to see all columns, including token actions.
+        </p>
+      }
+      <div
+        #tokenList
+        class="overflow-x-auto"
+        role="region"
+        aria-label="API token list"
+        [attr.aria-describedby]="tableOverflows() ? 'token-scroll-hint' : null"
+        tabindex="0"
+      >
         <table class="w-full min-w-[36rem] text-left text-sm">
           <caption class="sr-only">
             API tokens, expiry and current access

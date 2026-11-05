@@ -32,6 +32,7 @@ export class TokenPanel {
   protected readonly clipboard = inject(PrivateClipboard);
   protected readonly lifetimes = TOKEN_LIFETIMES;
   protected readonly working = signal(false);
+  protected readonly tableOverflows = signal(false);
   private readonly session = inject(SessionStore);
   private readonly focus = inject(FocusMonitor);
   private readonly injector = inject(Injector);
@@ -40,6 +41,7 @@ export class TokenPanel {
   private readonly heading = viewChild<ElementRef<HTMLElement>>('heading');
   private readonly firstField = viewChild<ElementRef<HTMLInputElement>>('firstField');
   private readonly feedback = viewChild<ElementRef<HTMLElement>>('feedback');
+  private readonly tokenList = viewChild<ElementRef<HTMLElement>>('tokenList');
   constructor() {
     effect(() => {
       const profile = this.session.profile();
@@ -51,6 +53,20 @@ export class TokenPanel {
     effect(() => {
       this.store.credential();
       this.clipboard.reset();
+    });
+    effect((onCleanup) => {
+      const region = this.tokenList()?.nativeElement;
+      this.tableOverflows.set(false);
+      if (!region || typeof ResizeObserver === 'undefined') return;
+      const observer = new ResizeObserver(() => {
+        this.tableOverflows.set(region.scrollWidth > region.clientWidth);
+      });
+      observer.observe(region);
+      // Content and container sizes can change independently (pagination, zoom, viewport).
+      if (region.firstElementChild) observer.observe(region.firstElementChild);
+      onCleanup(() => {
+        observer.disconnect();
+      });
     });
   }
   protected create(): void {
