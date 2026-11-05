@@ -2,6 +2,7 @@ import { Controller, Get, HttpStatus, ServiceUnavailableException } from '@nestj
 import { ApiOkResponse, ApiServiceUnavailableResponse, ApiTags } from '@nestjs/swagger';
 
 import { PrismaService } from '../prisma/prisma.service';
+import { AllowAnonymous } from '../http/allow-anonymous';
 
 import { HealthDto, ReadinessDto } from './health.dto';
 
@@ -10,6 +11,7 @@ export const API_VERSION = process.env['SHIPKEEP_VERSION'] ?? 'dev';
 
 @ApiTags('health')
 @Controller()
+@AllowAnonymous()
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}
 

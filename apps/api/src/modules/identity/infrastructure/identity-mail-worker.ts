@@ -1,4 +1,4 @@
-import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { Secret } from '@shipkeep/domain';
 import { z } from 'zod';
 
@@ -24,7 +24,7 @@ const messageSchema = z
   .strict();
 
 @Injectable()
-export class IdentityMailWorker implements OnModuleInit {
+export class IdentityMailWorker {
   constructor(
     private readonly jobs: JobQueue,
     private readonly mail: PrivateIdentityMail,
@@ -32,7 +32,7 @@ export class IdentityMailWorker implements OnModuleInit {
     @Inject(IDENTITY_DELIVERY) private readonly delivery: IdentityDelivery,
   ) {}
 
-  async onModuleInit(): Promise<void> {
+  async start(): Promise<void> {
     await this.mail.initialize();
     await this.jobs.work<unknown>(
       IDENTITY_MAIL_QUEUE,

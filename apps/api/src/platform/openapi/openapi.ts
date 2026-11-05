@@ -24,7 +24,12 @@ export function buildOpenApiDocument(app: INestApplication, version: string): Op
     )
     .addCookieAuth(
       SESSION_COOKIE,
-      { type: 'apiKey', in: 'cookie', name: SESSION_COOKIE },
+      {
+        type: 'apiKey',
+        in: 'cookie',
+        name: '__Host-shipkeep_session',
+        description: 'HTTPS session cookie; HTTP development uses shipkeep_session.',
+      },
       'session',
     )
     .build();
