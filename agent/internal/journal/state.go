@@ -161,9 +161,17 @@ func (s *Store) Lease(ctx context.Context) (int64, time.Time, error) {
 	return epoch, time.UnixMilli(expires), nil
 }
 
+// confirmationTTL is the lifetime the control plane gives confirmation tokens (SPEC 3.6) and
+// confirmationSkew the clock difference tolerated between it and this node: a node running slightly
+// behind must not reject a fresh token as "too far in the future".
+const (
+	confirmationTTL  = 5 * time.Minute
+	confirmationSkew = time.Minute
+)
+
 // ConsumeConfirmation records a previously signature-verified token ID once within its validity.
 func (s *Store) ConsumeConfirmation(ctx context.Context, id string, expires, now time.Time) (bool, error) {
-	if !identifier.MatchString(id) || !expires.After(now) || expires.After(now.Add(5*time.Minute)) {
+	if !identifier.MatchString(id) || !expires.After(now) || expires.After(now.Add(confirmationTTL+confirmationSkew)) {
 		return false, errors.New("invalid confirmation validity")
 	}
 	tx, err := s.db.BeginTx(ctx, nil)

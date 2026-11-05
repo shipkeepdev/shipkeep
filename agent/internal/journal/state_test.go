@@ -128,10 +128,15 @@ func TestConfirmationConsumptionIsSingleUseAndDurable(t *testing.T) {
 	if err != nil || used {
 		t.Fatal("confirmation replay accepted after restart")
 	}
-	for _, expires := range []time.Time{now, now.Add(-time.Second), now.Add(6 * time.Minute)} {
+	for _, expires := range []time.Time{now, now.Add(-time.Second), now.Add(7 * time.Minute)} {
 		if _, err := store.ConsumeConfirmation(t.Context(), "invalid", expires, now); err == nil {
 			t.Fatal("invalid confirmation validity accepted")
 		}
+	}
+	// A node whose clock runs 30 s behind the control plane sees 5 min 30 s of validity left.
+	skewed, err := store.ConsumeConfirmation(t.Context(), "confirmation-2", now.Add(5*time.Minute+30*time.Second), now)
+	if err != nil || !skewed {
+		t.Fatalf("confirmation from a slightly faster control plane rejected: used=%v err=%v", skewed, err)
 	}
 }
 
