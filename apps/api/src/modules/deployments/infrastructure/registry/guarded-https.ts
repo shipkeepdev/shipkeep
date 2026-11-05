@@ -34,18 +34,18 @@ type Resolver = (
  * name cannot point the control plane at internal services (SSRF), and the socket connects only to
  * an address this function vetted (no second resolution to rebind).
  */
-export function publicLookup(resolve: Resolver = dnsLookup as Resolver): LookupFunction {
+export function publicLookup(resolve: Resolver = dnsLookup): LookupFunction {
   return (hostname, options, callback) => {
     resolve(hostname, { all: true, verbatim: true }, (error, addresses) => {
       if (error) {
         callback(error, '', 0);
         return;
       }
-      const first = addresses[0];
-      if (!first || addresses.some((entry) => !isPublicAddress(entry.address))) {
+      if (addresses.length === 0 || addresses.some((entry) => !isPublicAddress(entry.address))) {
         callback(new RegistryAccessError('registry host resolves to a non-public address'), '', 0);
         return;
       }
+      const [first] = addresses;
       if (options.all) callback(null, addresses);
       else callback(null, first.address, first.family);
     });
@@ -71,15 +71,12 @@ export class GuardedHttps implements RegistryTransport {
   request(url: URL, init: RegistryRequest): Promise<RegistryResponse> {
     assertRegistryUrl(url);
     return new Promise((resolve, reject) => {
-      let timer: NodeJS.Timeout | undefined;
       const fail = (error: Error): void => {
-        clearTimeout(timer);
         // Socket and TLS messages may echo hosts or URLs; keep the reason generic unless ours.
-        reject(
-          error instanceof RegistryAccessError
-            ? error
-            : new RegistryAccessError('registry request failed'),
-        );
+        if (error instanceof RegistryAccessError) reject(error);
+        else if (error.name === 'AbortError')
+          reject(new RegistryAccessError('registry request timed out'));
+        else reject(new RegistryAccessError('registry request failed'));
       };
       const outgoing = request(
         url,
@@ -89,6 +86,7 @@ export class GuardedHttps implements RegistryTransport {
           lookup: this.lookup,
           agent: false,
           maxHeaderSize: 16 * 1024,
+          signal: AbortSignal.timeout(this.limits.timeoutMs),
         },
         (incoming) => {
           const chunks: Buffer[] = [];
@@ -102,7 +100,6 @@ export class GuardedHttps implements RegistryTransport {
             chunks.push(chunk);
           });
           incoming.on('end', () => {
-            clearTimeout(timer);
             const headers: Record<string, string | undefined> = {};
             for (const [name, value] of Object.entries(incoming.headers))
               headers[name] = Array.isArray(value) ? value.join(', ') : value;
@@ -111,9 +108,6 @@ export class GuardedHttps implements RegistryTransport {
           incoming.on('error', fail);
         },
       );
-      timer = setTimeout(() => {
-        outgoing.destroy(new RegistryAccessError('registry request timed out'));
-      }, this.limits.timeoutMs);
       outgoing.on('error', fail);
       outgoing.end();
     });

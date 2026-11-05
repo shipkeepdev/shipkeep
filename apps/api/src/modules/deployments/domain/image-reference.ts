@@ -30,8 +30,11 @@ export function parseImageReference(reference: string): ImageReference {
   const invalid = () =>
     new InvalidInputError('invalid_image_reference', 'The image reference is invalid.');
   if (reference.length === 0 || reference.length > 512) throw invalid();
-  const [withTag = '', digest = null, extra] = reference.split('@');
-  if (extra !== undefined || (digest !== null && !DIGEST.test(digest))) throw invalid();
+  const at = reference.split('@');
+  if (at.length > 2) throw invalid();
+  const withTag = at[0] ?? '';
+  const digest = at.length === 2 ? (at[1] ?? '') : null;
+  if (digest !== null && !DIGEST.test(digest)) throw invalid();
   const slash = withTag.lastIndexOf('/');
   const colon = withTag.lastIndexOf(':');
   const tag = colon > slash ? withTag.slice(colon + 1) : null;
@@ -47,8 +50,12 @@ export function parseImageReference(reference: string): ImageReference {
   let registry = DOCKER_HUB_REGISTRY;
   let repository = path.join('/');
   if (explicitRegistry) {
-    const [host = '', port, more] = first.split(':');
-    if (more !== undefined || !HOST.test(host) || (port !== undefined && !validPort(port)))
+    const hostAndPort = first.split(':');
+    if (
+      hostAndPort.length > 2 ||
+      !HOST.test(hostAndPort[0] ?? '') ||
+      (hostAndPort.length === 2 && !validPort(hostAndPort[1] ?? ''))
+    )
       throw invalid();
     registry = first;
   } else if (path.length === 1) {

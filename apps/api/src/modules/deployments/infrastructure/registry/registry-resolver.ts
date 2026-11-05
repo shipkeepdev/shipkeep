@@ -128,8 +128,8 @@ export function bearerChallenge(header: string | undefined): Map<string, string>
   if (!header || header.length > 2048 || !/^Bearer\s+/i.test(header)) return undefined;
   const parameters = new Map<string, string>();
   for (const match of header.replace(/^Bearer\s+/i, '').matchAll(/([a-z_]+)="([^"]*)"/gi)) {
-    const [, key, value] = match;
-    if (key && value !== undefined) parameters.set(key.toLowerCase(), value);
+    const [, key = '', value = ''] = match;
+    if (key) parameters.set(key.toLowerCase(), value);
   }
   return parameters;
 }
