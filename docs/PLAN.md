@@ -161,6 +161,9 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
         - [x] **M2.3c3c1** Tenant-scoped project/environment writes, live role checks and audit rollback acceptance.
         - [x] **M2.3c3c2** Bounded account/tenant catalog queries filtered by current resource grants.
     - [ ] **M2.3c4** Membership/binding commands, live authority and privilege-change session invalidation.
+      - [x] **M2.3c4a** Ordered actor/subject account locks, reauthenticated privilege changes and atomic credential invalidation.
+      - [ ] **M2.3c4b** Audited organization membership commands with serialized last-owner protection.
+      - [ ] **M2.3c4c** Scoped resource-role binding commands and membership/binding queries.
   - [ ] **M2.3d** Default-deny resource authorization, live API-token authority and protected HTTP endpoints.
   - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
   - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.

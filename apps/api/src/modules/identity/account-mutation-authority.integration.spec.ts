@@ -210,6 +210,21 @@ describe('account mutation authority with restricted PostgreSQL', () => {
     expect(operation).not.toHaveBeenCalled();
   });
 
+  it('expires proof when the callback ends, including inherited detached async work', async () => {
+    let release: () => void = () => undefined;
+    const resume = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let detached: Promise<SessionGrant> | undefined;
+    await authority.reauthenticated(context, password, {}, () => {
+      detached = resume.then(() => authority.rotate(context));
+      return Promise.resolve();
+    });
+    release();
+    await expect(detached).rejects.toThrow('Authentication failed.');
+    expect((await sessions.authenticate(original.token)).user.securityVersion).toBe(0);
+  });
+
   function event(type: string) {
     return createEvent({
       type,
