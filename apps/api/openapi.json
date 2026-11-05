@@ -1316,6 +1316,73 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/confirmations": {
+      "post": {
+        "operationId": "requestConfirmation",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "description": "Required for session requests.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Required for session requests.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestConfirmationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConfirmationIssuedDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "confirmations"
+        ]
+      }
+    },
     "/api/v1/organizations": {
       "get": {
         "operationId": "listOrganizations",
@@ -3816,6 +3883,56 @@
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "RequestConfirmationDto": {
+        "type": "object",
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "node.remove"
+            ]
+          },
+          "target": {
+            "type": "string",
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9._:/-]{1,128}$"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "The resource's exact current name, typed by the user."
+          }
+        },
+        "required": [
+          "action",
+          "target",
+          "name"
+        ]
+      },
+      "ConfirmationIssuedDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "token": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Single-use EdDSA JWT (SPEC 3.6), valid five minutes. Shown once."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "token",
+          "expiresAt"
         ]
       },
       "OrganizationDto": {
