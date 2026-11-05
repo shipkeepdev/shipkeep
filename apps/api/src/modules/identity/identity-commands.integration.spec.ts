@@ -64,14 +64,16 @@ describe('identity commands against PostgreSQL', () => {
   async function verify() {
     const message = sent.find((mail) => mail.purpose === 'verify');
     if (!message) throw new Error('missing verification fixture');
-    await accounts.verifyEmail(message.token);
+    await accounts.verifyEmail(message.token, password);
     return message;
   }
 
   it('requires mailbox ownership and consumes verification once', async () => {
     await expect(sessions.login(login())).rejects.toThrow('Authentication failed.');
     const message = await verify();
-    await expect(accounts.verifyEmail(message.token)).rejects.toThrow('Authentication failed.');
+    await expect(accounts.verifyEmail(message.token, password)).rejects.toThrow(
+      'Authentication failed.',
+    );
     const grant = await sessions.login(login());
     expect((await sessions.authenticate(grant.token)).user.email).toBe('person@example.com');
     expect(await prisma.auditEvent.count({ where: { targetId: grant.userId } })).toBe(3);
@@ -90,9 +92,50 @@ describe('identity commands against PostgreSQL', () => {
     ).rejects.toThrow('Authentication failed.');
   });
 
+  it('stops account pre-hijacking: the mailbox owner claims the address through reset', async () => {
+    // beforeEach plays the attacker: person@example.com was registered with the attacker's password.
+    const attackerLink = sent[0];
+    const owner = new Secret('mailbox owner chosen passphrase');
+    // The owner clicks the link but cannot activate a password they never chose.
+    await expect(accounts.verifyEmail(attackerLink.token, owner)).rejects.toThrow(
+      'Authentication failed.',
+    );
+    await accounts.requestEmail('person@example.com', 'reset');
+    const reset = sent.find((mail) => mail.purpose === 'reset');
+    if (!reset) throw new Error('pending accounts must receive reset links');
+    await accounts.resetPassword(reset.token, owner);
+    const claimed = await prisma.user.findUniqueOrThrow({ where: { email: 'person@example.com' } });
+    expect(claimed.status).toBe('active');
+    expect(claimed.emailVerifiedAt).not.toBeNull();
+    // The attacker's password and verification link are both dead.
+    await expect(sessions.login(login())).rejects.toThrow('Authentication failed.');
+    await expect(accounts.verifyEmail(attackerLink.token, password)).rejects.toThrow(
+      'Authentication failed.',
+    );
+    await expect(sessions.login({ ...login(), password: owner })).resolves.toHaveProperty('userId');
+    expect(
+      (
+        await prisma.auditEvent.findMany({
+          where: { targetId: claimed.id },
+          orderBy: { id: 'asc' },
+        })
+      )
+        .map((row) => row.action)
+        .slice(-3),
+    ).toEqual(['identity.email_verified', 'identity.password_reset', 'identity.logged_in']);
+  });
+
+  it('does not consume the verification link when the password is wrong', async () => {
+    const message = sent[0];
+    await expect(
+      accounts.verifyEmail(message.token, new Secret('not the registered password')),
+    ).rejects.toThrow('Authentication failed.');
+    await verify();
+  });
+
   it('rejects expired and wrong-purpose links without consuming a valid verification link', async () => {
     const message = sent[0];
-    await expect(accounts.verifyEmail(message.token, message.expiresAt)).rejects.toThrow(
+    await expect(accounts.verifyEmail(message.token, password, message.expiresAt)).rejects.toThrow(
       'Authentication failed.',
     );
     await expect(accounts.resetPassword(message.token, password)).rejects.toThrow(

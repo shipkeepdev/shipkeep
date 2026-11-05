@@ -22,6 +22,19 @@ export class EmailCodeDto {
   @Matches(TOKEN_PATTERN)
   token!: string;
 }
+export class VerifyEmailDto extends EmailCodeDto {
+  @ApiProperty({
+    minLength: 1,
+    maxLength: 128,
+    writeOnly: true,
+    format: 'password',
+    description: 'The password chosen at registration.',
+  })
+  @IsString()
+  @MinLength(1)
+  @MaxLength(128)
+  password!: string;
+}
 export class ResetPasswordDto extends EmailCodeDto {
   @ApiProperty({ minLength: 15, maxLength: 128, writeOnly: true, format: 'password' })
   @IsString()
