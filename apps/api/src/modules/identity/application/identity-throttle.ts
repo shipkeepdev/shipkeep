@@ -15,5 +15,6 @@ export interface IdentityThrottle {
     subject?: string,
     now?: Date,
   ): Promise<ThrottleDecision>;
-  succeeded(subject: string): Promise<void>;
+  /** Clears the account delay and this network's account quota after a successful login. */
+  succeeded(subject: string, ip: string): Promise<void>;
 }

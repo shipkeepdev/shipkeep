@@ -5,7 +5,13 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { IdentityThrottle, ThrottleDecision } from '../application/identity-throttle';
-import { type IdentityAttempt, type ThrottleAxis, throttlePolicy } from '../domain/throttle-policy';
+import { clientNetwork } from '../domain/client-network';
+import {
+  type IdentityAttempt,
+  type ThrottleAxis,
+  throttlePolicy,
+  usesSourceAxis,
+} from '../domain/throttle-policy';
 
 @Injectable()
 export class PrismaIdentityThrottle implements IdentityThrottle {
@@ -23,19 +29,39 @@ export class PrismaIdentityThrottle implements IdentityThrottle {
         await this.database.client.$executeRaw`DELETE FROM identity_throttles WHERE id IN (
           SELECT id FROM identity_throttles WHERE window_ends_at <= ${now}
           ORDER BY window_ends_at, id LIMIT 100 FOR UPDATE SKIP LOCKED)`;
-        const ipDecision = await this.claim(attempt, 'ip', ip, now);
+        const network = clientNetwork(ip);
+        const ipDecision = await this.claim(attempt, 'ip', network, now);
         if (!ipDecision.allowed || subject === undefined) return ipDecision;
-        return this.claim(attempt, 'subject', subject, now);
+        const decisions = [ipDecision];
+        if (usesSourceAxis(attempt)) {
+          const source = await this.claim(attempt, 'source', sourceKey(subject, network), now);
+          if (!source.allowed) return source;
+          decisions.push(source);
+        }
+        const account = await this.claim(attempt, 'subject', subject, now);
+        if (!account.allowed) return account;
+        decisions.push(account);
+        // Report the tightest admitted quota so clients see the limit that will stop them first.
+        return decisions.reduce((tightest, decision) =>
+          decision.remaining < tightest.remaining ? decision : tightest,
+        );
       });
     } catch {
       throw new ServiceUnavailableException('Authentication temporarily unavailable.');
     }
   }
 
-  async succeeded(subject: string): Promise<void> {
+  async succeeded(subject: string, ip: string): Promise<void> {
     try {
       await this.database.client.identityThrottle.deleteMany({
-        where: { keyHash: key('login', 'subject', subject) },
+        where: {
+          keyHash: {
+            in: [
+              key('login', 'subject', subject),
+              key('login', 'source', sourceKey(subject, clientNetwork(ip))),
+            ],
+          },
+        },
       });
     } catch {
       throw new ServiceUnavailableException('Authentication temporarily unavailable.');
@@ -62,7 +88,7 @@ export class PrismaIdentityThrottle implements IdentityThrottle {
         hits = CASE WHEN identity_throttles.window_ends_at <= ${now} THEN 1 ELSE identity_throttles.hits + 1 END,
         window_ends_at = CASE WHEN identity_throttles.window_ends_at <= ${now} THEN ${endsAt} ELSE identity_throttles.window_ends_at END,
         next_allowed_at = ${now}::timestamptz + (CASE WHEN identity_throttles.window_ends_at <= ${now}
-          THEN ${initialDelay} ELSE ${initialDelay} * power(2, LEAST(identity_throttles.hits, 8)) END) * interval '1 millisecond',
+          THEN ${initialDelay} ELSE ${initialDelay} * power(2, LEAST(identity_throttles.hits, ${policy.maxDelaySteps})) END) * interval '1 millisecond',
         updated_at = ${now}
       WHERE identity_throttles.next_allowed_at <= ${now}
         AND (identity_throttles.window_ends_at <= ${now} OR identity_throttles.hits < ${policy.limit})
@@ -88,6 +114,11 @@ export class PrismaIdentityThrottle implements IdentityThrottle {
       retryAfterSeconds: Math.max(1, Math.ceil((retryAt.getTime() - now.getTime()) / 1000)),
     };
   }
+}
+
+function sourceKey(subject: string, network: string): string {
+  // Length-prefixed so no subject/network pair can collide with another.
+  return `${String(subject.length)}:${subject}|${network}`;
 }
 
 function key(attempt: IdentityAttempt, axis: ThrottleAxis, principal: string): string {

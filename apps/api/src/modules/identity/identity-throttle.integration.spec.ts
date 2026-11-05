@@ -67,7 +67,7 @@ describe('shared authentication throttling', () => {
       expect(
         (await first.acquire('login', ip, `person${String(index)}@example.com`, now)).allowed,
       ).toBe(true);
-      await first.succeeded(`person${String(index)}@example.com`);
+      await first.succeeded(`person${String(index)}@example.com`, ip);
     }
     expect(await second.acquire('login', ip, subject, now)).toMatchObject({
       allowed: false,
@@ -89,8 +89,40 @@ describe('shared authentication throttling', () => {
   it('clears successful-login account delays while preserving unrelated scopes', async () => {
     await first.acquire('login', ip, subject, now);
     await first.acquire('reset', ip, subject, now);
-    await second.succeeded(subject);
+    await second.succeeded(subject, ip);
     expect((await first.acquire('login', ip, subject, now)).allowed).toBe(true);
     expect((await first.acquire('reset', ip, subject, now)).allowed).toBe(false);
+  });
+
+  it('never lets failures from another network lock the owner out', async () => {
+    const attacker = '198.51.100.7';
+    let at = now.getTime();
+    // Space attempts beyond the longest delay so only the hard quota can block them.
+    for (let attempt = 0; attempt < 10; attempt++) {
+      expect((await first.acquire('login', attacker, subject, new Date(at))).allowed).toBe(true);
+      at += 70000;
+    }
+    expect((await first.acquire('login', attacker, subject, new Date(at))).allowed).toBe(false);
+    // The account itself is only delayed (at most 8 s), so the owner gets through from elsewhere.
+    const owner = await second.acquire('login', '203.0.113.9', subject, new Date(at + 8000));
+    expect(owner.allowed).toBe(true);
+    expect(owner.remaining).toBe(9);
+  });
+
+  it('treats every address of one IPv6 /64 as the same network', async () => {
+    for (let attempt = 0; attempt < 10; attempt++)
+      await first.acquire(
+        'login',
+        `2001:db8:1:2::${attempt.toString(16)}`,
+        subject,
+        new Date(now.getTime() + attempt * 70000),
+      );
+    const rotated = await first.acquire(
+      'login',
+      '2001:db8:1:2:ffff:ffff:ffff:ffff',
+      subject,
+      new Date(now.getTime() + 10 * 70000),
+    );
+    expect(rotated.allowed).toBe(false);
   });
 });
