@@ -174,6 +174,9 @@ Anything not in this table does not exist. There is no generic exec, shell or fi
 - Format: compact JWS signed with EdDSA (Ed25519) by the installation's confirmation key. Claims: `jti`, `org`, `action`, `target`, `iat`, `exp` (5 minutes), `sub` (user).
 - The agent receives the public key at enrollment (`confirmation_public_key`), verifies the signature, the expiry, and that `action` and `target` match the request.
 - Single use is enforced on both sides: the control plane marks the token used; the agent stores used `jti` values in SQLite until `exp`.
+- Encoding: the header is exactly `{"alg":"EdDSA","typ":"JWT"}`. The payload is exactly `{"jti","org","action","target","sub","iat","exp"}` in that order: UUIDv7 `jti`, `org` and `sub`, `exp = iat + 300`, all base64url without padding. The signature is the raw 64-byte Ed25519 signature of `header.payload`. Verifiers reject any other header, extra or missing claims, non-canonical encodings and tokens over 2 KiB.
+- Actions come from a closed catalog (`modules/confirmations/domain/confirmation-token.ts`), each with the permission its requester needs. The first is `node.remove` (`node.manage`, target = node id).
+- Issuance requires the live permission and the resource's exact current name, typed by the user. The control plane stores only the token id, binding, expiry and use time (`confirmation_tokens`, tenant RLS, no DELETE grant), and audits `confirmation.issued`. A destructive command consumes the token inside its own tenant transaction, through one conditional update, so the token is spent only if the command commits.
 
 ### 3.4 Operation journal
 
@@ -233,6 +236,7 @@ Membership writes serialize on the organization through a no-op row update, prod
 | `Project`             | name, slug, git_write_mode (commit, pull_request)                                                            | slug unique per org                                                                      |
 | `Environment`         | project_id, name, kind (standard, preview), failover_policy, protected                                       | protected envs require Admin for deploy and exec                                         |
 | `Node`                | name, status, labels, facts, wireguard_ip, wireguard_public_key, lease_epoch, last_heartbeat_at              | name unique per org                                                                      |
+| `ConfirmationToken`   | organization_id, user_id, action, target, issued_at, expires_at, used_at                                     | single use; the signed token is never stored (SPEC 3.6)                                  |
 | `NodeCertificate`     | organization_id, node_id, serial, not_after, revoked_at                                                      | one active cert per node; `(organization_id, node_id)` references its node (ADR 0015)    |
 | `JoinToken`           | organization_id, token_hash, expires_at, used_at                                                             | single use                                                                               |
 | `GitConnection`       | provider, installation_id or credentials_enc, scope                                                          | per org                                                                                  |
