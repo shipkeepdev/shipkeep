@@ -2,6 +2,7 @@ package actions
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"testing"
@@ -21,6 +22,7 @@ type fakeEngine struct {
 	volumes  map[string]docker.Volume
 	images   map[string]docker.Image
 	pulls    []string
+	removed  []string
 	auth     *docker.Auth
 }
 
@@ -60,6 +62,14 @@ func (f *fakeEngine) CreateVolume(_ context.Context, name string, labels map[str
 	return nil
 }
 
+func (f *fakeEngine) RemoveVolume(_ context.Context, name string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.volumes, name)
+	f.removed = append(f.removed, name)
+	return nil
+}
+
 func (f *fakeEngine) Image(_ context.Context, ref string) (docker.Image, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -81,7 +91,7 @@ func (f *fakeEngine) PullImage(_ context.Context, repository, digest string, aut
 
 func run(t *testing.T, engine Engine, req *agentv1.ActionRequest) *agentv1.ActionUpdate {
 	t.Helper()
-	d := &Dispatcher{Journal: open(t), Handlers: DockerHandlers(engine), Epoch: func() uint64 { return 3 }}
+	d := &Dispatcher{Journal: open(t), Handlers: DockerHandlers(engine, confirmer{}), Epoch: func() uint64 { return 3 }}
 	req.ActionId = testID
 	req.IdempotencyKey = "test:key"
 	req.LeaseEpoch = 3
@@ -134,6 +144,10 @@ func TestDockerHandlersRejectMaliciousInput(t *testing.T) {
 	cases["expired credentials"] = &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: "registry.internal/app@" + digest, RegistryCredentials: expired}}}
 	cases["credentials for another registry"] = &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: "registry.internal/app@" + digest, RegistryCredentials: foreign}}}
 	cases["credentials for docker hub"] = &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: "app@" + digest, RegistryCredentials: foreign}}}
+	for name, token := range map[string]string{"empty": "", "garbage": "not-a-token", "bad shape": "a.b.c"} {
+		cases["remove volume token "+name] = &agentv1.ActionRequest{Action: &agentv1.ActionRequest_RemoveVolume{RemoveVolume: &agentv1.RemoveVolume{Name: "sk-data", ConfirmationToken: token}}}
+	}
+	cases["remove volume traversal"] = &agentv1.ActionRequest{Action: &agentv1.ActionRequest_RemoveVolume{RemoveVolume: &agentv1.RemoveVolume{Name: "sk-../etc", ConfirmationToken: wellformed}}}
 	cases["reserved label"] = &agentv1.ActionRequest{Action: &agentv1.ActionRequest_EnsureVolume{EnsureVolume: &agentv1.EnsureVolume{Name: "sk-data", Labels: map[string]string{"sk.managed": "false"}}}}
 	cases["control character label"] = &agentv1.ActionRequest{Action: &agentv1.ActionRequest_EnsureVolume{EnsureVolume: &agentv1.EnsureVolume{Name: "sk-data", Labels: map[string]string{"team": "a\x00b"}}}}
 	many := map[string]string{}
@@ -148,7 +162,7 @@ func TestDockerHandlersRejectMaliciousInput(t *testing.T) {
 			if update.GetState() != agentv1.OperationState_OPERATION_STATE_FAILED || update.GetError() != errInvalid {
 				t.Fatalf("accepted malicious input: %v", update)
 			}
-			if len(engine.networks)+len(engine.volumes)+len(engine.pulls) != 0 {
+			if len(engine.networks)+len(engine.volumes)+len(engine.pulls)+len(engine.removed) != 0 {
 				t.Fatal("rejected input reached the daemon")
 			}
 		})
@@ -184,4 +198,39 @@ func FuzzResourceAndImageValidation(f *testing.F) {
 			t.Fatalf("accepted image reference %q", value)
 		}
 	})
+}
+
+// wellformed has the exact SPEC 3.6 shape; confirmer decides acceptance in these tests.
+const wellformed = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIwMTlkMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwZTEiLCJvcmciOiIwMTlkMDAwMC0wMDAwLTcwMDAtODAwMC0wMDAwMDAwMDAwZTIiLCJhY3Rpb24iOiJ2b2x1bWUucmVtb3ZlIiwidGFyZ2V0Ijoic2stZGF0YSIsInN1YiI6IjAxOWQwMDAwLTAwMDAtNzAwMC04MDAwLTAwMDAwMDAwMDBlMyIsImlhdCI6MTc5Mzg4MDAwMCwiZXhwIjoxNzkzODgwMzAwfQ.UxepazWNLS8BkoQIdIOvf2ol7SO3x8yHnDG8Xkk9PElGRM7LHYCroY8z45b1d-tn_ZpuhrdEgeTWCnoKvcDTAg" // gitleaks:allow (test token, fixed public test key)
+
+type confirmer struct{ reject bool }
+
+func (c confirmer) Consume(_ context.Context, token, action, target string) error {
+	if c.reject || token != wellformed || action != "volume.remove" || target != "sk-data" {
+		return errors.New("rejected")
+	}
+	return nil
+}
+
+func TestRemoveVolumeNeedsConfirmationAndManagedVolume(t *testing.T) {
+	remove := func(engine *fakeEngine, c Confirmer, name string) *agentv1.ActionUpdate {
+		d := &Dispatcher{Journal: open(t), Handlers: DockerHandlers(engine, c), Epoch: func() uint64 { return 3 }}
+		out := &recorder{}
+		d.Handle(context.Background(), &agentv1.ActionRequest{ActionId: testID, IdempotencyKey: "rm", LeaseEpoch: 3, DeadlineUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+			Action: &agentv1.ActionRequest_RemoveVolume{RemoveVolume: &agentv1.RemoveVolume{Name: name, ConfirmationToken: wellformed}}}, out.send)
+		return out.last(t)
+	}
+	engine := newFakeEngine()
+	engine.volumes["sk-data"] = docker.Volume{Name: "sk-data", Labels: map[string]string{docker.ManagedLabel: "true"}}
+	if succeeded(remove(engine, confirmer{reject: true}, "sk-data")) || len(engine.removed) != 0 {
+		t.Fatal("removed without a valid confirmation")
+	}
+	if !succeeded(remove(engine, confirmer{}, "sk-data")) || len(engine.removed) != 1 {
+		t.Fatal("confirmed removal failed")
+	}
+	foreign := newFakeEngine()
+	foreign.volumes["sk-data"] = docker.Volume{Name: "sk-data"}
+	if succeeded(remove(foreign, confirmer{}, "sk-data")) || len(foreign.removed) != 0 {
+		t.Fatal("removed an unmanaged volume")
+	}
 }

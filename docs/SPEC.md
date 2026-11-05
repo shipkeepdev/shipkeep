@@ -193,6 +193,12 @@ The agent only adopts or changes resources that carry its `sk.managed=true` labe
 - The agent receives the public key at enrollment (`confirmation_public_key`), verifies the signature, the expiry, and that `action` and `target` match the request.
 - Single use is enforced on both sides: the control plane marks the token used; the agent stores used `jti` values in SQLite until `exp`.
 - Encoding: the header is exactly `{"alg":"EdDSA","typ":"JWT"}`. The payload is exactly `{"jti","org","action","target","sub","iat","exp"}` in that order: UUIDv7 `jti`, `org` and `sub`, `exp = iat + 300`, all base64url without padding. The signature is the raw 64-byte Ed25519 signature of `header.payload`. Verifiers reject any other header, extra or missing claims, non-canonical encodings and tokens over 2 KiB.
+- Agent verification (`agent/internal/confirm`):
+  - The agent uses the same strict parser and the public key from enrollment.
+  - It requires `org` to be its own organization, the action and target to match the request, `iat` at most 60 s ahead and the token unexpired.
+  - It records the `jti` in its journal until `exp`.
+  - A test vector signed by Node.js checks that the TypeScript and Go implementations agree.
+  - `RemoveVolume` needs a token with action `volume.remove` and the volume name as target. The token is spent in a non-retryable first step; the volume is then removed only if it carries `sk.managed=true`. The control plane will issue `volume.remove` confirmations once volumes are resources (M5).
 - Actions come from a closed catalog (`modules/confirmations/domain/confirmation-token.ts`), each with the permission its requester needs. The first is `node.remove` (`node.manage`, target = node id).
 - Issuance requires the live permission and the resource's exact current name, typed by the user. The control plane stores only the token id, binding, expiry and use time (`confirmation_tokens`, tenant RLS, no DELETE grant), and audits `confirmation.issued`. A destructive command consumes the token inside its own tenant transaction, through one conditional update, so the token is spent only if the command commits.
 
