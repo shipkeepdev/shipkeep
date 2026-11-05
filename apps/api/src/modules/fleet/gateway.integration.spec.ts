@@ -74,7 +74,7 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
     const token = await app.get(IssueJoinToken).execute({ organizationId: org, actor });
     const request = await requestCertificate();
     const result = await client().enroll({
-      joinToken: token.value,
+      joinToken: token.value.expose(),
       csrPem: request.csrPem,
       facts: { hostname: name },
       agentVersion: '0.1.0',
@@ -124,7 +124,7 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
     );
     await expect(
       client().enroll({
-        joinToken: enrolled.token.value,
+        joinToken: enrolled.token.value.expose(),
         csrPem: (await requestCertificate()).csrPem,
       }),
     ).rejects.toMatchObject({ code: Code.InvalidArgument });
@@ -144,7 +144,11 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
     const request = await requestCertificate();
     const results = await Promise.allSettled(
       ['tls-race-a', 'tls-race-b'].map((hostname) =>
-        client().enroll({ joinToken: token.value, csrPem: request.csrPem, facts: { hostname } }),
+        client().enroll({
+          joinToken: token.value.expose(),
+          csrPem: request.csrPem,
+          facts: { hostname },
+        }),
       ),
     );
     expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
@@ -165,7 +169,7 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
     try {
       await expect(
         client().enroll({
-          joinToken: token.value,
+          joinToken: token.value.expose(),
           csrPem: request.csrPem,
           facts: { hostname: 'tls-audit-failure' },
         }),
@@ -181,7 +185,7 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
     ).toMatchObject({ usedAt: null });
     await expect(
       client().enroll({
-        joinToken: token.value,
+        joinToken: token.value.expose(),
         csrPem: request.csrPem,
         facts: { hostname: 'tls-audit-failure' },
       }),
@@ -392,10 +396,10 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
   it('bounds incoming messages and does not reflect malformed CSR contents', async () => {
     const token = await app.get(IssueJoinToken).execute({ organizationId: org, actor });
     await expect(
-      client().enroll({ joinToken: token.value, csrPem: 'x'.repeat(70_000) }),
+      client().enroll({ joinToken: token.value.expose(), csrPem: 'x'.repeat(70_000) }),
     ).rejects.toMatchObject({ code: Code.ResourceExhausted });
     await expect(
-      client().enroll({ joinToken: token.value, csrPem: 'sensitive-invalid-csr' }),
+      client().enroll({ joinToken: token.value.expose(), csrPem: 'sensitive-invalid-csr' }),
     ).rejects.toMatchObject({
       code: Code.InvalidArgument,
       rawMessage: 'invalid certificate request',

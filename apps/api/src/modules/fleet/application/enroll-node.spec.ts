@@ -1,4 +1,4 @@
-import { ConflictError, type DomainEvent } from '@shipkeep/domain';
+import { ConflictError, type DomainEvent, Secret } from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { JoinTokenRejectedError } from '../domain/join-token';
@@ -26,7 +26,7 @@ function setup() {
   const tokens = new MemoryJoinTokenStore();
   const nodes = new MemoryNodeStore();
   const ca = new FakeCertificateAuthority();
-  const issue = new IssueJoinToken(tokens, ca, bus);
+  const issue = new IssueJoinToken(tokens, ca, bus, { run: (work) => work() });
   const enroll = new EnrollNode(tokens, nodes, ca, new FakeConfirmationKeys(), bus, {
     run: (work) => work(),
   });
@@ -39,15 +39,15 @@ describe('IssueJoinToken', () => {
     const now = new Date('2026-11-03T12:00:00Z');
     const result = await issue.execute({ organizationId: org, actor }, now);
 
-    expect(result.value).toHaveLength(43);
+    expect(result.value.expose()).toHaveLength(43);
     expect(result.expiresAt.getTime()).toBe(now.getTime() + 15 * 60_000);
     expect(result.caFingerprint).toMatch(/^sha256:[0-9a-f]{64}$/);
     const stored = tokens.records.get(result.id);
     expect(stored?.tokenHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(JSON.stringify([...tokens.records.values()])).not.toContain(result.value);
+    expect(JSON.stringify([...tokens.records.values()])).not.toContain(result.value.expose());
     expect(published.map((e) => e.type)).toEqual(['fleet.join_token.issued']);
     expect(published[0]?.target).toEqual({ type: 'join_token', id: result.id });
-    expect(JSON.stringify(published)).not.toContain(result.value);
+    expect(JSON.stringify(published)).not.toContain(result.value.expose());
   });
 });
 
@@ -111,7 +111,7 @@ describe('EnrollNode', () => {
     await expect(reuse).rejects.toThrow(JoinTokenRejectedError);
     await expect(reuse).rejects.toThrow('join token is invalid, expired or already used');
     const unknown = enroll.execute({
-      joinToken: 'x'.repeat(43),
+      joinToken: new Secret('x'.repeat(43)),
       csrPem: FAKE_CSR,
       facts: {},
       agentVersion: '0.1.0',
@@ -132,7 +132,7 @@ describe('EnrollNode', () => {
     ).rejects.toMatchObject({ reason: 'expired' });
     await expect(
       enroll.execute({
-        joinToken: 'not a token',
+        joinToken: new Secret('not a token'),
         csrPem: FAKE_CSR,
         facts: {},
         agentVersion: '0.1.0',

@@ -246,6 +246,8 @@ Membership writes serialize on the organization through a no-op row update, prod
 | `DataEncryptionKey`   | scope (unique, for example `environment:<id>`), wrapped_key, kek_version, created_at                         | DEK of section 9, wrapped by the KEK; never updated in place, rotation inserts a new row |
 | `InstallationKey`     | kind (unique: `ca`, `confirmation`), certificate_pem, public_key_pem, private_key_enc, not_after             | private half encrypted by the KEK; created once at first start                           |
 
+Installation keys are created at application bootstrap, after every module has subscribed to the event bus. Each insert commits with its `fleet.installation_key.created` system audit event (kind and public-key fingerprint, no organization); an instance that loses the creation race uses the stored key and records nothing.
+
 ## 5. State machines
 
 ### 5.1 Deployment

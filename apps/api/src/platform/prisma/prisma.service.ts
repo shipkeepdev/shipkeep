@@ -34,7 +34,9 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
       await this.$queryRaw`SELECT 1`;
       return true;
     } catch (error: unknown) {
-      this.logger.warn({ err: error }, 'database ping failed');
+      // Driver errors can echo the connection string; log only a stable code (rule 8).
+      const code = error instanceof Error && 'code' in error ? String(error.code) : 'unknown';
+      this.logger.warn({ code }, 'database ping failed');
       return false;
     }
   }

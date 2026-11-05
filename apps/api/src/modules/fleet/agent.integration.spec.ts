@@ -53,7 +53,7 @@ it('enrolls the real Go daemon, reconnects after API restart and rejects reuse/r
       JSON.stringify({
         address: `127.0.0.1:${String(address.port)}`,
         fingerprint: token.caFingerprint,
-        token: token.value,
+        token: token.value.expose(),
       }),
       { mode: 0o600 },
     );

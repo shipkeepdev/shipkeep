@@ -129,7 +129,7 @@ describe('fleet enrollment against PostgreSQL', () => {
     expect(certs[0]?.revokedAt).toBeNull();
     const stored = await prisma.joinToken.findUniqueOrThrow({ where: { id: token.id } });
     expect(stored.usedByNodeId).toBe(result.nodeId);
-    expect(stored.tokenHash).not.toBe(token.value);
+    expect(stored.tokenHash).not.toBe(token.value.expose());
 
     const keys = await prisma.installationKey.findMany();
     expect(keys.map((k) => k.kind).sort()).toEqual(['ca', 'confirmation']);
@@ -142,7 +142,7 @@ describe('fleet enrollment against PostgreSQL', () => {
       orderBy: { id: 'asc' },
     });
     expect(audit.map((a) => a.action)).toEqual(['fleet.join_token.issued', 'fleet.node.enrolled']);
-    expect(JSON.stringify(audit)).not.toContain(token.value);
+    expect(JSON.stringify(audit)).not.toContain(token.value.expose());
 
     // The token is spent: a second node cannot use it.
     await expect(
@@ -214,6 +214,23 @@ describe('fleet enrollment against PostgreSQL', () => {
         where: { targetId: identity.nodeId, action: 'fleet.node.certificate_renewed' },
       }),
     ).toBe(1);
+  });
+
+  it('leaves no join token behind when its issuance cannot be audited', async () => {
+    if (!app) throw new Error('application did not start');
+    const prisma = app.get(PrismaService);
+    const before = await prisma.joinToken.count({ where: { organizationId: org } });
+    const unsubscribe = app
+      .get(DomainEventBus)
+      .subscribe(() => Promise.reject(new Error('injected failure')));
+    try {
+      await expect(app.get(IssueJoinToken).execute({ organizationId: org, actor })).rejects.toThrow(
+        'injected failure',
+      );
+    } finally {
+      unsubscribe();
+    }
+    expect(await prisma.joinToken.count({ where: { organizationId: org } })).toBe(before);
   });
 
   it('rolls back the new certificate, revocation and audit if an event subscriber fails', async () => {

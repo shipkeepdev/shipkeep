@@ -71,6 +71,9 @@ describe('runtime-role provisioning against PostgreSQL', () => {
   });
 
   it('denies audit and key rewrites, tenant DDL and access to administrative migration state', async () => {
+    // Startup also audits the installation keys it created; only the total must not change.
+    const audits = await prisma.auditEvent.count();
+    expect(audits).toBeGreaterThanOrEqual(2);
     for (const execute of [
       () => prisma.$executeRaw`DELETE FROM public.audit_events`,
       () => prisma.$executeRaw`UPDATE public.audit_events SET action='forged'`,
@@ -84,7 +87,7 @@ describe('runtime-role provisioning against PostgreSQL', () => {
       () => prisma.$executeRaw`SELECT * FROM public._shipkeep_test_migrations`,
     ])
       await expect(execute()).rejects.toThrow();
-    expect(await prisma.auditEvent.count()).toBe(2);
+    expect(await prisma.auditEvent.count()).toBe(audits);
   });
 
   it('can reapply grants and transfer existing pg-boss objects without losing queued work', async () => {

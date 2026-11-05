@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Actor } from '@shipkeep/domain';
+import { type Actor, Secret } from '@shipkeep/domain';
 import { v7 as uuidv7 } from 'uuid';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
@@ -14,6 +14,8 @@ import {
 import {
   CERTIFICATE_AUTHORITY,
   type CertificateAuthority,
+  FLEET_TRANSACTION,
+  type FleetTransaction,
   JOIN_TOKEN_STORE,
   type JoinTokenStore,
 } from './ports';
@@ -35,30 +37,34 @@ export class IssueJoinToken {
     @Inject(JOIN_TOKEN_STORE) private readonly tokens: JoinTokenStore,
     @Inject(CERTIFICATE_AUTHORITY) private readonly ca: CertificateAuthority,
     private readonly events: DomainEventBus,
+    @Inject(FLEET_TRANSACTION) private readonly transaction: FleetTransaction,
   ) {}
 
   async execute(command: IssueJoinTokenCommand, now = new Date()): Promise<IssueJoinTokenResult> {
     const id = uuidv7();
-    const value = generateJoinTokenValue();
+    const value = new Secret(generateJoinTokenValue());
     const expiresAt = new Date(now.getTime() + JOIN_TOKEN_TTL_MS);
-    await this.tokens.insert({
-      id,
-      organizationId: command.organizationId,
-      tokenHash: hashJoinToken(value),
-      createdBy: command.actor.id ?? null,
-      createdAt: now,
-      expiresAt,
-      usedAt: null,
-      usedByNodeId: null,
-    });
-    await this.events.publish([
-      joinTokenIssued({
+    // The token row and its audit event commit together (rule 6): a failed audit leaves no token.
+    await this.transaction.run(async () => {
+      await this.tokens.insert({
+        id,
         organizationId: command.organizationId,
-        tokenId: id,
+        tokenHash: hashJoinToken(value.expose()),
+        createdBy: command.actor.id ?? null,
+        createdAt: now,
         expiresAt,
-        actor: command.actor,
-      }),
-    ]);
+        usedAt: null,
+        usedByNodeId: null,
+      });
+      await this.events.publish([
+        joinTokenIssued({
+          organizationId: command.organizationId,
+          tokenId: id,
+          expiresAt,
+          actor: command.actor,
+        }),
+      ]);
+    });
     return { id, value, expiresAt, caFingerprint: await this.ca.caFingerprint() };
   }
 }
