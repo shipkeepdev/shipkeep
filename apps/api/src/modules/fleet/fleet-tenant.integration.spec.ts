@@ -105,6 +105,45 @@ describe('fleet organization references against PostgreSQL', () => {
     },
   );
 
+  it('binds every certificate to its node organization', async () => {
+    const other = uuidv7();
+    await client.query('BEGIN');
+    await client.query(
+      "INSERT INTO organizations (id,name,slug,updated_at) VALUES ($1,'Other fleet','other-fleet',now())",
+      [other],
+    );
+    await client.query(
+      "INSERT INTO memberships (id,organization_id,user_id,org_role,updated_at) VALUES ($1,$2,$3,'owner',now())",
+      [uuidv7(), other, user],
+    );
+    await client.query('COMMIT');
+    try {
+      const node = await insert('nodes', org);
+      const certificate = (organizationId: string | null) =>
+        client.query(
+          "INSERT INTO node_certificates (id,organization_id,node_id,serial,not_before,not_after) VALUES ($1,$2,$3,$4,now(),now()+interval '1 day')",
+          [uuidv7(), organizationId, node, uuidv7().replaceAll('-', '')],
+        );
+      await expect(certificate(other)).rejects.toMatchObject({ code: '23503' });
+      await expect(certificate(null)).rejects.toMatchObject({ code: '23502' });
+      await certificate(org);
+      await expect(
+        client.query('UPDATE node_certificates SET organization_id=$1 WHERE node_id=$2', [
+          other,
+          node,
+        ]),
+      ).rejects.toMatchObject({ code: '23503' });
+      await client.query('DELETE FROM nodes WHERE id=$1', [node]);
+      expect(
+        (await client.query('SELECT id FROM node_certificates WHERE node_id=$1', [node])).rowCount,
+      ).toBe(0);
+    } finally {
+      await client.query('BEGIN');
+      await client.query('DELETE FROM organizations WHERE id=$1', [other]);
+      await client.query('COMMIT');
+    }
+  });
+
   async function insert(table: (typeof tables)[number], organizationId: string): Promise<string> {
     const id = uuidv7();
     if (table === 'nodes')

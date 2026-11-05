@@ -40,6 +40,7 @@ export class RenewNodeCertificate {
           identity,
           {
             id: uuidv7(),
+            organizationId: identity.organizationId,
             nodeId: identity.nodeId,
             serial: issued.serial,
             notBefore: issued.notBefore,
