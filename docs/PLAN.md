@@ -29,7 +29,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
 1. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
-2. M1.5 (Caddy routes). It can start in parallel with the items above, because its dependencies are met.
+2. M1.6 (agent self-reconciliation), then M3 (deploy pipeline).
 
 **Before going public** (the maintainer changes the visibility; ADR 0016):
 
@@ -126,7 +126,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
     - [x] **M1.4c3** `HealthCheck` and `RunReleaseTask`.
   - `EnsureNetwork`, `PullImage`, `CreateContainer`, `StartContainer`, `StopContainer`, `RemoveContainer`, `EnsureVolume`, `RemoveVolume`, `HealthCheck`, `RunReleaseTask` through the Docker Engine SDK, with all validations from SPEC 3.3.
   - Acceptance: integration tests against real Docker; malicious-input tests (privileged, host mounts, path traversal, oversized fields) all rejected; fuzz tests for validators.
-- [ ] **M1.5 Caddy route management** (A). Depends: M1.3
+- [ ] **M1.5 Caddy route management** (A). Depends: M1.3. The handlers and the typed admin client are done (`UpsertRoute`, `RemoveRoute`). Only the acceptance remains open: a switch under constant load against a real Caddy (CI-1 or the VM suite).
   - Caddy installed by the installer; agent manages routes through the admin Unix socket with typed JSON; `UpsertRoute`, `RemoveRoute` with switch-then-drain.
   - Acceptance: test deploys v1, switches to v2 under constant load (k6 or vegeta), zero failed requests.
 - [ ] **M1.6 Agent self-reconciliation** (A). Depends: M1.4, M1.5
