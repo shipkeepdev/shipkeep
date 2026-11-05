@@ -8,6 +8,9 @@ import { PrismaOrganizationStore } from './infrastructure/prisma-organization.st
 import { ResourceCommands } from './application/resource-commands';
 import { RESOURCE_STORE } from './application/resource-store';
 import { PrismaResourceStore } from './infrastructure/prisma-resource.store';
+import { CatalogQueries } from './application/catalog-queries';
+import { CATALOG_STORE } from './application/catalog-store';
+import { PrismaCatalogStore } from './infrastructure/prisma-catalog.store';
 import { TenantAccessModule } from './tenant-access.module';
 
 @Module({
@@ -15,6 +18,8 @@ import { TenantAccessModule } from './tenant-access.module';
   providers: [
     OrganizationCommands,
     ResourceCommands,
+    CatalogQueries,
+    { provide: CATALOG_STORE, useClass: PrismaCatalogStore },
     { provide: RESOURCE_STORE, useClass: PrismaResourceStore },
     { provide: ORGANIZATION_STORE, useClass: PrismaOrganizationStore },
   ],
