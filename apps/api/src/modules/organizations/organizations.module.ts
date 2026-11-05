@@ -25,9 +25,16 @@ import { CatalogController } from './interface/catalog.controller';
 import { OrganizationMutationController } from './interface/organization-mutation.controller';
 import { ResourceMutationController } from './interface/resource-mutation.controller';
 
+import { AdministrationController } from './interface/administration.controller';
+
 @Module({
   imports: [IdentityModule, TenantAccessModule],
-  controllers: [CatalogController, OrganizationMutationController, ResourceMutationController],
+  controllers: [
+    CatalogController,
+    OrganizationMutationController,
+    ResourceMutationController,
+    AdministrationController,
+  ],
   providers: [
     OrganizationCommands,
     ResourceCommands,

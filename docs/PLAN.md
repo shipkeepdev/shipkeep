@@ -178,6 +178,10 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
         - [x] **M2.3d3c1** Organization creation/settings endpoints, fresh proof, rotated cookies and transactional retry acceptance.
         - [x] **M2.3d3c2** Project/environment creation/settings endpoints and scoped mutation acceptance.
     - [ ] **M2.3d4** Membership/binding HTTP endpoints and generated route/role acceptance matrix.
+      - [x] **M2.3d4a** Session-only membership and effective-binding directories with scoped pagination.
+      - [ ] **M2.3d4b** Membership mutation HTTP, fresh proof, credential rotation and encrypted retries.
+      - [ ] **M2.3d4c** Project/environment binding mutation HTTP and privilege-change acceptance.
+      - [ ] **M2.3d4d** Generated registered-route/role matrix and full tenant acceptance checkpoint.
   - [ ] **M2.3e** Project-owned tokens constrained by their project and creator's current permissions.
   - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.
   - [ ] **M2.3g** Row-level security for the remaining tenant-scoped tables (`nodes`, `join_tokens`, `node_certificates`, `audit_events`), with enrollment token lookup and the agent gateway moved to a separate reviewed cross-tenant role (SPEC 4). Must land before any node, join-token or audit read endpoint is exposed (M2.4, M8).
