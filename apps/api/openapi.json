@@ -2816,6 +2816,23 @@
           "permission"
         ]
       },
+      "ApiTokenProjectDto": {
+        "type": "object",
+        "properties": {
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "organizationId",
+          "projectId"
+        ]
+      },
       "ApiTokenDto": {
         "type": "object",
         "properties": {
@@ -2831,6 +2848,16 @@
             "items": {
               "$ref": "#/components/schemas/ApiScopeDto"
             }
+          },
+          "project": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiTokenProjectDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "type": "string",
@@ -2868,6 +2895,7 @@
           "id",
           "name",
           "scopes",
+          "project",
           "status",
           "createdAt",
           "expiresAt",
@@ -2930,6 +2958,14 @@
               "$ref": "#/components/schemas/ApiScopeDto"
             }
           },
+          "project": {
+            "description": "Binds the token to one project: every scope must stay inside it, and the creator must manage its members. The token is deleted with the project.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ApiTokenProjectDto"
+              }
+            ]
+          },
           "expiresAt": {
             "type": "string",
             "format": "date-time",
@@ -2958,6 +2994,16 @@
             "items": {
               "$ref": "#/components/schemas/ApiScopeDto"
             }
+          },
+          "project": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApiTokenProjectDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "status": {
             "type": "string",
@@ -3001,6 +3047,7 @@
           "id",
           "name",
           "scopes",
+          "project",
           "status",
           "createdAt",
           "expiresAt",

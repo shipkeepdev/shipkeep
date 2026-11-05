@@ -16,6 +16,7 @@ describe('API-token forms', () => {
     expiresAt: '2026-12-01T00:00:00Z',
     revokedAt: null,
     lastUsedAt: null,
+    project: null,
   };
   const api = {
     listTokens: vi.fn<IdentityApi['listTokens']>(),
