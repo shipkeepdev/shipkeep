@@ -87,6 +87,19 @@ describe('membership mutations over HTTP', () => {
   }
   const session = (browser: Browser) =>
     http().get('/api/v1/auth/session').set('Cookie', browser.cookie);
+  // Tenant tables are under row-level security: the restricted Prisma client sees no rows
+  // outside a tenant transaction, so assertions read them through the administrative login.
+  const count = async (sql: string, values: readonly unknown[]): Promise<number> =>
+    Number((await admin.query<{ count: string }>(sql, [...values])).rows[0]?.count ?? -1);
+  async function ownMembership(): Promise<string> {
+    const rows = await admin.query<{ id: string }>(
+      'SELECT id FROM memberships WHERE organization_id = $1 AND user_id = $2',
+      [organizationId, owner.context.userId],
+    );
+    const id = rows.rows[0]?.id;
+    if (!id) throw new Error('Missing owner membership fixture.');
+    return id;
+  }
   const audits = (action: string, targetId: string) =>
     prisma.auditEvent.count({ where: { action, targetId } });
 
@@ -193,7 +206,9 @@ describe('membership mutations over HTTP', () => {
       await post(owner, path(), input).expect(400);
     await post(owner, path(`/${uuidv7()}/role`), { role: 'admin', ...proof }).expect(404);
     await post(owner, path('/invalid/role'), { role: 'admin', ...proof }).expect(400);
-    expect(await prisma.membership.count({ where: { organizationId } })).toBe(1);
+    expect(
+      await count('SELECT count(*) FROM memberships WHERE organization_id = $1', [organizationId]),
+    ).toBe(1);
   });
 
   it('answers an unknown address like a hidden one and records nothing', async () => {
@@ -228,9 +243,7 @@ describe('membership mutations over HTTP', () => {
     expect((promoted.body as MutationBody).membership).toMatchObject({ orgRole: 'owner' });
     expect(await audits('membership.role_changed', membershipId)).toBe(1);
 
-    const own = await prisma.membership.findFirstOrThrow({
-      where: { organizationId, userId: owner.context.userId },
-    });
+    const own = { id: await ownMembership() };
     await resetLimits();
     const previous = owner.cookie;
     const demoted = await post(owner, path(`/${own.id}/role`), { role: 'admin', ...proof }).expect(
@@ -244,9 +257,7 @@ describe('membership mutations over HTTP', () => {
   });
 
   it('refuses to demote the last owner', async () => {
-    const own = await prisma.membership.findFirstOrThrow({
-      where: { organizationId, userId: owner.context.userId },
-    });
+    const own = { id: await ownMembership() };
     const conflict = await post(owner, path(`/${own.id}/role`), {
       role: 'member',
       ...proof,
@@ -285,7 +296,7 @@ describe('membership mutations over HTTP', () => {
       .expect(200)
       .expect('Idempotency-Replayed', 'true');
     expect(await audits('membership.removed', membershipId)).toBe(1);
-    expect(await prisma.membership.count({ where: { id: membershipId } })).toBe(0);
+    expect(await count('SELECT count(*) FROM memberships WHERE id = $1', [membershipId])).toBe(0);
   });
 
   it('rolls back the membership and keeps sessions when the audit or retry write fails', async () => {
@@ -310,7 +321,11 @@ describe('membership mutations over HTTP', () => {
           );
         else await admin.query('ALTER TABLE audit_events DROP CONSTRAINT membership_audit_failure');
       }
-      expect(await prisma.membership.count({ where: { organizationId } })).toBe(1);
+      expect(
+        await count('SELECT count(*) FROM memberships WHERE organization_id = $1', [
+          organizationId,
+        ]),
+      ).toBe(1);
       await session(subject).expect(200);
     }
   });

@@ -1,24 +1,32 @@
 import { isTenantId } from '@shipkeep/domain';
 
-/** Closed POST creation/settings and membership routes; never permits resource deletion or
- * arbitrary resource paths. Removing a membership is idempotent and revoked by the live
- * `member.manage` recheck on every replay.
+/**
+ * Closed POST creation/settings, membership and role-binding routes. It never permits resource
+ * deletion or arbitrary resource paths. Removing a membership or binding is idempotent, and every
+ * replay rechecks live `member.manage`.
  */
 export function resourceReplayRoute(route: string): boolean {
   const parts = route.split('/');
   if (parts[0] !== 'organizations') return false;
   if (parts.length === 1) return true;
   if (!isTenantId(parts[1])) return false;
-  if (parts.length === 3)
-    return parts[2] === 'settings' || parts[2] === 'projects' || parts[2] === 'members';
-  if (parts.length === 5 && parts[2] === 'members')
-    return isTenantId(parts[3]) && (parts[4] === 'role' || parts[4] === 'remove');
-  if (parts[2] !== 'projects' || !isTenantId(parts[3])) return false;
-  if (parts.length === 5) return parts[4] === 'settings' || parts[4] === 'environments';
-  return (
-    parts.length === 7 &&
-    parts[4] === 'environments' &&
-    isTenantId(parts[5]) &&
-    parts[6] === 'settings'
-  );
+  const rest = parts.slice(2);
+  if (rest[0] === 'members') return memberRoute(rest.slice(1), ['role', 'remove']);
+  if (rest.length === 1) return rest[0] === 'settings' || rest[0] === 'projects';
+  if (rest[0] !== 'projects' || !isTenantId(rest[1])) return false;
+  // Inside a project: `settings`, `environments`, `bindings[/<membership>/remove]`, or the same
+  // inside one environment (without `environments`).
+  const project = rest.slice(2);
+  if (project[0] === 'bindings') return memberRoute(project.slice(1), ['remove']);
+  if (project.length === 1) return project[0] === 'settings' || project[0] === 'environments';
+  if (project[0] !== 'environments' || !isTenantId(project[1])) return false;
+  const environment = project.slice(2);
+  if (environment[0] === 'bindings') return memberRoute(environment.slice(1), ['remove']);
+  return environment.length === 1 && environment[0] === 'settings';
+}
+
+/** The collection itself, or `<membership id>/<action>` with an allowed action. */
+function memberRoute(parts: readonly string[], actions: readonly string[]): boolean {
+  if (parts.length === 0) return true;
+  return parts.length === 2 && isTenantId(parts[0]) && actions.includes(parts[1]);
 }

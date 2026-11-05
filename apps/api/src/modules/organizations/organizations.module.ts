@@ -27,6 +27,7 @@ import { ResourceMutationController } from './interface/resource-mutation.contro
 
 import { AdministrationController } from './interface/administration.controller';
 import { MembershipMutationController } from './interface/membership-mutation.controller';
+import { BindingMutationController } from './interface/binding-mutation.controller';
 
 @Module({
   imports: [IdentityModule, TenantAccessModule],
@@ -36,6 +37,7 @@ import { MembershipMutationController } from './interface/membership-mutation.co
     ResourceMutationController,
     AdministrationController,
     MembershipMutationController,
+    BindingMutationController,
   ],
   providers: [
     OrganizationCommands,

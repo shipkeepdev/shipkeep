@@ -381,7 +381,23 @@ export type paths = {
         };
         readonly get: operations["projectBindings"];
         readonly put?: never;
-        readonly post?: never;
+        readonly post: operations["assignProject"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/bindings/{membershipId}/remove": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["removeProject"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -429,7 +445,23 @@ export type paths = {
         };
         readonly get: operations["environmentBindings"];
         readonly put?: never;
-        readonly post?: never;
+        readonly post: operations["assignEnvironment"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/bindings/{membershipId}/remove": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["removeEnvironment"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -565,6 +597,43 @@ export type components = {
             readonly items: readonly components["schemas"]["ApiTokenDto"][];
             /** Format: uuid */
             readonly nextCursor: string | null;
+        };
+        readonly AssignBindingDto: {
+            /**
+             * Format: email
+             * @example person@example.com
+             */
+            readonly email: string;
+            /** Format: password */
+            readonly password: string;
+            readonly recovery?: string;
+            /** @enum {string} */
+            readonly role: "admin" | "developer" | "viewer";
+            readonly totp?: string;
+        };
+        readonly BindingDto: {
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** Format: uuid */
+            readonly environmentId: string | null;
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly membershipId: string;
+            /** Format: uuid */
+            readonly organizationId: string;
+            /** Format: uuid */
+            readonly projectId: string;
+            /** @enum {string} */
+            readonly role: "admin" | "developer" | "viewer";
+            /** Format: date-time */
+            readonly updatedAt: string;
+        };
+        readonly BindingMutationDto: {
+            /** @description Null after removal. */
+            readonly binding: components["schemas"]["BindingDto"] | null;
+            /** @description Present only when the caller changed their own binding: the caller's credentials were rotated and the new ones are set only in cookies. */
+            readonly session?: components["schemas"]["SessionDto"];
         };
         readonly BindingPageDto: {
             readonly items: readonly components["schemas"]["BindingViewDto"][];
@@ -836,6 +905,12 @@ export type components = {
             readonly status: "ok";
         };
         readonly ReauthenticateMfaDto: {
+            /** Format: password */
+            readonly password: string;
+            readonly recovery?: string;
+            readonly totp?: string;
+        };
+        readonly RemoveBindingDto: {
             /** Format: password */
             readonly password: string;
             readonly recovery?: string;
@@ -1610,6 +1685,73 @@ export interface operations {
             };
         };
     };
+    readonly assignProject: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7. Encrypted result retained for five minutes and bound to the credential. */
+                readonly "Idempotency-Key"?: string;
+                /** @description Exact API origin; required for session mutations. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof; required for session mutations. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AssignBindingDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BindingMutationDto"];
+                };
+            };
+        };
+    };
+    readonly removeProject: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7. Encrypted result retained for five minutes and bound to the credential. */
+                readonly "Idempotency-Key"?: string;
+                /** @description Exact API origin; required for session mutations. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof; required for session mutations. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly membershipId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RemoveBindingDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BindingMutationDto"];
+                };
+            };
+        };
+    };
     readonly listEnvironments: {
         readonly parameters: {
             readonly query?: {
@@ -1713,6 +1855,75 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["BindingPageDto"];
+                };
+            };
+        };
+    };
+    readonly assignEnvironment: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7. Encrypted result retained for five minutes and bound to the credential. */
+                readonly "Idempotency-Key"?: string;
+                /** @description Exact API origin; required for session mutations. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof; required for session mutations. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["AssignBindingDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BindingMutationDto"];
+                };
+            };
+        };
+    };
+    readonly removeEnvironment: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7. Encrypted result retained for five minutes and bound to the credential. */
+                readonly "Idempotency-Key"?: string;
+                /** @description Exact API origin; required for session mutations. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof; required for session mutations. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly environmentId: string;
+                readonly membershipId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RemoveBindingDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BindingMutationDto"];
                 };
             };
         };
