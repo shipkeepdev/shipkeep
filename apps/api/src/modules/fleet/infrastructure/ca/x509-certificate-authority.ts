@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, sign, verify } from 'node:crypto';
 
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { Secret } from '@shipkeep/domain';
@@ -97,9 +97,24 @@ export class X509CertificateAuthority
   }
 
   async publicKeyPem(): Promise<string> {
+    return (await this.requireConfirmation()).publicKeyPem;
+  }
+
+  /** Ed25519 signature of a confirmation token's signing input (SPEC 3.6). */
+  async signConfirmation(input: Uint8Array): Promise<Uint8Array> {
+    const key = await this.requireConfirmation();
+    return sign(null, input, key.privateKeyPem.expose());
+  }
+
+  async verifyConfirmation(input: Uint8Array, signature: Uint8Array): Promise<boolean> {
+    const key = await this.requireConfirmation();
+    return verify(null, input, key.publicKeyPem, signature);
+  }
+
+  private async requireConfirmation(): Promise<LoadedKey> {
     await Promise.resolve();
     if (!this.confirmation) throw new Error('installation keys not loaded yet');
-    return this.confirmation.publicKeyPem;
+    return this.confirmation;
   }
 
   async issueNodeCertificate(

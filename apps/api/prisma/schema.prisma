@@ -12,35 +12,37 @@ datasource db {
 
 /// Installation-wide identity. Email ownership is required before organization membership.
 model User {
-  id              String          @id @db.Uuid
-  email           String          @unique @db.Citext
-  passwordHash    String          @map("password_hash") @db.VarChar(256)
-  status          String          @default("pending") @db.VarChar(16)
-  emailVerifiedAt DateTime?       @map("email_verified_at") @db.Timestamptz(6)
-  securityVersion Int             @default(0) @map("security_version")
-  createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt       DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id              String              @id @db.Uuid
+  email           String              @unique @db.Citext
+  passwordHash    String              @map("password_hash") @db.VarChar(256)
+  status          String              @default("pending") @db.VarChar(16)
+  emailVerifiedAt DateTime?           @map("email_verified_at") @db.Timestamptz(6)
+  securityVersion Int                 @default(0) @map("security_version")
+  createdAt       DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
   sessions        UserSession[]
   identityTokens  IdentityToken[]
   mfa             UserMfa?
   apiTokens       ApiToken[]
   memberships     Membership[]
+  confirmations   ConfirmationToken[]
 
   @@map("users")
 }
 
 model Organization {
-  id           String        @id @db.Uuid
-  name         String        @db.VarChar(80)
-  slug         String        @unique @db.VarChar(40)
-  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
-  memberships  Membership[]
-  projects     Project[]
-  environments Environment[]
-  roleBindings RoleBinding[]
-  nodes        Node[]
-  joinTokens   JoinToken[]
+  id            String              @id @db.Uuid
+  name          String              @db.VarChar(80)
+  slug          String              @unique @db.VarChar(40)
+  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  memberships   Membership[]
+  projects      Project[]
+  environments  Environment[]
+  roleBindings  RoleBinding[]
+  nodes         Node[]
+  joinTokens    JoinToken[]
+  confirmations ConfirmationToken[]
 
   @@map("organizations")
 }
@@ -328,4 +330,21 @@ model NodeCertificate {
 
   @@index([organizationId, nodeId])
   @@map("node_certificates")
+}
+
+/// Issued confirmation token (SPEC 3.6): binding and single-use state, never the signed token.
+model ConfirmationToken {
+  id             String       @id @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  userId         String       @map("user_id") @db.Uuid
+  action         String       @db.VarChar(64)
+  target         String       @db.VarChar(128)
+  issuedAt       DateTime     @map("issued_at") @db.Timestamptz(6)
+  expiresAt      DateTime     @map("expires_at") @db.Timestamptz(6)
+  usedAt         DateTime?    @map("used_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@index([organizationId, issuedAt])
+  @@map("confirmation_tokens")
 }

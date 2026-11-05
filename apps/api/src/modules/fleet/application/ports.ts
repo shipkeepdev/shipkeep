@@ -65,6 +65,9 @@ export interface CertificateAuthority {
 /** Ed25519 key pair that signs confirmation tokens (SPEC section 3.6); agents receive the public half. */
 export interface ConfirmationKeyProvider {
   publicKeyPem(): Promise<string>;
+  /** Signs with the private half, which never leaves the key provider. */
+  signConfirmation(input: Uint8Array): Promise<Uint8Array>;
+  verifyConfirmation(input: Uint8Array, signature: Uint8Array): Promise<boolean>;
 }
 
 export const JOIN_TOKEN_STORE = Symbol('JoinTokenStore');

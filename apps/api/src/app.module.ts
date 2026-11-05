@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { AuditModule } from './modules/audit/audit.module';
+import { ConfirmationsModule } from './modules/confirmations/confirmations.module';
 import { FleetModule } from './modules/fleet/fleet.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { TenantAccessModule } from './modules/organizations/tenant-access.module';
@@ -26,6 +27,7 @@ import { PrismaModule } from './platform/prisma/prisma.module';
     HealthModule,
     AuditModule,
     FleetModule,
+    ConfirmationsModule,
     IdentityModule,
     TenantAccessModule,
     OrganizationsModule,
