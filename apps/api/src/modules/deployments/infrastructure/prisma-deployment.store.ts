@@ -138,7 +138,11 @@ export class PrismaDeploymentStore implements DeploymentStore {
     });
   }
 
-  async finish(record: DeploymentRecord, expected: DeploymentState, now: Date): Promise<boolean> {
+  async transition(
+    record: DeploymentRecord,
+    expected: DeploymentState,
+    now: Date,
+  ): Promise<boolean> {
     const updated = await this.database.client.deployment.updateMany({
       where: {
         id: record.id,

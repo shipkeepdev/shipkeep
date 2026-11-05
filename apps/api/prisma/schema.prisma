@@ -314,6 +314,7 @@ model Node {
   lastHeartbeatAt DateTime?         @map("last_heartbeat_at") @db.Timestamptz(6)
   certificates    NodeCertificate[]
   actions         AgentAction[]
+  allocations     Allocation[]
   organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([organizationId, name])
@@ -413,6 +414,7 @@ model Application {
   environment    Environment  @relation(fields: [organizationId, projectId, environmentId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Restrict, map: "applications_environment_fkey")
   releases       Release[]
   deployments    Deployment[]
+  allocations    Allocation[]
 
   @@unique([environmentId, name])
   @@unique([organizationId, id])
@@ -434,6 +436,7 @@ model Release {
   createdAt      DateTime     @map("created_at") @db.Timestamptz(6)
   application    Application  @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "releases_application_fkey")
   deployments    Deployment[]
+  allocations    Allocation[]
 
   @@unique([applicationId, number])
   @@unique([organizationId, id])
@@ -461,4 +464,30 @@ model Deployment {
   @@index([applicationId, startedAt(sort: Desc)])
   @@index([releaseId])
   @@map("deployments")
+}
+
+/// One replica of a release on a node (SPEC 4), placed before the pipeline starts it.
+model Allocation {
+  id             String      @id @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  applicationId  String      @map("application_id") @db.Uuid
+  releaseId      String      @map("release_id") @db.Uuid
+  nodeId         String      @map("node_id") @db.Uuid
+  replica        Int
+  container      String      @db.VarChar(63)
+  port           Int
+  cpuMillis      Int         @map("cpu_millis")
+  memoryBytes    BigInt      @map("memory_bytes")
+  state          String      @db.VarChar(16)
+  createdAt      DateTime    @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @map("updated_at") @db.Timestamptz(6)
+  application    Application @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "allocations_application_fkey")
+  release        Release     @relation(fields: [organizationId, releaseId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "allocations_release_fkey")
+  node           Node        @relation(fields: [organizationId, nodeId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict, map: "allocations_node_fkey")
+
+  @@unique([releaseId, replica])
+  @@unique([nodeId, container])
+  @@index([applicationId, state])
+  @@index([organizationId, nodeId, state])
+  @@map("allocations")
 }

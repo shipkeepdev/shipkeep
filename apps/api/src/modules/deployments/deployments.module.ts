@@ -7,8 +7,14 @@ import { TenantAccessModule } from '../organizations/tenant-access.module';
 import { SecretsModule } from '../secrets/secrets.module';
 
 import { DeploymentCommands } from './application/deployment-commands';
-import { DEPLOYMENT_STORE, DEPLOYMENT_TRANSACTION, IMAGE_RESOLVER } from './application/ports';
+import {
+  DEPLOYMENT_STORE,
+  DEPLOYMENT_TRANSACTION,
+  IMAGE_RESOLVER,
+  PIPELINE_STORE,
+} from './application/ports';
 import { PrismaDeploymentStore } from './infrastructure/prisma-deployment.store';
+import { PrismaPipelineStore } from './infrastructure/prisma-pipeline.store';
 import { RegistryResolver } from './infrastructure/registry/registry-resolver';
 import { DeploymentController } from './interface/deployment.controller';
 
@@ -21,6 +27,7 @@ import { DeploymentController } from './interface/deployment.controller';
     { provide: DEPLOYMENT_STORE, useClass: PrismaDeploymentStore },
     { provide: DEPLOYMENT_TRANSACTION, useExisting: PrismaUnitOfWork },
     { provide: IMAGE_RESOLVER, useFactory: () => new RegistryResolver() },
+    { provide: PIPELINE_STORE, useClass: PrismaPipelineStore },
   ],
   exports: [DEPLOYMENT_STORE, IMAGE_RESOLVER],
 })

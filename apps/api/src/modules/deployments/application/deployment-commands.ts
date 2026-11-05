@@ -100,7 +100,7 @@ export class DeploymentCommands {
       if (!current) throw new NotFoundError('deployment');
       const stopped = stop(current, 'cancelled', CANCELLED_BY_USER, now);
       const cancelled: DeploymentRecord = { ...current, ...stopped.deployment };
-      if (!(await this.store.finish(cancelled, current.state, now)))
+      if (!(await this.store.transition(cancelled, current.state, now)))
         throw new ConflictError(
           'deployment_changed',
           'The deployment changed meanwhile; reload it and retry.',
