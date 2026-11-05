@@ -35,6 +35,7 @@ describe('API token policy', () => {
       [{ permission: 'profile.read', organizationId }],
       [{ permission: 'deploy.run', organizationId, environmentId }],
       [{ permission: 'deploy.run', organizationId: '../escape' }],
+      [{ permission: 'deploy.run', organizationId: `${organizationId}\n` }],
       [{ permission: 'deploy.run', organizationId, admin: true }],
       [
         { permission: 'deploy.run', organizationId },
@@ -58,6 +59,7 @@ describe('API token policy', () => {
     );
     for (const target of [
       { organizationId: other, projectId, environmentId },
+      { organizationId: `${organizationId}\n`, projectId, environmentId },
       { organizationId, projectId: other, environmentId },
       { organizationId, projectId, environmentId: other },
       { organizationId, projectId },

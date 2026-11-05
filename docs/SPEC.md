@@ -288,6 +288,8 @@ Org roles: `owner`, `admin`, `member`. Project or environment roles for members:
 | Manage members and roles      | yes                | yes                | project only       | no               | no     |
 | Create or delete projects     | yes                | yes                | no                 | no               | no     |
 | Create or delete environments | yes                | yes                | yes                | no               | no     |
+| Update organization settings  | yes                | yes                | no                 | no               | no     |
+| Update project/env settings   | yes                | yes                | own scope only     | no               | no     |
 | Deploy to unprotected env     | yes                | yes                | yes                | yes              | no     |
 | Deploy to protected env       | yes                | yes                | yes                | no               | no     |
 | Read secret values            | no (write-only)    | no                 | no                 | no               | no     |
@@ -298,6 +300,8 @@ Org roles: `owner`, `admin`, `member`. Project or environment roles for members:
 | View audit log                | yes                | yes                | project only       | no               | no     |
 
 API tokens carry explicit scopes that can only narrow the owner's permissions.
+
+Settings use explicit `organization.update`, `project.update` and `environment.update` permissions at their corresponding resource scope; a resource administrator cannot change organization settings. Display names are trimmed and limited to 1–80 Unicode code points without control, format or unpaired-surrogate characters. Slugs and environment names are canonical lowercase ASCII identifiers without whitespace, including trailing newlines. Project/environment configuration values are closed enums; protection is a boolean with no string/number coercion. New projects use pull-request writes and new environments are protected with no automatic failover unless explicitly configured otherwise.
 
 The shared tenant policy is default-deny for unknown permissions, roles and invalid resource hierarchies. Resource ancestry, membership and environment protection must be loaded from current database records by the authorization adapter. Account-only `profile.read` remains outside tenant RBAC. Organization members may read organization metadata; a resource binding permits parent-project navigation but does not grant access to sibling environments. An explicit environment binding replaces the inherited project role for that environment, including when it reduces access. Missing protection metadata denies deploy, secret-write and container-exec decisions even for administrators. Ambiguous duplicate effective bindings are denied.
 

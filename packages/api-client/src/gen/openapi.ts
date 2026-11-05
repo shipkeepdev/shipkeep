@@ -286,7 +286,7 @@ export type components = {
             /** Format: uuid */
             readonly organizationId?: string;
             /** @enum {string} */
-            readonly permission: "profile.read" | "organization.read" | "organization.delete" | "billing.manage" | "member.manage" | "node.manage" | "project.read" | "project.create" | "project.delete" | "environment.read" | "environment.create" | "environment.delete" | "deploy.run" | "secret.write" | "container.exec" | "volume.delete" | "database.delete" | "observability.read" | "audit.read";
+            readonly permission: "profile.read" | "organization.read" | "organization.update" | "organization.delete" | "billing.manage" | "member.manage" | "node.manage" | "project.read" | "project.create" | "project.update" | "project.delete" | "environment.read" | "environment.create" | "environment.update" | "environment.delete" | "deploy.run" | "secret.write" | "container.exec" | "volume.delete" | "database.delete" | "observability.read" | "audit.read";
             /** Format: uuid */
             readonly projectId?: string;
         };

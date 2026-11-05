@@ -95,7 +95,7 @@ export function canChangeMembership(
 }
 
 export function isTenantId(value: unknown): value is string {
-  return typeof value === 'string' && UUID.test(value);
+  return typeof value === 'string' && value.length === 36 && UUID.test(value);
 }
 function validTarget(target: TenantResource): boolean {
   return (
@@ -109,16 +109,19 @@ function validTarget(target: TenantResource): boolean {
 function validPermissionScope(permission: string, target: TenantResource): boolean {
   switch (permission) {
     case 'organization.read':
+    case 'organization.update':
     case 'organization.delete':
     case 'billing.manage':
     case 'node.manage':
     case 'project.create':
       return target.projectId === undefined;
     case 'project.read':
+    case 'project.update':
     case 'project.delete':
     case 'environment.create':
       return target.projectId !== undefined && target.environmentId === undefined;
     case 'environment.read':
+    case 'environment.update':
     case 'environment.delete':
     case 'deploy.run':
     case 'secret.write':

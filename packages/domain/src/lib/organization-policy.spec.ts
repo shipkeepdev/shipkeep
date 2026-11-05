@@ -13,7 +13,15 @@ const env = '018f4400-0000-7000-8000-000000000003';
 const other = '018f4400-0000-7000-8000-000000000004';
 it('accepts only canonical UUIDv7 tenant identifiers', () => {
   expect(isTenantId(org)).toBe(true);
-  for (const value of [undefined, null, 1, '', org.toUpperCase(), org.replace('-7000-', '-4000-')])
+  for (const value of [
+    undefined,
+    null,
+    1,
+    '',
+    org.toUpperCase(),
+    `${org}\n`,
+    org.replace('-7000-', '-4000-'),
+  ])
     expect(isTenantId(value)).toBe(false);
 });
 const organization = { organizationId: org };
@@ -32,15 +40,18 @@ const principals: readonly TenantMembership[] = [
 const matrix: Record<Permission, { target: TenantResource; expected: string }> = {
   'profile.read': { target: {}, expected: '00000' },
   'organization.read': { target: organization, expected: '11111' },
+  'organization.update': { target: organization, expected: '11000' },
   'organization.delete': { target: organization, expected: '10000' },
   'billing.manage': { target: organization, expected: '10000' },
   'member.manage': { target: projectTarget, expected: '11100' },
   'node.manage': { target: organization, expected: '11000' },
   'project.read': { target: projectTarget, expected: '11111' },
   'project.create': { target: organization, expected: '11000' },
+  'project.update': { target: projectTarget, expected: '11100' },
   'project.delete': { target: projectTarget, expected: '11000' },
   'environment.read': { target: environment, expected: '11111' },
   'environment.create': { target: projectTarget, expected: '11100' },
+  'environment.update': { target: environment, expected: '11100' },
   'environment.delete': { target: environment, expected: '11100' },
   'deploy.run': { target: environment, expected: '11110' },
   'secret.write': { target: environment, expected: '11110' },
