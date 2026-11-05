@@ -101,7 +101,7 @@ export class AgentGateway implements OnModuleDestroy {
           { maxTimeoutMs: 24 * 60 * 60_000 },
         );
         // ExecStream must pass the shared authentication guard before reporting Unimplemented.
-        // eslint-disable-next-line require-yield
+        // eslint-disable-next-line require-yield -- the stream only rejects; it never yields a frame
         router.rpc(AgentGatewayService.method.execStream, async function* () {
           await Promise.resolve();
           throw new ConnectError('exec sessions are not implemented', Code.Unimplemented);
