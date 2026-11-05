@@ -9,6 +9,7 @@ import { integrationApp } from '../../testing/integration-app';
 import { ApiTokenAuthentication } from '../identity/application/api-token-authentication';
 import { ApiTokenCommands } from '../identity/application/api-token-commands';
 import { PASSWORD_HASHER, type PasswordHashing } from '../identity/application/identity-ports';
+import { ProjectApiTokenCommands } from '../identity/application/project-api-token-commands';
 import type { ResourceSecurityContext } from '../identity/application/resource-security-context';
 
 import { AdministrationQueries } from './application/administration-queries';
@@ -322,5 +323,84 @@ describe('resource commands with scoped API credentials', () => {
     await expect(
       auth.authenticate(grant.token, 'project.read', projectTarget()),
     ).rejects.toMatchObject({ code: 'authentication_failed' });
+  });
+  it('lets project administrators list and revoke project tokens they did not create', async () => {
+    const hash = await fixture.app.get<PasswordHashing>(PASSWORD_HASHER).hash(password);
+    const member = async (role: 'admin' | 'viewer'): Promise<ResourceSecurityContext> => {
+      const userId = uuidv7();
+      await prisma.user.create({
+        data: {
+          id: userId,
+          email: `${userId}@example.com`,
+          passwordHash: hash.expose(),
+          status: 'active',
+          emailVerifiedAt: new Date(),
+        },
+      });
+      const membershipId = uuidv7();
+      await admin.query('BEGIN');
+      await admin.query(
+        "INSERT INTO memberships (id,organization_id,user_id,org_role,updated_at) VALUES ($1,$2,$3,'member',now())",
+        [membershipId, organizationId, userId],
+      );
+      await admin.query(
+        'INSERT INTO role_bindings (id,organization_id,membership_id,project_id,role,updated_at) VALUES ($1,$2,$3,$4,$5,now())',
+        [uuidv7(), organizationId, membershipId, target.projectId, role],
+      );
+      await admin.query('COMMIT');
+      return { userId, securityVersion: 0, ip: '127.0.0.1', userAgent: `Project ${role}` };
+    };
+    const projectAdmin = await member('admin');
+    const viewer = await member('viewer');
+    const grant = await tokens.create(
+      owner,
+      {
+        name: 'Deploy bot',
+        scopes: [{ permission: 'project.read', ...projectTarget() }],
+        expiresAt: new Date(Date.now() + 3600000),
+        project: projectTarget(),
+      },
+      password,
+      {},
+    );
+    const commands = fixture.app.get(ProjectApiTokenCommands);
+    const listed = await commands.list(projectAdmin, projectTarget());
+    expect(listed.map((item) => [item.id, item.createdBy, item.status])).toEqual([
+      [grant.metadata.id, owner.userId, 'active'],
+    ]);
+    expect(JSON.stringify(listed)).not.toContain(grant.token.expose());
+    await expect(commands.list(viewer, projectTarget())).rejects.toMatchObject({
+      kind: 'not_found',
+    });
+    await expect(
+      commands.revoke(viewer, projectTarget(), grant.metadata.id, password, {}),
+    ).rejects.toMatchObject({ kind: 'not_found' });
+    await expect(
+      commands.revoke(
+        projectAdmin,
+        projectTarget(),
+        grant.metadata.id,
+        new Secret('wrong fixture password'),
+        {},
+      ),
+    ).rejects.toMatchObject({ code: 'authentication_failed' });
+
+    await commands.revoke(projectAdmin, projectTarget(), grant.metadata.id, password, {});
+    await commands.revoke(projectAdmin, projectTarget(), grant.metadata.id, password, {});
+    await expect(
+      fixture.app
+        .get(ApiTokenAuthentication)
+        .authenticate(grant.token, 'project.read', projectTarget()),
+    ).rejects.toMatchObject({ code: 'authentication_failed' });
+    const events = await auditLog().findMany({
+      where: { action: 'identity.api_token_revoked', targetId: grant.metadata.id },
+    });
+    expect(events.map((event) => [event.actorId, event.organizationId])).toEqual([
+      [projectAdmin.userId, organizationId],
+    ]);
+    // Neither account's credentials changed.
+    expect(
+      (await prisma.user.findUniqueOrThrow({ where: { id: projectAdmin.userId } })).securityVersion,
+    ).toBe(0);
   });
 });
