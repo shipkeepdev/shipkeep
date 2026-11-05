@@ -182,7 +182,8 @@ Anything not in this table does not exist. There is no generic exec, shell or fi
 ### 3.5 Local state
 
 - `desired(resource_id, spec_json, version)`, `actual(resource_id, status_json, observed_at)`, `routing(version, table_json)`, `lease(epoch, expires_at)`, `used_confirmations(jti, expires_at)`.
-- `spec_json` stores secret references (name and version), never secret values. See section 9 for how secrets reach containers.
+- `spec_json` stores secret references (name and version), never secret values. Typed protobuf snapshots are cloned and every `debug_redact` field is cleared recursively before JSON serialization; caller-owned execution data is unchanged. Unknown protobuf fields are removed and snapshots are capped at 1 MiB. See section 9 for how secrets reach containers.
+- Desired and routing versions cannot move backwards; same-version replays must have identical canonical JSON. Actual observations cannot regress in time. Lease epochs cannot regress, and a same-epoch expiry cannot shorten. Confirmation IDs are consumed transactionally once until their verified expiry (at most five minutes); signature and scope validation belongs to the confirmation handler.
 - The agent reconciles its own containers against `desired` every 30 s, restarting crashed managed containers within their restart policy, even without control plane contact.
 
 ## 4. Data model

@@ -75,7 +75,7 @@ const schema = `CREATE TABLE IF NOT EXISTS operations (
  revision INTEGER NOT NULL DEFAULT 0, result_json TEXT NOT NULL DEFAULT '{}', started_at INTEGER NOT NULL, updated_at INTEGER NOT NULL,
  last_error TEXT NOT NULL DEFAULT '');
  CREATE TABLE IF NOT EXISTS operation_history(sequence INTEGER PRIMARY KEY AUTOINCREMENT, action_id TEXT NOT NULL, revision INTEGER NOT NULL, state TEXT NOT NULL, step TEXT NOT NULL, updated_at INTEGER NOT NULL);
- PRAGMA user_version=1;`
+`
 
 // Open opens private local state in dir. One process may own it; WAL and FULL sync protect checkpoints.
 func Open(ctx context.Context, dir string) (*Store, error) {
@@ -123,10 +123,10 @@ func Open(ctx context.Context, dir string) (*Store, error) {
 	if err := db.QueryRowContext(ctx, "PRAGMA user_version").Scan(&version); err != nil {
 		return nil, fmt.Errorf("read journal schema: %w", err)
 	}
-	if version > 1 {
+	if version > 2 {
 		return nil, errors.New("journal schema is newer than this agent")
 	}
-	if _, err := db.ExecContext(ctx, schema); err != nil {
+	if _, err := db.ExecContext(ctx, "BEGIN IMMEDIATE;"+schema+localSchema+"PRAGMA user_version=2;COMMIT;"); err != nil {
 		return nil, fmt.Errorf("initialize journal: %w", err)
 	}
 	success = true
