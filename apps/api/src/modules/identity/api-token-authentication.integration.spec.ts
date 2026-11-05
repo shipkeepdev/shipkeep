@@ -169,4 +169,21 @@ describe('API token authentication and quotas', () => {
     });
     expect(JSON.stringify(await prisma.identityThrottle.findMany())).not.toContain(token.expose());
   });
+
+  it('admits out-of-order API requests without bypassing progressive identity delays', async () => {
+    const throttle = new PrismaIdentityThrottle(fixture.app.get(PrismaUnitOfWork));
+    const later = new Date(now.getTime() + 10);
+    // Concurrent requests capture their timestamps before acquiring the shared IP row lock.
+    // The later request can commit first even though this API quota has no progressive delay.
+    expect((await throttle.acquire('api', '192.0.2.8', token.expose(), later)).allowed).toBe(true);
+    expect(await throttle.acquire('api', '192.0.2.8', token.expose(), now)).toMatchObject({
+      allowed: true,
+      remaining: 298,
+    });
+    await throttle.acquire('login', '192.0.2.8', record.userId, later);
+    expect(await throttle.acquire('login', '192.0.2.8', record.userId, now)).toMatchObject({
+      allowed: false,
+      retryAfterSeconds: 1,
+    });
+  });
 });
