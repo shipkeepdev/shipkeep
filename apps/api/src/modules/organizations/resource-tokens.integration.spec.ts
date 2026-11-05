@@ -264,4 +264,63 @@ describe('resource commands with scoped API credentials', () => {
     expect(await catalog.project(owner, projectTarget())).toEqual(original);
     expect(await auditLog().count({ where: { actorId: context.apiCredential?.id } })).toBe(0);
   });
+  it('binds project tokens to their project and deletes them with it', async () => {
+    const auth = fixture.app.get(ApiTokenAuthentication);
+    const create = (scopes: readonly ApiScope[]) =>
+      tokens.create(
+        owner,
+        {
+          name: 'Project token',
+          scopes,
+          expiresAt: new Date(Date.now() + 3600000),
+          project: projectTarget(),
+        },
+        password,
+        {},
+      );
+    for (const scopes of [
+      [{ permission: 'organization.read' as const, organizationId }],
+      [{ permission: 'profile.read' as const }],
+      [{ permission: 'project.read' as const, organizationId, projectId: uuidv7() }],
+    ])
+      await expect(create(scopes)).rejects.toMatchObject({ code: 'invalid_api_token_scopes' });
+
+    const grant = await create([
+      { permission: 'project.read', ...projectTarget() },
+      { permission: 'environment.read', ...target },
+    ]);
+    expect(grant.metadata.project).toEqual(projectTarget());
+    await expect(
+      auth.authenticate(grant.token, 'project.read', projectTarget()),
+    ).resolves.toBeDefined();
+    await expect(auth.authenticate(grant.token, 'environment.read', target)).resolves.toBeDefined();
+    const sibling = await resources.createProject(owner, organizationId, {
+      ...settings,
+      slug: `sibling-${uuidv7().slice(-12)}`,
+    });
+    await expect(
+      auth.authenticate(grant.token, 'project.read', { organizationId, projectId: sibling.id }),
+    ).rejects.toMatchObject({ code: 'api_token_permission_denied' });
+    await expect(
+      auth.authenticate(grant.token, 'organization.read', { organizationId }),
+    ).rejects.toMatchObject({ code: 'api_token_permission_denied' });
+    expect(
+      (
+        await auditLog().findFirst({
+          where: { action: 'identity.api_token_created', targetId: grant.metadata.id },
+        })
+      )?.metadata,
+    ).toMatchObject({ projectId: target.projectId });
+
+    // The project owns the credential's lifetime.
+    await admin.query('BEGIN');
+    await admin.query('DELETE FROM projects WHERE id=$1', [target.projectId]);
+    await admin.query('COMMIT');
+    expect(
+      (await admin.query('SELECT id FROM api_tokens WHERE id=$1', [grant.metadata.id])).rowCount,
+    ).toBe(0);
+    await expect(
+      auth.authenticate(grant.token, 'project.read', projectTarget()),
+    ).rejects.toMatchObject({ code: 'authentication_failed' });
+  });
 });
