@@ -25,7 +25,7 @@ export class CatalogQueryDto {
   @Max(100)
   limit = 100;
 }
-class ResourceDto {
+export class ResourceDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ format: 'date-time' }) updatedAt!: string;
@@ -47,7 +47,7 @@ export class EnvironmentDto extends ResourceDto {
     'none' | 'restore-from-backup';
   @ApiProperty() protected!: boolean;
 }
-class PageDto {
+export class PageDto {
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) nextCursor!: string | null;
 }
 export class OrganizationPageDto extends PageDto {
