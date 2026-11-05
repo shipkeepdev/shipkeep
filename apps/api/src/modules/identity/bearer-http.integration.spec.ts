@@ -58,6 +58,7 @@ describe('Bearer HTTP acceptance', () => {
       expiresAt: new Date(now.getTime() + 3600000),
       revokedAt: null,
       lastUsedAt: null,
+      project: null,
     });
     const session = issueToken();
     cookie = `shipkeep_session=${session.expose()}`;

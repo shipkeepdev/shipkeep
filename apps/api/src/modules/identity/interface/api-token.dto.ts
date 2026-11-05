@@ -36,6 +36,10 @@ export class ApiScopeDto {
   @Matches(UUID)
   environmentId?: string;
 }
+export class ApiTokenProjectDto {
+  @ApiProperty({ format: 'uuid' }) @Matches(UUID) organizationId!: string;
+  @ApiProperty({ format: 'uuid' }) @Matches(UUID) projectId!: string;
+}
 export class CreateApiTokenDto extends ReauthenticateMfaDto {
   @ApiProperty({ minLength: 1, maxLength: 64 })
   @IsString()
@@ -49,6 +53,16 @@ export class CreateApiTokenDto extends ReauthenticateMfaDto {
   @ValidateNested({ each: true })
   @Type(() => ApiScopeDto)
   scopes!: ApiScopeDto[];
+  @ApiPropertyOptional({
+    type: ApiTokenProjectDto,
+    description:
+      'Binds the token to one project: every scope must stay inside it, and the creator must ' +
+      'manage its members. The token is deleted with the project.',
+  })
+  @ValidateIf((_object: unknown, value: unknown) => value !== undefined)
+  @ValidateNested()
+  @Type(() => ApiTokenProjectDto)
+  project?: ApiTokenProjectDto;
   @ApiProperty({ format: 'date-time', description: 'One minute to ninety days from creation.' })
   @IsISO8601({ strict: true, strictSeparator: true })
   @Matches(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/)
@@ -73,6 +87,7 @@ export class ApiTokenDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() name!: string;
   @ApiProperty({ type: [ApiScopeDto] }) scopes!: ApiScopeDto[];
+  @ApiProperty({ type: ApiTokenProjectDto, nullable: true }) project!: ApiTokenProjectDto | null;
   @ApiProperty({ enum: ['active', 'revoked', 'expired', 'invalidated'] }) status!: string;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ format: 'date-time' }) expiresAt!: string;

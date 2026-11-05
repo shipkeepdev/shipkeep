@@ -10,8 +10,14 @@ export class PrismaApiTokenStore implements ApiTokenStore {
   constructor(private readonly database: PrismaUnitOfWork) {}
 
   async insert(record: ApiTokenRecord): Promise<void> {
+    const { project, ...columns } = record;
     await this.database.client.apiToken.create({
-      data: { ...record, scopes: parseApiScopes(record.scopes).map((scope) => ({ ...scope })) },
+      data: {
+        ...columns,
+        organizationId: project?.organizationId ?? null,
+        projectId: project?.projectId ?? null,
+        scopes: parseApiScopes(record.scopes).map((scope) => ({ ...scope })),
+      },
     });
   }
   async findByHash(tokenHash: string): Promise<ApiTokenRecord | null> {
@@ -26,7 +32,7 @@ export class PrismaApiTokenStore implements ApiTokenStore {
       orderBy: { id: 'desc' },
       take: 100,
     });
-    return rows.map((row) => ({ ...row, scopes: parseApiScopes(row.scopes) }));
+    return rows.map(toRecord);
   }
   async countActive(userId: string, securityVersion: number, now: Date): Promise<number> {
     return this.database.client.apiToken.count({
@@ -57,5 +63,12 @@ export class PrismaApiTokenStore implements ApiTokenStore {
   }
 }
 function fromRow(row: ApiToken | null): ApiTokenRecord | null {
-  return row ? { ...row, scopes: parseApiScopes(row.scopes) } : null;
+  return row ? toRecord(row) : null;
+}
+function toRecord({ organizationId, projectId, ...row }: ApiToken): ApiTokenRecord {
+  return {
+    ...row,
+    scopes: parseApiScopes(row.scopes),
+    project: organizationId && projectId ? { organizationId, projectId } : null,
+  };
 }

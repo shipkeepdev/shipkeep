@@ -1,4 +1,4 @@
-import type { ApiScope } from '@shipkeep/domain';
+import type { ApiScope, ApiTokenProject } from '@shipkeep/domain';
 
 /** Internal record. HTTP serializers must never include tokenHash. */
 export interface ApiTokenRecord {
@@ -7,6 +7,8 @@ export interface ApiTokenRecord {
   readonly name: string;
   readonly tokenHash: string;
   readonly scopes: readonly ApiScope[];
+  /** Project-bound token (PLAN M2.3e): every scope and every use stays inside this project. */
+  readonly project: ApiTokenProject | null;
   readonly securityVersion: number;
   readonly createdAt: Date;
   readonly expiresAt: Date;

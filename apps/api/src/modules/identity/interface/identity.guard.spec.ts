@@ -206,6 +206,7 @@ describe('identity HTTP guards', () => {
         expiresAt: session.session.expiresAt,
         revokedAt: null,
         lastUsedAt: null,
+        project: null,
       },
     });
     await http().get(resourcePath).set('Authorization', `Bearer ${value}`).expect(200);
@@ -274,6 +275,7 @@ describe('identity HTTP guards', () => {
         expiresAt: session.session.expiresAt,
         revokedAt: null,
         lastUsedAt: null,
+        project: null,
       },
     });
     const response = await http()
