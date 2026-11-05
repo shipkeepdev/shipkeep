@@ -25,6 +25,7 @@ import {
   type ConfirmationKeyProvider,
   FLEET_TRANSACTION,
   type FleetTransaction,
+  type IssuedCertificate,
   JOIN_TOKEN_STORE,
   type JoinTokenStore,
   NODE_STORE,
@@ -88,8 +89,15 @@ export class EnrollNode {
     const verdict = evaluateJoinToken(command.joinToken.expose(), record, now);
     if (!verdict.ok) throw new JoinTokenRejectedError(verdict.reason);
     const token = verdict.record;
+    const nodeId = uuidv7();
+    // The CA verifies the CSR signature and ignores every name it carries. It touches no table,
+    // so its rejections reach the caller unchanged instead of as a storage failure.
+    const issued = await this.ca.issueNodeCertificate(command.csrPem, {
+      organizationId: token.organizationId,
+      nodeId,
+    });
     return this.transaction.runTenant(token.organizationId, () =>
-      this.register(command, token, now),
+      this.register(command, token, nodeId, issued, now),
     );
   }
 
@@ -97,6 +105,8 @@ export class EnrollNode {
   private async register(
     command: EnrollNodeCommand,
     token: JoinTokenRecord,
+    nodeId: string,
+    issued: IssuedCertificate,
     now: Date,
   ): Promise<EnrollNodeResult> {
     const organizationId = token.organizationId;
@@ -106,10 +116,6 @@ export class EnrollNode {
     if (await this.nodes.findByName(organizationId, name)) {
       throw new ConflictError('node_name_taken', `a node named ${name} already exists`, { name });
     }
-
-    const nodeId = uuidv7();
-    // The CA verifies the CSR signature and ignores every name it carries.
-    const issued = await this.ca.issueNodeCertificate(command.csrPem, { organizationId, nodeId });
 
     await this.nodes.insert({
       id: nodeId,

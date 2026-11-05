@@ -214,8 +214,9 @@ describe('fleet enrollment against PostgreSQL', () => {
       .get(DomainEventBus)
       .subscribe(() => Promise.reject(new Error('injected failure')));
     try {
+      // Tenant-scoped storage reports any non-domain failure as unavailable, without details.
       await expect(app.get(IssueJoinToken).execute({ organizationId: org, actor })).rejects.toThrow(
-        'injected failure',
+        'Tenant storage temporarily unavailable.',
       );
     } finally {
       unsubscribe();

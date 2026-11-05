@@ -72,6 +72,22 @@ describe('EnrollNode', () => {
     expect(insertedIn).toBe(`tenant:${org}`);
   });
 
+  it('reports a rejected CSR as is, before any tenant write, and keeps the token', async () => {
+    const { issue, enroll, tokens, nodes, transaction } = setup();
+    const token = await issue.execute({ organizationId: org, actor });
+    await expect(
+      enroll.execute({
+        joinToken: token.value,
+        csrPem: 'not a certificate request',
+        facts: {},
+        agentVersion: '0.1.0',
+      }),
+    ).rejects.toThrow('bad csr');
+    expect(transaction.scopes.filter((scope) => scope.startsWith('tenant:'))).toHaveLength(1);
+    expect(nodes.nodes).toHaveLength(0);
+    expect(tokens.records.get(token.id)?.usedAt).toBeNull();
+  });
+
   it('enrolls a node with a fresh token and consumes it', async () => {
     const { issue, enroll, nodes, tokens, ca, published } = setup();
     const token = await issue.execute({ organizationId: org, actor });
