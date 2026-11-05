@@ -399,21 +399,66 @@ model Secret {
 }
 
 model Application {
-  id             String      @id @db.Uuid
-  organizationId String      @map("organization_id") @db.Uuid
-  projectId      String      @map("project_id") @db.Uuid
-  environmentId  String      @map("environment_id") @db.Uuid
-  name           String      @db.VarChar(40)
-  source         String      @db.VarChar(16)
+  id             String       @id @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  projectId      String       @map("project_id") @db.Uuid
+  environmentId  String       @map("environment_id") @db.Uuid
+  name           String       @db.VarChar(40)
+  source         String       @db.VarChar(16)
   config         Json
-  configSha      String      @map("config_sha") @db.Char(64)
-  createdBy      String?     @map("created_by") @db.VarChar(128)
-  createdAt      DateTime    @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime    @map("updated_at") @db.Timestamptz(6)
-  environment    Environment @relation(fields: [organizationId, projectId, environmentId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Restrict, map: "applications_environment_fkey")
+  configSha      String       @map("config_sha") @db.Char(64)
+  createdBy      String?      @map("created_by") @db.VarChar(128)
+  createdAt      DateTime     @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @map("updated_at") @db.Timestamptz(6)
+  environment    Environment  @relation(fields: [organizationId, projectId, environmentId], references: [organizationId, projectId, id], onDelete: Cascade, onUpdate: Restrict, map: "applications_environment_fkey")
+  releases       Release[]
+  deployments    Deployment[]
 
   @@unique([environmentId, name])
   @@unique([organizationId, id])
   @@index([organizationId, environmentId])
   @@map("applications")
+}
+
+/// Immutable; only image_digest may be set once (trigger releases_write_once, column grant).
+model Release {
+  id             String       @id @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  applicationId  String       @map("application_id") @db.Uuid
+  number         Int
+  image          String       @db.VarChar(512)
+  imageDigest    String?      @map("image_digest") @db.VarChar(71)
+  config         Json
+  configSha      String       @map("config_sha") @db.Char(64)
+  createdBy      String?      @map("created_by") @db.VarChar(128)
+  createdAt      DateTime     @map("created_at") @db.Timestamptz(6)
+  application    Application  @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "releases_application_fkey")
+  deployments    Deployment[]
+
+  @@unique([applicationId, number])
+  @@unique([organizationId, id])
+  @@map("releases")
+}
+
+/// One active deployment per application: partial unique index deployments_one_active_key.
+model Deployment {
+  id             String      @id @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  applicationId  String      @map("application_id") @db.Uuid
+  releaseId      String      @map("release_id") @db.Uuid
+  state          String      @db.VarChar(16)
+  planBuild      Boolean     @map("plan_build")
+  planRelease    Boolean     @map("plan_release")
+  trigger        String      @db.VarChar(16)
+  actorId        String?     @map("actor_id") @db.VarChar(128)
+  error          String?     @db.VarChar(512)
+  startedAt      DateTime    @map("started_at") @db.Timestamptz(6)
+  finishedAt     DateTime?   @map("finished_at") @db.Timestamptz(6)
+  updatedAt      DateTime    @map("updated_at") @db.Timestamptz(6)
+  application    Application @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "deployments_application_fkey")
+  release        Release     @relation(fields: [organizationId, releaseId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "deployments_release_fkey")
+
+  @@index([applicationId, startedAt(sort: Desc)])
+  @@index([releaseId])
+  @@map("deployments")
 }

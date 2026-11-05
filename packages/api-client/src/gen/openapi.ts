@@ -612,6 +612,70 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listDeployments"];
+        readonly put?: never;
+        readonly post: operations["deploy"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getDeployment"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/cancel": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["cancelDeployment"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/releases": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listReleases"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/bindings": {
         readonly parameters: {
             readonly query?: never;
@@ -968,6 +1032,30 @@ export type components = {
             /** Format: password */
             readonly password: string;
         };
+        readonly DeploymentDto: {
+            readonly actorId: string | null;
+            /** @description False for image sources: nothing is built. */
+            readonly build: boolean;
+            readonly error: string | null;
+            /** Format: date-time */
+            readonly finishedAt: string | null;
+            /** Format: uuid */
+            readonly id: string;
+            /** @description True when a release command runs before the switch. */
+            readonly release: boolean;
+            /** Format: uuid */
+            readonly releaseId: string;
+            /** Format: date-time */
+            readonly startedAt: string;
+            /** @enum {string} */
+            readonly state: "queued" | "building" | "built" | "releasing" | "scheduling" | "starting" | "health_checking" | "switching" | "draining" | "succeeded" | "failed" | "cancelled" | "rolled_back";
+            /** @enum {string} */
+            readonly trigger: "manual" | "webhook" | "rollback";
+        };
+        readonly DeploymentListDto: {
+            /** @description Most recent first, at most 50. */
+            readonly items: readonly components["schemas"]["DeploymentDto"][];
+        };
         readonly EmailDto: {
             /**
              * Format: email
@@ -1228,6 +1316,10 @@ export type components = {
             readonly name: string;
             readonly slug: string;
         };
+        readonly QueuedDeploymentDto: {
+            readonly deployment: components["schemas"]["DeploymentDto"];
+            readonly release: components["schemas"]["ReleaseDto"];
+        };
         readonly ReadinessChecksDto: {
             /** @enum {string} */
             readonly database: "ok";
@@ -1242,6 +1334,25 @@ export type components = {
             readonly password: string;
             readonly recovery?: string;
             readonly totp?: string;
+        };
+        readonly ReleaseDto: {
+            readonly config: {
+                readonly [key: string]: unknown;
+            };
+            readonly configSha: string;
+            /** Format: date-time */
+            readonly createdAt: string;
+            readonly createdBy: string | null;
+            /** Format: uuid */
+            readonly id: string;
+            readonly image: string;
+            /** @description Set once the image is resolved. */
+            readonly imageDigest: string | null;
+            readonly number: number;
+        };
+        readonly ReleaseListDto: {
+            /** @description Most recent first, at most 50. */
+            readonly items: readonly components["schemas"]["ReleaseDto"][];
         };
         readonly RemoveBindingDto: {
             /** Format: password */
@@ -2528,6 +2639,128 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApplicationDto"];
+                };
+            };
+        };
+    };
+    readonly listDeployments: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeploymentListDto"];
+                };
+            };
+        };
+    };
+    readonly deploy: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["QueuedDeploymentDto"];
+                };
+            };
+        };
+    };
+    readonly getDeployment: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly deploymentId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+        };
+    };
+    readonly cancelDeployment: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly deploymentId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+        };
+    };
+    readonly listReleases: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ReleaseListDto"];
                 };
             };
         };
