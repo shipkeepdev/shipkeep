@@ -13,6 +13,9 @@ describe('resource mutation retry routes', () => {
     `${project}/settings`,
     `${project}/environments`,
     `${environment}/settings`,
+    `${organization}/members`,
+    `${organization}/members/${id}/role`,
+    `${organization}/members/${id}/remove`,
   ])('allows the explicit creation/settings route %s', (route) => {
     expect(resourceReplayRoute(route)).toBe(true);
   });
@@ -25,7 +28,11 @@ describe('resource mutation retry routes', () => {
     `${organization}/delete`,
     `${project}/delete`,
     `${environment}/delete`,
-    `${organization}/members`,
+    `${organization}/members/${id}`,
+    `${organization}/members/${id}/delete`,
+    `${organization}/members/invalid/role`,
+    `${organization}/members/${id.toUpperCase()}/remove`,
+    `${organization}/members/${id}/role/extra`,
     `${project}/bindings`,
     `${organization}/settings?token=private`,
     `${organization}/settings/`,
