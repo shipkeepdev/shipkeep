@@ -1,16 +1,16 @@
 import { Injectable } from '@nestjs/common';
 
-import { PrismaService } from '../../../platform/prisma/prisma.service';
+import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { AuditEventStore } from '../application/audit-event-store';
 import type { AuditRecord } from '../domain/audit-record';
 
 /** Append-only Prisma implementation. Database permissions enforce the rest in task M2.4. */
 @Injectable()
 export class PrismaAuditEventStore implements AuditEventStore {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly database: PrismaUnitOfWork) {}
 
   async append(record: AuditRecord): Promise<void> {
-    await this.prisma.auditEvent.create({
+    await this.database.client.auditEvent.create({
       data: {
         id: record.id,
         organizationId: record.organizationId,
