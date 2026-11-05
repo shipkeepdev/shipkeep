@@ -28,10 +28,9 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
-1. M2.4c (audit coverage test).
-2. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
-3. M1.4a, M1.4b and M1.4c (container actions).
-4. M1.5 (Caddy routes). It can start in parallel with the items above, because its dependencies are met.
+1. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
+2. M1.4a, M1.4b and M1.4c (container actions).
+3. M1.5 (Caddy routes). It can start in parallel with the items above, because its dependencies are met.
 
 **Work that no task owned yet, now assigned:**
 
@@ -242,7 +241,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - [ ] **M2.4 Audit log guarantees and UI** (C + W). Depends: M2.3. Partly done: the runtime role has only SELECT/INSERT on `audit_events`, and `runtime-role.integration.spec.ts` proves that UPDATE, DELETE and TRUNCATE are denied.
   - Database permissions deny update and delete on `AuditEvent`; audit UI with filters; export endpoint.
   - [x] **M2.4a** Scoped audit query and JSON Lines export endpoints for organization administrators and `audit.read` tokens. Depends: M2.3g2.
-  - [ ] **M2.4c** A test that walks every registered command handler and asserts it publishes at least one event.
+  - [x] **M2.4c** A test that walks every registered mutating route and requires its declared audit events to exist in the code (`apps/api/src/audit-coverage.spec.ts`).
   - [ ] **M2.4b** Audit UI with filters.
   - Acceptance: test asserts every command handler emits at least one audit event.
 - [ ] **M2.5 Confirmation tokens** (C + W). Depends: M2.3
