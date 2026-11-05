@@ -1,6 +1,11 @@
 import { Module } from '@nestjs/common';
 
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
+import { IdentityModule } from '../identity/identity.module';
+import { TenantAccessModule } from '../organizations/tenant-access.module';
+
+import { FleetAdministration } from './application/fleet-administration';
+import { FleetAdministrationController } from './interface/fleet-administration.controller';
 import { AuthenticateNode } from './application/authenticate-node';
 import { RenewNodeCertificate } from './application/renew-node-certificate';
 import { PrismaNodeCredentialStore } from './infrastructure/prisma-node-credential.store';
@@ -26,11 +31,14 @@ import {
 } from './infrastructure/prisma-fleet.stores';
 
 /**
- * Fleet: nodes, enrollment, certificates (SPEC section 3.2). The REST interface for join tokens
- * arrives with RBAC (M2.3); the gRPC gateway that exposes Enroll to agents is task M1.2b.
+ * Fleet: nodes, enrollment, certificates (SPEC section 3.2). Agents use the gRPC gateway;
+ * organization administrators use the session-only REST routes of M2.7.
  */
 @Module({
+  imports: [IdentityModule, TenantAccessModule],
+  controllers: [FleetAdministrationController],
   providers: [
+    FleetAdministration,
     AgentGateway,
     NodeStream,
     AuthenticateNode,
