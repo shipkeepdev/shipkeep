@@ -564,6 +564,54 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listApplications"];
+        readonly put?: never;
+        readonly post: operations["createApplication"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getApplication"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/config": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["updateApplicationConfig"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/bindings": {
         readonly parameters: {
             readonly query?: never;
@@ -766,6 +814,25 @@ export type components = {
             /** Format: uuid */
             readonly projectId: string;
         };
+        readonly ApplicationDto: {
+            readonly config: {
+                readonly [key: string]: unknown;
+            };
+            readonly configSha: string;
+            /** Format: date-time */
+            readonly createdAt: string;
+            readonly createdBy: string | null;
+            /** Format: uuid */
+            readonly id: string;
+            readonly name: string;
+            /** @enum {string} */
+            readonly source: "image";
+            /** Format: date-time */
+            readonly updatedAt: string;
+        };
+        readonly ApplicationListDto: {
+            readonly items: readonly components["schemas"]["ApplicationDto"][];
+        };
         readonly AssignBindingDto: {
             /**
              * Format: email
@@ -876,6 +943,12 @@ export type components = {
             readonly recovery?: string;
             readonly scopes: readonly components["schemas"]["ApiScopeDto"][];
             readonly totp?: string;
+        };
+        readonly CreateApplicationDto: {
+            /** @description The shipkeep.yml document as JSON (SPEC 2), validated against the schema. Only build.type image is accepted for now. Secrets are listed by name; values are set through the secrets API. */
+            readonly config: {
+                readonly [key: string]: unknown;
+            };
         };
         readonly CreateOrganizationDto: {
             /** @description Trimmed to a display name of 1–80 Unicode code points. */
@@ -1223,6 +1296,14 @@ export type components = {
             readonly name: string;
             /** @description Never returned. */
             readonly value: string;
+        };
+        readonly UpdateApplicationConfigDto: {
+            /** @description The shipkeep.yml document as JSON (SPEC 2), validated against the schema. Only build.type image is accepted for now. Secrets are listed by name; values are set through the secrets API. */
+            readonly config: {
+                readonly [key: string]: unknown;
+            };
+            /** @description configSha of the configuration edited. */
+            readonly expectedConfigSha: string;
         };
         readonly VerifyEmailDto: {
             /**
@@ -2345,6 +2426,108 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["EnvironmentDto"];
+                };
+            };
+        };
+    };
+    readonly listApplications: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApplicationListDto"];
+                };
+            };
+        };
+    };
+    readonly createApplication: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CreateApplicationDto"];
+            };
+        };
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApplicationDto"];
+                };
+            };
+        };
+    };
+    readonly getApplication: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApplicationDto"];
+                };
+            };
+        };
+    };
+    readonly updateApplicationConfig: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["UpdateApplicationConfigDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApplicationDto"];
                 };
             };
         };

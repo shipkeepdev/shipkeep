@@ -1633,6 +1633,270 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications": {
+      "get": {
+        "operationId": "listApplications",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "applications"
+        ]
+      },
+      "post": {
+        "operationId": "createApplication",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateApplicationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "applications"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}": {
+      "get": {
+        "operationId": "getApplication",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "applications"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/config": {
+      "post": {
+        "operationId": "updateApplicationConfig",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateApplicationConfigDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "applications"
+        ]
+      }
+    },
     "/api/v1/organizations": {
       "get": {
         "operationId": "listOrganizations",
@@ -4263,6 +4527,102 @@
         "required": [
           "name",
           "value"
+        ]
+      },
+      "ApplicationDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "image"
+            ]
+          },
+          "config": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "configSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "source",
+          "config",
+          "configSha",
+          "createdBy",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "ApplicationListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApplicationDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "CreateApplicationDto": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The shipkeep.yml document as JSON (SPEC 2), validated against the schema. Only build.type image is accepted for now. Secrets are listed by name; values are set through the secrets API."
+          }
+        },
+        "required": [
+          "config"
+        ]
+      },
+      "UpdateApplicationConfigDto": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The shipkeep.yml document as JSON (SPEC 2), validated against the schema. Only build.type image is accepted for now. Secrets are listed by name; values are set through the secrets API."
+          },
+          "expectedConfigSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$",
+            "description": "configSha of the configuration edited."
+          }
+        },
+        "required": [
+          "config",
+          "expectedConfigSha"
         ]
       },
       "OrganizationDto": {
