@@ -46,71 +46,9 @@
         ]
       }
     },
-    "/api/v1/organizations/{organizationId}/join-tokens": {
-      "post": {
-        "operationId": "issueJoinToken",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "X-Shipkeep-CSRF",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "Origin",
-            "in": "header",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ReauthenticateMfaDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/JoinTokenIssuedDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "fleet"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/nodes": {
+    "/api/v1/organizations/{organizationId}/audit-events": {
       "get": {
-        "operationId": "listNodes",
+        "operationId": "auditEvents",
         "parameters": [
           {
             "name": "organizationId",
@@ -118,6 +56,65 @@
             "in": "path",
             "schema": {
               "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:/-]{1,128}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "actorId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:/-]{1,128}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Inclusive lower bound.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Exclusive upper bound.",
+            "schema": {
+              "format": "date-time",
               "type": "string"
             }
           },
@@ -148,7 +145,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/NodePageDto"
+                  "$ref": "#/components/schemas/AuditEventPageDto"
                 }
               }
             }
@@ -156,11 +153,105 @@
         },
         "security": [
           {
+            "apiToken": []
+          },
+          {
             "session": []
           }
         ],
         "tags": [
-          "fleet"
+          "audit"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/audit-events/export": {
+      "get": {
+        "operationId": "exportAuditEvents",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "action",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 128,
+              "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "pattern": "^[a-z][a-z0-9_]{0,63}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "targetId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:/-]{1,128}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "actorId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:/-]{1,128}$",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "Inclusive lower bound.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Exclusive upper bound.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One AuditEventDto JSON object per line, newest first."
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "audit"
         ]
       }
     },
@@ -1104,6 +1195,124 @@
         ],
         "tags": [
           "api-tokens"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/join-tokens": {
+      "post": {
+        "operationId": "issueJoinToken",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReauthenticateMfaDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JoinTokenIssuedDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/nodes": {
+      "get": {
+        "operationId": "listNodes",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 100,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodePageDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "fleet"
         ]
       }
     },
@@ -2759,126 +2968,71 @@
           "checks"
         ]
       },
-      "ReauthenticateMfaDto": {
-        "type": "object",
-        "properties": {
-          "password": {
-            "type": "string",
-            "minLength": 15,
-            "maxLength": 128,
-            "writeOnly": true,
-            "format": "password"
-          },
-          "totp": {
-            "type": "string",
-            "pattern": "^[0-9]{6}$",
-            "writeOnly": true
-          },
-          "recovery": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{32}$",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "password"
-        ]
-      },
-      "JoinTokenIssuedDto": {
+      "AuditEventDto": {
         "type": "object",
         "properties": {
           "id": {
             "type": "string",
             "format": "uuid"
           },
-          "token": {
-            "type": "string",
-            "minLength": 43,
-            "maxLength": 43,
-            "description": "Single-use enrollment secret, shown once. Give it to the agent through its join token file, never on a command line."
-          },
-          "expiresAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "caFingerprint": {
-            "type": "string",
-            "pattern": "^sha256:[0-9a-f]{64}$",
-            "description": "Installation CA fingerprint the agent pins before sending the token."
-          }
-        },
-        "required": [
-          "id",
-          "token",
-          "expiresAt",
-          "caFingerprint"
-        ]
-      },
-      "NodeDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
+          "action": {
             "type": "string"
           },
-          "status": {
+          "actorKind": {
             "type": "string",
             "enum": [
-              "enrolling",
-              "ready",
-              "suspect",
-              "down",
-              "draining",
-              "removed"
+              "user",
+              "api_token",
+              "system",
+              "node"
             ]
           },
-          "labels": {
-            "type": "object",
-            "additionalProperties": {
-              "type": "string"
-            }
+          "actorId": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "facts": {
-            "type": "object",
-            "additionalProperties": true,
-            "description": "Sanitized host facts."
+          "ip": {
+            "type": [
+              "string",
+              "null"
+            ]
           },
-          "leaseEpoch": {
-            "type": "integer"
+          "targetType": {
+            "type": "string"
+          },
+          "targetId": {
+            "type": "string"
+          },
+          "metadata": {
+            "type": "object",
+            "additionalProperties": true
           },
           "createdAt": {
             "type": "string",
             "format": "date-time"
-          },
-          "lastHeartbeatAt": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "date-time"
           }
         },
         "required": [
           "id",
-          "name",
-          "status",
-          "labels",
-          "facts",
-          "leaseEpoch",
-          "createdAt",
-          "lastHeartbeatAt"
+          "action",
+          "actorKind",
+          "actorId",
+          "ip",
+          "targetType",
+          "targetId",
+          "metadata",
+          "createdAt"
         ]
       },
-      "NodePageDto": {
+      "AuditEventPageDto": {
         "type": "object",
         "properties": {
           "items": {
             "type": "array",
             "items": {
-              "$ref": "#/components/schemas/NodeDto"
+              "$ref": "#/components/schemas/AuditEventDto"
             }
           },
           "nextCursor": {
@@ -3142,6 +3296,31 @@
           "email",
           "expiresAt",
           "recoveryCodes"
+        ]
+      },
+      "ReauthenticateMfaDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password"
+          },
+          "totp": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
+          },
+          "recovery": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password"
         ]
       },
       "ApiScopeDto": {
@@ -3514,6 +3693,116 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ProjectApiTokenDto"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "JoinTokenIssuedDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "token": {
+            "type": "string",
+            "minLength": 43,
+            "maxLength": 43,
+            "description": "Single-use enrollment secret, shown once. Give it to the agent through its join token file, never on a command line."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "caFingerprint": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "description": "Installation CA fingerprint the agent pins before sending the token."
+          }
+        },
+        "required": [
+          "id",
+          "token",
+          "expiresAt",
+          "caFingerprint"
+        ]
+      },
+      "NodeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "enrolling",
+              "ready",
+              "suspect",
+              "down",
+              "draining",
+              "removed"
+            ]
+          },
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          },
+          "facts": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "Sanitized host facts."
+          },
+          "leaseEpoch": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastHeartbeatAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "status",
+          "labels",
+          "facts",
+          "leaseEpoch",
+          "createdAt",
+          "lastHeartbeatAt"
+        ]
+      },
+      "NodePageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeDto"
             }
           },
           "nextCursor": {

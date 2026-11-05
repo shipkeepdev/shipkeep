@@ -28,7 +28,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
-1. M2.4a, then M2.5a (audit query/export API, confirmation token issuance), then M2.7b (node revocation).
+1. M2.5a (confirmation token issuance), then M2.7b (node revocation) and M2.4c (audit coverage test).
 2. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
 3. M1.4a, M1.4b and M1.4c (container actions).
 4. M1.5 (Caddy routes) and M4.3 (scheduler, pure function). They can start in parallel with the items above, because their dependencies are met.
@@ -241,7 +241,8 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - Acceptance: generated RBAC matrix test covers every route and role; tenant isolation suite passes.
 - [ ] **M2.4 Audit log guarantees and UI** (C + W). Depends: M2.3. Partly done: the runtime role has only SELECT/INSERT on `audit_events`, and `runtime-role.integration.spec.ts` proves that UPDATE, DELETE and TRUNCATE are denied.
   - Database permissions deny update and delete on `AuditEvent`; audit UI with filters; export endpoint.
-  - [ ] **M2.4a** Scoped audit query and export endpoints, plus a test that walks every registered command handler and asserts it publishes at least one event. Depends: M2.3g2.
+  - [x] **M2.4a** Scoped audit query and JSON Lines export endpoints for organization administrators and `audit.read` tokens. Depends: M2.3g2.
+  - [ ] **M2.4c** A test that walks every registered command handler and asserts it publishes at least one event.
   - [ ] **M2.4b** Audit UI with filters.
   - Acceptance: test asserts every command handler emits at least one audit event.
 - [ ] **M2.5 Confirmation tokens** (C + W). Depends: M2.3

@@ -31,6 +31,7 @@ const SPEC_7: Readonly<Partial<Record<string, readonly TenantActor[]>>> = {
   'project.create@organization': ['owner', 'admin'],
   'member.manage@organization': ['owner', 'admin'],
   'node.manage@organization': ['owner', 'admin'],
+  'audit.read@organization': ['owner', 'admin'],
   // An environment grant permits navigation to its parent project.
   'project.read@project': projectReaders,
   'project.update@project': projectAdmins,
