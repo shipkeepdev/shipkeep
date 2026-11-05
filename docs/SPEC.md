@@ -135,6 +135,7 @@ compose:
 - Join token: 32 random bytes, stored hashed (SHA-256), single use, 15 min TTL, bound to an organization.
 - Client certificate: Ed25519, 30-day validity, CN = node_id, SAN URI `spiffe://shipkeep/<org_id>/node/<node_id>`. Rotation through `RenewCertificate` at 2/3 of validity.
 - Revocation: the control plane keeps a deny list of certificate serials; revoked nodes are disconnected immediately.
+- Renewal checks the registered serial, node and organization against the TLS identity. Replacing the certificate, revoking the old serial and recording the audit event share one database transaction; concurrent renewal attempts have one winner. Agents must persist the new certificate and reconnect after renewal. If the response is lost after commit, the old certificate is revoked and the operator must re-enroll the node; recovery without re-enrollment is an open question below.
 
 ### 3.3 Action catalogue (closed list)
 
@@ -439,6 +440,9 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - M2.3 implementation defaults: an explicit environment role overrides a project role rather than adding to it; organization admins cannot grant or change ownership. These conservative defaults prevent privilege escalation and are recorded for maintainer review.
 
 - Fleet and audit tables carry `organization_id` but are not yet under row-level security, so they rely on repository filters alone. SPEC 4 requires both layers; PLAN M2.3g tracks the change. Open point: which cross-tenant operations (enrollment by join-token hash, gateway certificate lookup, audit appends from system actors) run under the separate reviewed role, and how that role is provisioned next to `shipkeep_runtime`.
+
+- Retry-safe certificate renewal after a response is lost: a recovery protocol must preserve the one-active-certificate invariant without accepting a revoked identity.
+
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).
 - Wildcard certificates: which DNS providers to support first for DNS-01 (proposal: Cloudflare, Route 53, Hetzner DNS, OVH).
 - Exact Shipkeep Cloud pricing.

@@ -1,5 +1,19 @@
 import type { JoinTokenRecord } from '../domain/join-token';
 import type { NodeCertificateRecord, NodeRecord } from '../domain/node';
+import type { NodeCredential, NodeIdentity } from '../domain/node-identity';
+
+export interface NodeCredentialStore {
+  find(serial: string): Promise<NodeCredential | undefined>;
+  /** Compare-and-swap: only a still-current certificate may be replaced. */
+  replace(identity: NodeIdentity, certificate: NodeCertificateRecord, now: Date): Promise<boolean>;
+}
+
+export interface FleetTransaction {
+  run<T>(work: () => Promise<T>): Promise<T>;
+}
+
+export const NODE_CREDENTIAL_STORE = Symbol('NodeCredentialStore');
+export const FLEET_TRANSACTION = Symbol('FleetTransaction');
 
 export interface JoinTokenStore {
   insert(record: JoinTokenRecord): Promise<void>;
