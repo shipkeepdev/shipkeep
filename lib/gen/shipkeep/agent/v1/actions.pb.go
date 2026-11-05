@@ -1244,6 +1244,7 @@ func (x *S3Target) GetEncryptionKeyRef() string {
 }
 
 // One upstream of a route: a local container or an instance on another node over WireGuard.
+// Exactly one of `address` and `container` is set (ADR 0017).
 type Upstream struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// `host:port` on the Docker network or the WireGuard network. Nothing else is accepted.
@@ -1251,7 +1252,13 @@ type Upstream struct {
 	// Node that runs this upstream, for diagnostics.
 	NodeId string `protobuf:"bytes,2,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
 	// Relative weight. Zero means 1.
-	Weight        uint32 `protobuf:"varint,3,opt,name=weight,proto3" json:"weight,omitempty"`
+	Weight uint32 `protobuf:"varint,3,opt,name=weight,proto3" json:"weight,omitempty"`
+	// A managed container on this node, `^sk-[a-z0-9-]{1,60}$`. The agent resolves it when it applies
+	// the route, to the container's address on its Shipkeep network, so a restart that changes the
+	// address does not need the control plane.
+	Container string `protobuf:"bytes,4,opt,name=container,proto3" json:"container,omitempty"`
+	// Container port used with `container`, 1 to 65535.
+	Port          uint32 `protobuf:"varint,5,opt,name=port,proto3" json:"port,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1303,6 +1310,20 @@ func (x *Upstream) GetNodeId() string {
 func (x *Upstream) GetWeight() uint32 {
 	if x != nil {
 		return x.Weight
+	}
+	return 0
+}
+
+func (x *Upstream) GetContainer() string {
+	if x != nil {
+		return x.Container
+	}
+	return ""
+}
+
+func (x *Upstream) GetPort() uint32 {
+	if x != nil {
+		return x.Port
 	}
 	return 0
 }
@@ -3679,11 +3700,13 @@ const file_shipkeep_agent_v1_actions_proto_rawDesc = "" +
 	"object_key\x18\x03 \x01(\tR\tobjectKey\x129\n" +
 	"\n" +
 	"expires_at\x18\x04 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\x12,\n" +
-	"\x12encryption_key_ref\x18\x05 \x01(\tR\x10encryptionKeyRef\"U\n" +
+	"\x12encryption_key_ref\x18\x05 \x01(\tR\x10encryptionKeyRef\"\x87\x01\n" +
 	"\bUpstream\x12\x18\n" +
 	"\aaddress\x18\x01 \x01(\tR\aaddress\x12\x17\n" +
 	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12\x16\n" +
-	"\x06weight\x18\x03 \x01(\rR\x06weight\"\xea\x01\n" +
+	"\x06weight\x18\x03 \x01(\rR\x06weight\x12\x1c\n" +
+	"\tcontainer\x18\x04 \x01(\tR\tcontainer\x12\x12\n" +
+	"\x04port\x18\x05 \x01(\rR\x04port\"\xea\x01\n" +
 	"\x05Route\x12\x19\n" +
 	"\broute_id\x18\x01 \x01(\tR\arouteId\x12\x14\n" +
 	"\x05hosts\x18\x02 \x03(\tR\x05hosts\x129\n" +
