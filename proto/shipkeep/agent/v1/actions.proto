@@ -205,6 +205,7 @@ enum TlsMode {
 }
 
 // One upstream of a route: a local container or an instance on another node over WireGuard.
+// Exactly one of `address` and `container` is set (ADR 0017).
 message Upstream {
   // `host:port` on the Docker network or the WireGuard network. Nothing else is accepted.
   string address = 1;
@@ -212,6 +213,12 @@ message Upstream {
   string node_id = 2;
   // Relative weight. Zero means 1.
   uint32 weight = 3;
+  // A managed container on this node, `^sk-[a-z0-9-]{1,60}$`. The agent resolves it when it applies
+  // the route, to the container's address on its Shipkeep network, so a restart that changes the
+  // address does not need the control plane.
+  string container = 4;
+  // Container port used with `container`, 1 to 65535.
+  uint32 port = 5;
 }
 
 // Routing entry pushed to agents and used by UpsertRoute.
