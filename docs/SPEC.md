@@ -196,7 +196,9 @@ The agent also enforces these rules:
 - Mounts are managed volumes or bounded tmpfs only, at absolute clean paths outside `/proc`, `/sys`, `/dev`, `/etc`, `/var/run` and `/run`.
 - Ports are exposed on the Docker network and never published on the host.
 - `secrets_as_files` is refused until the tmpfs writer exists. Secret values are only sent to the local daemon as environment variables.
-- Each container is labelled with its name and an `sk.spec` fingerprint of its spec, computed with secret values replaced by their versions. A replay reuses the same container; a different spec under the same name is refused.
+- Start, stop and remove act only on managed containers, referenced by full id or `sk-` name, never by id prefix. They are idempotent: stopping or removing a missing container is done; starting one fails. Removing a container's volumes needs a `container.remove` confirmation for that container, spent in a non-retryable first step. A token without `remove_volumes` is refused.
+
+Each container is labelled with its name and an `sk.spec` fingerprint of its spec, computed with secret values replaced by their versions. A replay reuses the same container; a different spec under the same name is refused.
 
 The agent only adopts or changes resources that carry its `sk.managed=true` label; a same-named unmanaged network or volume is refused. Image pulls accept only digest-pinned references, plus optional credentials that are short-lived and scoped to the image's own registry. The `sk.` label namespace is reserved for the agent.
 

@@ -70,6 +70,15 @@ func DockerHandlers(engine Engine, confirmations Confirmer) map[string]Handler {
 		"create_container": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return createContainer(engine, req.GetCreateContainer().GetSpec())
 		}, Result: resourceResult},
+		"start_container": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
+			return startContainer(engine, req.GetStartContainer())
+		}, Result: resourceResult},
+		"stop_container": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
+			return stopContainer(engine, req.GetStopContainer())
+		}, Result: resourceResult},
+		"remove_container": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
+			return removeContainer(engine, confirmations, req.GetRemoveContainer())
+		}, Result: resourceResult},
 	}
 }
 

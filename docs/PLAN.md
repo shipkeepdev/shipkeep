@@ -123,7 +123,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
     - [x] **M1.4b2** Go confirmation-token verifier (SPEC 3.6) and `RemoveVolume`.
   - [ ] **M1.4c** `CreateContainer`, `StartContainer`, `StopContainer`, `RemoveContainer`, `HealthCheck`, `RunReleaseTask`, with validator fuzz tests.
     - [x] **M1.4c1** Container spec validation and `CreateContainer` with confined defaults, malicious-input and fuzz tests.
-    - [ ] **M1.4c2** `StartContainer`, `StopContainer`, `RemoveContainer` (confirmation when removing volumes).
+    - [x] **M1.4c2** `StartContainer`, `StopContainer`, `RemoveContainer` (confirmation when removing volumes).
     - [ ] **M1.4c3** `HealthCheck` and `RunReleaseTask`.
   - `EnsureNetwork`, `PullImage`, `CreateContainer`, `StartContainer`, `StopContainer`, `RemoveContainer`, `EnsureVolume`, `RemoveVolume`, `HealthCheck`, `RunReleaseTask` through the Docker Engine SDK, with all validations from SPEC 3.3.
   - Acceptance: integration tests against real Docker; malicious-input tests (privileged, host mounts, path traversal, oversized fields) all rejected; fuzz tests for validators.
