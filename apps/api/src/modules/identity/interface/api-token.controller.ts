@@ -84,7 +84,19 @@ export class ApiTokenController {
     }));
     const result = await this.commands.create(
       context(request),
-      { name: body.name, scopes, expiresAt: new Date(body.expiresAt) },
+      {
+        name: body.name,
+        scopes,
+        expiresAt: new Date(body.expiresAt),
+        ...(body.project
+          ? {
+              project: {
+                organizationId: body.project.organizationId,
+                projectId: body.project.projectId,
+              },
+            }
+          : {}),
+      },
       new Secret(body.password),
       factorInput(body),
     );
@@ -120,6 +132,9 @@ function toDto(record: ApiTokenMetadata): ApiTokenDto {
     id: record.id,
     name: record.name,
     scopes: record.scopes.map((scope) => ({ ...scope })),
+    project: record.project
+      ? { organizationId: record.project.organizationId, projectId: record.project.projectId }
+      : null,
     status: record.status,
     createdAt: record.createdAt.toISOString(),
     expiresAt: record.expiresAt.toISOString(),

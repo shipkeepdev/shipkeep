@@ -3,6 +3,7 @@ import {
   assertApiTokenExpiry,
   parseApiScopes,
   scopeCovers,
+  scopesWithinProject,
 } from './api-token-policy.js';
 
 const organizationId = '0192f0c0-0000-7000-8000-000000000001';
@@ -96,5 +97,48 @@ describe('API token policy', () => {
       expect(() => {
         assertApiTokenExpiry(expiry, now);
       }).toThrow();
+  });
+});
+
+describe('project-bound token scopes', () => {
+  const project = { organizationId, projectId };
+
+  it('accepts project and environment scopes of the same project', () => {
+    expect(
+      scopesWithinProject(
+        parseApiScopes([
+          { permission: 'project.read', organizationId, projectId },
+          { permission: 'deploy.run', organizationId, projectId, environmentId },
+        ]),
+        project,
+      ),
+    ).toBe(true);
+  });
+
+  it('rejects organization-wide, account, foreign and empty scopes', () => {
+    for (const scopes of [
+      [{ permission: 'organization.read', organizationId }],
+      [{ permission: 'project.read', organizationId, projectId: other }],
+      [{ permission: 'profile.read' }],
+    ])
+      expect(scopesWithinProject(parseApiScopes(scopes), project), JSON.stringify(scopes)).toBe(
+        false,
+      );
+    expect(
+      scopesWithinProject(
+        parseApiScopes([{ permission: 'project.read', organizationId: other, projectId }]),
+        project,
+      ),
+    ).toBe(false);
+    expect(scopesWithinProject([], project)).toBe(false);
+    expect(
+      scopesWithinProject(
+        parseApiScopes([{ permission: 'project.read', organizationId, projectId }]),
+        {
+          organizationId,
+          projectId: 'not-a-uuid',
+        },
+      ),
+    ).toBe(false);
   });
 });

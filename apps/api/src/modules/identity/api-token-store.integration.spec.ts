@@ -57,6 +57,7 @@ describe('API token persistence against PostgreSQL', () => {
       expiresAt: new Date(now.getTime() + 3600000),
       revokedAt: null,
       lastUsedAt: null,
+      project: null,
     };
   });
 

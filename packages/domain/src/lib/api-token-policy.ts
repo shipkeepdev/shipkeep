@@ -101,6 +101,32 @@ export function scopeCovers(
   );
 }
 
+/** The project a project-bound token belongs to (PLAN M2.3e). */
+export interface ApiTokenProject {
+  readonly organizationId: string;
+  readonly projectId: string;
+}
+
+/**
+ * True when every scope stays inside `project`: same organization and project, optionally one of
+ * its environments. Account-wide permissions (`profile.read`) never belong to a project token.
+ */
+export function scopesWithinProject(
+  scopes: readonly ApiScope[],
+  project: ApiTokenProject,
+): boolean {
+  return (
+    scopes.length > 0 &&
+    validContext(project) &&
+    scopes.every(
+      (scope) =>
+        scope.permission !== 'profile.read' &&
+        scope.organizationId === project.organizationId &&
+        scope.projectId === project.projectId,
+    )
+  );
+}
+
 export function assertApiTokenName(input: string): string {
   const name = input.trim();
   if (!name || Array.from(name).length > 64 || /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u.test(input))

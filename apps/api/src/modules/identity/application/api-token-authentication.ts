@@ -1,5 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { type Permission, type ResourceContext, scopeCovers, type Secret } from '@shipkeep/domain';
+import {
+  type Permission,
+  type ResourceContext,
+  scopeCovers,
+  scopesWithinProject,
+  type Secret,
+} from '@shipkeep/domain';
 
 import { AuthenticationError, TOKEN_PATTERN } from '../domain/identity-policy';
 import type { UserRecord } from '../domain/identity-records';
@@ -95,7 +101,9 @@ export class ApiTokenAuthentication {
         token.securityVersion !== user.securityVersion ||
         token.revokedAt !== null ||
         token.createdAt > now ||
-        token.expiresAt <= now
+        token.expiresAt <= now ||
+        // A project token whose stored scopes left its project is corrupt, never usable.
+        (token.project !== null && !scopesWithinProject(token.scopes, token.project))
       )
         throw new AuthenticationError();
       return operation({ user, token });
@@ -107,7 +115,11 @@ export class ApiTokenAuthentication {
     permission: Permission,
     target: ResourceContext,
   ): Promise<void> {
+    const project = current.token.project;
     if (
+      (project !== null &&
+        (target.organizationId !== project.organizationId ||
+          target.projectId !== project.projectId)) ||
       !current.token.scopes.some((scope) => scopeCovers(scope, permission, target)) ||
       !(await this.authority.allows(current.user.id, permission, target))
     )

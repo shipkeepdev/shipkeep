@@ -6,7 +6,10 @@ import {
   ConflictError,
   createEvent,
   NotFoundError,
+  type ApiTokenProject,
+  InvalidInputError,
   parseApiScopes,
+  scopesWithinProject,
   type Secret,
 } from '@shipkeep/domain';
 import { v7 as uuidv7 } from 'uuid';
@@ -31,7 +34,7 @@ import { MfaProof } from './mfa-proof';
 
 export type ApiTokenMetadata = Pick<
   ApiTokenRecord,
-  'id' | 'name' | 'scopes' | 'createdAt' | 'expiresAt' | 'revokedAt' | 'lastUsedAt'
+  'id' | 'name' | 'scopes' | 'project' | 'createdAt' | 'expiresAt' | 'revokedAt' | 'lastUsedAt'
 > & {
   readonly status: 'active' | 'revoked' | 'expired' | 'invalidated';
 };
@@ -50,13 +53,21 @@ export class ApiTokenCommands {
 
   async create(
     context: SecurityContext,
-    input: { name: string; scopes: unknown; expiresAt: Date },
+    input: { name: string; scopes: unknown; expiresAt: Date; project?: ApiTokenProject },
     password: Secret,
     proof: MfaProofInput,
     now = new Date(),
   ): Promise<{ metadata: ApiTokenMetadata; token: Secret }> {
     const name = assertApiTokenName(input.name);
     const scopes = parseApiScopes(input.scopes);
+    const project = input.project
+      ? { organizationId: input.project.organizationId, projectId: input.project.projectId }
+      : null;
+    if (project && !scopesWithinProject(scopes, project))
+      throw new InvalidInputError(
+        'invalid_api_token_scopes',
+        'Every scope of a project token must stay inside that project.',
+      );
     const expiresAt = new Date(input.expiresAt);
     assertApiTokenExpiry(expiresAt, now);
     await this.reauthenticate(context, password);
@@ -65,6 +76,9 @@ export class ApiTokenCommands {
       for (const scope of scopes)
         if (!(await this.authority.allows(user.id, scope.permission, scope)))
           throw new TokenPermissionError();
+      // Binding credentials to a project is project administration (SPEC 7, member management).
+      if (project && !(await this.authority.allows(user.id, 'member.manage', project)))
+        throw new TokenPermissionError();
       if (
         (await this.tokens.countActive(user.id, user.securityVersion, now)) >= API_TOKEN_MAX_ACTIVE
       )
@@ -79,6 +93,7 @@ export class ApiTokenCommands {
         userId: user.id,
         name,
         scopes,
+        project,
         tokenHash: this.secrets.hash('api', token),
         securityVersion: user.securityVersion,
         createdAt: now,
@@ -143,7 +158,7 @@ export class ApiTokenCommands {
         actor: { kind: 'user', id: context.userId, ip: context.ip },
         target: { type: 'api_token', id: record.id },
         ...(organizationId ? { organizationId } : {}),
-        payload: {},
+        payload: record.project ? { projectId: record.project.projectId } : {},
         occurredAt: now,
       }),
     ]);
@@ -159,6 +174,7 @@ function metadata(record: ApiTokenRecord, version: number, now: Date): ApiTokenM
     id: record.id,
     name: record.name,
     scopes: record.scopes,
+    project: record.project,
     createdAt: record.createdAt,
     expiresAt: record.expiresAt,
     revokedAt: record.revokedAt,

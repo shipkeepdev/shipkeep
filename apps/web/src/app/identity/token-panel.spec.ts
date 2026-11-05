@@ -23,6 +23,7 @@ describe('API-token screen', () => {
       expiresAt: new Date(Date.now() + 86400000).toISOString(),
       revokedAt: null,
       lastUsedAt: null,
+      project: null,
     };
     const api = {
       listTokens: vi.fn<IdentityApi['listTokens']>(),

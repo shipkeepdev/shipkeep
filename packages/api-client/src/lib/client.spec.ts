@@ -21,6 +21,7 @@ describe('createShipkeepClient', () => {
       expiresAt: body.expiresAt,
       revokedAt: null,
       lastUsedAt: null,
+      project: null,
       status: 'active',
     };
     let captured: Request | undefined;

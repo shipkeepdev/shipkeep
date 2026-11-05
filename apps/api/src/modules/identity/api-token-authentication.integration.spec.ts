@@ -64,6 +64,7 @@ describe('API token authentication and quotas', () => {
       expiresAt: new Date(now.getTime() + 3600000),
       revokedAt: null,
       lastUsedAt: null,
+      project: null,
     };
     await store.insert(record);
   });

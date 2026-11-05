@@ -569,6 +569,7 @@ export type components = {
             /** Format: date-time */
             readonly lastUsedAt: string | null;
             readonly name: string;
+            readonly project: components["schemas"]["ApiTokenProjectDto"] | null;
             /** Format: date-time */
             readonly revokedAt: string | null;
             readonly scopes: readonly components["schemas"]["ApiScopeDto"][];
@@ -587,6 +588,7 @@ export type components = {
             /** Format: date-time */
             readonly lastUsedAt: string | null;
             readonly name: string;
+            readonly project: components["schemas"]["ApiTokenProjectDto"] | null;
             /** Format: date-time */
             readonly revokedAt: string | null;
             readonly scopes: readonly components["schemas"]["ApiScopeDto"][];
@@ -597,6 +599,12 @@ export type components = {
             readonly items: readonly components["schemas"]["ApiTokenDto"][];
             /** Format: uuid */
             readonly nextCursor: string | null;
+        };
+        readonly ApiTokenProjectDto: {
+            /** Format: uuid */
+            readonly organizationId: string;
+            /** Format: uuid */
+            readonly projectId: string;
         };
         readonly AssignBindingDto: {
             /**
@@ -674,6 +682,8 @@ export type components = {
             readonly name: string;
             /** Format: password */
             readonly password: string;
+            /** @description Binds the token to one project: every scope must stay inside it, and the creator must manage its members. The token is deleted with the project. */
+            readonly project?: components["schemas"]["ApiTokenProjectDto"];
             readonly recovery?: string;
             readonly scopes: readonly components["schemas"]["ApiScopeDto"][];
             readonly totp?: string;
