@@ -93,6 +93,7 @@ describe('production identity in Chromium', () => {
       expect(message.includes(`${fixture.origin}/verify-email`)).toBe(true);
       await page.getByRole('link', { name: 'Enter verification code' }).click();
       await fillPrivate(page.getByLabel('Verification code'), code);
+      await fillPrivate(page.getByLabel('Password you chose when signing up'), password);
       await page.getByRole('button', { name: 'Verify email', exact: true }).click();
       await page.getByRole('link', { name: 'Continue to sign in' }).click();
       await page.getByLabel('Email address').fill(email);
