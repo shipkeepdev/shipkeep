@@ -55,7 +55,7 @@ func healthEngine(ip string, ports ...string) *fakeEngine {
 
 func probe(t *testing.T, engine *fakeEngine, prober Prober, spec *agentv1.HealthCheckSpec, deadline time.Duration) *agentv1.ActionUpdate {
 	t.Helper()
-	d := &Dispatcher{Journal: open(t), Handlers: dockerHandlers(engine, nil, prober), Epoch: func() uint64 { return 3 }}
+	d := &Dispatcher{Journal: open(t), Handlers: dockerHandlers(engine, nil, prober, nil), Epoch: func() uint64 { return 3 }}
 	out := &recorder{}
 	d.Handle(context.Background(), &agentv1.ActionRequest{ActionId: testID, IdempotencyKey: "health", LeaseEpoch: 3, DeadlineUnixMs: time.Now().Add(time.Minute).UnixMilli(),
 		Action: &agentv1.ActionRequest_HealthCheck{HealthCheck: &agentv1.HealthCheck{ContainerId: "sk-api-r42", Spec: spec, Deadline: durationpb.New(deadline)}}}, out.send)
@@ -125,7 +125,7 @@ func TestHealthCheckRejectsMaliciousSpecs(t *testing.T) {
 
 func TestReleaseTaskRunsOnceAndCleansUp(t *testing.T) {
 	release := func(engine *fakeEngine, timeout time.Duration) *agentv1.ActionUpdate {
-		d := &Dispatcher{Journal: open(t), Handlers: dockerHandlers(engine, nil, &fakeProber{}), Epoch: func() uint64 { return 3 }}
+		d := &Dispatcher{Journal: open(t), Handlers: dockerHandlers(engine, nil, &fakeProber{}, nil), Epoch: func() uint64 { return 3 }}
 		out := &recorder{}
 		spec := validSpec()
 		spec.Name = "sk-api-migrate"

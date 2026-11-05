@@ -29,7 +29,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
 1. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
-2. M1.6 (agent self-reconciliation), then M3 (deploy pipeline).
+2. M3 (deploy pipeline), then `StateReport` delivery for M1.6.
 
 **Before going public** (the maintainer changes the visibility; ADR 0016):
 
@@ -129,7 +129,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - [ ] **M1.5 Caddy route management** (A). Depends: M1.3. The handlers and the typed admin client are done (`UpsertRoute`, `RemoveRoute`). Only the acceptance remains open: a switch under constant load against a real Caddy (CI-1 or the VM suite).
   - Caddy installed by the installer; agent manages routes through the admin Unix socket with typed JSON; `UpsertRoute`, `RemoveRoute` with switch-then-drain.
   - Acceptance: test deploys v1, switches to v2 under constant load (k6 or vegeta), zero failed requests.
-- [ ] **M1.6 Agent self-reconciliation** (A). Depends: M1.4, M1.5
+- [ ] **M1.6 Agent self-reconciliation** (A). Depends: M1.4, M1.5. Done: the intent journal, the 30 s reconciler restarting stopped managed containers offline, and `CollectFacts`. Remaining: send `StateReport` to the control plane; have the installer run Caddy with `--resume` so routes survive a Caddy restart (M8.3); the end-to-end acceptance on a VM.
   - Reconcile loop every 30 s against `desired`; restart crashed managed containers; report `StateReport`; answer `CollectFacts`.
   - Acceptance: with control plane stopped, a killed container is restarted and routing keeps serving.
 

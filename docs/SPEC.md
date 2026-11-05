@@ -206,6 +206,12 @@ Routes (`agent/internal/caddy`, ADR 0005) are typed JSON sent to Caddy's admin A
 - **TLS:** `TLS_MODE_OFF` adds the hosts to the server's `automatic_https.skip` list. DNS-01 is refused until a provider is configured.
 - **Switch-then-drain:** `UpsertRoute` switches upstreams atomically and, when it replaced an existing route, waits the drain timeout (default 30 s, at most 5 min) before succeeding, so stopping the old instance comes after draining. `RemoveRoute` also drains after removal.
 
+Self-reconciliation (M1.6, `agent/internal/reconcile`):
+
+- **Intent:** the journal records, per managed container, whether it should run. `StartContainer` sets it after starting; `StopContainer` clears it before stopping, so a stopping container is never restarted; `RemoveContainer` forgets it.
+- **Every 30 s,** with or without the control plane, the agent starts each managed container that should run but is not running, and records each observation in the journal's actual state. Missing containers are left to the control plane, because their secrets are not stored on the node.
+- **Facts:** `CollectFacts` reports hostname, OS, kernel, architecture, CPU count, memory (`/proc/meminfo`), state-directory disk size and free space, the Docker version and the agent version, without running any command.
+
 `HealthCheck` probes a managed container from the agent:
 
 - **Target:** its private network address only, never loopback, link-local (for example cloud metadata) or public addresses. The port is the requested TCP port, or for HTTP the single exposed TCP port.

@@ -33,7 +33,7 @@ func withContainer(labels map[string]string) *fakeEngine {
 
 func lifecycle(t *testing.T, engine *fakeEngine, confirmations Confirmer, req *agentv1.ActionRequest) *agentv1.ActionUpdate {
 	t.Helper()
-	d := &Dispatcher{Journal: open(t), Handlers: DockerHandlers(engine, confirmations), Epoch: func() uint64 { return 3 }}
+	d := &Dispatcher{Journal: open(t), Handlers: DockerHandlers(engine, confirmations, nil), Epoch: func() uint64 { return 3 }}
 	req.ActionId, req.IdempotencyKey, req.LeaseEpoch = testID, "lifecycle", 3
 	req.DeadlineUnixMs = time.Now().Add(time.Minute).UnixMilli()
 	out := &recorder{}

@@ -55,12 +55,18 @@ type Confirmer interface {
 	Consume(ctx context.Context, token, action, target string) error
 }
 
-// DockerHandlers returns the Docker-backed handlers; health probes go over container networks.
-func DockerHandlers(engine Engine, confirmations Confirmer) map[string]Handler {
-	return dockerHandlers(engine, confirmations, NetworkProber{})
+// Intents records whether managed containers should run; the reconciler restores it (M1.6).
+type Intents interface {
+	SetIntent(ctx context.Context, container string, running bool, now time.Time) error
+	ClearIntent(ctx context.Context, container string) error
 }
 
-func dockerHandlers(engine Engine, confirmations Confirmer, prober Prober) map[string]Handler {
+// DockerHandlers returns the Docker-backed handlers; health probes go over container networks.
+func DockerHandlers(engine Engine, confirmations Confirmer, intents Intents) map[string]Handler {
+	return dockerHandlers(engine, confirmations, NetworkProber{}, intents)
+}
+
+func dockerHandlers(engine Engine, confirmations Confirmer, prober Prober, intents Intents) map[string]Handler {
 	return map[string]Handler{
 		"health_check": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return healthCheck(engine, prober, req.GetHealthCheck())
@@ -82,13 +88,13 @@ func dockerHandlers(engine Engine, confirmations Confirmer, prober Prober) map[s
 			return createContainer(engine, req.GetCreateContainer().GetSpec())
 		}, Result: resourceResult},
 		"start_container": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
-			return startContainer(engine, req.GetStartContainer())
+			return startContainer(engine, intents, req.GetStartContainer())
 		}, Result: resourceResult},
 		"stop_container": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
-			return stopContainer(engine, req.GetStopContainer())
+			return stopContainer(engine, intents, req.GetStopContainer())
 		}, Result: resourceResult},
 		"remove_container": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
-			return removeContainer(engine, confirmations, req.GetRemoveContainer())
+			return removeContainer(engine, confirmations, intents, req.GetRemoveContainer())
 		}, Result: resourceResult},
 	}
 }
