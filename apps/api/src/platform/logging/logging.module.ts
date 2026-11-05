@@ -12,6 +12,7 @@ export const REDACTED_PATHS = [
   'req.headers.cookie',
   'req.headers["x-api-key"]',
   'req.headers["x-shipkeep-join-token"]',
+  'req.headers["x-shipkeep-csrf"]',
   'res.headers["set-cookie"]',
   'req.query.token',
   'req.query.access_token',
