@@ -30,6 +30,8 @@ type fakeEngine struct {
 	created           []docker.ContainerConfig
 	started, stopped  []string
 	removedContainers []string
+	exitCode          int
+	hang              bool
 	auth              *docker.Auth
 }
 
@@ -118,6 +120,14 @@ func (f *fakeEngine) RemoveContainer(_ context.Context, id string, volumes bool)
 	f.containers = slices.DeleteFunc(f.containers, func(c docker.Container) bool { return c.ID == id })
 	f.removedContainers = append(f.removedContainers, fmt.Sprintf("%s:%t", id, volumes))
 	return nil
+}
+
+func (f *fakeEngine) WaitContainer(ctx context.Context, _ string) (int, error) {
+	if f.hang {
+		<-ctx.Done()
+		return 0, ctx.Err()
+	}
+	return f.exitCode, nil
 }
 
 func (f *fakeEngine) Image(_ context.Context, ref string) (docker.Image, error) {

@@ -32,6 +32,7 @@ type Engine interface {
 	StartContainer(ctx context.Context, id string) error
 	StopContainer(ctx context.Context, id string, timeout int) error
 	RemoveContainer(ctx context.Context, id string, volumes bool) error
+	WaitContainer(ctx context.Context, id string) (int, error)
 }
 
 var (
@@ -54,9 +55,19 @@ type Confirmer interface {
 	Consume(ctx context.Context, token, action, target string) error
 }
 
-// DockerHandlers returns the network, image and volume handlers backed by engine.
+// DockerHandlers returns the Docker-backed handlers; health probes go over container networks.
 func DockerHandlers(engine Engine, confirmations Confirmer) map[string]Handler {
+	return dockerHandlers(engine, confirmations, NetworkProber{})
+}
+
+func dockerHandlers(engine Engine, confirmations Confirmer, prober Prober) map[string]Handler {
 	return map[string]Handler{
+		"health_check": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
+			return healthCheck(engine, prober, req.GetHealthCheck())
+		}, Result: healthResult},
+		"run_release_task": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
+			return releaseTask(engine, req.GetRunReleaseTask())
+		}, Result: releaseResult},
 		"remove_volume": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return removeVolume(engine, confirmations, req.GetRemoveVolume())
 		}, Result: resourceResult},
