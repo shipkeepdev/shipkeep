@@ -98,6 +98,17 @@ model AuditEvent {
   @@map("audit_events")
 }
 
+/// Short-lived encrypted request/response pairs for retrying authentication mutations.
+model IdentityReplay {
+  keyHash    String   @id @map("key_hash") @db.Char(64)
+  ciphertext Bytes
+  createdAt  DateTime @map("created_at") @db.Timestamptz(6)
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@index([expiresAt])
+  @@map("identity_replays")
+}
+
 /// Data-encryption keys of envelope encryption (SPEC section 9), one per scope (for example
 /// `environment:<id>`), each wrapped by the key-encryption key of the given version.
 model DataEncryptionKey {
