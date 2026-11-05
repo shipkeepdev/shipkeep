@@ -55,7 +55,14 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 	if err != nil {
 		return err
 	}
-	defer func() { runErr = errors.Join(runErr, store.Close()) }()
+	defer func() {
+		closeErr := store.Close()
+		// Filter the expected cancellation first so a close failure is never swallowed with it.
+		if errors.Is(runErr, context.Canceled) {
+			runErr = nil
+		}
+		runErr = errors.Join(runErr, closeErr)
+	}()
 	unfinished, err := store.Unfinished(ctx)
 	if err != nil {
 		return err

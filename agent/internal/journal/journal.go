@@ -277,7 +277,8 @@ func allowed(from, to State) bool {
 	case Running:
 		return to == Running || to == Succeeded || to == Failed || to == Compensating || to == Cancelled
 	case Compensating:
-		return to == Compensating || to == Compensated
+		// Failed only after bounded compensation attempts (see maxCompensationAttempts).
+		return to == Compensating || to == Compensated || to == Failed
 	case Succeeded, Failed, Cancelled, Compensated:
 		return false
 	default:

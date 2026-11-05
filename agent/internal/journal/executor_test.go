@@ -162,3 +162,91 @@ func TestCancellationRetainsRecoverableIntent(t *testing.T) {
 		t.Fatal("interrupted step not persisted")
 	}
 }
+
+func TestNotificationFailureAtStepStartDoesNotCompensate(t *testing.T) {
+	store, err := Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() //nolint:errcheck // test cleanup
+	applied, compensated := 0, 0
+	plan := Plan{Version: "v1", Steps: []Step{{
+		Name:       "create",
+		RetrySafe:  false,
+		Apply:      func(context.Context) (Outcome, error) { applied++; return Outcome{ResourceID: "resource"}, nil },
+		Compensate: func(context.Context) error { compensated++; return nil },
+	}}}
+	// The stream drops exactly when the step-start checkpoint is announced.
+	dropStepStart := func(_ context.Context, op Operation) error {
+		if op.Step != "" {
+			return errors.New("offline")
+		}
+		return nil
+	}
+	if _, err := store.Execute(t.Context(), request(), plan, dropStepStart); err == nil || applied != 0 {
+		t.Fatal("step ran although its start could not be announced")
+	}
+	pending, err := store.Unfinished(t.Context())
+	if err != nil || len(pending) != 1 || pending[0].Step != "" {
+		t.Fatal("step marker left behind for a step that never ran")
+	}
+	op, err := store.Execute(t.Context(), request(), plan, nil)
+	if err != nil || op.State != Succeeded || applied != 1 || compensated != 0 {
+		t.Fatalf("delivery failure triggered compensation: state=%v applied=%d compensated=%d err=%v", op.State, applied, compensated, err)
+	}
+}
+
+func TestShutdownDuringSuccessfulStepRecordsTheSuccess(t *testing.T) {
+	store, err := Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() //nolint:errcheck // test cleanup
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	applied, compensated := 0, 0
+	plan := Plan{Version: "v1", Steps: []Step{{
+		Name:      "create",
+		RetrySafe: false,
+		Apply: func(context.Context) (Outcome, error) {
+			applied++
+			cancel() // SIGTERM arrives while the side effect completes.
+			return Outcome{ResourceID: "resource"}, nil
+		},
+		Compensate: func(context.Context) error { compensated++; return nil },
+	}}}
+	if _, err := store.Execute(ctx, request(), plan, nil); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Execute() error = %v, want cancellation", err)
+	}
+	op, err := store.Execute(t.Context(), request(), plan, nil)
+	if err != nil || op.State != Succeeded || op.Result.ResourceID != "resource" || applied != 1 || compensated != 0 {
+		t.Fatalf("completed step was compensated after shutdown: state=%v applied=%d compensated=%d err=%v", op.State, applied, compensated, err)
+	}
+}
+
+func TestCompensationGivesUpAfterBoundedAttempts(t *testing.T) {
+	store, err := Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() //nolint:errcheck // test cleanup
+	plan := Plan{Version: "v1", Steps: []Step{{
+		Name:       "create",
+		Apply:      func(context.Context) (Outcome, error) { return Outcome{}, errors.New("docker refused") },
+		Compensate: func(context.Context) error { return errors.New("still broken") },
+	}}}
+	var last error
+	for range maxCompensationAttempts + 2 {
+		_, last = store.Execute(t.Context(), request(), plan, nil)
+		if errors.Is(last, ErrOperationFailed) {
+			break
+		}
+	}
+	if !errors.Is(last, ErrOperationFailed) {
+		t.Fatalf("compensation retried without bound: last error %v", last)
+	}
+	pending, err := store.Unfinished(t.Context())
+	if err != nil || len(pending) != 0 {
+		t.Fatal("terminally failed operation still resumes on every boot")
+	}
+}

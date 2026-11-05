@@ -5,10 +5,19 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"time"
 )
 
 // ErrOperationFailed indicates an operation that failed and has been compensated or terminated.
 var ErrOperationFailed = errors.New("operation failed")
+
+const (
+	// checkpointTimeout bounds a journal write that must finish even during shutdown.
+	checkpointTimeout = 10 * time.Second
+	// maxCompensationAttempts stops retrying a compensator that keeps failing: the operation becomes
+	// Failed (terminal, last_error recorded) for an operator instead of being retried on every boot.
+	maxCompensationAttempts = 5
+)
 
 // Step declares recovery policy before execution. Compensate must be idempotent even when Apply
 // never ran or only partially completed. RetrySafe permits repeating Apply after an uncertain crash.
@@ -75,14 +84,25 @@ func (s *Store) Execute(ctx context.Context, request Request, plan Plan, notify 
 	if op.Completed > len(plan.Steps) || (op.State == Running && op.Step != "" && (op.Completed == len(plan.Steps) || op.Step != plan.Steps[op.Completed].Name)) {
 		return op, ErrConflict
 	}
-	checkpoint := func(next Operation) error {
-		recorded, err := s.Advance(ctx, op, next)
+	// Journal writes use a context that survives cancellation: once a side effect happened, its
+	// outcome must be recorded even if shutdown was signalled meanwhile.
+	advance := func(next Operation) error {
+		durable, cancel := context.WithTimeout(context.WithoutCancel(ctx), checkpointTimeout)
+		defer cancel()
+		recorded, err := s.Advance(durable, op, next)
 		if err != nil {
 			return err
 		}
 		op = recorded
+		return nil
+	}
+	checkpoint := func(next Operation) error {
+		if err := advance(next); err != nil {
+			return err
+		}
 		return emit()
 	}
+	interrupted := func() error { return fmt.Errorf("operation interrupted: %w", ctx.Err()) }
 	next := op
 	next.Attempts++
 	if op.State == Pending {
@@ -100,12 +120,20 @@ func (s *Store) Execute(ctx context.Context, request Request, plan Plan, notify 
 			step := plan.Steps[index]
 			next = op
 			next.Step = step.Name
-			if err := checkpoint(next); err != nil {
+			if err := advance(next); err != nil {
+				return op, err
+			}
+			if err := emit(); err != nil {
+				// Apply has not run. Clear the marker so a retry does not compensate a step that
+				// never started; a crash before this write still leaves it uncertain, as it must.
+				cleared := op
+				cleared.Step = ""
+				_ = advance(cleared)
 				return op, err
 			}
 			result, applyErr := step.Apply(ctx)
-			if ctx.Err() != nil {
-				return op, fmt.Errorf("operation interrupted: %w", ctx.Err())
+			if applyErr != nil && ctx.Err() != nil {
+				return op, interrupted()
 			}
 			if applyErr != nil {
 				next = op
@@ -125,6 +153,9 @@ func (s *Store) Execute(ctx context.Context, request Request, plan Plan, notify 
 			if err := checkpoint(next); err != nil {
 				return op, err
 			}
+			if ctx.Err() != nil {
+				return op, interrupted()
+			}
 		}
 	}
 	if op.State == Compensating {
@@ -136,6 +167,18 @@ func (s *Store) Execute(ctx context.Context, request Request, plan Plan, notify 
 				return op, err
 			}
 			if err := plan.Steps[index].Compensate(ctx); err != nil {
+				if ctx.Err() != nil {
+					return op, interrupted()
+				}
+				if op.Attempts >= maxCompensationAttempts {
+					next = op
+					next.State = Failed
+					next.Step = ""
+					if err := checkpoint(next); err != nil {
+						return op, err
+					}
+					return op, ErrOperationFailed
+				}
 				return op, errors.New("operation compensation requires retry")
 			}
 			next = op
