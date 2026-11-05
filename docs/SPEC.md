@@ -188,6 +188,14 @@ Anything not in this table does not exist. There is no generic exec, shell or fi
 - Journal checkpoints are written even after shutdown is signalled, so a completed side effect is never mistaken for an uncertain one. If announcing a step start fails, the step marker is cleared before returning because the step never ran. A compensator that still fails after five attempts moves the operation to `failed` (terminal, `last_error` recorded) for operator attention instead of retrying on every boot.
 - Execution plans are registered code with a version and at most 64 unique step names, never remote code. The intent hash binds the payload hash to the plan version, ordered names and retry policy. The caller reconstructs inputs from desired state or request replay; raw payloads are never journaled. A per-store executor gate prevents concurrent duplicate side effects. Committed transitions are offered to an ActionUpdate callback; delivery failure pauses further effects, and retry republishes the latest durable state. Concrete Docker/Caddy handlers and stream dispatch are wired in their own milestones.
 - Idempotency: the same `idempotency_key` returns the stored result without re-executing.
+- Dispatch (`agent/internal/actions`) rejects malformed requests before journaling anything, and answers each with a single `FAILED` update carrying a fixed, redacted message. Rejected requests include:
+  - an action id that is not a UUIDv7, or an idempotency key outside `[A-Za-z0-9._:-]{1,128}`;
+  - a missing or unregistered action kind;
+  - a lease epoch other than the node's;
+  - a missing or past deadline;
+  - a handler validation error.
+- The payload hash covers only the action message, so a redelivery with new ids or a new deadline still matches.
+- Actions run on the agent's lifetime under their deadline, not the stream's. A dropped connection never interrupts them; their updates are dropped, and the control plane receives the journaled outcome when it redelivers with the same key. `CancelAction` cancels the action's context, and the journal compensates per the plan.
 
 ### 3.5 Local state
 
