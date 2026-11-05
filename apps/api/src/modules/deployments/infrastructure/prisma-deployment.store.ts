@@ -105,6 +105,11 @@ export class PrismaDeploymentStore implements DeploymentStore {
     return row ? deployment(row) : undefined;
   }
 
+  async byId(deploymentId: string): Promise<DeploymentRecord | undefined> {
+    const row = await this.database.client.deployment.findFirst({ where: { id: deploymentId } });
+    return row ? deployment(row) : undefined;
+  }
+
   async list(applicationId: string): Promise<DeploymentRecord[]> {
     const rows = await this.database.client.deployment.findMany({
       where: { applicationId },

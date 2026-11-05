@@ -31,6 +31,11 @@ export class PrismaUnitOfWork {
     return this.context.getStore()?.client ?? this.prisma;
   }
 
+  /** True inside `run`: work that must commit with the command can join its transaction. */
+  inTransaction(): boolean {
+    return this.context.getStore() !== undefined;
+  }
+
   async run<T>(operation: () => Promise<T>): Promise<T> {
     const current = this.context.getStore();
     if (current) return operation();

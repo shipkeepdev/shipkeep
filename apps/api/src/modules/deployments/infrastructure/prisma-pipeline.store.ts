@@ -3,7 +3,7 @@ import type { ShipkeepConfig } from '@shipkeep/config-schema';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
-import type { PipelineStore, StoredAllocation } from '../application/ports';
+import type { PipelineApplication, PipelineStore, StoredAllocation } from '../application/ports';
 import type { StepOutcome, StepState } from '../domain/pipeline';
 import type { NodeLoad, NodeView } from '../domain/placement';
 import type { Release } from '../domain/release';
@@ -132,6 +132,14 @@ export class PrismaPipelineStore implements PipelineStore {
         typeof value === 'string' || typeof value === 'number' ? value : undefined,
       ),
     }));
+  }
+
+  async application(applicationId: string): Promise<PipelineApplication | undefined> {
+    const row = await this.database.client.application.findFirst({
+      where: { id: applicationId },
+      select: { id: true, organizationId: true, projectId: true, environmentId: true, name: true },
+    });
+    return row ?? undefined;
   }
 
   async load(organizationId: string): Promise<Map<string, NodeLoad>> {

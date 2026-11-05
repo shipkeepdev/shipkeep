@@ -29,8 +29,10 @@ import {
 import {
   DEPLOYMENT_STORE,
   DEPLOYMENT_TRANSACTION,
+  DEPLOYMENT_WAKER,
   type DeploymentStore,
   type DeploymentTransaction,
+  type DeploymentWaker,
 } from './ports';
 
 const CANCELLED_BY_USER = 'Cancelled by a user.';
@@ -48,6 +50,7 @@ export class DeploymentCommands {
     @Inject(DEPLOYMENT_TRANSACTION) private readonly transaction: DeploymentTransaction,
     @Inject(APPLICATION_STORE) private readonly applications: ApplicationStore,
     @Inject(SECRET_STORE) private readonly secrets: SecretStore,
+    @Inject(DEPLOYMENT_WAKER) private readonly waker: DeploymentWaker,
     private readonly accounts: AccountMutationAuthority,
     private readonly access: TenantAccess,
     private readonly events: DomainEventBus,
@@ -83,6 +86,8 @@ export class DeploymentCommands {
           trigger: deployment.trigger,
         }),
       ]);
+      // The pipeline run commits with the deployment (PLAN M3.4c4c).
+      await this.waker.wake(application.organizationId, deployment.id);
       return { release, deployment };
     });
   }
@@ -112,6 +117,7 @@ export class DeploymentCommands {
           routing: stopped.routing,
         }),
       ]);
+      await this.waker.wake(application.organizationId, cancelled.id);
       return cancelled;
     });
   }
