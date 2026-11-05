@@ -19,6 +19,12 @@ export const SIGNING_ALGORITHM = { name: 'Ed25519' } as const;
 export const CA_SUBJECT = 'CN=Shipkeep Installation CA';
 export const CA_VALIDITY_MS = 10 * 365 * 864e5;
 export const NODE_CERT_VALIDITY_MS = 30 * 864e5;
+/**
+ * Certificates start this long before issuance so a peer whose clock runs slightly behind the
+ * control plane (a fresh VM before NTP sync) does not reject a brand-new certificate as "not yet
+ * valid", which would burn the join token or brick a renewal.
+ */
+export const CLOCK_SKEW_ALLOWANCE_MS = 5 * 60_000;
 const SERIAL_BYTES = 16;
 
 export interface KeyPairPem {
@@ -168,7 +174,7 @@ export async function createGatewayCertificate(
       serialNumber: randomSerial(),
       subject: 'CN=Shipkeep Agent Gateway',
       issuer: ca.subject,
-      notBefore: new Date(),
+      notBefore: new Date(Date.now() - CLOCK_SKEW_ALLOWANCE_MS),
       notAfter: new Date(Date.now() + NODE_CERT_VALIDITY_MS),
       signingAlgorithm: SIGNING_ALGORITHM,
       publicKey: await importPublicKey(keys.publicKeyPem),

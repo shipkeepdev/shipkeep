@@ -18,6 +18,7 @@ import {
 } from './installation-key-store';
 import {
   certificateFingerprint,
+  CLOCK_SKEW_ALLOWANCE_MS,
   createCaCertificate,
   createGatewayCertificate,
   createNodeCertificate,
@@ -92,8 +93,9 @@ export class X509CertificateAuthority
   ): Promise<IssuedCertificate> {
     const ca = await this.requireCa();
     const nodePublicKey = await verifyCsr(csrPem);
-    const notBefore = new Date();
-    const notAfter = new Date(notBefore.getTime() + NODE_CERT_VALIDITY_MS);
+    const issuedAt = Date.now();
+    const notBefore = new Date(issuedAt - CLOCK_SKEW_ALLOWANCE_MS);
+    const notAfter = new Date(issuedAt + NODE_CERT_VALIDITY_MS);
     const serial = randomSerial();
     const certificatePem = await createNodeCertificate({
       caCertificatePem: await this.caCertificatePem(),

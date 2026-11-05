@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ConflictError } from '@shipkeep/domain';
+import { ConflictError, InvalidInputError } from '@shipkeep/domain';
 import { v7 as uuidv7 } from 'uuid';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
@@ -76,7 +76,7 @@ export class EnrollNode {
   private async enroll(command: EnrollNodeCommand, now: Date): Promise<EnrollNodeResult> {
     if (!isWellFormedJoinToken(command.joinToken)) throw new JoinTokenRejectedError('malformed');
     if (Buffer.byteLength(command.csrPem, 'utf8') > MAX_CSR_BYTES) {
-      throw new ConflictError('csr_too_large', 'certificate request exceeds the size limit');
+      throw new InvalidInputError('csr_too_large', 'certificate request exceeds the size limit');
     }
     const record = await this.tokens.findByHash(hashJoinToken(command.joinToken));
     const verdict = evaluateJoinToken(command.joinToken, record, now);

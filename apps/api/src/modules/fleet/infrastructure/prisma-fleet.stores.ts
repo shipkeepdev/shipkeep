@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
+import { ConflictError } from '@shipkeep/domain';
 
+import { Prisma } from '../../../platform/prisma/generated/client';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { JoinTokenStore, NodeStore } from '../application/ports';
 import type { JoinTokenRecord } from '../domain/join-token';
@@ -39,6 +41,19 @@ export class PrismaNodeStore implements NodeStore {
   constructor(private readonly database: PrismaUnitOfWork) {}
 
   async insert(node: NodeRecord): Promise<void> {
+    try {
+      await this.createNode(node);
+    } catch (error: unknown) {
+      // Two enrollments racing for the same name: report the domain conflict, not a 500.
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw new ConflictError('node_name_taken', `a node named ${node.name} already exists`, {
+          name: node.name,
+        });
+      throw error;
+    }
+  }
+
+  private async createNode(node: NodeRecord): Promise<void> {
     await this.database.client.node.create({
       data: {
         id: node.id,
