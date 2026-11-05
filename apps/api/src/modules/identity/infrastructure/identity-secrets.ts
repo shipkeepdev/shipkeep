@@ -1,9 +1,21 @@
-import { createHash, randomBytes } from 'node:crypto';
+import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 
 import { Secret } from '@shipkeep/domain';
 import * as OTPAuth from 'otpauth';
 
 export type TokenPurpose = 'session' | 'csrf' | 'verify' | 'reset' | 'api' | 'recovery';
+
+export function matchesTokenHash(
+  purpose: TokenPurpose,
+  value: Secret,
+  expectedHash: string,
+): boolean {
+  if (!/^[a-f0-9]{64}$/.test(expectedHash)) return false;
+  return timingSafeEqual(
+    Buffer.from(hashToken(purpose, value), 'hex'),
+    Buffer.from(expectedHash, 'hex'),
+  );
+}
 
 export function issueToken(): Secret {
   return new Secret(randomBytes(32).toString('base64url'));
