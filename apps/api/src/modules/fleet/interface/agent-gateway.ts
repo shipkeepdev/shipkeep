@@ -97,7 +97,8 @@ export class AgentGateway implements OnModuleDestroy {
       // socket.authorized plus database identity on all other RPCs; rogue-CA tests cover this.
       // nosemgrep: problem-based-packs.insecure-transport.js-node.bypass-tls-verification.bypass-tls-verification
       {
-        cert: credentials.cert,
+        cert: `${credentials.cert}
+${credentials.ca}`,
         key: credentials.key.expose(),
         ca: credentials.ca,
         requestCert: true,
@@ -191,7 +192,8 @@ export class AgentGateway implements OnModuleDestroy {
         this.config.get('AGENT_GATEWAY_SERVER_NAME'),
       );
       this.server?.setSecureContext({
-        cert: credentials.cert,
+        cert: `${credentials.cert}
+${credentials.ca}`,
         key: credentials.key.expose(),
         ca: credentials.ca,
       });
