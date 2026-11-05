@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
-import { PrismaService } from '../../../platform/prisma/prisma.service';
+import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { JoinTokenStore, NodeStore } from '../application/ports';
 import type { JoinTokenRecord } from '../domain/join-token';
 import type { NodeCertificateRecord, NodeFacts, NodeRecord, NodeStatus } from '../domain/node';
@@ -13,20 +13,20 @@ import type {
 
 @Injectable()
 export class PrismaJoinTokenStore implements JoinTokenStore {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly database: PrismaUnitOfWork) {}
 
   async insert(record: JoinTokenRecord): Promise<void> {
-    await this.prisma.joinToken.create({ data: record });
+    await this.database.client.joinToken.create({ data: record });
   }
 
   async findByHash(tokenHash: string): Promise<JoinTokenRecord | undefined> {
-    const row = await this.prisma.joinToken.findUnique({ where: { tokenHash } });
+    const row = await this.database.client.joinToken.findUnique({ where: { tokenHash } });
     return row ?? undefined;
   }
 
   async consume(id: string, nodeId: string, usedAt: Date): Promise<boolean> {
     // The `usedAt: null` condition makes the update atomic: only one caller can flip it.
-    const result = await this.prisma.joinToken.updateMany({
+    const result = await this.database.client.joinToken.updateMany({
       where: { id, usedAt: null },
       data: { usedAt, usedByNodeId: nodeId },
     });
@@ -36,10 +36,10 @@ export class PrismaJoinTokenStore implements JoinTokenStore {
 
 @Injectable()
 export class PrismaNodeStore implements NodeStore {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly database: PrismaUnitOfWork) {}
 
   async insert(node: NodeRecord): Promise<void> {
-    await this.prisma.node.create({
+    await this.database.client.node.create({
       data: {
         id: node.id,
         organizationId: node.organizationId,
@@ -55,7 +55,7 @@ export class PrismaNodeStore implements NodeStore {
   }
 
   async findByName(organizationId: string, name: string): Promise<NodeRecord | undefined> {
-    const row = await this.prisma.node.findUnique({
+    const row = await this.database.client.node.findUnique({
       where: { organizationId_name: { organizationId, name } },
     });
     if (!row) return undefined;
@@ -73,16 +73,16 @@ export class PrismaNodeStore implements NodeStore {
   }
 
   async insertCertificate(certificate: NodeCertificateRecord): Promise<void> {
-    await this.prisma.nodeCertificate.create({ data: certificate });
+    await this.database.client.nodeCertificate.create({ data: certificate });
   }
 }
 
 @Injectable()
 export class PrismaInstallationKeyStore implements InstallationKeyStore {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly database: PrismaUnitOfWork) {}
 
   async find(kind: InstallationKeyKind): Promise<StoredInstallationKey | undefined> {
-    const row = await this.prisma.installationKey.findUnique({ where: { kind } });
+    const row = await this.database.client.installationKey.findUnique({ where: { kind } });
     if (!row) return undefined;
     return {
       kind,
@@ -95,7 +95,7 @@ export class PrismaInstallationKeyStore implements InstallationKeyStore {
   }
 
   async insert(key: StoredInstallationKey & { id: string }): Promise<void> {
-    await this.prisma.installationKey.create({
+    await this.database.client.installationKey.create({
       data: {
         id: key.id,
         kind: key.kind,

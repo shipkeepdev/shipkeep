@@ -168,4 +168,19 @@ describe('X509CertificateAuthority', () => {
     await expect(ca.caCertificatePem()).rejects.toThrow(/not loaded/);
     await expect(ca.publicKeyPem()).rejects.toThrow(/not loaded/);
   });
+
+  it('issues separate server-only credentials for DNS names and IP addresses', async () => {
+    const ca = new X509CertificateAuthority(new MemoryInstallationKeys(), await envelope());
+    await ca.onModuleInit();
+    const root = new X509Certificate(await ca.caCertificatePem());
+    for (const host of ['gateway.example.com', '127.0.0.1']) {
+      const credentials = await ca.gatewayCredentials(host);
+      const leaf = new X509Certificate(credentials.cert);
+      expect(leaf.verify(root.publicKey)).toBe(true);
+      expect(leaf.ca).toBe(false);
+      expect(leaf.keyUsage).toEqual(['1.3.6.1.5.5.7.3.1']);
+      expect(host === '127.0.0.1' ? leaf.checkIP(host) : leaf.checkHost(host)).toBe(host);
+      expect(JSON.stringify(credentials)).not.toContain('PRIVATE KEY');
+    }
+  });
 });

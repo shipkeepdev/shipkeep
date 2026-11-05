@@ -4,6 +4,7 @@ import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { AuthenticateNode } from './application/authenticate-node';
 import { RenewNodeCertificate } from './application/renew-node-certificate';
 import { PrismaNodeCredentialStore } from './infrastructure/prisma-node-credential.store';
+import { AgentGateway } from './interface/agent-gateway';
 
 import { EnrollNode } from './application/enroll-node';
 import { IssueJoinToken } from './application/issue-join-token';
@@ -29,6 +30,7 @@ import {
  */
 @Module({
   providers: [
+    AgentGateway,
     AuthenticateNode,
     RenewNodeCertificate,
     { provide: FLEET_TRANSACTION, useExisting: PrismaUnitOfWork },
@@ -43,6 +45,7 @@ import {
     EnrollNode,
   ],
   exports: [
+    AgentGateway,
     IssueJoinToken,
     EnrollNode,
     CERTIFICATE_AUTHORITY,

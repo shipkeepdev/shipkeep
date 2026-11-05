@@ -32,6 +32,9 @@
   ],
   "references": [
     {
+      "path": "../../packages/proto-ts/tsconfig.lib.json"
+    },
+    {
       "path": "../../packages/domain/tsconfig.lib.json"
     }
   ]

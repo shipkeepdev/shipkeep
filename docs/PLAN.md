@@ -50,7 +50,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
     - Acceptance: CA issues a client certificate from a CSR with the SPIFFE identity decided by the control plane; a reused or expired token is rejected; audit events emitted.
   - [ ] **M1.2b** API `AgentGatewayService` gRPC server over TLS from the installation CA (Connect-RPC): `Enroll`, `RenewCertificate`, client-certificate authentication with the revocation list, CA fingerprint in the install command, join-token REST endpoint once RBAC exists.
     - [x] **M1.2b1** Certificate identity checks and atomic certificate renewal with revocation and audit; tests cover concurrent renewals and rollback on audit failure.
-    - [ ] **M1.2b2** TLS gateway and RPC adapters, authenticated connections, CA-pinned install command and transport tests. Join-token REST endpoint remains gated on M2.3.
+    - [x] **M1.2b2** TLS gateway and unary RPC adapters, default-deny client-certificate authentication, revocation checks and transport tests. The CA fingerprint is already returned by `IssueJoinToken`; displaying it in the install command and exposing join tokens remain gated on M2.3/M8.3. `Connect` stream lifecycle and prompt disconnection after revocation are completed with M1.2c; until then streaming methods authenticate and return `Unimplemented`.
   - [ ] **M1.2c** Agent: key generation, CSR, `Enroll`, cert storage (0600), CA fingerprint pinning, `Connect` stream with reconnect and exponential backoff with jitter, cert renewal.
     - Acceptance: integration test enrolls an agent, reconnects after control plane restart, rejects reused token and revoked cert.
 - [x] **M1.3 Operation journal and local state** (A). Depends: M1.1. Split into M1.3a/b/c for review.
