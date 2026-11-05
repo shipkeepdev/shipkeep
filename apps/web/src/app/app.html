@@ -7,8 +7,15 @@
 <div class="min-h-dvh md:grid md:grid-cols-[13rem_1fr]">
   <header class="flex flex-col border-b border-line bg-panel p-5 md:border-r md:border-b-0 md:p-6">
     <a routerLink="/" class="text-xl font-semibold text-ink no-underline">Shipkeep</a>
-    <nav aria-label="Account" class="mt-5 flex flex-wrap gap-1 md:mt-8 md:flex-col">
+    <nav aria-label="Main" class="mt-5 flex flex-wrap gap-1 md:mt-8 md:flex-col">
       @if (session.profile()) {
+        <a
+          class="nav-link"
+          routerLink="/orgs"
+          routerLinkActive="selected"
+          ariaCurrentWhenActive="page"
+          >Organizations</a
+        >
         <a
           class="nav-link"
           routerLink="/account/security"

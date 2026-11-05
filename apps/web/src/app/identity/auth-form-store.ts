@@ -183,7 +183,7 @@ export class AuthFormStore {
     if (!result.ok) return null;
     for (const name of ['password', 'confirmation', 'code', 'factor'] as const)
       controls[name].reset('', { emitEvent: false });
-    if (mode === 'login') return '/account/security';
+    if (mode === 'login') return '/orgs';
     if (mode === 'reset-password') this.session.clear();
     this.message.set(
       mode === 'verify-email'
