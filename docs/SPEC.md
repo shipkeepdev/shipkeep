@@ -346,6 +346,21 @@ succeeded -> rolled_back (when a later rollback targets the previous release)
 - A failure during `switching` restores the previous upstream set atomically.
 - The aggregate is `packages/domain/src/lib/deployment.ts`. A deployment's plan, fixed when it is queued, records whether it builds (image sources skip `building` and `built`) and whether it runs a release command. Stopping it as failed or cancelled reports whether traffic is untouched (before `switching`), must be restored (during it) or already on the new release (`draining`). Failure reasons are stored bounded to 512 characters, without control characters.
 
+- The pipeline planner (`apps/api/src/modules/deployments/domain/pipeline.ts`, PLAN M3.4c3b) is a pure function from what was observed to what comes next. The worker (M3.4c4) applies its decision and calls it again whenever an agent action finishes, so every stage resumes after a restart. Its inputs are the deployment, the release, the placed replicas, the replicas of the serving release and the outcomes of earlier actions. Its decision is one of: resolve the image, place N replicas, enqueue actions (idempotency key `d:<deployment>:<step>`), advance, fail, or done.
+  - `queued` resolves the image digest.
+  - `releasing` places the replicas, then ensures the environment network, pulls the image and runs the release task on the first replica's node.
+  - `scheduling` places the replicas if that was not already done.
+  - `starting` ensures the network, pulls, creates and starts each replica.
+  - `health_checking` probes `run.healthcheck` on each replica (deadline: the start period plus 2 min, at most 30 min).
+  - `switching` upserts the application route (id = application id) on each node with that node's replicas as container upstreams (ADR 0017), but only when `domains` is set.
+  - `draining` removes the route from nodes no longer serving, then stops the previous replicas.
+  - Any action ending in failed, cancelled, expired or compensated fails the deployment, as do a non-zero release exit, an unhealthy replica or a missing container id.
+  - `recovery` then:
+    - stops the new replicas that were created;
+    - if the switch was interrupted, restores the previous upstreams and removes the route from nodes that only hosted new replicas;
+    - does nothing once draining began, because the new release already serves.
+  - Containers are named `sk-<name[0:24]>-<application id suffix>-r<release>-<replica|task>`, on the network `sk-env-<environment id>`. They carry the labels `shipkeep.application`, `shipkeep.release` and `shipkeep.deployment`; secrets are listed by name, and the worker injects their values.
+
 ### 5.2 Node
 
 ```text
