@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../../platform/prisma/prisma.service';
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
+import { auditLog } from '../../testing/audit-log';
 import { integrationApp } from '../../testing/integration-app';
 import { PASSWORD_HASHER, type PasswordHashing } from '../identity/application/identity-ports';
 import type { SecurityContext } from '../identity/application/mfa-commands';
@@ -58,7 +59,7 @@ describe('audited organization commands with restricted PostgreSQL', () => {
     await expect(sessions.authenticate(old.token)).rejects.toThrow('Authentication failed.');
     expect((await sessions.authenticate(result.session.token)).user.securityVersion).toBe(1);
     expect(
-      await prisma.auditEvent.findFirst({ where: { organizationId: result.organization.id } }),
+      await auditLog().findFirst({ where: { organizationId: result.organization.id } }),
     ).toMatchObject({
       action: 'organization.created',
       actorId: actor.userId,
@@ -137,7 +138,7 @@ describe('audited organization commands with restricted PostgreSQL', () => {
       commands.update({ ...owner, securityVersion: 1 }, uuidv7(), settings),
     ).rejects.toMatchObject({ code: 'resource_not_found' });
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { organizationId: organization.id, action: 'organization.updated' },
       }),
     ).toBe(2);
@@ -176,7 +177,7 @@ describe('audited organization commands with restricted PostgreSQL', () => {
       ).toMatchObject({ name: 'Original', slug: 'original' });
     });
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { organizationId: organization.id, action: 'organization.updated' },
       }),
     ).toBe(0);
@@ -221,7 +222,7 @@ describe('audited organization commands with restricted PostgreSQL', () => {
       ).toBe(0);
       expect((await sessions.authenticate(original.token)).user.securityVersion).toBe(0);
       expect(
-        await prisma.auditEvent.count({
+        await auditLog().count({
           where: { actorId: actor.userId, action: 'organization.created' },
         }),
       ).toBe(0);

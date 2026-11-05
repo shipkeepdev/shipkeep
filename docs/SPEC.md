@@ -206,6 +206,8 @@ Organization, membership, project, environment, role-binding, node, node-certifi
 
 Fleet operations follow ADR 0015. The agent gateway checks certificates and renews them under `runTenant`, using the organization from the TLS-verified certificate's SPIFFE ID. Enrollment first calls `runEnrollment(tokenHash)`: it sets a transaction-local `app.join_token_hash` with no tenant or account context, so the SELECT-only `join_token_lookup` policy exposes only the join token with that SHA-256 hash. The node, its certificate, the token consumption and the audit event are then written under `runTenant` for the token's organization.
 
+Audit events are under forced row security too. In a tenant transaction the runtime role reads only that organization's events. It never reads account or system events (`organization_id` null). Appends stay allowed from every command transaction, but a tenant context can only append events of its own organization or of none. No UPDATE or DELETE policy exists. Audit inserts do not read the row back. Reading system events requires an installation-administrator capability that does not exist yet (see section 16).
+
 Tenant identifiers must be canonical UUIDv7 values. Nested operations can join only the same organization; overlapping sibling scopes within a shared outer transaction are rejected before they can race on connection settings. Context is cleared before returning to an outer identity command and is transaction-local across commit or rollback. Setting a tenant context is not permission to access it: application authorization must still verify current membership and resource ancestry. Storage diagnostics are replaced by an opaque service-unavailable response.
 
 Before choosing an organization, `runAccountDiscovery` sets a transaction-local `app.user_id` from the authenticated account and clears `app.org_id`. SELECT-only policies expose that active, verified account's own memberships and their organization metadata. They expose no other members, project/environment contents or role bindings, and grant no tenant writes. Account discovery and tenant scopes cannot nest into each other or change identity while active; both settings are cleared on exit. An arbitrary account identifier from request input must never be used as the discovery identity.
@@ -481,7 +483,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 
 ## 16. Open questions
 
-- Audit events carry `organization_id` but are not yet under row-level security, so audit reads rely on repository filters alone. PLAN M2.3g2 tracks the change. Open point: who may read system rows (`organization_id` null), and how audit appends from tenant, account, enrollment and system contexts stay allowed. Fleet tables are under RLS (ADR 0015).
+- Installation-level audit access: system and account events (`organization_id` null, for example `fleet.installation_key.created`) are not readable by the runtime role. Proposal for M2.4a: an installation-administrator capability, held by the first owner and audited, with its own read context.
 
 - Retry-safe certificate renewal after a response is lost: a recovery protocol must preserve the one-active-certificate invariant without accepting a revoked identity.
 

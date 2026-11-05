@@ -10,6 +10,7 @@ import {
   IDENTITY_MAILER,
   type IdentityMailer,
 } from '../../modules/identity/application/identity-ports';
+import { auditLog } from '../../testing/audit-log';
 import { integrationApp } from '../../testing/integration-app';
 import { JobQueue } from '../jobs/job-queue';
 
@@ -56,8 +57,10 @@ describe('runtime-role provisioning against PostgreSQL', () => {
     const user = await prisma.user.findUniqueOrThrow({ where: { email: 'runtime@example.com' } });
     expect(user.status).toBe('active');
     expect(
-      (await prisma.auditEvent.findMany({ where: { targetId: user.id } })).map((row) => row.action),
+      (await auditLog().findMany({ where: { targetId: user.id } })).map((row) => row.action),
     ).toEqual(['identity.registered', 'identity.email_verified']);
+    // Account and system events exist, but the runtime role cannot read them back (M2.3g2).
+    expect(await prisma.auditEvent.count()).toBe(0);
     await database.runTenant(org, async () => {
       await database.client.organization.create({
         data: { id: org, name: 'Runtime fixture', slug: 'runtime-fixture' },
@@ -68,11 +71,36 @@ describe('runtime-role provisioning against PostgreSQL', () => {
       expect(await database.client.organization.count()).toBe(1);
     });
     expect(await prisma.organization.count()).toBe(0);
+    const tenantEvent = {
+      id: uuidv7(),
+      organizationId: org,
+      actorKind: 'system',
+      action: 'runtime.fixture_recorded',
+      targetType: 'organization',
+      targetId: org,
+      metadata: {},
+      createdAt: new Date(),
+    };
+    // A tenant context reads only its own events and cannot append another tenant's.
+    await database.runTenant(org, async () => {
+      await database.client.auditEvent.createMany({ data: tenantEvent });
+      expect(
+        (await database.client.auditEvent.findMany()).map((row) => row.organizationId),
+      ).toEqual([org]);
+    });
+    await expect(
+      database.runTenant(org, () =>
+        database.client.auditEvent.createMany({
+          data: { ...tenantEvent, id: uuidv7(), organizationId: uuidv7() },
+        }),
+      ),
+    ).rejects.toThrow();
+    expect(await prisma.auditEvent.count()).toBe(0);
   });
 
   it('denies audit and key rewrites, tenant DDL and access to administrative migration state', async () => {
     // Startup also audits the installation keys it created; only the total must not change.
-    const audits = await prisma.auditEvent.count();
+    const audits = await auditLog().count();
     expect(audits).toBeGreaterThanOrEqual(2);
     for (const execute of [
       () => prisma.$executeRaw`DELETE FROM public.audit_events`,
@@ -87,7 +115,7 @@ describe('runtime-role provisioning against PostgreSQL', () => {
       () => prisma.$executeRaw`SELECT * FROM public._shipkeep_test_migrations`,
     ])
       await expect(execute()).rejects.toThrow();
-    expect(await prisma.auditEvent.count()).toBe(audits);
+    expect(await auditLog().count()).toBe(audits);
   });
 
   it('can reapply grants and transfer existing pg-boss objects without losing queued work', async () => {

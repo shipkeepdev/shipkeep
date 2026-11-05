@@ -8,6 +8,7 @@ import { Test } from '@nestjs/testing';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 
 import { applyMigrations } from './apply-migrations';
+import { releaseAuditLog, useAuditLog } from './audit-log';
 import { resetDatabase } from './reset-database';
 import { runtimeDatabase } from './runtime-database';
 import { POSTGRES_TEST_IMAGE } from './postgres-image';
@@ -39,6 +40,7 @@ export async function integrationApp(
       else process.env[key] = value;
     }
     try {
+      await releaseAuditLog();
       await closeRuntime?.();
     } finally {
       await container?.stop();
@@ -53,6 +55,7 @@ export async function integrationApp(
     await writeFile(process.env['SHIPKEEP_KEK_FILE'], randomBytes(32), { mode: 0o400 });
     await resetDatabase(databaseUrl);
     await applyMigrations(databaseUrl, resolve(__dirname, '../../prisma/migrations'));
+    useAuditLog(databaseUrl);
     if (options.restrictedDatabase) {
       const runtime = await runtimeDatabase(databaseUrl);
       closeRuntime = runtime.close;

@@ -7,6 +7,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { AppConfig } from '../../platform/config/app-config';
 import { PrismaService } from '../../platform/prisma/prisma.service';
+import { auditLog } from '../../testing/audit-log';
 import { integrationApp } from '../../testing/integration-app';
 import { ApiTokenCommands } from '../identity/application/api-token-commands';
 import { PASSWORD_HASHER, type PasswordHashing } from '../identity/application/identity-ports';
@@ -201,7 +202,7 @@ describe('role binding mutations over HTTP', () => {
       .expect(409);
     const id = granted.binding?.id ?? '';
     expect(
-      await prisma.auditEvent.count({ where: { action: 'role_binding.assigned', targetId: id } }),
+      await auditLog().count({ where: { action: 'role_binding.assigned', targetId: id } }),
     ).toBe(1);
   });
 
@@ -306,7 +307,7 @@ describe('role binding mutations over HTTP', () => {
     await resetLimits();
     await removal().expect(200).expect('Idempotency-Replayed', 'true');
     expect(
-      await prisma.auditEvent.count({ where: { organizationId, action: 'role_binding.removed' } }),
+      await auditLog().count({ where: { organizationId, action: 'role_binding.removed' } }),
     ).toBe(1);
     await login(subject);
     await get(subject, environmentPath()).expect(404);

@@ -7,6 +7,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { AppConfig } from '../../platform/config/app-config';
 import { PrismaService } from '../../platform/prisma/prisma.service';
+import { auditLog } from '../../testing/audit-log';
 import { integrationApp } from '../../testing/integration-app';
 import { ApiTokenCommands } from '../identity/application/api-token-commands';
 import { PASSWORD_HASHER, type PasswordHashing } from '../identity/application/identity-ports';
@@ -101,7 +102,7 @@ describe('membership mutations over HTTP', () => {
     return id;
   }
   const audits = (action: string, targetId: string) =>
-    prisma.auditEvent.count({ where: { action, targetId } });
+    auditLog().count({ where: { action, targetId } });
 
   beforeAll(async () => {
     fixture = await integrationApp([], { restrictedDatabase: true });
@@ -223,9 +224,9 @@ describe('membership mutations over HTTP', () => {
       role: 'member',
       password: 'incorrect fixture passphrase',
     }).expect(401);
-    expect(
-      await prisma.auditEvent.count({ where: { organizationId, action: 'membership.added' } }),
-    ).toBe(0);
+    expect(await auditLog().count({ where: { organizationId, action: 'membership.added' } })).toBe(
+      0,
+    );
   });
 
   it('changes roles, protects the last owner and rotates the caller after a self-demotion', async () => {

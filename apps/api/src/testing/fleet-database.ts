@@ -1,6 +1,7 @@
 import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 
+import { releaseAuditLog, useAuditLog } from './audit-log';
 import { runtimeDatabase } from './runtime-database';
 
 export interface FleetDatabase {
@@ -24,6 +25,7 @@ export async function fleetDatabase(adminUrl: string): Promise<FleetDatabase> {
     await runtime.close();
     throw error;
   }
+  useAuditLog(adminUrl);
   return {
     admin,
     runtimeUrl: runtime.url,
@@ -51,6 +53,7 @@ export async function fleetDatabase(adminUrl: string): Promise<FleetDatabase> {
     },
     async close(): Promise<void> {
       try {
+        await releaseAuditLog();
         await admin.end();
       } finally {
         await runtime.close();

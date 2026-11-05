@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../../platform/prisma/prisma.service';
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
+import { auditLog } from '../../testing/audit-log';
 import { integrationApp } from '../../testing/integration-app';
 import { PASSWORD_HASHER, type PasswordHashing } from '../identity/application/identity-ports';
 import type { SecurityContext } from '../identity/application/mfa-commands';
@@ -158,7 +159,7 @@ describe('resource role commands with restricted PostgreSQL', () => {
     expect(await version(5)).toBe(3);
     expect(await access.allows(actors[5].userId, 'project.read', project)).toBe(false);
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { targetId: first.value.id, action: { startsWith: 'role_binding.' } },
       }),
     ).toBe(3);
@@ -268,7 +269,7 @@ describe('resource role commands with restricted PostgreSQL', () => {
       ).toMatchObject([{ id: original.value.id, role: 'developer' }]);
     });
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { targetId: original.value.id, action: { startsWith: 'role_binding.' } },
       }),
     ).toBe(1);

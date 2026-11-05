@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../../platform/prisma/prisma.service';
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
+import { auditLog } from '../../testing/audit-log';
 import { integrationApp } from '../../testing/integration-app';
 import { PASSWORD_HASHER, type PasswordHashing } from '../identity/application/identity-ports';
 import type { SecurityContext } from '../identity/application/mfa-commands';
@@ -138,7 +139,7 @@ describe('project and environment commands with restricted PostgreSQL', () => {
       [target.projectId, 'project.updated'],
       [target.environmentId, 'environment.updated'],
     ])
-      expect(await prisma.auditEvent.findFirst({ where: { targetId: id, action } })).toMatchObject({
+      expect(await auditLog().findFirst({ where: { targetId: id, action } })).toMatchObject({
         action,
       });
     expect(await prisma.project.count()).toBe(0);
@@ -269,7 +270,7 @@ describe('project and environment commands with restricted PostgreSQL', () => {
       expect(await database.client.environment.count({ where: { name: 'rollback' } })).toBe(0);
     });
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { metadata: { path: ['slug'], equals: 'rollback' } },
       }),
     ).toBe(0);

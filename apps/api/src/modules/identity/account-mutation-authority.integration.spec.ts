@@ -6,6 +6,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { DomainEventBus } from '../../platform/events/domain-event-bus';
 import { PrismaService } from '../../platform/prisma/prisma.service';
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
+import { auditLog } from '../../testing/audit-log';
 import { integrationApp } from '../../testing/integration-app';
 
 import { AccountMutationAuthority } from './application/account-mutation-authority';
@@ -83,7 +84,7 @@ describe('account mutation authority with restricted PostgreSQL', () => {
     await expect(authority.run(context, operation)).rejects.toThrow('Authentication failed.');
     expect(operation).not.toHaveBeenCalled();
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { targetId: context.userId, action: 'test.authorized' },
       }),
     ).toBe(1);
@@ -151,7 +152,7 @@ describe('account mutation authority with restricted PostgreSQL', () => {
       original.email,
     );
     expect(
-      await prisma.auditEvent.count({
+      await auditLog().count({
         where: { targetId: active.userId, action: 'identity.session_rotated' },
       }),
     ).toBe(1);

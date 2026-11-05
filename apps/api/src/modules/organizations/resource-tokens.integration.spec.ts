@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { DomainEventBus } from '../../platform/events/domain-event-bus';
 import { PrismaService } from '../../platform/prisma/prisma.service';
+import { auditLog } from '../../testing/audit-log';
 import { integrationApp } from '../../testing/integration-app';
 import { ApiTokenAuthentication } from '../identity/application/api-token-authentication';
 import { ApiTokenCommands } from '../identity/application/api-token-commands';
@@ -122,7 +123,7 @@ describe('resource commands with scoped API credentials', () => {
       ['environment.updated', target.environmentId],
     ])
       expect(
-        await prisma.auditEvent.findFirst({
+        await auditLog().findFirst({
           where: { action, targetId, actorId: context.apiCredential?.id },
         }),
       ).toMatchObject({ actorKind: 'api_token', actorId: context.apiCredential?.id });
@@ -134,7 +135,7 @@ describe('resource commands with scoped API credentials', () => {
       name: 'production',
       protected: false,
     });
-    expect(JSON.stringify(await prisma.auditEvent.findMany())).not.toContain(
+    expect(JSON.stringify(await auditLog().findMany())).not.toContain(
       context.apiCredential?.value.expose(),
     );
   });
@@ -145,7 +146,7 @@ describe('resource commands with scoped API credentials', () => {
       { permission: 'project.read', ...projectTarget() },
       { permission: 'environment.read', ...target },
     ]);
-    const before = await prisma.auditEvent.count();
+    const before = await auditLog().count();
     for (const operation of [
       () => organizations.update(context, organizationId, { name: 'Denied', slug: 'denied' }),
       () => resources.createProject(context, organizationId, settings),
@@ -154,7 +155,7 @@ describe('resource commands with scoped API credentials', () => {
       () => resources.updateEnvironment(context, target, { name: 'denied' }),
     ])
       await expect(operation()).rejects.toThrow('Permission denied.');
-    expect(await prisma.auditEvent.count()).toBe(before);
+    expect(await auditLog().count()).toBe(before);
   });
 
   it('keeps catalog and administration collections session-only and rejects sibling scopes', async () => {
@@ -194,7 +195,7 @@ describe('resource commands with scoped API credentials', () => {
     await expect(resources.updateProject(context, projectTarget(), settings)).rejects.toThrow(
       'Authentication failed.',
     );
-    expect(await prisma.auditEvent.count({ where: { actorId: key.id } })).toBe(0);
+    expect(await auditLog().count({ where: { actorId: key.id } })).toBe(0);
   });
 
   it('holds the credential owner lock through the resource write and audit', async () => {
@@ -261,8 +262,6 @@ describe('resource commands with scoped API credentials', () => {
       unsubscribe();
     }
     expect(await catalog.project(owner, projectTarget())).toEqual(original);
-    expect(await prisma.auditEvent.count({ where: { actorId: context.apiCredential?.id } })).toBe(
-      0,
-    );
+    expect(await auditLog().count({ where: { actorId: context.apiCredential?.id } })).toBe(0);
   });
 });

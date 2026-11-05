@@ -28,13 +28,12 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
-1. M2.3g2 (row-level security for audit events). It must land before M2.4 exposes audit reads.
-2. M2.3e (project-owned tokens).
-3. M2.7 (fleet administration endpoints).
-4. M2.4a, then M2.5a (audit query/export API, confirmation token issuance).
-5. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
-6. M1.4a, M1.4b and M1.4c (container actions).
-7. M1.5 (Caddy routes) and M4.3 (scheduler, pure function). They can start in parallel with the items above, because their dependencies are met.
+1. M2.3e (project-owned tokens).
+2. M2.7 (fleet administration endpoints).
+3. M2.4a, then M2.5a (audit query/export API, confirmation token issuance).
+4. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
+5. M1.4a, M1.4b and M1.4c (container actions).
+6. M1.5 (Caddy routes) and M4.3 (scheduler, pure function). They can start in parallel with the items above, because their dependencies are met.
 
 **Work that no task owned yet, now assigned:**
 
@@ -233,11 +232,11 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.
     - [ ] **M2.3f1** Organization switcher, project/environment catalog and settings, member and binding screens, API-token scope picker.
     - [ ] **M2.3f2** Real-browser acceptance: two organizations, cross-tenant URLs answer 404, role changes take effect on the next request.
-  - [ ] **M2.3g** Row-level security for the remaining tenant-scoped tables (`nodes`, `join_tokens`, `node_certificates`, `audit_events`), with enrollment token lookup and the agent gateway moved to a separate reviewed cross-tenant role (SPEC 4). Must land before any node, join-token or audit read endpoint is exposed (M2.4, M2.7).
+  - [x] **M2.3g** Row-level security for the remaining tenant-scoped tables (`nodes`, `join_tokens`, `node_certificates`, `audit_events`), with enrollment token lookup and the agent gateway moved to a separate reviewed cross-tenant role (SPEC 4). Must land before any node, join-token or audit read endpoint is exposed (M2.4, M2.7).
     - [x] **M2.3g1** Fleet tables. `node_certificates` has no `organization_id`: add it with a composite foreign key to `nodes`, rather than relying on a join policy. Gateway lookups use the organization of the verified certificate; enrollment uses a context-bound, SELECT-only token lookup instead of a separate role (ADR 0015).
       - [x] **M2.3g1a** `node_certificates.organization_id` with a composite foreign key to its node, backfilled by migration (ADR 0015).
       - [x] **M2.3g1b** Forced RLS on `nodes`, `join_tokens` and `node_certificates`; tenant-scoped gateway lookups; context-bound enrollment lookup; fleet integration tests on the restricted login.
-    - [ ] **M2.3g2** `audit_events`: tenant rows readable only in their organization context. System rows (`organization_id` null, for example `fleet.installation_key.created`) are readable by installation administrators only. INSERT stays allowed for every command transaction.
+    - [x] **M2.3g2** `audit_events`: tenant rows readable only in their organization context. System rows (`organization_id` null, for example `fleet.installation_key.created`) are readable by installation administrators only. INSERT stays allowed for every command transaction.
   - Entities from SPEC 4, RBAC matrix from SPEC 7 as a policy module, default-deny guard, row-level security.
   - Acceptance: generated RBAC matrix test covers every route and role; tenant isolation suite passes.
 - [ ] **M2.4 Audit log guarantees and UI** (C + W). Depends: M2.3. Partly done: the runtime role has only SELECT/INSERT on `audit_events`, and `runtime-role.integration.spec.ts` proves that UPDATE, DELETE and TRUNCATE are denied.
