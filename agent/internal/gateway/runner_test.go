@@ -35,10 +35,24 @@ func (g *testGateway) Connect(stream grpc.BidiStreamingServer[agentv1.ConnectReq
 	if g.disconnect.Swap(false) {
 		return status.Error(codes.Unavailable, "simulated control plane restart")
 	}
+	if action := g.action.Swap(nil); action != nil {
+		if err := stream.Send(&agentv1.ConnectResponse{Msg: &agentv1.ConnectResponse_ActionRequest{ActionRequest: action}}); err != nil {
+			return err
+		}
+	}
+	if cancel := g.cancel.Swap(nil); cancel != nil {
+		if err := stream.Send(&agentv1.ConnectResponse{Msg: &agentv1.ConnectResponse_CancelAction{CancelAction: cancel}}); err != nil {
+			return err
+		}
+	}
 	for {
 		request, err := stream.Recv()
 		if err != nil {
 			return err
+		}
+		if update := request.GetActionUpdate(); update != nil && g.updates != nil {
+			g.updates <- update
+			continue
 		}
 		if request.GetHeartbeat() == nil {
 			return status.Error(codes.InvalidArgument, "missing heartbeat")
@@ -191,5 +205,59 @@ func TestRunnerFinishesRenewalWhenShutdownIsRequested(t *testing.T) {
 	stored, err := nodecredentials.Load(dir, "")
 	if err != nil || !stored.Key.Equal(renewed.Key) || stored.Key.Equal(bundle.Key) {
 		t.Fatal("renewal committed by the server was not persisted before shutdown")
+	}
+}
+
+type fakeActions struct {
+	cancelled chan string
+}
+
+func (f fakeActions) Handle(_ context.Context, req *agentv1.ActionRequest, send func(*agentv1.ActionUpdate)) {
+	send(&agentv1.ActionUpdate{ActionId: req.GetActionId(), State: agentv1.OperationState_OPERATION_STATE_RUNNING})
+	send(&agentv1.ActionUpdate{ActionId: req.GetActionId(), State: agentv1.OperationState_OPERATION_STATE_SUCCEEDED})
+}
+
+func (f fakeActions) Cancel(id string) bool {
+	f.cancelled <- id
+	return true
+}
+
+func TestRunnerDeliversActionsAndForwardsUpdates(t *testing.T) {
+	address, server := startGateway(t, true)
+	bundle, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.updates = make(chan *agentv1.ActionUpdate, 8)
+	server.action.Store(&agentv1.ActionRequest{ActionId: "019d0000-0000-7000-8000-00000000000a"})
+	server.cancel.Store(&agentv1.CancelAction{ActionId: "019d0000-0000-7000-8000-00000000000b"})
+	actions := fakeActions{cancelled: make(chan string, 1)}
+	runner := Runner{Address: address, StateDir: t.TempDir(), Actions: actions, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan error, 1)
+	go func() { stopped <- runner.Run(ctx, bundle) }()
+	defer func() {
+		cancel()
+		if err := <-stopped; err != nil {
+			t.Error(err)
+		}
+	}()
+	for _, want := range []agentv1.OperationState{agentv1.OperationState_OPERATION_STATE_RUNNING, agentv1.OperationState_OPERATION_STATE_SUCCEEDED} {
+		select {
+		case update := <-server.updates:
+			if update.GetState() != want || update.GetActionId() != "019d0000-0000-7000-8000-00000000000a" {
+				t.Fatalf("unexpected update %v", update)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("action update not forwarded")
+		}
+	}
+	select {
+	case id := <-actions.cancelled:
+		if id != "019d0000-0000-7000-8000-00000000000b" {
+			t.Fatalf("wrong cancellation %q", id)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("cancellation not delivered")
 	}
 }

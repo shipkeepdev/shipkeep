@@ -42,6 +42,10 @@ type testGateway struct {
 	disconnect atomic.Bool
 	rejected   atomic.Bool
 	renewSoon  atomic.Bool
+	// action, when set, is sent once after Welcome; agent updates are forwarded to updates.
+	action  atomic.Pointer[agentv1.ActionRequest]
+	cancel  atomic.Pointer[agentv1.CancelAction]
+	updates chan *agentv1.ActionUpdate
 }
 
 func (g *testGateway) certificate(csrPEM string) (string, error) {
