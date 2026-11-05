@@ -6,6 +6,7 @@ import { z } from 'zod';
 
 import { EnvelopeService } from '../../../platform/crypto/envelope.service';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
+import { resourceReplayRoute } from './resource-replay-route';
 
 import { BoundedConcurrency } from './bounded-concurrency';
 
@@ -48,7 +49,9 @@ export class PrivateIdentityReplay {
   ): Promise<{ response: Secret; replayed: boolean }> {
     if (
       !IDEMPOTENCY_KEY_PATTERN.test(key) ||
-      (!/^auth\/[a-z/-]{1,64}$/.test(route) && !TOKEN_ROUTE.test(route)) ||
+      (!/^auth\/[a-z/-]{1,64}$/.test(route) &&
+        !TOKEN_ROUTE.test(route) &&
+        !resourceReplayRoute(route)) ||
       request.expose().length > 32768
     )
       throw new InvalidInputError(

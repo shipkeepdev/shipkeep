@@ -4,6 +4,7 @@ import {
   Injectable,
   type NestInterceptor,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { ConflictError, InvalidInputError, Secret } from '@shipkeep/domain';
 import type { Response } from 'express';
 import { firstValueFrom, from, type Observable } from 'rxjs';
@@ -11,13 +12,21 @@ import { z } from 'zod';
 
 import { AppConfig } from '../../../platform/config/app-config';
 import { API_PREFIX } from '../../../platform/http/constants';
+import { TenantAccess } from '../../organizations/application/tenant-access';
+import { AccountMutationAuthority } from '../application/account-mutation-authority';
 import { SessionCommands } from '../application/session-commands';
 import { ApiTokenAuthentication } from '../application/api-token-authentication';
 import { AuthenticationError } from '../domain/identity-policy';
 import { TokenPermissionError } from '../domain/token-permission-error';
 import { PrivateIdentityReplay } from '../infrastructure/private-identity-replay';
 
-import { cookiePolicy, type IdentityRequest, readCredential } from './session-http';
+import {
+  cookiePolicy,
+  type IdentityRequest,
+  readCredential,
+  resourceContext,
+} from './session-http';
+import { ROUTE_ACCESS, type RouteAccess, routeTarget } from './route-access';
 
 const resultSchema = z
   .object({ body: z.unknown(), cookies: z.array(z.string().max(4096)).max(2) })
@@ -30,6 +39,9 @@ export class IdentityReplayInterceptor implements NestInterceptor {
     private readonly sessions: SessionCommands,
     private readonly tokens: ApiTokenAuthentication,
     private readonly config: AppConfig,
+    private readonly reflector: Reflector,
+    private readonly accounts: AccountMutationAuthority,
+    private readonly tenants: TenantAccess,
   ) {}
 
   intercept(context: ExecutionContext, next: CallHandler<unknown>): Observable<unknown> {
@@ -42,7 +54,11 @@ export class IdentityReplayInterceptor implements NestInterceptor {
         'A single idempotency key is required.',
       );
     const response = context.switchToHttp().getResponse<Response>();
-    return from(this.execute(request, response, key, next));
+    const access = this.reflector.getAllAndOverride<RouteAccess | undefined>(ROUTE_ACCESS, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    return from(this.execute(request, response, key, next, access));
   }
 
   private async execute(
@@ -50,8 +66,12 @@ export class IdentityReplayInterceptor implements NestInterceptor {
     response: Response,
     key: string,
     next: CallHandler<unknown>,
+    access: RouteAccess | undefined,
   ): Promise<unknown> {
     const route = request.path.slice(`${API_PREFIX}/`.length);
+    const resource = route === 'organizations' || route.startsWith('organizations/');
+    if (resource && (!access || !request.identity)) throw new AuthenticationError();
+    const target = resource && access ? routeTarget(access, request.params) : undefined;
     const body =
       request.body && typeof request.body === 'object' && !Array.isArray(request.body)
         ? Object.fromEntries(Object.entries(request.body).sort(([a], [b]) => a.localeCompare(b)))
@@ -62,7 +82,14 @@ export class IdentityReplayInterceptor implements NestInterceptor {
       JSON.stringify({
         body: body ?? null,
         ...(request.identity
-          ? { userId: request.identity.userId, securityVersion: request.identity.securityVersion }
+          ? {
+              kind: request.identity.kind,
+              userId: request.identity.userId,
+              securityVersion: request.identity.securityVersion,
+              ...(request.identity.kind === 'api_token'
+                ? { tokenId: request.identity.tokenId }
+                : {}),
+            }
           : {}),
         ...(route === 'auth/logout'
           ? {
@@ -85,6 +112,19 @@ export class IdentityReplayInterceptor implements NestInterceptor {
         return new Secret(JSON.stringify(snapshot));
       });
       const snapshot = resultSchema.parse(JSON.parse(result.response.expose()) as unknown);
+      if (result.replayed && resource && access && target) {
+        // Recheck after any wait for the cached transaction. Never wrap privilege-changing
+        // commands in an actor lock here: those commands acquire actor/subject locks in order.
+        const actor = resourceContext(request);
+        await this.accounts.run(
+          actor,
+          () =>
+            access.kind === 'tenant'
+              ? this.tenants.require(actor.userId, access.permission, target)
+              : Promise.resolve(),
+          access.kind === 'tenant' ? { permission: access.permission, target } : undefined,
+        );
+      }
       if (result.replayed && route === 'api-tokens') {
         const grant = z.object({ token: z.string().length(43) }).parse(snapshot.body);
         if (!request.identity || request.identity.kind !== 'session')

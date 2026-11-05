@@ -71,7 +71,7 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
     { provide: APP_GUARD, useClass: IdentityGuard },
     { provide: APP_GUARD, useClass: IdentityRateGuard },
   ],
-  exports: [AccountMutationAuthority],
+  exports: [AccountMutationAuthority, IdentityReplayInterceptor],
 })
 export class IdentityModule implements OnModuleInit {
   constructor(
