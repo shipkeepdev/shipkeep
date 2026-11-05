@@ -24,8 +24,96 @@ model User {
   identityTokens  IdentityToken[]
   mfa             UserMfa?
   apiTokens       ApiToken[]
+  memberships     Membership[]
 
   @@map("users")
+}
+
+model Organization {
+  id           String        @id @db.Uuid
+  name         String        @db.VarChar(80)
+  slug         String        @unique @db.VarChar(40)
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  memberships  Membership[]
+  projects     Project[]
+  environments Environment[]
+  roleBindings RoleBinding[]
+
+  @@map("organizations")
+}
+
+model Membership {
+  id             String        @id @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  userId         String        @map("user_id") @db.Uuid
+  orgRole        String        @default("member") @map("org_role") @db.VarChar(16)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  roleBindings   RoleBinding[]
+
+  @@unique([organizationId, userId])
+  @@unique([organizationId, id])
+  @@index([userId])
+  @@map("memberships")
+}
+
+model Project {
+  id             String        @id @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  name           String        @db.VarChar(80)
+  slug           String        @db.VarChar(40)
+  gitWriteMode   String        @default("pull_request") @map("git_write_mode") @db.VarChar(16)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  environments   Environment[]
+  roleBindings   RoleBinding[]
+
+  @@unique([organizationId, slug])
+  @@unique([organizationId, id])
+  @@map("projects")
+}
+
+model Environment {
+  id             String        @id @db.Uuid
+  organizationId String        @map("organization_id") @db.Uuid
+  projectId      String        @map("project_id") @db.Uuid
+  name           String        @db.VarChar(40)
+  kind           String        @default("standard") @db.VarChar(16)
+  failoverPolicy String        @default("none") @map("failover_policy") @db.VarChar(32)
+  protected      Boolean       @default(true)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  project        Project       @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade)
+  roleBindings   RoleBinding[]
+
+  @@unique([projectId, name])
+  @@unique([organizationId, projectId, id])
+  @@map("environments")
+}
+
+model RoleBinding {
+  id             String       @id @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  membershipId   String       @map("membership_id") @db.Uuid
+  projectId      String       @map("project_id") @db.Uuid
+  environmentId  String?      @map("environment_id") @db.Uuid
+  role           String       @db.VarChar(16)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  membership     Membership   @relation(fields: [organizationId, membershipId], references: [organizationId, id], onDelete: Cascade)
+  project        Project      @relation(fields: [organizationId, projectId], references: [organizationId, id], onDelete: Cascade)
+  environment    Environment? @relation(fields: [organizationId, projectId, environmentId], references: [organizationId, projectId, id], onDelete: Cascade)
+
+  /// The migration uses NULLS NOT DISTINCT so project-wide bindings are unique too.
+  @@unique([membershipId, projectId, environmentId])
+  @@index([organizationId, projectId, environmentId])
+  @@map("role_bindings")
 }
 
 /// User-owned API credentials; only the purpose-bound hash is persisted.
