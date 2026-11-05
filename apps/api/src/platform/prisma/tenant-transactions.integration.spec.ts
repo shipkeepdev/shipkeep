@@ -40,6 +40,9 @@ describe('tenant transactions with a restricted PostgreSQL login', () => {
     await admin.query('CREATE ROLE shipkeep_context_ddl NOLOGIN');
     await admin.query('GRANT USAGE ON SCHEMA public TO shipkeep_context_test');
     await admin.query(
+      'GRANT SELECT (id,status,email_verified_at) ON users TO shipkeep_context_test',
+    );
+    await admin.query(
       'GRANT SELECT,INSERT,UPDATE,DELETE ON organizations,memberships,projects,environments,role_bindings TO shipkeep_context_test',
     );
     for (const [index, org] of orgs.entries()) {
