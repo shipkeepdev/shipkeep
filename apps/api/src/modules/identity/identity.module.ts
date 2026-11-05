@@ -5,6 +5,10 @@ import { AppConfig } from '../../platform/config/app-config';
 import { JobsModule } from '../../platform/jobs/jobs.module';
 
 import { AccountCommands } from './application/account-commands';
+import { ApiTokenCommands } from './application/api-token-commands';
+import { API_TOKEN_AUTHORITY, AccountTokenAuthority } from './application/api-token-authority';
+import { API_TOKEN_STORE } from './application/api-token-store';
+import { PrismaApiTokenStore } from './infrastructure/prisma-api-token.store';
 import { IDENTITY_MAILER, IDENTITY_SECRETS, PASSWORD_HASHER } from './application/identity-ports';
 import { IDENTITY_STORE } from './application/identity-store';
 import { IDENTITY_THROTTLE } from './application/identity-throttle';
@@ -35,6 +39,9 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
   controllers: [IdentityController, MfaController],
   providers: [
     AccountCommands,
+    ApiTokenCommands,
+    { provide: API_TOKEN_STORE, useClass: PrismaApiTokenStore },
+    { provide: API_TOKEN_AUTHORITY, useClass: AccountTokenAuthority },
     SessionCommands,
     MfaProof,
     MfaCommands,
