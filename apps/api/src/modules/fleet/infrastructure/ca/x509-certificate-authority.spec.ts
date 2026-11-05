@@ -190,13 +190,16 @@ describe('X509CertificateAuthority', () => {
       ),
     ).rejects.toThrow(CsrError);
 
-    // Tamper with the signature bytes of a valid CSR.
-    const valid = await csrFor();
-    const lines = valid.trim().split('\n');
-    const lastBody = lines.length - 2;
-    const line = lines[lastBody] ?? '';
-    lines[lastBody] = `${line.slice(0, -5)}${line.endsWith('AAAA=') ? 'BBBB=' : 'AAAA='}`;
-    await expect(ca.issueNodeCertificate(lines.join('\n'), identity)).rejects.toThrow(CsrError);
+    // Flip one bit of the signature (the last DER byte) of a valid CSR. Editing base64 text
+    // instead is flaky: lenient decoders can ignore the change when the last byte is zero.
+    const der = Buffer.from(
+      (await csrFor()).replace(/-----[A-Z ]+-----/g, '').replace(/\s+/g, ''),
+      'base64',
+    );
+    der.writeUInt8(der.readUInt8(der.length - 1) ^ 0x01, der.length - 1);
+    const body = (der.toString('base64').match(/.{1,64}/g) ?? []).join('\n');
+    const forged = `-----BEGIN CERTIFICATE REQUEST-----\n${body}\n-----END CERTIFICATE REQUEST-----`;
+    await expect(ca.issueNodeCertificate(forged, identity)).rejects.toThrow(CsrError);
 
     // A request signed with an RSA key.
     const { webcrypto } = await import('node:crypto');
