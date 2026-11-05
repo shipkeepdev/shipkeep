@@ -1,6 +1,6 @@
 import type { AgentActionChange, AgentActionRecord } from '../domain/agent-action';
 import type { JoinTokenRecord } from '../domain/join-token';
-import type { NodeCertificateRecord, NodeRecord, NodeStatus } from '../domain/node';
+import type { NodeCertificateRecord, NodeFacts, NodeRecord, NodeStatus } from '../domain/node';
 import type { NodeCredential, NodeIdentity } from '../domain/node-identity';
 
 export interface NodeCredentialStore {
@@ -53,6 +53,8 @@ export interface NodeStore {
     next: NodeStatus,
     now: Date,
   ): Promise<boolean>;
+  /** Run under `runTenant(organizationId)`: replaces the facts of a node that is not removed. */
+  updateFacts(organizationId: string, id: string, facts: NodeFacts): Promise<void>;
   /** Run under `runTenant(organizationId)`: at most 100 nodes, newest first, exclusive cursor. */
   list(organizationId: string, beforeId?: string): Promise<NodeRecord[]>;
 }

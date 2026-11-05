@@ -108,6 +108,13 @@ export class PrismaNodeStore implements NodeStore {
     return result.count === 1;
   }
 
+  async updateFacts(organizationId: string, id: string, facts: NodeFacts): Promise<void> {
+    await this.database.client.node.updateMany({
+      where: { organizationId, id, status: { not: 'removed' } },
+      data: { facts },
+    });
+  }
+
   async list(organizationId: string, beforeId?: string): Promise<NodeRecord[]> {
     const rows = await this.database.client.node.findMany({
       where: { organizationId, ...(beforeId ? { id: { lt: beforeId } } : {}) },

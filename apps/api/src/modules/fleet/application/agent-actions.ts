@@ -26,8 +26,10 @@ import {
   isTerminalAction,
   MAX_ACTION_LIFETIME_MS,
 } from '../domain/agent-action';
+import { sanitizeFacts } from '../domain/node';
 import type { NodeIdentity } from '../domain/node-identity';
 
+import { factsFromProto } from './node-facts';
 import {
   AGENT_ACTION_STORE,
   type AgentActionStore,
@@ -179,6 +181,13 @@ export class AgentActions {
           at: now,
         },
       );
+      // A CollectFacts result refreshes the node's capacity and versions (scheduling input).
+      if (changed?.state === 'succeeded' && update.result?.result.case === 'facts')
+        await this.nodes.updateFacts(
+          identity.organizationId,
+          identity.nodeId,
+          sanitizeFacts(factsFromProto(update.result.result.value)),
+        );
       if (changed && isTerminalAction(changed.state))
         await this.events.publish([
           this.event(
