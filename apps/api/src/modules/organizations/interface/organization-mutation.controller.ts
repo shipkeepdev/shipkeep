@@ -21,7 +21,7 @@ import {
 } from './organization-mutation.dto';
 import { BrowserMutation, ResourceMutation } from './resource-mutation';
 import { ResourceReplayInterceptor } from './resource-replay.interceptor';
-import { OrganizationDto, OrganizationPathDto, resourceDto } from './resource.dto';
+import { OrganizationDto, OrganizationPathDto, organizationDto } from './resource.dto';
 
 @ApiTags('organizations')
 @Controller('organizations')
@@ -48,7 +48,7 @@ export class OrganizationMutationController {
     );
     setSessionCookies(response, result.session, cookiePolicy(this.config.get('API_PUBLIC_URL')));
     return {
-      organization: resourceDto(result.organization),
+      organization: organizationDto(result.organization),
       session: {
         userId: result.session.userId,
         email: result.session.email,
@@ -64,7 +64,7 @@ export class OrganizationMutationController {
     @Param() path: OrganizationPathDto,
     @Body() body: OrganizationSettingsDto,
   ): Promise<OrganizationDto> {
-    return resourceDto(
+    return organizationDto(
       await this.commands.update(resourceContext(request), path.organizationId, body),
     );
   }

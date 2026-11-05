@@ -6,13 +6,12 @@ import { RequireTenant } from '../../identity/interface/route-access';
 import { type IdentityRequest, resourceContext } from '../../identity/interface/session-http';
 import { AdministrationQueries } from '../application/administration-queries';
 
-import { BindingPageDto, MemberPageDto } from './administration.dto';
+import { BindingPageDto, bindingViewDto, MemberPageDto, memberViewDto } from './administration.dto';
 import {
   CatalogQueryDto,
   EnvironmentPathDto,
   OrganizationPathDto,
   ProjectPathDto,
-  resourceDto,
 } from './resource.dto';
 
 @ApiTags('organizations')
@@ -31,7 +30,7 @@ export class AdministrationController {
     @Query() query: CatalogQueryDto,
   ): Promise<MemberPageDto> {
     const page = await this.queries.members(resourceContext(request), path.organizationId, query);
-    return { ...page, items: page.items.map(resourceDto) };
+    return { ...page, items: page.items.map(memberViewDto) };
   }
 
   @Get(':organizationId/projects/:projectId/bindings')
@@ -43,7 +42,7 @@ export class AdministrationController {
     @Query() query: CatalogQueryDto,
   ): Promise<BindingPageDto> {
     const page = await this.queries.bindings(resourceContext(request), path, query);
-    return { ...page, items: page.items.map(resourceDto) };
+    return { ...page, items: page.items.map(bindingViewDto) };
   }
 
   @Get(':organizationId/projects/:projectId/environments/:environmentId/bindings')
@@ -55,6 +54,6 @@ export class AdministrationController {
     @Query() query: CatalogQueryDto,
   ): Promise<BindingPageDto> {
     const page = await this.queries.bindings(resourceContext(request), path, query);
-    return { ...page, items: page.items.map(resourceDto) };
+    return { ...page, items: page.items.map(bindingViewDto) };
   }
 }

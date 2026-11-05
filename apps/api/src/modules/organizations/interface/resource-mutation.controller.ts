@@ -13,7 +13,8 @@ import {
   OrganizationPathDto,
   ProjectDto,
   ProjectPathDto,
-  resourceDto,
+  environmentDto,
+  projectDto,
 } from './resource.dto';
 
 @ApiTags('organizations')
@@ -29,7 +30,7 @@ export class ResourceMutationController {
     @Param() path: OrganizationPathDto,
     @Body() body: ProjectSettingsDto,
   ): Promise<ProjectDto> {
-    return resourceDto(
+    return projectDto(
       await this.commands.createProject(resourceContext(request), path.organizationId, body),
     );
   }
@@ -41,7 +42,7 @@ export class ResourceMutationController {
     @Param() path: ProjectPathDto,
     @Body() body: ProjectSettingsDto,
   ): Promise<ProjectDto> {
-    return resourceDto(await this.commands.updateProject(resourceContext(request), path, body));
+    return projectDto(await this.commands.updateProject(resourceContext(request), path, body));
   }
 
   @ResourceMutation(
@@ -56,7 +57,9 @@ export class ResourceMutationController {
     @Param() path: ProjectPathDto,
     @Body() body: EnvironmentSettingsDto,
   ): Promise<EnvironmentDto> {
-    return resourceDto(await this.commands.createEnvironment(resourceContext(request), path, body));
+    return environmentDto(
+      await this.commands.createEnvironment(resourceContext(request), path, body),
+    );
   }
 
   @ResourceMutation(
@@ -70,6 +73,8 @@ export class ResourceMutationController {
     @Param() path: EnvironmentPathDto,
     @Body() body: EnvironmentSettingsDto,
   ): Promise<EnvironmentDto> {
-    return resourceDto(await this.commands.updateEnvironment(resourceContext(request), path, body));
+    return environmentDto(
+      await this.commands.updateEnvironment(resourceContext(request), path, body),
+    );
   }
 }
