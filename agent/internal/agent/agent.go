@@ -1,8 +1,6 @@
 // Package agent wires the agent's long-running components together and owns their lifecycle.
 //
-// Task M1.1 provides the skeleton: configuration, logging, state directory preparation and a
-// clean start/stop cycle. The mTLS stream (M1.2), the operation journal (M1.3) and the actions
-// (M1.4 onwards) plug into Run.
+// The outbound gateway connection is independent of future local journal and reconciliation loops.
 package agent
 
 import (
@@ -80,9 +78,9 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 		a.logger.Warn("development mode: CA fingerprint pinning may be disabled, never use on a real server")
 	}
 
-	// Components run under this group; each one owns a goroutine with a clear shutdown path.
-	// M1.1 has none yet, so the agent simply waits for the stop signal.
-	<-ctx.Done()
+	if err := a.runGateway(ctx); err != nil && ctx.Err() == nil {
+		return err
+	}
 
 	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), ShutdownTimeout)
 	defer cancel()

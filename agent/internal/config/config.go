@@ -46,6 +46,8 @@ type ControlPlane struct {
 	// CAFingerprint is "sha256:<64 hex>" of the installation CA, shown in the install command.
 	// The agent refuses to send its join token to a gateway whose CA does not match (SPEC 3.2).
 	CAFingerprint string `yaml:"ca_fingerprint"`
+	// JoinTokenFile is a private 0600 file consumed only after durable enrollment.
+	JoinTokenFile string `yaml:"join_token_file"`
 }
 
 // Node holds node-level identity overrides.
@@ -181,6 +183,12 @@ func (c Config) Validate() error {
 		add("control_plane.ca_fingerprint is required (use the value shown in the install command)")
 	case c.ControlPlane.CAFingerprint != "" && !fingerprintRe.MatchString(c.ControlPlane.CAFingerprint):
 		add("control_plane.ca_fingerprint must look like sha256:<64 lowercase hex characters>")
+	}
+
+	if c.ControlPlane.JoinTokenFile != "" {
+		if err := validatePath(c.ControlPlane.JoinTokenFile); err != nil {
+			add("control_plane.join_token_file: %v", err)
+		}
 	}
 
 	if c.Node.Name != "" && !validNodeName(c.Node.Name) {

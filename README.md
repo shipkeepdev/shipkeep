@@ -35,7 +35,9 @@ For browser development, set `API_PUBLIC_URL=http://localhost:4200` in `.env` (a
 
 Production builds use `pnpm nx run-many -t build -p api web`. Start `node apps/api/dist/main.js` from the repository root with `NODE_ENV=production`, the database/KEK settings and an HTTPS `API_PUBLIC_URL` matching the public reverse proxy. The API serves the browser build from `dist/apps/web/browser`; set `WEB_DIST_DIR` for another packaged layout. Missing/invalid web builds fail startup. HTML uses fresh per-response CSP nonces and must not be cached by a proxy; hashed bundles may be cached immutably. API requests remain under `/api/v1`.
 
-The agent gateway listens on TLS port 7443 (`AGENT_GATEWAY_ADDR`). Set `AGENT_GATEWAY_SERVER_NAME` to the DNS name or IP agents use; it defaults to `localhost`. The installation CA signs a separate server certificate, and agents must pin that CA before sending a join token. Enrollment and certificate renewal RPCs are available; the agent stream and REST join-token issuance are still pending M1.2c and M2.3 respectively. No installation command is exposed before those prerequisites.
+The agent gateway listens on TLS port 7443 (`AGENT_GATEWAY_ADDR`). Set `AGENT_GATEWAY_SERVER_NAME` to the DNS name or IP agents use; it defaults to `localhost`. The installation CA signs a separate server certificate, and agents must pin that CA before sending a join token. Enrollment, certificate renewal and the agent stream are available. REST join-token issuance remains gated on RBAC (M2.3), and the installer remains M8.3.
+
+For an agent with a token issued through the internal fleet command, copy `deploy/agent/agent.example.yaml`, set its gateway address and CA fingerprint, and set `control_plane.join_token_file` to a private 0600 file containing the token. Run `go run ./agent/cmd/shipkeep-agent --config /absolute/path/agent.yaml`. The agent consumes that file after saving its identity, reconnects after control-plane outages and renews its certificate automatically. `--dev` without a token keeps the unenrolled development process idle; production requires enrollment. The stream currently handles identity and heartbeats; workload execution arrives in later milestones.
 
 Other useful commands:
 
@@ -45,7 +47,7 @@ pnpm dev:infra:down    # stop them, keep the data
 pnpm dev:infra:reset   # stop them and delete the data volumes
 pnpm lint              # ESLint + TypeScript typecheck
 pnpm test              # TypeScript unit tests (vitest)
-pnpm test:integration  # API against a real PostgreSQL (Testcontainers)
+pnpm test:integration  # API/PostgreSQL + real Go daemon TLS/restart/revocation tests
 pnpm exec playwright install --with-deps chromium  # one-time browser/system setup
 pnpm test:browser      # production web build + HTTPS, disposable Postgres and local TLS SMTP
 go test ./agent/... ./cli/... ./lib/...
