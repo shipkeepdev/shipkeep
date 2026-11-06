@@ -66,6 +66,21 @@ describe('production browser serving', () => {
     const icon = await http().get('/favicon.ico').expect(200);
     expect(icon.headers['cache-control']).toBe('public, max-age=300');
   });
+  it('serves only the named installer artifacts and keeps their manifest uncached', async () => {
+    await mkdir(join(directory, 'install'));
+    const binary = `agent-${'a'.repeat(64)}.bin`;
+    for (const name of [binary, 'manifest.json', 'private.json', 'arbitrary.sh'])
+      await writeFile(join(directory, 'install', name), '{}');
+    await start();
+    await http()
+      .get(`/install/${binary}`)
+      .expect(200)
+      .expect('Content-Type', 'application/octet-stream')
+      .expect('Cache-Control', 'public, max-age=31536000, immutable');
+    await http().get('/install/manifest.json').expect(200).expect('Cache-Control', 'no-store');
+    for (const name of ['private.json', 'arbitrary.sh'])
+      await http().get(`/install/${name}`).expect(404);
+  });
   it('replaces every nonce in normalized Angular build output', async () => {
     await writeFile(
       join(directory, 'index.html'),

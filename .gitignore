@@ -94,3 +94,6 @@ out-tsc/
 
 # Local state of `shipkeep-agent --dev`
 .shipkeep-dev/
+
+# Locally built node installation artifacts
+/apps/web/public/install/

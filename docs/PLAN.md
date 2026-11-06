@@ -129,7 +129,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - [ ] **M1.5 Caddy route management** (A). Depends: M1.3. The handlers and the typed admin client are done (`UpsertRoute`, `RemoveRoute`). Only the acceptance remains open: a switch under constant load against a real Caddy (CI-1 or the VM suite).
   - Caddy installed by the installer; agent manages routes through the admin Unix socket with typed JSON; `UpsertRoute`, `RemoveRoute` with switch-then-drain.
   - Acceptance: test deploys v1, switches to v2 under constant load (k6 or vegeta), zero failed requests.
-- [ ] **M1.6 Agent self-reconciliation** (A). Depends: M1.4, M1.5. Done: the intent journal, the 30 s reconciler restarting stopped managed containers offline, and `CollectFacts`. Remaining: send `StateReport` to the control plane; have the installer run Caddy with `--resume` so routes survive a Caddy restart (M8.3); the end-to-end acceptance on a VM.
+- [ ] **M1.6 Agent self-reconciliation** (A). Depends: M1.4, M1.5. Done: the intent journal, the 30 s reconciler restarting stopped managed containers offline, `CollectFacts`, and Caddy `--resume` in the M8.3a installer. Remaining: send `StateReport` to the control plane; the end-to-end acceptance on a VM (including routing persistence).
   - Reconcile loop every 30 s against `desired`; restart crashed managed containers; report `StateReport`; answer `CollectFacts`.
   - Acceptance: with control plane stopped, a killed container is restarted and routing keeps serving.
 
@@ -379,6 +379,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - [ ] **M8.2 CLI** (X). Depends: M3.5
   - Go CLI commands from ARCHITECTURE; `.goreleaser.yaml` for agent and CLI; Homebrew tap and Scoop bucket; first `release.yml` dry run via workflow_dispatch.
 - [ ] **M8.3 Installer and control plane upgrades** (X). Depends: M5.4
+  - [ ] **M8.3a** Agent/Caddy installer and verified command in Servers (first usable version; independent of control-plane upgrades). Implementation and local checks in this PR; a real VM reaching `ready` remains required. Caddy runs with `--resume`; StateReport and the M1.6 VM acceptance remain separate.
   - `get.shipkeep.dev` installer (CA fingerprint pinning, `shipkeep-build` user, cgroup v2 delegation, AppArmor profile on Ubuntu 24.04), signature checks, conflict detection.
   - `deploy/control-plane.Dockerfile`, Trivy image scan in `release.yml`, `UpgradeControlPlane` action with snapshot and rollback; `UpgradeAgent` with signature check and rollback to the previous binary.
   - Acceptance: upgrade from previous release to current on a VM, then forced failure triggers automatic rollback.

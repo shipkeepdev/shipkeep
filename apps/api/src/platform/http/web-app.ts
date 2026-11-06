@@ -23,6 +23,10 @@ const TYPES: Readonly<Record<string, string>> = {
   '.woff2': 'font/woff2',
   '.woff': 'font/woff',
 };
+const INSTALL_ASSET =
+  /^install\/(?:agent-[a-f0-9]{64}\.bin|install-[a-f0-9]{64}\.sh|manifest\.json)$/;
+const MAX_INSTALL_FILE = 48 * 1024 * 1024;
+const MAX_INSTALL_TOTAL = 100 * 1024 * 1024;
 type Asset = { body: Buffer; type: string; etag: string; immutable: boolean };
 
 /** Snapshot the trusted build before listening: requests never resolve user paths on disk. */
@@ -34,6 +38,7 @@ export async function installWebApp(app: INestApplication, directory: string): P
     assets = new Map();
     let total = 0;
     let entries = 0;
+    let installTotal = 0;
     const walk = async (relative: string, depth: number): Promise<void> => {
       if (depth > 16) throw new Error('Invalid build.');
       for await (const entry of await opendir(join(root, relative))) {
@@ -44,13 +49,25 @@ export async function installWebApp(app: INestApplication, directory: string): P
           await walk(name, depth + 1);
           continue;
         }
-        const type = name === 'index.html' ? 'text/html' : TYPES[extname(name)];
+        const installer = INSTALL_ASSET.test(name);
+        const type = installer
+          ? name.endsWith('.json')
+            ? 'application/json'
+            : 'application/octet-stream'
+          : name === 'index.html'
+            ? 'text/html'
+            : TYPES[extname(name)];
         if (!type || !entry.isFile()) continue;
         const file = await open(join(root, name), constants.O_RDONLY | constants.O_NOFOLLOW);
         let body: Buffer;
         try {
           const info = await file.stat();
-          if (!info.isFile() || info.size > MAX_FILE || total + info.size > MAX_TOTAL)
+          if (
+            !info.isFile() ||
+            (installer
+              ? info.size > MAX_INSTALL_FILE || installTotal + info.size > MAX_INSTALL_TOTAL
+              : info.size > MAX_FILE || total + info.size > MAX_TOTAL)
+          )
             throw new Error('Invalid build.');
           // One extra byte detects growth without reading an unbounded file into memory.
           const buffer = Buffer.alloc(info.size + 1);
@@ -62,7 +79,8 @@ export async function installWebApp(app: INestApplication, directory: string): P
           }
           if (size !== info.size) throw new Error('Invalid build.');
           body = buffer.subarray(0, size);
-          total += size;
+          if (installer) installTotal += size;
+          else total += size;
         } finally {
           await file.close();
         }
@@ -70,7 +88,9 @@ export async function installWebApp(app: INestApplication, directory: string): P
           body,
           type,
           etag: `"${createHash('sha256').update(body).digest('hex')}"`,
-          immutable: /^(?:main|chunk|styles|polyfills)-[A-Za-z0-9_-]{8,}\.(?:js|css)$/.test(name),
+          immutable:
+            (installer && name !== 'install/manifest.json') ||
+            /^(?:main|chunk|styles|polyfills)-[A-Za-z0-9_-]{8,}\.(?:js|css)$/.test(name),
         });
       }
     };
@@ -111,7 +131,11 @@ export async function installWebApp(app: INestApplication, directory: string): P
     if (asset) {
       response.setHeader(
         'Cache-Control',
-        asset.immutable ? 'public, max-age=31536000, immutable' : 'public, max-age=300',
+        path === '/install/manifest.json'
+          ? 'no-store'
+          : asset.immutable
+            ? 'public, max-age=31536000, immutable'
+            : 'public, max-age=300',
       );
       response.setHeader('ETag', asset.etag);
       response.type(asset.type).send(asset.body);

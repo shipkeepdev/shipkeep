@@ -2,6 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
+import { InstallCommand, installCommand } from './install-command';
+
 import { appRoutes } from '../app.routes';
 import { IDENTITY_FETCH } from '../identity/identity-api';
 
@@ -54,6 +56,19 @@ describe('servers page', () => {
     TestBed.configureTestingModule({
       providers: [
         provideRouter(appRoutes, withComponentInputBinding()),
+        {
+          provide: InstallCommand,
+          useValue: {
+            load: () =>
+              Promise.resolve((token: { gatewayAddress: string; caFingerprint: string }) =>
+                installCommand(
+                  'https://shipkeep.example.com',
+                  { installer: 'b'.repeat(64), amd64: 'c'.repeat(64), arm64: 'd'.repeat(64) },
+                  token,
+                ),
+              ),
+          },
+        },
         {
           provide: IDENTITY_FETCH,
           useValue: async (request: Request) => {
@@ -109,7 +124,7 @@ describe('servers page', () => {
     expect(table).toContain('4 CPU, 8 GiB');
   });
 
-  it('issues a join token after re-authentication and shows the agent configuration', async () => {
+  it('issues a join token after re-authentication and shows a verified install command', async () => {
     fill('join-password', 'correct horse browser fixture');
     await submit('#join-password');
     expect(requests.find((r) => r.method === 'POST')).toEqual({
@@ -118,9 +133,9 @@ describe('servers page', () => {
       body: { password: 'correct horse browser fixture' },
     });
     expect(element().querySelector<HTMLInputElement>('#join-token')?.value).toBe(TOKEN);
-    const config = element().querySelector('pre[aria-label="agent.yaml"]')?.textContent ?? '';
-    expect(config).toContain('address: shipkeep.example.com:7443');
-    expect(config).toContain(`ca_fingerprint: ${FINGERPRINT}`);
+    const config = element().querySelector('pre[aria-label="Install command"]')?.textContent ?? '';
+    expect(config).toContain("--control-plane 'shipkeep.example.com:7443'");
+    expect(config).toContain(`--ca-fingerprint '${FINGERPRINT}'`);
     // The token stays out of the configuration and of command lines.
     expect(config).not.toContain(TOKEN);
     expect(element().textContent).not.toContain('correct horse');
@@ -151,5 +166,34 @@ describe('servers page', () => {
       },
     ]);
     expect(element().textContent).toContain('No servers yet.');
+  });
+});
+
+describe('installer command boundary', () => {
+  const pins = { installer: 'b'.repeat(64), amd64: 'c'.repeat(64), arm64: 'd'.repeat(64) };
+  const token = { gatewayAddress: 'shipkeep.example.com:7443', caFingerprint: FINGERPRINT };
+  it.each(["host'; touch /tmp/pwned; '", '$(id)', 'host:7443\n', 'host:7443 `id`'])(
+    'rejects shell input %s',
+    (gatewayAddress) => {
+      expect(() =>
+        installCommand('https://shipkeep.example.com', pins, { ...token, gatewayAddress }),
+      ).toThrow();
+    },
+  );
+  it('rejects HTTP and malformed digests; never includes the join token', () => {
+    expect(() => installCommand('http://shipkeep.example.com', pins, token)).toThrow();
+    expect(() =>
+      installCommand(
+        'https://shipkeep.example.com',
+        { ...pins, installer: `${pins.installer}\n` },
+        token,
+      ),
+    ).toThrow();
+    const command = installCommand('https://shipkeep.example.com', pins, {
+      ...token,
+      token: TOKEN,
+    } as typeof token);
+    expect(command).toContain('sha256sum --check --status &&');
+    expect(command).not.toContain(TOKEN);
   });
 });

@@ -1,12 +1,4 @@
-import {
-  ChangeDetectionStrategy,
-  Component,
-  computed,
-  effect,
-  inject,
-  input,
-  signal,
-} from '@angular/core';
+import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
@@ -15,18 +7,9 @@ import { PrivateClipboard } from '../identity/private-clipboard';
 import { Collection } from '../workspace/collection';
 import { required } from '../workspace/validators';
 
-import { FleetApi, type FleetNode, type JoinToken } from './fleet-api';
+import { InstallCommand } from './install-command';
 
-/** The agent configuration for a new server (deploy/agent/agent.example.yaml). */
-export function agentConfig(token: JoinToken): string {
-  return [
-    'control_plane:',
-    `  address: ${token.gatewayAddress}`,
-    `  ca_fingerprint: ${token.caFingerprint}`,
-    '  join_token_file: /etc/shipkeep/join-token',
-    '',
-  ].join('\n');
-}
+import { FleetApi, type FleetNode, type JoinToken } from './fleet-api';
 
 /** Servers of an organization: status, adding one with a join token, confirmed removal. */
 @Component({
@@ -159,25 +142,19 @@ export function agentConfig(token: JoinToken): string {
           @if (clipboard.message(); as message) {
             <p class="hint" role="status">{{ message }}</p>
           }
-          <ol class="mt-4 list-decimal space-y-3 pl-5">
-            <li>
-              Save the token as <code>/etc/shipkeep/join-token</code>, readable by root only:
-              <pre class="mt-2 overflow-x-auto rounded-md bg-panel p-3 text-sm">
-sudo install -d -m 0700 /etc/shipkeep
-sudo install -m 0600 /dev/stdin /etc/shipkeep/join-token   # paste the token, then Ctrl-D</pre>
-            </li>
-            <li>
-              Write <code>/etc/shipkeep/agent.yaml</code>:
-              <pre
-                class="mt-2 overflow-x-auto rounded-md bg-panel p-3 text-sm"
-                aria-label="agent.yaml"
-                >{{ config() }}</pre>
-            </li>
-            <li>
-              Start <code>shipkeep-agent</code>. It checks the CA fingerprint, enrolls, then deletes
-              the token file.
-            </li>
-          </ol>
+          <p class="mt-4">
+            On a fresh Ubuntu 24.04 server, run this command, then paste the token when prompted.
+            Docker and Caddy will be installed; ports 80 and 443 must be free.
+          </p>
+          <pre
+            class="mt-2 overflow-x-auto rounded-md bg-panel p-3 text-sm"
+            aria-label="Install command"
+            >{{ command() }}</pre>
+          <p class="hint">
+            The command checks the installer and agent checksums. The agent checks the CA
+            fingerprint before enrolling and deletes the token file after saving its credentials.
+            Refresh this page to check for ready.
+          </p>
           <button class="button button-secondary mt-4" type="button" (click)="issued.set(null)">
             Done
           </button>
@@ -217,15 +194,13 @@ sudo install -m 0600 /dev/stdin /etc/shipkeep/join-token   # paste the token, th
 })
 export class ServersPage {
   private readonly api = inject(FleetApi);
+  private readonly installer = inject(InstallCommand);
+  protected readonly command = signal('');
   protected readonly runner = inject(MutationRunner);
   protected readonly clipboard = inject(PrivateClipboard);
   readonly organizationId = input.required<string>();
   protected readonly nodes = new Collection<FleetNode>(() => this.api.nodes(this.organizationId()));
   protected readonly issued = signal<JoinToken | null>(null);
-  protected readonly config = computed(() => {
-    const token = this.issued();
-    return token ? agentConfig(token) : '';
-  });
   protected readonly removing = signal<FleetNode | null>(null);
   protected readonly join = new FormGroup({
     password: new FormControl('', { nonNullable: true, validators: [required] }),
@@ -255,11 +230,19 @@ export class ServersPage {
   protected async issue(): Promise<void> {
     const { password, totp } = this.join.getRawValue();
     const code = totp.trim();
-    const outcome = await this.runner.run({ joinToken: this.organizationId() }, () =>
-      this.api.issueJoinToken(this.organizationId(), { password, ...(code ? { totp: code } : {}) }),
-    );
+    const outcome = await this.runner.run({ joinToken: this.organizationId() }, async () => {
+      const command = await this.installer.load();
+      const token = await this.api.issueJoinToken(this.organizationId(), {
+        password,
+        ...(code ? { totp: code } : {}),
+      });
+      return { token, command: command(token) };
+    });
     this.join.reset();
-    if (outcome.ok) this.issued.set(outcome.value);
+    if (outcome.ok) {
+      this.command.set(outcome.value.command);
+      this.issued.set(outcome.value.token);
+    }
   }
 
   protected async remove(node: FleetNode): Promise<void> {
