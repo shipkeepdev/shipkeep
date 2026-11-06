@@ -15,7 +15,7 @@ type Result<T> = { data?: T; response: Response };
 export class WorkspaceApi {
   private readonly document = inject(DOCUMENT);
   private readonly send = inject(IDENTITY_FETCH);
-  private readonly origin = this.document.location.origin;
+  protected readonly origin = this.document.location.origin;
   protected readonly client = createShipkeepClient({
     baseUrl: this.origin,
     fetch: (input: Request) => this.send(browserRequest(input, this.origin, this.document.cookie)),

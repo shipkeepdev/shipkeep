@@ -1117,6 +1117,8 @@ export type components = {
             readonly caFingerprint: string;
             /** Format: date-time */
             readonly expiresAt: string;
+            /** @description host:port of the agent gateway, for the agent configuration (control_plane.address). */
+            readonly gatewayAddress: string;
             /** Format: uuid */
             readonly id: string;
             /** @description Single-use enrollment secret, shown once. Give it to the agent through its join token file, never on a command line. */

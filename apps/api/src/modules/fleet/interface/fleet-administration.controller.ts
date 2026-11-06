@@ -15,6 +15,7 @@ import { IdentityAttemptLimit } from '../../identity/interface/identity-rate.gua
 import { factorInput, ReauthenticateMfaDto } from '../../identity/interface/mfa.dto';
 import { RequireTenant } from '../../identity/interface/route-access';
 import { type IdentityRequest, resourceContext } from '../../identity/interface/session-http';
+import { AppConfig } from '../../../platform/config/app-config';
 import { FleetAdministration } from '../application/fleet-administration';
 
 import {
@@ -36,7 +37,10 @@ import {
 @ApiCookieAuth('session')
 @Controller('organizations')
 export class FleetAdministrationController {
-  constructor(private readonly fleet: FleetAdministration) {}
+  constructor(
+    private readonly fleet: FleetAdministration,
+    private readonly config: AppConfig,
+  ) {}
 
   @Post(':organizationId/join-tokens')
   @HttpCode(201)
@@ -57,6 +61,8 @@ export class FleetAdministrationController {
         new Secret(body.password),
         factorInput(body),
       ),
+      // The name agents verify in the gateway certificate, with the gateway's port.
+      `${this.config.get('AGENT_GATEWAY_SERVER_NAME')}:${this.config.get('AGENT_GATEWAY_ADDR').split(':').at(-1) ?? '7443'}`,
     );
   }
 

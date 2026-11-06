@@ -24,7 +24,10 @@ import { type Organization, type Project, WorkspaceApi } from './workspace-api';
           <p>{{ missing() }}</p>
         </div>
       } @else {
-        <p class="page-intro">Projects group the environments of one product.</p>
+        <p class="page-intro">
+          Projects group the environments of one product.
+          <a [routerLink]="['/orgs', organizationId(), 'nodes']">Manage servers</a>
+        </p>
         <h2>Projects</h2>
         @switch (projects.state()) {
           @case ('loading') {

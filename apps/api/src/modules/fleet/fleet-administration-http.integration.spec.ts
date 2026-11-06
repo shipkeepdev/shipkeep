@@ -48,9 +48,11 @@ describe('fleet administration over HTTP', () => {
     expect(Object.keys(issued.body as object).sort()).toEqual([
       'caFingerprint',
       'expiresAt',
+      'gatewayAddress',
       'id',
       'token',
     ]);
+    expect((issued.body as { gatewayAddress: string }).gatewayAddress).toMatch(/^[^\s:]+:\d+$/);
     const events = await auditLog().findMany({
       where: { action: 'fleet.join_token.issued', targetId: body.id },
     });

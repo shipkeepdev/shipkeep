@@ -51,6 +51,11 @@ export class JoinTokenIssuedDto {
     description: 'Installation CA fingerprint the agent pins before sending the token.',
   })
   caFingerprint!: string;
+  @ApiProperty({
+    description:
+      'host:port of the agent gateway, for the agent configuration (control_plane.address).',
+  })
+  gatewayAddress!: string;
 }
 export class NodeDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
@@ -71,12 +76,16 @@ export class NodePageDto {
   @ApiProperty({ type: String, format: 'uuid', nullable: true }) nextCursor!: string | null;
 }
 
-export function joinTokenIssuedDto(result: IssueJoinTokenResult): JoinTokenIssuedDto {
+export function joinTokenIssuedDto(
+  result: IssueJoinTokenResult,
+  gatewayAddress: string,
+): JoinTokenIssuedDto {
   return {
     id: result.id,
     token: result.value.expose(),
     expiresAt: result.expiresAt.toISOString(),
     caFingerprint: result.caFingerprint,
+    gatewayAddress,
   };
 }
 export function nodeDto(node: NodeRecord, now = new Date()): NodeDto {
