@@ -265,7 +265,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - [x] **M2.5a** `POST /api/v1/confirmations`: EdDSA JWS from the installation confirmation key (SPEC 3.6), the typed resource name checked, `jti` stored and marked used, audited.
     - [x] **M2.5a1** Token format and catalog, Ed25519 signing in the installation key module, `confirmation_tokens` table under RLS, issuance and single-use consumption services.
     - [x] **M2.5a2** HTTP issuance route and the node target resolver.
-  - [ ] **M2.5b** Confirmation dialog in the web UI.
+  - [ ] **M2.5b** Confirmation dialog in the web UI. Server removal uses it (M2.7c); a shared dialog for volumes, databases and environments follows with those screens.
   - `/confirmations` endpoint, UI confirmation dialog that requires typing the resource name.
   - Acceptance: destructive endpoints reject requests without a valid, unused, matching token.
 - [ ] **M2.6 Web UI shell** (W). Depends: M2.2. Partly done in M2.2e: shell, routing, auth flows, design tokens, Tailwind and CDK. Remaining: org/project/environment navigation (with M2.3f1), empty states, the SSE `/api/v1/events` endpoint and its client, and the Lighthouse check.
@@ -274,7 +274,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - [ ] **M2.7 Fleet administration endpoints** (C + W). Depends: M2.3d, M2.3g1. Moved from M1.2b.
   - [x] **M2.7a** Join-token issuance (fresh proof, `node.manage`) and node listing, session-only.
   - [x] **M2.7b** Node revocation with a confirmation token and active stream disconnection. Depends: M2.5a.
-  - [ ] **M2.7c** Install command with the CA fingerprint in the web UI. Depends: M2.3f1.
+  - [x] **M2.7c** Install command with the CA fingerprint in the web UI. Depends: M2.3f1. Done as a servers screen: list with status and capacity, a join token after re-authentication with the agent configuration (gateway address, CA fingerprint, token file), and removal confirmed by typing the server name. The one-line installer is M8.3.
   - Join-token issuance endpoint (fresh proof, `nodes.manage` permission), node list, node revocation (confirmation token, active stream disconnected), and an install command that shows the CA fingerprint.
   - Acceptance: an organization admin enrolls a node with the copied command; another organization neither sees the node nor can revoke it.
 
