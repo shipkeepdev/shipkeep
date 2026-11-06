@@ -1,14 +1,24 @@
-import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { ApplicationsPanel } from '../delivery/applications-panel';
+import { SecretsPanel } from '../delivery/secrets-panel';
 import { IdentityRequestError } from '../identity/identity-api';
 
 import { type Environment, WorkspaceApi } from './workspace-api';
 
-/** One environment. Applications and secrets are added by the next screens (M3.7b, M3.4). */
+/** One environment: its applications and its write-only secrets (M3.4, M3.7b). */
 @Component({
   selector: 'sk-environment-page',
-  imports: [RouterLink],
+  imports: [RouterLink, ApplicationsPanel, SecretsPanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <nav aria-label="Breadcrumb" class="mb-4 text-sm">
@@ -30,6 +40,8 @@ import { type Environment, WorkspaceApi } from './workspace-api';
               : 'Developers can deploy here.'
           }}
         </p>
+        <sk-applications-panel [environment]="ref()" />
+        <sk-secrets-panel [environment]="ref()" />
       }
     </section>
   `,
@@ -40,6 +52,11 @@ export class EnvironmentPage {
   readonly projectId = input.required<string>();
   readonly environmentId = input.required<string>();
   protected readonly environment = signal<Environment | null>(null);
+  protected readonly ref = computed(() => ({
+    organizationId: this.organizationId(),
+    projectId: this.projectId(),
+    environmentId: this.environmentId(),
+  }));
   protected readonly missing = signal<string | null>(null);
 
   constructor() {
