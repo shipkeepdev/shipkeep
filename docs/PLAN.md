@@ -315,7 +315,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - Envelope encryption from SPEC 9; write-only API; env and file injection.
   - Acceptance: secret values never appear in API responses, logs or agent SQLite (test greps for fixtures).
   - [x] **M3.7a** Secrets API: write-only, versioned, environment-encrypted, audited, with the protected-environment rule.
-  - [ ] **M3.7b** Secrets screen in the web UI (with M2.3f1).
+  - [x] **M3.7b** Secrets screen in the web UI (with M2.3f1), together with the application screens: create from `shipkeep.yml` (validated in the browser with the same schema), deploy, follow and cancel deployments.
 - [ ] **M3.8 Compose applications** (C). Depends: M3.4
   - Compose parser and validator (SPEC 2.2), translated to typed `ContainerSpec`s.
   - Acceptance: 15 popular Compose files deploy; 20 malicious Compose files rejected with clear errors.
