@@ -1,0 +1,204 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  DestroyRef,
+  effect,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { stringify } from 'yaml';
+
+import { IdentityRequestError } from '../identity/identity-api';
+import { MutationRunner } from '../identity/mutation-runner';
+import { Collection } from '../workspace/collection';
+
+import {
+  type Application,
+  DeliveryApi,
+  type Deployment,
+  type EnvironmentRef,
+} from './delivery-api';
+
+const FINISHED = new Set(['succeeded', 'failed', 'cancelled', 'rolled_back']);
+/** While a deployment runs, its state is refreshed this often. */
+const POLL_MS = 3000;
+
+/** One application: its configuration, deploying it and following its deployments. */
+@Component({
+  selector: 'sk-application-page',
+  imports: [RouterLink],
+  providers: [MutationRunner],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <nav aria-label="Breadcrumb" class="mb-4 text-sm">
+      <a routerLink="/orgs">Organizations</a> /
+      <a
+        [routerLink]="[
+          '/orgs',
+          organizationId(),
+          'projects',
+          projectId(),
+          'environments',
+          environmentId(),
+        ]"
+        >Environment</a
+      >
+    </nav>
+    <section class="max-w-3xl" aria-labelledby="application-title">
+      <h1 id="application-title">{{ application()?.name ?? 'Application' }}</h1>
+      @if (missing()) {
+        <div class="feedback" role="alert">
+          <p>{{ missing() }}</p>
+        </div>
+      } @else if (application(); as current) {
+        @if (runner.problem(); as problem) {
+          <div class="feedback" role="alert">
+            <p>{{ problem }}</p>
+          </div>
+        }
+        <div class="mb-8 flex flex-wrap items-center gap-3">
+          <button
+            class="button"
+            type="button"
+            [disabled]="runner.busy() || !!active()"
+            (click)="deploy()"
+          >
+            {{ runner.busy() ? 'Starting…' : 'Deploy' }}
+          </button>
+          @if (active(); as running) {
+            <span role="status">Deployment {{ running.state }}…</span>
+            <button
+              class="button button-secondary"
+              type="button"
+              [disabled]="runner.busy()"
+              (click)="cancel(running.id)"
+            >
+              Cancel deployment
+            </button>
+          }
+        </div>
+        <section aria-labelledby="deployments-title" class="border-t border-line pt-6">
+          <h2 id="deployments-title">Deployments</h2>
+          @if (deployments.items().length) {
+            <table class="mb-8 w-full text-left text-sm">
+              <thead>
+                <tr class="border-b border-line">
+                  <th class="py-2 font-semibold">Started</th>
+                  <th class="py-2 font-semibold">State</th>
+                  <th class="py-2 font-semibold">Details</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (deployment of deployments.items(); track deployment.id) {
+                  <tr class="border-b border-line align-top">
+                    <td class="py-2 tabular-nums">
+                      {{ deployment.startedAt.slice(0, 19).replace('T', ' ') }}
+                    </td>
+                    <td
+                      class="py-2"
+                      [class.text-danger]="deployment.state === 'failed'"
+                      [class.text-success]="deployment.state === 'succeeded'"
+                    >
+                      {{ deployment.state }}
+                    </td>
+                    <td class="py-2 text-muted">{{ deployment.error ?? '' }}</td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          } @else {
+            <p class="mb-8 border-y border-line py-6 text-muted">Not deployed yet.</p>
+          }
+        </section>
+        <section aria-labelledby="configuration-title" class="border-t border-line pt-6">
+          <h2 id="configuration-title">Configuration</h2>
+          <p class="hint mb-3">
+            Version <code>{{ current.configSha.slice(0, 12) }}</code>
+          </p>
+          <pre
+            class="overflow-x-auto rounded-md bg-panel p-4 text-sm"
+            tabindex="0"
+            aria-label="shipkeep.yml"
+            >{{ yaml() }}</pre>
+        </section>
+      }
+    </section>
+  `,
+})
+export class ApplicationPage {
+  private readonly api = inject(DeliveryApi);
+  protected readonly runner = inject(MutationRunner);
+  readonly organizationId = input.required<string>();
+  readonly projectId = input.required<string>();
+  readonly environmentId = input.required<string>();
+  readonly applicationId = input.required<string>();
+  private readonly environment = computed<EnvironmentRef>(() => ({
+    organizationId: this.organizationId(),
+    projectId: this.projectId(),
+    environmentId: this.environmentId(),
+  }));
+  protected readonly application = signal<Application | null>(null);
+  protected readonly missing = signal<string | null>(null);
+  protected readonly deployments = new Collection<Deployment>(() =>
+    this.api.deployments(this.environment(), this.applicationId()),
+  );
+  protected readonly active = computed(() =>
+    this.deployments.items().find((deployment) => !FINISHED.has(deployment.state)),
+  );
+  protected readonly yaml = computed(() => {
+    const current = this.application();
+    return current ? stringify(current.config) : '';
+  });
+  private timer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor() {
+    inject(DestroyRef).onDestroy(() => {
+      clearTimeout(this.timer);
+    });
+    effect(() => {
+      void this.load(this.environment(), this.applicationId());
+    });
+  }
+
+  private async load(environment: EnvironmentRef, applicationId: string): Promise<void> {
+    this.missing.set(null);
+    try {
+      this.application.set(await this.api.application(environment, applicationId));
+      await this.refresh();
+    } catch (error: unknown) {
+      this.application.set(null);
+      this.missing.set(
+        error instanceof IdentityRequestError
+          ? error.message
+          : 'This application could not be loaded.',
+      );
+    }
+  }
+
+  /** Reloads the deployments, and keeps doing so while one is still running. */
+  private async refresh(): Promise<void> {
+    clearTimeout(this.timer);
+    await this.deployments.refresh();
+    if (this.active())
+      this.timer = setTimeout(() => {
+        void this.refresh();
+      }, POLL_MS);
+  }
+
+  protected async deploy(): Promise<void> {
+    const outcome = await this.runner.run({ deploy: this.applicationId() }, () =>
+      this.api.deploy(this.environment(), this.applicationId()),
+    );
+    if (outcome.ok) await this.refresh();
+  }
+
+  protected async cancel(deploymentId: string): Promise<void> {
+    const outcome = await this.runner.run({ cancel: deploymentId }, () =>
+      this.api.cancel(this.environment(), this.applicationId(), deploymentId),
+    );
+    if (outcome.ok) await this.refresh();
+  }
+}

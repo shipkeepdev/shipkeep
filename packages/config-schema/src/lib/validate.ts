@@ -54,7 +54,8 @@ export function validateShipkeepConfig(value: unknown): ValidationResult {
  * Parses YAML text and validates it. Parse errors are reported as issues at the root.
  */
 export function parseShipkeepConfig(text: string): ValidationResult {
-  if (Buffer.byteLength(text, 'utf8') > MAX_CONFIG_BYTES) {
+  // TextEncoder, not Buffer: the web UI validates documents in the browser too.
+  if (new TextEncoder().encode(text).length > MAX_CONFIG_BYTES) {
     return {
       ok: false,
       issues: [{ path: '', message: `document exceeds ${String(MAX_CONFIG_BYTES)} bytes` }],

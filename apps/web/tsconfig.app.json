@@ -9,6 +9,9 @@
   "references": [
     {
       "path": "../../packages/api-client/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/config-schema/tsconfig.lib.json"
     }
   ]
 }

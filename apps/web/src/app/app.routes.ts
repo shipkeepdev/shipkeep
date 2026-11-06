@@ -49,5 +49,11 @@ export const appRoutes: Route[] = [
     loadComponent: () =>
       import('./workspace/environment-page').then((module) => module.EnvironmentPage),
   },
+  {
+    path: 'orgs/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId',
+    title: 'Application · Shipkeep',
+    loadComponent: () =>
+      import('./delivery/application-page').then((module) => module.ApplicationPage),
+  },
   { path: '**', redirectTo: 'auth/login' },
 ];
