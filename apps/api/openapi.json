@@ -4656,13 +4656,18 @@
             "type": "string",
             "pattern": "^sha256:[0-9a-f]{64}$",
             "description": "Installation CA fingerprint the agent pins before sending the token."
+          },
+          "gatewayAddress": {
+            "type": "string",
+            "description": "host:port of the agent gateway, for the agent configuration (control_plane.address)."
           }
         },
         "required": [
           "id",
           "token",
           "expiresAt",
-          "caFingerprint"
+          "caFingerprint",
+          "gatewayAddress"
         ]
       },
       "RemoveNodeDto": {
