@@ -740,6 +740,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/events": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["environmentEvents"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/secrets": {
         readonly parameters: {
             readonly query?: never;
@@ -2953,6 +2969,31 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["BindingMutationDto"];
                 };
+            };
+        };
+    };
+    readonly environmentEvents: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Resume after this event; browsers send it when they reconnect. */
+                readonly "Last-Event-ID"?: string;
+            };
+            readonly path: {
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description One `change` event per committed audit event of the environment. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

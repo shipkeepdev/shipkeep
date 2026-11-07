@@ -21,4 +21,11 @@ export interface AuditEventReader {
     beforeId: string | undefined,
     limit: number,
   ): Promise<AuditRecord[]>;
+  /** Oldest first (UUIDv7 order): events of one environment after an exclusive id cursor. */
+  afterInEnvironment(
+    organizationId: string,
+    environmentId: string,
+    afterId: string,
+    limit: number,
+  ): Promise<AuditRecord[]>;
 }
