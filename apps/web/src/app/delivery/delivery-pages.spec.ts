@@ -342,6 +342,46 @@ describe('delivery screens', () => {
     expect(sources[0]?.closed).toBe(true);
   });
 
+  it('shows replicas with their server and what the agent last saw', async () => {
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: [] }),
+      [`GET ${BASE}/applications/${APP}/replicas`]: () =>
+        json({
+          items: [
+            {
+              id: 'a1',
+              releaseId: 'r1',
+              replica: 0,
+              nodeId: 'n1',
+              nodeName: 'edge-1',
+              container: 'sk-web-r1-0',
+              state: 'running',
+              observedAt: '2026-11-07T12:00:00Z',
+            },
+            {
+              id: 'a2',
+              releaseId: 'r1',
+              replica: 1,
+              nodeId: 'n2',
+              nodeName: 'edge-2',
+              container: 'sk-web-r1-1',
+              state: null,
+              observedAt: null,
+            },
+          ],
+        }),
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+    );
+    await settle();
+    const table = element().querySelector('table[aria-label="Replicas"]')?.textContent ?? '';
+    expect(table).toContain('edge-1');
+    expect(table).toContain('running');
+    expect(table).toContain('not reported yet');
+  });
+
   it('validates shipkeep.yml in the browser before creating an application', async () => {
     let applications: unknown[] = [];
     routes = {
