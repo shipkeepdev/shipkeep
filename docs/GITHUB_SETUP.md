@@ -3,7 +3,7 @@
 Steps marked **[human]** must be done by the maintainer. Steps marked **[claude]** can be run by Claude Code with the `gh` CLI. Run them in order.
 
 ```bash
-OWNER=samuelmbabhazi  # GitHub account that hosts the repo (the shipkeephq organization does not exist yet; transfer later if created).
+OWNER=shipkeepdev  # GitHub organization that hosts the repo.
 REPO=shipkeep
 ```
 

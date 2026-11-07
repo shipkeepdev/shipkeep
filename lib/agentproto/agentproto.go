@@ -7,7 +7,7 @@ package agentproto
 import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 // ActionKinds returns the field names of the `action` oneof of ActionRequest in declaration

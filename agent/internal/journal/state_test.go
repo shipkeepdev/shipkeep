@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 func TestLocalStatePersistsWithoutSecretValues(t *testing.T) {

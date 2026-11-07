@@ -22,9 +22,9 @@ import (
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
-	nodecredentials "github.com/samuelmbabhazi/shipkeep/agent/internal/credentials"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
-	"github.com/samuelmbabhazi/shipkeep/lib/secret"
+	nodecredentials "github.com/shipkeepdev/shipkeep/agent/internal/credentials"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
 const testNode = "0192f0c0-0000-7000-8000-000000000002"

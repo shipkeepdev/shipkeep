@@ -2184,8 +2184,8 @@ const file_shipkeep_agent_v1_gateway_proto_rawDesc = "" +
 	"\x10RenewCertificate\x12*.shipkeep.agent.v1.RenewCertificateRequest\x1a+.shipkeep.agent.v1.RenewCertificateResponse\x12T\n" +
 	"\aConnect\x12!.shipkeep.agent.v1.ConnectRequest\x1a\".shipkeep.agent.v1.ConnectResponse(\x010\x01\x12]\n" +
 	"\n" +
-	"ExecStream\x12$.shipkeep.agent.v1.ExecStreamRequest\x1a%.shipkeep.agent.v1.ExecStreamResponse(\x010\x01B\xd1\x01\n" +
-	"\x15com.shipkeep.agent.v1B\fGatewayProtoP\x01ZDgithub.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1;agentv1\xa2\x02\x03SAX\xaa\x02\x11Shipkeep.Agent.V1\xca\x02\x11Shipkeep\\Agent\\V1\xe2\x02\x1dShipkeep\\Agent\\V1\\GPBMetadata\xea\x02\x13Shipkeep::Agent::V1b\x06proto3"
+	"ExecStream\x12$.shipkeep.agent.v1.ExecStreamRequest\x1a%.shipkeep.agent.v1.ExecStreamResponse(\x010\x01B\xce\x01\n" +
+	"\x15com.shipkeep.agent.v1B\fGatewayProtoP\x01ZAgithub.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1;agentv1\xa2\x02\x03SAX\xaa\x02\x11Shipkeep.Agent.V1\xca\x02\x11Shipkeep\\Agent\\V1\xe2\x02\x1dShipkeep\\Agent\\V1\\GPBMetadata\xea\x02\x13Shipkeep::Agent::V1b\x06proto3"
 
 var (
 	file_shipkeep_agent_v1_gateway_proto_rawDescOnce sync.Once

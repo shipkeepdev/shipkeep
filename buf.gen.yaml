@@ -6,7 +6,7 @@ managed:
   enabled: true
   override:
     - file_option: go_package_prefix
-      value: github.com/samuelmbabhazi/shipkeep/lib/gen
+      value: github.com/shipkeepdev/shipkeep/lib/gen
 plugins:
   # Go messages and gRPC stubs for the agent (lib/gen, shared by agent and tests).
   - remote: buf.build/protocolbuffers/go:v1.36.12

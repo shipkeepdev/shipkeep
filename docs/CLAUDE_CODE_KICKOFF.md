@@ -6,7 +6,7 @@ Paste these prompts into Claude Code, one session per step. Each one is self-con
 
 ```text
 Read CLAUDE.md and docs/GITHUB_SETUP.md fully.
-Run sections 2, 3 and 4 of docs/GITHUB_SETUP.md with OWNER=samuelmbabhazi and REPO=shipkeep.
+Run sections 2, 3 and 4 of docs/GITHUB_SETUP.md with OWNER=shipkeepdev and REPO=shipkeep.
 Do not run section 5 (branch protection) yet: it is applied after task M0.2 is merged.
 Push the current files as the initial commit on main.
 Do not set any secret values. When done, list what you ran, what succeeded,

@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/samuelmbabhazi/shipkeep/lib/agentproto"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/lib/agentproto"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 // The 23 actions of SPEC section 3.3. Changing this list is a contract change (CLAUDE.md, rule 2).

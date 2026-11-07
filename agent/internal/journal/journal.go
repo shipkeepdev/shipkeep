@@ -20,7 +20,7 @@ import (
 	"golang.org/x/sys/unix"
 	_ "modernc.org/sqlite" // register the pure-Go SQLite driver (ADR 0003)
 
-	"github.com/samuelmbabhazi/shipkeep/lib/agentproto"
+	"github.com/shipkeepdev/shipkeep/lib/agentproto"
 )
 
 // State is a durable operation lifecycle state.
