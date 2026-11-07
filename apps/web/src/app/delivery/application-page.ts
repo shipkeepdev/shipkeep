@@ -19,6 +19,7 @@ import {
   type Application,
   DeliveryApi,
   type Deployment,
+  type DomainStatus,
   type EnvironmentRef,
 } from './delivery-api';
 
@@ -80,6 +81,23 @@ const POLL_MS = 3000;
             </button>
           }
         </div>
+        @if (domains.items().length) {
+          <section aria-labelledby="domains-title" class="border-t border-line pt-6">
+            <h2 id="domains-title">Domains</h2>
+            <ul class="mb-3 divide-y divide-line border-y border-line" aria-label="Domains">
+              @for (domain of domains.items(); track domain.hostname) {
+                <li class="py-3">
+                  <code>{{ domain.hostname }}</code>
+                  <span class="ml-2 text-sm text-muted">{{ describeDomain(domain) }}</span>
+                </li>
+              }
+            </ul>
+            <p class="hint mb-8">
+              Point each domain at the server running this application. Certificates are issued
+              automatically once it answers on ports 80 and 443.
+            </p>
+          </section>
+        }
         <section aria-labelledby="deployments-title" class="border-t border-line pt-6">
           <h2 id="deployments-title">Deployments</h2>
           @if (deployments.items().length) {
@@ -156,6 +174,9 @@ export class ApplicationPage {
   protected readonly deployments = new Collection<Deployment>(() =>
     this.api.deployments(this.environment(), this.applicationId()),
   );
+  protected readonly domains = new Collection<DomainStatus>(() =>
+    this.api.domains(this.environment(), this.applicationId()),
+  );
   protected readonly active = computed(() =>
     this.deployments.items().find((deployment) => !FINISHED.has(deployment.state)),
   );
@@ -180,6 +201,7 @@ export class ApplicationPage {
       const application = await this.api.application(environment, applicationId);
       if (revision !== this.loadRevision) return;
       this.application.set(application);
+      void this.domains.refresh();
       await this.refresh();
     } catch (error: unknown) {
       if (revision !== this.loadRevision) return;
@@ -207,6 +229,19 @@ export class ApplicationPage {
       this.api.deploy(this.environment(), this.applicationId()),
     );
     if (outcome.ok) await this.refresh();
+  }
+
+  protected describeDomain(domain: DomainStatus): string {
+    switch (domain.status) {
+      case 'public':
+        return `points to ${domain.addresses.join(', ')}`;
+      case 'private':
+        return 'points to a private address, so it cannot get a certificate';
+      case 'none':
+        return 'no DNS record yet';
+      default:
+        return 'DNS lookup failed; try again later';
+    }
   }
 
   /** Versions that ran, other than the one serving now (the latest success). */

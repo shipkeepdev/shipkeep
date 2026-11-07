@@ -43,6 +43,20 @@ export class ApplicationListDto {
   @ApiProperty({ type: [ApplicationDto] }) items!: ApplicationDto[];
 }
 
+export class DomainDto {
+  @ApiProperty() hostname!: string;
+  @ApiProperty({
+    enum: ['public', 'private', 'none', 'unknown'],
+    description:
+      'public: resolves to public addresses. private: only to non-public ones. none: no record. unknown: the lookup failed.',
+  })
+  status!: string;
+  @ApiProperty({ type: [String], description: 'Public addresses only.' }) addresses!: string[];
+}
+export class DomainListDto {
+  @ApiProperty({ type: [DomainDto] }) items!: DomainDto[];
+}
+
 export function applicationDto(application: Application): ApplicationDto {
   return {
     id: application.id,

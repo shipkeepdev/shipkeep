@@ -68,6 +68,34 @@ export class PrismaApplicationStore implements ApplicationStore {
     return { ...application, config: config.config, configSha, updatedAt: now };
   }
 
+  async syncDomains(
+    application: Pick<Application, 'id' | 'organizationId'>,
+    hostnames: readonly string[],
+    now: Date,
+  ): Promise<string | undefined> {
+    const { id: applicationId, organizationId } = application;
+    await this.database.client.domain.deleteMany({
+      where: { applicationId, hostname: { notIn: [...hostnames] } },
+    });
+    await this.database.client.domain.createMany({
+      data: hostnames.map((hostname) => ({
+        id: uuidv7(),
+        organizationId,
+        applicationId,
+        hostname,
+        createdAt: now,
+      })),
+      skipDuplicates: true,
+    });
+    // Anything still not ours lost to an existing claim of another application.
+    const owned = await this.database.client.domain.findMany({
+      where: { applicationId, hostname: { in: [...hostnames] } },
+      select: { hostname: true },
+    });
+    const mine = new Set(owned.map((row) => row.hostname));
+    return hostnames.find((hostname) => !mine.has(hostname));
+  }
+
   async find(target: ApplicationTarget, applicationId: string): Promise<Application | undefined> {
     const row = await this.database.client.application.findFirst({
       where: { ...target, id: applicationId },

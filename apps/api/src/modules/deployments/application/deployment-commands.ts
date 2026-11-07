@@ -116,6 +116,17 @@ export class DeploymentCommands {
       );
       const running = await this.store.active(application.id);
       if (running) throw deploymentInProgress(running.state);
+      // The older configuration may name a domain another application has claimed since. The
+      // current domains stay claimed: the next deployment uses them again.
+      const taken = await this.applications.syncDomains(
+        application,
+        [...new Set([...(application.config.domains ?? []), ...(source.config.domains ?? [])])],
+        now,
+      );
+      if (taken)
+        throw new ConflictError('domain_taken', 'Another application already uses this domain.', {
+          hostname: taken,
+        });
       const release = await this.store.copyRelease(source, context.userId, now);
       if (!release) throw deploymentInProgress();
       const deployment = await this.store.queue(release, draft, 'rollback', context.userId, now);

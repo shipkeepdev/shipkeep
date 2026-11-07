@@ -268,6 +268,29 @@ describe('delivery screens', () => {
     expect((rollbacks()[0] as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it('shows where each domain points', async () => {
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: [] }),
+      [`GET ${BASE}/applications/${APP}/domains`]: () =>
+        json({
+          items: [
+            { hostname: 'a.example.com', status: 'public', addresses: ['203.0.113.4'] },
+            { hostname: 'b.example.com', status: 'private', addresses: [] },
+            { hostname: 'c.example.com', status: 'none', addresses: [] },
+          ],
+        }),
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+    );
+    await settle();
+    const list = element().querySelector('ul[aria-label="Domains"]')?.textContent ?? '';
+    expect(list).toContain('points to 203.0.113.4');
+    expect(list).toContain('points to a private address');
+    expect(list).toContain('no DNS record yet');
+  });
+
   it('validates shipkeep.yml in the browser before creating an application', async () => {
     let applications: unknown[] = [];
     routes = {

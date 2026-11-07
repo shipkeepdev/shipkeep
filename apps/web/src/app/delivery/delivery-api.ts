@@ -5,6 +5,7 @@ import { type Schema, WorkspaceApi } from '../workspace/workspace-api';
 export type Application = Schema<'ApplicationDto'>;
 export type Deployment = Schema<'DeploymentDto'>;
 export type SecretMetadata = Schema<'SecretDto'>;
+export type DomainStatus = Schema<'DomainDto'>;
 
 /** The environment an application lives in; every route below is scoped by it. */
 export interface EnvironmentRef {
@@ -60,6 +61,19 @@ export class DeliveryApi extends WorkspaceApi {
         },
       ),
     );
+  }
+  async domains(
+    environment: EnvironmentRef,
+    applicationId: string,
+  ): Promise<readonly Schema<'DomainDto'>[]> {
+    return (
+      await this.required(() =>
+        this.client.GET(
+          '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/domains',
+          { params: { path: { ...environment, applicationId } } },
+        ),
+      )
+    ).items;
   }
   deploy(
     environment: EnvironmentRef,

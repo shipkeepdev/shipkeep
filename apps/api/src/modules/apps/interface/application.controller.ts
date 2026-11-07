@@ -21,6 +21,7 @@ import {
   ApplicationListDto,
   ApplicationPathDto,
   CreateApplicationDto,
+  DomainListDto,
   UpdateApplicationConfigDto,
 } from './application.dto';
 
@@ -73,6 +74,22 @@ export class ApplicationController {
     return applicationDto(
       await this.applications.get(resourceContext(request), target(path), path.applicationId),
     );
+  }
+
+  @Get(`${APPLICATIONS}/:applicationId/domains`)
+  @RequireTenant('environment.read', 'environment')
+  @AllowApiToken('environment.read')
+  @ApiOkResponse({ type: DomainListDto })
+  async listDomains(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+  ): Promise<DomainListDto> {
+    const items = await this.applications.domains(
+      resourceContext(request),
+      target(path),
+      path.applicationId,
+    );
+    return { items: items.map((item) => ({ ...item, addresses: [...item.addresses] })) };
   }
 
   @Post(`${APPLICATIONS}/:applicationId/config`)

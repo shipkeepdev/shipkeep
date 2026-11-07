@@ -2,7 +2,7 @@ import { lookup as dnsLookup, type LookupAddress } from 'node:dns';
 import { request } from 'node:https';
 import { isIP, type LookupFunction } from 'node:net';
 
-import { isPublicAddress } from './public-address';
+import { isPublicAddress } from '../../../../platform/net/public-address';
 
 export interface RegistryRequest {
   readonly method: 'GET' | 'HEAD';

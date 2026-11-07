@@ -676,6 +676,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/domains": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listDomains"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/releases": {
         readonly parameters: {
             readonly query?: never;
@@ -1071,6 +1087,19 @@ export type components = {
         readonly DeploymentListDto: {
             /** @description Most recent first, at most 50. */
             readonly items: readonly components["schemas"]["DeploymentDto"][];
+        };
+        readonly DomainDto: {
+            /** @description Public addresses only. */
+            readonly addresses: readonly string[];
+            readonly hostname: string;
+            /**
+             * @description public: resolves to public addresses. private: only to non-public ones. none: no record. unknown: the lookup failed.
+             * @enum {string}
+             */
+            readonly status: "public" | "private" | "none" | "unknown";
+        };
+        readonly DomainListDto: {
+            readonly items: readonly components["schemas"]["DomainDto"][];
         };
         readonly EmailDto: {
             /**
@@ -2780,6 +2809,30 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["QueuedDeploymentDto"];
+                };
+            };
+        };
+    };
+    readonly listDomains: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DomainListDto"];
                 };
             };
         };

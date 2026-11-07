@@ -5,7 +5,8 @@ import { IdentityModule } from '../identity/identity.module';
 import { TenantAccessModule } from '../organizations/tenant-access.module';
 
 import { ApplicationCommands } from './application/application-commands';
-import { APPLICATION_STORE, APPLICATION_TRANSACTION } from './application/ports';
+import { APPLICATION_STORE, APPLICATION_TRANSACTION, DOMAIN_RESOLVER } from './application/ports';
+import { DnsDomainResolver } from './infrastructure/dns-domain.resolver';
 import { PrismaApplicationStore } from './infrastructure/prisma-application.store';
 import { ApplicationController } from './interface/application.controller';
 
@@ -17,6 +18,7 @@ import { ApplicationController } from './interface/application.controller';
     ApplicationCommands,
     { provide: APPLICATION_STORE, useClass: PrismaApplicationStore },
     { provide: APPLICATION_TRANSACTION, useExisting: PrismaUnitOfWork },
+    { provide: DOMAIN_RESOLVER, useClass: DnsDomainResolver },
   ],
   exports: [APPLICATION_STORE],
 })

@@ -313,7 +313,7 @@ Membership writes serialize on the organization through a no-op row update, prod
 | `JoinToken`             | organization_id, token_hash, expires_at, used_at                                                             | single use                                                                               |
 | `GitConnection`         | provider, installation_id or credentials_enc, scope                                                          | per org                                                                                  |
 | `Application`           | environment_id, name, source (git, image, compose), repo, branch, config_path, config (jsonb), config_sha    | name unique per environment                                                              |
-| `Domain`                | application_id, hostname, tls_mode, verification_status                                                      | hostname unique per org                                                                  |
+| `Domain`                | application_id, hostname (TLS mode and certificate status with M3.6b)                                        | hostname unique per org; synced from the configuration                                   |
 | `Secret`                | environment_id, name, value_enc, version                                                                     | value never returned by the API after creation, only masked                              |
 | `Release`               | application_id, number, image, image_digest, config, config_sha (commit_sha with git sources)                | immutable; the image digest is recorded once                                             |
 | `Deployment`            | application_id, release_id, state, plan (build, release), trigger, actor_id, started_at, finished_at, error  | one active deployment per application                                                    |
@@ -532,7 +532,10 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - documents are validated against the schema, and errors list JSON pointers and schema messages without input values;
     - only `build.type: image` is accepted until git (M3.1) and Compose (M3.8) sources;
     - the canonical JSON (sorted keys) is limited to 64 KiB and hashed with SHA-256 into `configSha`;
-    - a duplicate name in the environment is 409 `application_name_taken`.
+    - a duplicate name in the environment is 409 `application_name_taken`;
+    - a hostname belongs to one application per organization: saving a configuration syncs its `domains`, and a host another application claims is 409 `domain_taken` (a rollback checks this too);
+    - wildcard domains are refused with 400 `wildcard_domain_unsupported` until DNS-01 exists.
+  - `GET …/{applicationId}/domains` (`environment.read`) looks up each domain live: `public` with its addresses, `private` (only non-public answers, never revealed, so the control plane's resolver cannot be used to map internal names), `none` or `unknown`. It does not connect to the answers. Comparing them with the node's public address is left to the operator until nodes report one.
   - `application.created` and `application.updated` audit events carry the name, source and configuration hashes, not the configuration.
 - Deployments (PLAN M3.4b2), under `…/applications/{applicationId}`:
   - `POST …/deployments` (201, `deploy.run`) snapshots the configuration as the next release (numbered per application) and queues a deployment.
