@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
 )
 
 // Signed by Node.js exactly as the control plane signs (SPEC 3.6), with a fixed test key.

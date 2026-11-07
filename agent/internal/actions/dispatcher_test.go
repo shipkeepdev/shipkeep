@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 const testID = "019d0000-0000-7000-8000-00000000000a"

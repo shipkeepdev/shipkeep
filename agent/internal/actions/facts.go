@@ -11,9 +11,9 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
-	"github.com/samuelmbabhazi/shipkeep/lib/buildinfo"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
+	"github.com/shipkeepdev/shipkeep/lib/buildinfo"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 // Versions reports the daemon versions the agent depends on.

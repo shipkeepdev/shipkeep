@@ -9,17 +9,17 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/actions"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/caddy"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/confirm"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/credentials"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/gateway"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/reporting"
-	"github.com/samuelmbabhazi/shipkeep/lib/buildinfo"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
-	"github.com/samuelmbabhazi/shipkeep/lib/secret"
+	"github.com/shipkeepdev/shipkeep/agent/internal/actions"
+	"github.com/shipkeepdev/shipkeep/agent/internal/caddy"
+	"github.com/shipkeepdev/shipkeep/agent/internal/confirm"
+	"github.com/shipkeepdev/shipkeep/agent/internal/credentials"
+	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
+	"github.com/shipkeepdev/shipkeep/agent/internal/gateway"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
+	"github.com/shipkeepdev/shipkeep/agent/internal/reporting"
+	"github.com/shipkeepdev/shipkeep/lib/buildinfo"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
 func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *docker.Client) error {

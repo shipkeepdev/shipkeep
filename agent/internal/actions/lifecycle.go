@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/confirm"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/agent/internal/confirm"
+	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 // containerRef is a full Docker id or a Shipkeep container name; id prefixes are never accepted.

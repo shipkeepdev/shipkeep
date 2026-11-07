@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/agent"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/config"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/credentials"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/gateway"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
-	"github.com/samuelmbabhazi/shipkeep/lib/secret"
+	"github.com/shipkeepdev/shipkeep/agent/internal/agent"
+	"github.com/shipkeepdev/shipkeep/agent/internal/config"
+	"github.com/shipkeepdev/shipkeep/agent/internal/credentials"
+	"github.com/shipkeepdev/shipkeep/agent/internal/gateway"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
 type logBuffer struct {

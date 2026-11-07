@@ -1,4 +1,4 @@
-module github.com/samuelmbabhazi/shipkeep/lib
+module github.com/shipkeepdev/shipkeep/lib
 
 go 1.26.0
 

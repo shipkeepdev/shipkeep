@@ -20,7 +20,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/lib/secret"
+	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
 // apiVersion is pinned: newer daemons keep serving it, and behavior never shifts silently.

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/samuelmbabhazi/shipkeep/lib/secret"
+	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
 // fakeDaemon serves a few Engine API endpoints on a Unix socket.

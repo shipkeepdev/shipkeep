@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 // Engine exposes one read-only snapshot of managed containers, including stopped ones.

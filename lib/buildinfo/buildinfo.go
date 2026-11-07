@@ -1,6 +1,6 @@
 // Package buildinfo exposes the version information stamped into Shipkeep binaries at build time.
 //
-// The variables are set through -ldflags "-X github.com/samuelmbabhazi/shipkeep/lib/buildinfo.Version=..."
+// The variables are set through -ldflags "-X github.com/shipkeepdev/shipkeep/lib/buildinfo.Version=..."
 // by GoReleaser (task M8.2). Development builds report "dev".
 package buildinfo
 
