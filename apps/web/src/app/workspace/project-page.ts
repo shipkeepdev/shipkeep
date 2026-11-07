@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, effect, inject, input, signal } fro
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
+import { BindingsPanel } from '../access/bindings-panel';
 import { IdentityRequestError } from '../identity/identity-api';
 import { MutationRunner } from '../identity/mutation-runner';
 
@@ -14,7 +15,7 @@ import { type Environment, type Project, WorkspaceApi } from './workspace-api';
 /** One project: its environments, and creating one (protected by default, SPEC 7). */
 @Component({
   selector: 'sk-project-page',
-  imports: [ReactiveFormsModule, RouterLink, ProjectSettings],
+  imports: [ReactiveFormsModule, RouterLink, ProjectSettings, BindingsPanel],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -99,6 +100,9 @@ import { type Environment, type Project, WorkspaceApi } from './workspace-api';
         </section>
         @if (project(); as current) {
           <sk-project-settings [current]="current" (updated)="project.set($event)" />
+          <sk-bindings-panel
+            [scope]="{ organizationId: organizationId(), projectId: projectId() }"
+          />
         }
       }
     </section>

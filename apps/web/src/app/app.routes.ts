@@ -44,6 +44,11 @@ export const appRoutes: Route[] = [
     loadComponent: () => import('./fleet/servers-page').then((module) => module.ServersPage),
   },
   {
+    path: 'orgs/:organizationId/members',
+    title: 'Members · Shipkeep',
+    loadComponent: () => import('./access/members-page').then((module) => module.MembersPage),
+  },
+  {
     path: 'orgs/:organizationId/audit',
     title: 'Audit log · Shipkeep',
     loadComponent: () => import('./audit/audit-page').then((module) => module.AuditPage),

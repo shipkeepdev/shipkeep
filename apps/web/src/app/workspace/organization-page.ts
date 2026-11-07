@@ -29,6 +29,7 @@ import { type Organization, type Project, WorkspaceApi } from './workspace-api';
         <p class="page-intro">
           Projects group the environments of one product.
           <a [routerLink]="['/orgs', organizationId(), 'nodes']">Manage servers</a> ·
+          <a [routerLink]="['/orgs', organizationId(), 'members']">Members</a> ·
           <a [routerLink]="['/orgs', organizationId(), 'audit']">Audit log</a>
         </p>
         <h2>Projects</h2>
