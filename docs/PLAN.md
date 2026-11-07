@@ -393,6 +393,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 
 ## M10. Hardening and beta
 
+- [x] **M10.0a Integration acceptance fixture maintenance** (X). Align email verification fixtures with password proof, isolate validation cases from shared throttle budgets, and cover application, deployment, fleet, secret and token paths in the registered-route role matrix. Production authentication and rate limits are unchanged.
 - [ ] **M10.1 E2E suite on real VMs** (X). Depends: M4.5
   - Implement `pnpm e2e:provision`, `pnpm e2e:run`, `pnpm e2e:teardown` used by `.github/workflows/e2e-nightly.yml` (Hetzner Cloud via `hcloud`, resources tagged with the run id, teardown deletes by tag).
   - Scenarios: deploy, rollback, failover, backup and restore, preview, upgrade.

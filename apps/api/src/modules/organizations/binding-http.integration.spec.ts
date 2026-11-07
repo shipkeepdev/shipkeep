@@ -242,9 +242,14 @@ describe('role binding mutations over HTTP', () => {
       { ...body, email: 'not-an-address' },
       { ...body, projectId: uuidv7() },
       { email: subject.email, role: 'viewer' },
-    ])
+    ]) {
+      // Each validation case needs its own attempt budget to reach the DTO checks.
+      await resetLimits();
       await post(owner, `${projectPath()}/bindings`, input).expect(400);
+    }
+    await resetLimits();
     await post(owner, `${projectPath()}/bindings/invalid/remove`, proof).expect(400);
+    await resetLimits();
     await post(owner, `/projects/${uuidv7()}/bindings`, body).expect(404);
     expect(
       await count('SELECT count(*) FROM role_bindings WHERE organization_id = $1', [

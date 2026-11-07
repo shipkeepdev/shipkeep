@@ -1,8 +1,9 @@
 import { ModulesContainer, Reflector } from '@nestjs/core';
 import { allowsTenantAction } from '@shipkeep/domain';
+import { v7 as uuidv7 } from 'uuid';
 
 import { auditLog } from '../../testing/audit-log';
-import { routeInventory } from '../../testing/route-inventory';
+import { routeInventory, type RouteRow } from '../../testing/route-inventory';
 import { tenantHttpFixture } from '../../testing/tenant-http';
 import { tenantActors, tenantPersona, tenantTarget } from '../../testing/tenant-personas';
 
@@ -12,18 +13,54 @@ import { tenantActors, tenantPersona, tenantTarget } from '../../testing/tenant-
  * outcome comes from the pure domain policy, which `route-role-matrix.spec.ts` checks against
  * SPEC 7:
  * - an allowed GET answers 200;
- * - an allowed POST with an empty body reaches validation and answers 400, so nothing is written;
+ * - an allowed POST with an empty body or invalid resource id answers 400 without writing;
  * - a denied request answers 404, like a missing resource.
  */
 describe('registered tenant routes for every role', () => {
   let fixture: Awaited<ReturnType<typeof tenantHttpFixture>>;
+  let applicationId: string;
+  let deploymentId: string;
+  const nodeId = uuidv7();
+  const tokenId = uuidv7();
 
   beforeAll(async () => {
     fixture = await tenantHttpFixture();
+    const application = await fixture
+      .post(`${fixture.environment}/applications`, 'owner', {
+        config: {
+          version: 1,
+          name: 'matrix-app',
+          build: { type: 'image', image: 'nginx:alpine' },
+          run: { port: 80 },
+        },
+      })
+      .expect(201);
+    applicationId = (application.body as { id: string }).id;
+    const queued = await fixture
+      .post(`${fixture.environment}/applications/${applicationId}/deployments`, 'owner', {})
+      .expect(201);
+    deploymentId = (queued.body as { deployment: { id: string } }).deployment.id;
   });
   afterAll(async () => {
     await fixture.close();
   });
+
+  function routePath(route: RouteRow, organizationId = fixture.organizationId): string {
+    // Deploy/cancel and secret removal accept no body. Invalid non-scope path parameters
+    // stop them at validation, after the real tenant guards have authorized the request.
+    const path = `/api/v1${route.path}`
+      .replace(':organizationId', organizationId)
+      .replace(':projectId', fixture.projectId)
+      .replace(':environmentId', fixture.environmentId)
+      .replace(':membershipId', fixture.actors.member.membershipId)
+      .replace(':nodeId', nodeId)
+      .replace(':applicationId', route.method === 'POST' ? 'invalid' : applicationId)
+      .replace(':deploymentId', route.method === 'POST' ? 'invalid' : deploymentId)
+      .replace(':name', 'INVALID-NAME')
+      .replace(':id', tokenId);
+    expect(path, route.path).not.toContain(':');
+    return path;
+  }
 
   it('answers each actor as the policy decides, without leaking hidden resources', async () => {
     const ids = {
@@ -39,12 +76,7 @@ describe('registered tenant routes for every role', () => {
     const auditsBefore = await auditLog().count();
     for (const route of routes) {
       if (route.access?.kind !== 'tenant') continue;
-      const path = `/api/v1${route.path}`
-        .replace(':organizationId', ids.organizationId)
-        .replace(':projectId', ids.projectId)
-        .replace(':environmentId', ids.environmentId)
-        .replace(':membershipId', fixture.actors.member.membershipId);
-      expect(path, route.path).not.toContain(':');
+      const path = routePath(route);
       for (const actor of tenantActors) {
         const allowed = allowsTenantAction(
           tenantPersona(actor, ids),
@@ -73,12 +105,8 @@ describe('registered tenant routes for every role', () => {
     for (const route of routes) {
       // The foreign organization has no project or environment of the fixture; mixing ids must
       // never resolve across tenants.
-      const path = `/api/v1${route.path}`
-        .replace(':organizationId', fixture.foreignId)
-        .replace(':projectId', fixture.projectId)
-        .replace(':environmentId', fixture.environmentId)
-        .replace(':membershipId', fixture.actors.member.membershipId);
       if (!route.path.includes(':projectId')) continue;
+      const path = routePath(route, fixture.foreignId);
       await fixture.prisma.identityThrottle.deleteMany();
       expect((await fixture.get(path, 'owner')).status, route.path).toBe(404);
     }
