@@ -133,11 +133,11 @@ describe('servers page', () => {
       Array.from(element().querySelectorAll<HTMLButtonElement>('button')).find((b) =>
         b.textContent.includes('Remove server'),
       );
-    fill('remove-name', 'edge');
+    fill('confirm-name', 'edge');
     expect(confirm()?.disabled).toBe(true);
-    fill('remove-name', 'edge-1');
+    fill('confirm-name', 'edge-1');
     expect(confirm()?.disabled).toBe(false);
-    await submit('#remove-name');
+    await submit('#confirm-name');
     expect(requests.filter((r) => r.method === 'POST')).toEqual([
       {
         method: 'POST',

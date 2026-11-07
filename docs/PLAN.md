@@ -270,7 +270,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - [x] **M2.5a** `POST /api/v1/confirmations`: EdDSA JWS from the installation confirmation key (SPEC 3.6), the typed resource name checked, `jti` stored and marked used, audited.
     - [x] **M2.5a1** Token format and catalog, Ed25519 signing in the installation key module, `confirmation_tokens` table under RLS, issuance and single-use consumption services.
     - [x] **M2.5a2** HTTP issuance route and the node target resolver.
-  - [ ] **M2.5b** Confirmation dialog in the web UI. Server removal uses it (M2.7c); a shared dialog for volumes, databases and environments follows with those screens.
+  - [x] **M2.5b** Shared confirmation in the web UI (`ConfirmByName`). Server removal uses it; volume, database and environment deletion will use it when those screens and actions exist.
   - `/confirmations` endpoint, UI confirmation dialog that requires typing the resource name.
   - Acceptance: destructive endpoints reject requests without a valid, unused, matching token.
 - [ ] **M2.6 Web UI shell** (W). Depends: M2.2. Partly done in M2.2e: shell, routing, auth flows, design tokens, Tailwind and CDK. Remaining: empty states and the Lighthouse check. Done: navigation (M2.3f1a) and live updates per environment (M2.6b).

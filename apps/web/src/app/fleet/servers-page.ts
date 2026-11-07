@@ -13,6 +13,8 @@ import { RouterLink } from '@angular/router';
 import { MutationRunner } from '../identity/mutation-runner';
 import { PrivateClipboard } from '../identity/private-clipboard';
 import { Collection } from '../workspace/collection';
+import { ConfirmByName } from '../workspace/confirm-by-name';
+import { recoverOnEdit } from '../workspace/form-recovery';
 import { required } from '../workspace/validators';
 
 import { FleetApi, type FleetNode, type JoinToken } from './fleet-api';
@@ -31,7 +33,7 @@ export function agentConfig(token: JoinToken): string {
 /** Servers of an organization: status, adding one with a join token, confirmed removal. */
 @Component({
   selector: 'sk-servers-page',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, ConfirmByName],
   providers: [MutationRunner, PrivateClipboard],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -100,36 +102,18 @@ export function agentConfig(token: JoinToken): string {
       }
 
       @if (removing(); as node) {
-        <section aria-labelledby="remove-title" class="mb-8 border-y border-danger py-6">
-          <h2 id="remove-title">Remove {{ node.name }}</h2>
-          <p class="mb-3">
-            Its certificates are revoked and its agent is disconnected. This cannot be undone. Type
-            <strong>{{ node.name }}</strong> to confirm.
-          </p>
-          <form [formGroup]="removal" (ngSubmit)="remove(node)" class="grid gap-4">
-            <div>
-              <label for="remove-name">Server name</label>
-              <input
-                id="remove-name"
-                formControlName="name"
-                autocomplete="off"
-                spellcheck="false"
-              />
-            </div>
-            <div class="flex gap-3">
-              <button
-                class="button bg-danger"
-                type="submit"
-                [disabled]="runner.busy() || removal.controls.name.value !== node.name"
-              >
-                {{ runner.busy() ? 'Removing…' : 'Remove server' }}
-              </button>
-              <button class="button button-secondary" type="button" (click)="removing.set(null)">
-                Keep it
-              </button>
-            </div>
-          </form>
-        </section>
+        <sk-confirm-by-name
+          [heading]="'Remove ' + node.name"
+          [resourceName]="node.name"
+          fieldLabel="Server name"
+          actionLabel="Remove server"
+          busyLabel="Removing…"
+          [busy]="runner.busy()"
+          (confirmed)="remove(node, $event)"
+          (cancelled)="keep()"
+        >
+          Its certificates are revoked and its agent is disconnected. This cannot be undone.
+        </sk-confirm-by-name>
       }
 
       <section aria-labelledby="add-title" class="border-t border-line pt-6">
@@ -231,11 +215,9 @@ export class ServersPage {
     password: new FormControl('', { nonNullable: true, validators: [required] }),
     totp: new FormControl('', { nonNullable: true }),
   });
-  protected readonly removal = new FormGroup({
-    name: new FormControl('', { nonNullable: true }),
-  });
 
   constructor() {
+    recoverOnEdit(this.join, this.runner);
     effect(() => {
       this.organizationId();
       void this.nodes.refresh();
@@ -262,14 +244,17 @@ export class ServersPage {
     if (outcome.ok) this.issued.set(outcome.value);
   }
 
-  protected async remove(node: FleetNode): Promise<void> {
-    const name = this.removal.controls.name.value;
-    const outcome = await this.runner.run({ remove: node.id }, async () => {
+  protected keep(): void {
+    this.removing.set(null);
+    this.runner.reset();
+  }
+
+  protected async remove(node: FleetNode, name: string): Promise<void> {
+    const outcome = await this.runner.run({ remove: node.id, name }, async () => {
       const confirmation = await this.api.confirmRemoval(this.organizationId(), node, name);
       await this.api.removeNode(this.organizationId(), node.id, confirmation);
     });
     if (!outcome.ok) return;
-    this.removal.reset();
     this.removing.set(null);
     await this.nodes.refresh();
   }
