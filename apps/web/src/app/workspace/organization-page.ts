@@ -26,7 +26,8 @@ import { type Organization, type Project, WorkspaceApi } from './workspace-api';
       } @else {
         <p class="page-intro">
           Projects group the environments of one product.
-          <a [routerLink]="['/orgs', organizationId(), 'nodes']">Manage servers</a>
+          <a [routerLink]="['/orgs', organizationId(), 'nodes']">Manage servers</a> ·
+          <a [routerLink]="['/orgs', organizationId(), 'audit']">Audit log</a>
         </p>
         <h2>Projects</h2>
         @switch (projects.state()) {

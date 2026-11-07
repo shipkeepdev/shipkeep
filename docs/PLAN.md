@@ -261,7 +261,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - Database permissions deny update and delete on `AuditEvent`; audit UI with filters; export endpoint.
   - [x] **M2.4a** Scoped audit query and JSON Lines export endpoints for organization administrators and `audit.read` tokens. Depends: M2.3g2.
   - [x] **M2.4c** A test that walks every registered mutating route and requires its declared audit events to exist in the code (`apps/api/src/audit-coverage.spec.ts`).
-  - [ ] **M2.4b** Audit UI with filters.
+  - [x] **M2.4b** Audit UI with filters, paging and the JSON Lines export.
   - Acceptance: test asserts every command handler emits at least one audit event.
 - [ ] **M2.5 Confirmation tokens** (C + W). Depends: M2.3
   - [x] **M2.5a** `POST /api/v1/confirmations`: EdDSA JWS from the installation confirmation key (SPEC 3.6), the typed resource name checked, `jti` stored and marked used, audited.
