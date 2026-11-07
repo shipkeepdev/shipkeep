@@ -1,4 +1,3 @@
-import { auditLog } from '../../testing/audit-log';
 import { tenantHttpFixture } from '../../testing/tenant-http';
 
 const config = (overrides: Record<string, unknown> = {}) => ({
