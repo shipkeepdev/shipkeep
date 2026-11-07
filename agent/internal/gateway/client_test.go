@@ -46,6 +46,7 @@ type testGateway struct {
 	action  atomic.Pointer[agentv1.ActionRequest]
 	cancel  atomic.Pointer[agentv1.CancelAction]
 	updates chan *agentv1.ActionUpdate
+	reports chan *agentv1.StateReport
 }
 
 func (g *testGateway) certificate(csrPEM string) (string, error) {

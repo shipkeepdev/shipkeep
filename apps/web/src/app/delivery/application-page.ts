@@ -9,12 +9,12 @@ import {
   signal,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { stringify } from 'yaml';
 
 import { IdentityRequestError } from '../identity/identity-api';
 import { MutationRunner } from '../identity/mutation-runner';
 import { Collection } from '../workspace/collection';
 
+import { ConfigurationEditor } from './configuration-editor';
 import {
   type Application,
   DeliveryApi,
@@ -29,7 +29,7 @@ const POLL_MS = 3000;
 /** One application: its configuration, deploying it and following its deployments. */
 @Component({
   selector: 'sk-application-page',
-  imports: [RouterLink],
+  imports: [RouterLink, ConfigurationEditor],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -113,17 +113,7 @@ const POLL_MS = 3000;
             <p class="mb-8 border-y border-line py-6 text-muted">Not deployed yet.</p>
           }
         </section>
-        <section aria-labelledby="configuration-title" class="border-t border-line pt-6">
-          <h2 id="configuration-title">Configuration</h2>
-          <p class="hint mb-3">
-            Version <code>{{ current.configSha.slice(0, 12) }}</code>
-          </p>
-          <pre
-            class="overflow-x-auto rounded-md bg-panel p-4 text-sm"
-            tabindex="0"
-            aria-label="shipkeep.yml"
-            >{{ yaml() }}</pre>
-        </section>
+        <sk-configuration-editor [application]="current" [environment]="environment()" />
       }
     </section>
   `,
@@ -135,7 +125,7 @@ export class ApplicationPage {
   readonly projectId = input.required<string>();
   readonly environmentId = input.required<string>();
   readonly applicationId = input.required<string>();
-  private readonly environment = computed<EnvironmentRef>(() => ({
+  protected readonly environment = computed<EnvironmentRef>(() => ({
     organizationId: this.organizationId(),
     projectId: this.projectId(),
     environmentId: this.environmentId(),
@@ -148,14 +138,12 @@ export class ApplicationPage {
   protected readonly active = computed(() =>
     this.deployments.items().find((deployment) => !FINISHED.has(deployment.state)),
   );
-  protected readonly yaml = computed(() => {
-    const current = this.application();
-    return current ? stringify(current.config) : '';
-  });
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private loadRevision = 0;
 
   constructor() {
     inject(DestroyRef).onDestroy(() => {
+      ++this.loadRevision;
       clearTimeout(this.timer);
     });
     effect(() => {
@@ -164,11 +152,16 @@ export class ApplicationPage {
   }
 
   private async load(environment: EnvironmentRef, applicationId: string): Promise<void> {
+    const revision = ++this.loadRevision;
+    this.application.set(null);
     this.missing.set(null);
     try {
-      this.application.set(await this.api.application(environment, applicationId));
+      const application = await this.api.application(environment, applicationId);
+      if (revision !== this.loadRevision) return;
+      this.application.set(application);
       await this.refresh();
     } catch (error: unknown) {
+      if (revision !== this.loadRevision) return;
       this.application.set(null);
       this.missing.set(
         error instanceof IdentityRequestError

@@ -24,7 +24,7 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON
 -- Single-use state only moves forward; rows are never deleted by the API.
 GRANT SELECT,INSERT,UPDATE ON confirmation_tokens,agent_actions TO shipkeep_runtime;
 -- Applications and their deployments are removed only with their environment (cascade).
-GRANT SELECT,INSERT,UPDATE ON applications,deployments,allocations TO shipkeep_runtime;
+GRANT SELECT,INSERT,UPDATE ON applications,deployments,allocations,allocation_observations TO shipkeep_runtime;
 -- Releases are immutable: the image digest is the only column ever written after insert (once).
 GRANT SELECT,INSERT ON releases TO shipkeep_runtime;
 GRANT UPDATE (image_digest) ON releases TO shipkeep_runtime;

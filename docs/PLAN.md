@@ -131,6 +131,8 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - Acceptance: test deploys v1, switches to v2 under constant load (k6 or vegeta), zero failed requests.
 - [ ] **M1.6 Agent self-reconciliation** (A). Depends: M1.4, M1.5. Done: the intent journal, the 30 s reconciler restarting stopped managed containers offline, `CollectFacts`, and Caddy `--resume` in the M8.3a installer. Remaining: send `StateReport` to the control plane; the end-to-end acceptance on a VM (including routing persistence).
   - Reconcile loop every 30 s against `desired`; restart crashed managed containers; report `StateReport`; answer `CollectFacts`.
+  - [x] **M1.6b1** Bounded managed-container snapshots and stream reporter: sample changes every second, refresh every 30 s, include stopped containers and suppress incomplete inventories. Unit/race tests cover shutdown, transport, missing containers and redaction. Daemon activation waits for the control-plane receiver (M1.6b2), so older gateways keep working.
+  - [x] **M1.6b2** Accept state reports under the node identity and persist audited allocation observations in a separate table (model approved by the owner on 2026-11-07), without changing scheduler reservations; activate the daemon reporter.
   - Acceptance: with control plane stopped, a killed container is restarted and routing keeps serving.
 
 ## M2. Control plane core
@@ -305,6 +307,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
       - [x] **M3.4c4a** Allocations table (forced RLS), pipeline store (placement, load, digests, step outcomes by key prefix) and the scheduler adapter.
       - [x] **M3.4c4b** Planner steps as agent actions, with secret values injected at enqueue time.
       - [x] **M3.4c4c** The pg-boss worker: one job per deployment, woken by action results, audited transitions and recovery.
+  - [x] **M3.4d Configuration editor** (W). Edit YAML with schema validation, review a diff, and save with `expectedConfigSha`. A 409 keeps the draft and requires reloading the latest version and reviewing again. Saving does not deploy.
 - [ ] **M3.5 Rollback and release history** (C + W). Depends: M3.4
   - Keep N images; one-click rollback; release diff view (image, config).
   - Acceptance: rollback under load with zero failed requests.
@@ -394,6 +397,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 
 ## M10. Hardening and beta
 
+- [x] **M10.0a Integration acceptance fixture maintenance** (X). Align email verification fixtures with password proof, isolate validation cases from shared throttle budgets, and cover application, deployment, fleet, secret and token paths in the registered-route role matrix. Production authentication and rate limits are unchanged.
 - [ ] **M10.1 E2E suite on real VMs** (X). Depends: M4.5
   - Implement `pnpm e2e:provision`, `pnpm e2e:run`, `pnpm e2e:teardown` used by `.github/workflows/e2e-nightly.yml` (Hetzner Cloud via `hcloud`, resources tagged with the run id, teardown deletes by tag).
   - Scenarios: deploy, rollback, failover, backup and restore, preview, upgrade.

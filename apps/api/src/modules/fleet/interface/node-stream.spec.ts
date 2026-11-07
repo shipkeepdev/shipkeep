@@ -6,15 +6,24 @@ import {
   type ConnectRequest,
   ConnectRequestSchema,
   OperationState,
+  type StateReport,
 } from '@shipkeep/proto-ts';
 
 import type { AgentActions } from '../application/agent-actions';
 import { AuthenticateNode } from '../application/authenticate-node';
 import type { NodeLiveness } from '../application/node-liveness';
+import type { StateReports } from '../application/state-reports';
 import { NodeStream } from './node-stream';
 
 const idle = { deliverable: () => Promise.resolve([]), record: () => Promise.resolve() };
 const queue = (fake: object) => fake as unknown as AgentActions;
+const delivered: StateReport[] = [];
+const reports = {
+  deliver: (_identity: unknown, report: StateReport) => {
+    delivered.push(report);
+    return Promise.resolve();
+  },
+} as unknown as StateReports;
 const heartbeats: string[] = [];
 const liveness = {
   heartbeat: (node: { nodeId: string }) => {
@@ -48,7 +57,7 @@ describe('stream timeouts and failure boundaries', () => {
     const input: AsyncIterable<ConnectRequest> = {
       [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }),
     };
-    const stream = new NodeStream(authenticate, queue(idle), liveness).connect(
+    const stream = new NodeStream(authenticate, queue(idle), liveness, reports).connect(
       input,
       context,
       identity,
@@ -69,7 +78,9 @@ describe('stream timeouts and failure boundaries', () => {
       [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(new Error('socket closed')) }),
     };
     await expect(
-      new NodeStream(authenticate, queue(idle), liveness).connect(input, context, identity).next(),
+      new NodeStream(authenticate, queue(idle), liveness, reports)
+        .connect(input, context, identity)
+        .next(),
     ).rejects.toMatchObject({ code: 13, rawMessage: 'agent stream failed' });
   });
 
@@ -110,6 +121,7 @@ describe('stream timeouts and failure boundaries', () => {
           value: { actionId: action.actionId, state: OperationState.SUCCEEDED },
         },
       }),
+      create(ConnectRequestSchema, { msg: { case: 'stateReport', value: { leaseEpoch: 1n } } }),
     ];
     let index = 0;
     const input: AsyncIterable<ConnectRequest> = {
@@ -121,14 +133,16 @@ describe('stream timeouts and failure boundaries', () => {
       }),
     };
     const responses = [];
-    for await (const response of new NodeStream(authenticate, queue(fake), liveness).connect(
-      input,
-      context,
-      identity,
-    ))
+    for await (const response of new NodeStream(
+      authenticate,
+      queue(fake),
+      liveness,
+      reports,
+    ).connect(input, context, identity))
       responses.push(response.msg.case);
     expect(responses).toEqual(['welcome', 'actionRequest']);
     expect(recorded.map((update) => update.state)).toEqual([OperationState.SUCCEEDED]);
+    expect(delivered.map((report) => report.leaseEpoch)).toEqual([1n]);
     // The hello counts as a heartbeat: the node becomes ready as soon as its agent connects.
     expect(heartbeats).toContain('node');
   });
