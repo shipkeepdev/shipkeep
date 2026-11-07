@@ -16,13 +16,15 @@ import {
 } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 
+import { TokenScopePicker } from '../access/token-scope-picker';
+
 import { PrivateClipboard } from './private-clipboard';
 import { SessionStore } from './session-store';
 import { TOKEN_LIFETIMES, TokenFormStore } from './token-form-store';
 
 @Component({
   selector: 'sk-token-panel',
-  imports: [DatePipe, TitleCasePipe, ReactiveFormsModule],
+  imports: [DatePipe, TitleCasePipe, ReactiveFormsModule, TokenScopePicker],
   providers: [TokenFormStore, PrivateClipboard],
   templateUrl: './token-panel.html',
   changeDetection: ChangeDetectionStrategy.OnPush,

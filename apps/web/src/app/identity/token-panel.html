@@ -1,8 +1,8 @@
 <section class="border-b border-line py-8" aria-labelledby="token-title">
   <h2 #heading id="token-title" tabindex="-1">API tokens</h2>
   <p class="mb-5 text-sm text-muted">
-    Allow a script or tool to read your account profile. Keep tokens private. You can have up to 50
-    active tokens.
+    Allow a script or tool to act with the permissions you choose, never more than your own. Keep
+    tokens private. You can have up to 50 active tokens.
   </p>
   @if (store.problem() || store.notice(); as message) {
     <div
@@ -104,9 +104,7 @@
               {{ store.errorFor('lifetimeDays') }}
             </p>
           </div>
-          <p class="text-sm">
-            <span class="font-semibold">Permission:</span> Read your account profile.
-          </p>
+          <sk-token-scope-picker (grantChange)="store.setGrant($event)" />
         }
         <div>
           <label for="token-password">Current password</label>
@@ -251,12 +249,11 @@
                   <p class="break-words font-semibold">{{ token.name }}</p>
                   @for (scope of token.scopes; track $index) {
                     <p class="mt-1 text-xs text-muted">
-                      {{
-                        scope.permission === 'profile.read'
-                          ? 'Read account profile'
-                          : scope.permission
-                      }}
+                      {{ store.scopeLabel(scope) }}
                     </p>
+                  }
+                  @if (token.project) {
+                    <p class="mt-1 text-xs text-muted">Tied to a project</p>
                   }
                   <p class="mt-2 text-xs text-muted">
                     Created {{ token.createdAt | date: 'mediumDate' }}<br />Last used:

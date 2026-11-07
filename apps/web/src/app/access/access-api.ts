@@ -7,6 +7,7 @@ export type Binding = Schema<'BindingViewDto'>;
 export type OrganizationRole = Member['orgRole'];
 export type ResourceRole = Binding['role'];
 export type Proof = Schema<'ReauthenticateMfaDto'>;
+export type ProjectToken = Schema<'ProjectApiTokenDto'>;
 /** A project, or one of its environments when `environmentId` is set. */
 export interface BindingScope {
   readonly organizationId: string;
@@ -60,6 +61,31 @@ export class AccessApi extends WorkspaceApi {
         body,
         params: { ...this.mutation(key), path: { organizationId, membershipId } },
       }),
+    );
+  }
+  projectTokens(
+    organizationId: string,
+    projectId: string,
+    cursor?: string,
+  ): Promise<Schema<'ProjectApiTokenPageDto'>> {
+    return this.required(() =>
+      this.client.GET('/api/v1/organizations/{organizationId}/projects/{projectId}/api-tokens', {
+        params: { path: { organizationId, projectId }, query: cursor ? { cursor } : {} },
+      }),
+    );
+  }
+  async revokeProjectToken(
+    organizationId: string,
+    projectId: string,
+    id: string,
+    body: Proof,
+    key: string,
+  ): Promise<void> {
+    await this.execute(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/api-tokens/{id}/revoke',
+        { body, params: { ...this.mutation(key), path: { organizationId, projectId, id } } },
+      ),
     );
   }
   bindings(scope: BindingScope, cursor?: string): Promise<Schema<'BindingPageDto'>> {

@@ -3,6 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
 import { BindingsPanel } from '../access/bindings-panel';
+import { ProjectTokensPanel } from '../access/project-tokens-panel';
 import { IdentityRequestError } from '../identity/identity-api';
 import { MutationRunner } from '../identity/mutation-runner';
 
@@ -15,7 +16,7 @@ import { type Environment, type Project, WorkspaceApi } from './workspace-api';
 /** One project: its environments, and creating one (protected by default, SPEC 7). */
 @Component({
   selector: 'sk-project-page',
-  imports: [ReactiveFormsModule, RouterLink, ProjectSettings, BindingsPanel],
+  imports: [ReactiveFormsModule, RouterLink, ProjectSettings, BindingsPanel, ProjectTokensPanel],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -103,6 +104,7 @@ import { type Environment, type Project, WorkspaceApi } from './workspace-api';
           <sk-bindings-panel
             [scope]="{ organizationId: organizationId(), projectId: projectId() }"
           />
+          <sk-project-tokens-panel [organizationId]="organizationId()" [projectId]="projectId()" />
         }
       }
     </section>

@@ -2,6 +2,8 @@ import { DestroyRef, inject, Injectable, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormControl, FormGroup, Validators, type ValidatorFn } from '@angular/forms';
 
+import { PROFILE_ONLY, type TokenGrant } from '../access/token-scope-picker';
+
 import { passwordValidator } from './auth-form-store';
 import { IdentityApi, IdentityRequestError, type IdentitySchema } from './identity-api';
 import { MutationRunner } from './mutation-runner';
@@ -42,6 +44,7 @@ export class TokenFormStore {
   private readonly expiry = signal<string | null>(null);
   private readonly message = signal<string | null>(null);
   private readonly validation = signal<string | null>(null);
+  private readonly grant = signal<TokenGrant>(PROFILE_ONLY);
   readonly items = this.rows.asReadonly();
   readonly nextCursor = this.cursor.asReadonly();
   readonly page = this.pageIndex.asReadonly();
@@ -112,6 +115,20 @@ export class TokenFormStore {
     this.validation.set(null);
     this.submission.reset();
   }
+  /** What the token being created may do; the scope picker owns the choice. */
+  setGrant(grant: TokenGrant): void {
+    this.grant.set(grant);
+  }
+  /** One readable line per scope in the token list. */
+  scopeLabel(scope: Token['scopes'][number]): string {
+    if (scope.permission === 'profile.read') return 'Read account profile';
+    const reach = scope.environmentId
+      ? 'one environment'
+      : scope.projectId
+        ? 'one project'
+        : 'whole organization';
+    return `${scope.permission}, ${reach}`;
+  }
   beginCreate(): boolean {
     if (!this.canEdit()) return false;
     this.begin('create');
@@ -181,11 +198,17 @@ export class TokenFormStore {
       return;
     }
     if (mode === 'revoke' && !target) return;
+    const { scopes, project } = this.grant();
+    if (mode === 'create' && !scopes.length) {
+      this.validation.set('Choose at least one permission for this token.');
+      return;
+    }
     const body = {
       ...proof,
       name: name.trim(),
       expiresAt: expiresAt ?? '',
-      scopes: [{ permission: 'profile.read' as const }],
+      scopes: [...scopes],
+      ...(project ? { project } : {}),
     };
     const result = await this.submission.run(
       mode === 'create' ? body : { id: target?.id, ...proof },
@@ -227,6 +250,7 @@ export class TokenFormStore {
     this.#credential.set(null);
     this.target.set(null);
     this.expiry.set(null);
+    this.grant.set(PROFILE_ONLY);
     this.form.reset({}, { emitEvent: false });
   }
   private updateExpiry(days: number): void {

@@ -30,124 +30,126 @@ const email: ValidatorFn = (control) => Validators.email(control);
   imports: [ReactiveFormsModule, ReauthForm],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <section aria-labelledby="bindings-title" class="mt-8 border-t border-line pt-6">
-      <h2 id="bindings-title">Access</h2>
-      @if (scope().environmentId) {
-        <p class="page-intro">A role set here replaces the person's project role here.</p>
-      }
-      @if (notice(); as text) {
-        <p role="status" class="feedback">{{ text }}</p>
-      }
-      @if (bindings.problem(); as problem) {
-        <div class="feedback" role="alert">
-          <p>{{ problem }}</p>
-        </div>
-      }
-      @switch (bindings.state()) {
-        @case ('loading') {
-          <p role="status" class="text-muted">Loading access…</p>
+    @if (!bindings.denied()) {
+      <section aria-labelledby="bindings-title" class="mt-8 border-t border-line pt-6">
+        <h2 id="bindings-title">Access</h2>
+        @if (scope().environmentId) {
+          <p class="page-intro">A role set here replaces the person's project role here.</p>
         }
-        @case ('ready') {
-          @if (bindings.items().length) {
-            <ul class="mb-8 divide-y divide-line border-y border-line" aria-label="Access">
-              @for (binding of bindings.items(); track binding.id) {
-                <li class="py-3">
-                  <div class="flex flex-wrap items-center justify-between gap-3">
-                    <span>
-                      <span class="break-all">{{ binding.email }}</span>
-                      <span class="ml-2 text-sm text-muted"
-                        >{{ binding.role }}, from {{ binding.source }}</span
-                      >
-                    </span>
-                    @if (binding.directRole) {
-                      <button
-                        class="button button-secondary"
-                        type="button"
-                        (click)="select(binding)"
-                      >
-                        Remove role
-                      </button>
-                    }
-                  </div>
-                  @if (selected()?.id === binding.id) {
-                    <div class="mt-4">
-                      <p class="hint">
-                        {{
-                          binding.inheritedRole
-                            ? 'They keep the role ' + binding.inheritedRole + ' they inherit.'
-                            : 'They lose access here.'
-                        }}
-                      </p>
-                      <sk-reauth-form
-                        prefix="binding-remove"
-                        label="Remove role"
-                        [form]="removeForm"
-                        [send]="remove"
-                        (done)="finished('Role removed.')"
-                      >
+        @if (notice(); as text) {
+          <p role="status" class="feedback">{{ text }}</p>
+        }
+        @if (bindings.problem(); as problem) {
+          <div class="feedback" role="alert">
+            <p>{{ problem }}</p>
+          </div>
+        }
+        @switch (bindings.state()) {
+          @case ('loading') {
+            <p role="status" class="text-muted">Loading access…</p>
+          }
+          @case ('ready') {
+            @if (bindings.items().length) {
+              <ul class="mb-8 divide-y divide-line border-y border-line" aria-label="Access">
+                @for (binding of bindings.items(); track binding.id) {
+                  <li class="py-3">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                      <span>
+                        <span class="break-all">{{ binding.email }}</span>
+                        <span class="ml-2 text-sm text-muted"
+                          >{{ binding.role }}, from {{ binding.source }}</span
+                        >
+                      </span>
+                      @if (binding.directRole) {
                         <button
-                          secondary
                           class="button button-secondary"
                           type="button"
-                          (click)="selected.set(null)"
+                          (click)="select(binding)"
                         >
-                          Cancel
+                          Remove role
                         </button>
-                      </sk-reauth-form>
+                      }
                     </div>
-                  }
-                </li>
-              }
-            </ul>
-          } @else {
-            <p class="mb-8 border-y border-line py-6 text-muted">
-              Only organization owners and administrators have access for now.
-            </p>
-          }
-          @if (bindings.hasMore()) {
-            <div class="mb-8">
-              <button
-                class="button button-secondary"
-                type="button"
-                [disabled]="bindings.loadingMore()"
-                (click)="bindings.more()"
-              >
-                {{ bindings.loadingMore() ? 'Loading…' : 'Show more people' }}
-              </button>
-            </div>
+                    @if (selected()?.id === binding.id) {
+                      <div class="mt-4">
+                        <p class="hint">
+                          {{
+                            binding.inheritedRole
+                              ? 'They keep the role ' + binding.inheritedRole + ' they inherit.'
+                              : 'They lose access here.'
+                          }}
+                        </p>
+                        <sk-reauth-form
+                          prefix="binding-remove"
+                          label="Remove role"
+                          [form]="removeForm"
+                          [send]="remove"
+                          (done)="finished('Role removed.')"
+                        >
+                          <button
+                            secondary
+                            class="button button-secondary"
+                            type="button"
+                            (click)="selected.set(null)"
+                          >
+                            Cancel
+                          </button>
+                        </sk-reauth-form>
+                      </div>
+                    }
+                  </li>
+                }
+              </ul>
+            } @else {
+              <p class="mb-8 border-y border-line py-6 text-muted">
+                Only organization owners and administrators have access for now.
+              </p>
+            }
+            @if (bindings.hasMore()) {
+              <div class="mb-8">
+                <button
+                  class="button button-secondary"
+                  type="button"
+                  [disabled]="bindings.loadingMore()"
+                  (click)="bindings.more()"
+                >
+                  {{ bindings.loadingMore() ? 'Loading…' : 'Show more people' }}
+                </button>
+              </div>
+            }
           }
         }
-      }
-      <h3>Give someone a role</h3>
-      <p class="hint">They must already be a member of the organization.</p>
-      <sk-reauth-form
-        prefix="binding-add"
-        label="Give role"
-        [form]="assignForm"
-        [send]="assign"
-        (done)="assigned()"
-      >
-        <div>
-          <label for="binding-add-email">Email</label>
-          <input
-            id="binding-add-email"
-            type="email"
-            [formControl]="assignForm.controls.email"
-            maxlength="254"
-            autocomplete="off"
-            spellcheck="false"
-          />
-        </div>
-        <div>
-          <label for="binding-add-role">Role</label>
-          <select id="binding-add-role" [formControl]="assignForm.controls.role">
-            @for (role of roles; track role) {
-              <option [value]="role">{{ role }}</option>
-            }
-          </select>
-        </div>
-      </sk-reauth-form>
-    </section>
+        <h3>Give someone a role</h3>
+        <p class="hint">They must already be a member of the organization.</p>
+        <sk-reauth-form
+          prefix="binding-add"
+          label="Give role"
+          [form]="assignForm"
+          [send]="assign"
+          (done)="assigned()"
+        >
+          <div>
+            <label for="binding-add-email">Email</label>
+            <input
+              id="binding-add-email"
+              type="email"
+              [formControl]="assignForm.controls.email"
+              maxlength="254"
+              autocomplete="off"
+              spellcheck="false"
+            />
+          </div>
+          <div>
+            <label for="binding-add-role">Role</label>
+            <select id="binding-add-role" [formControl]="assignForm.controls.role">
+              @for (role of roles; track role) {
+                <option [value]="role">{{ role }}</option>
+              }
+            </select>
+          </div>
+        </sk-reauth-form>
+      </section>
+    }
   `,
 })
 export class BindingsPanel {

@@ -262,11 +262,52 @@ describe('access screens', () => {
       const project = { id: PROJECT, organizationId: ORG, name: 'Billing', slug: 'billing' };
       routes[`GET ${PROJECT_PATH}`] = () => json({ ...project, gitWriteMode: 'commit', ...stamp });
       routes[`GET ${PROJECT_PATH}/environments`] = () => page([]);
+      routes[`GET ${PROJECT_PATH}/api-tokens`] = () => json({}, 404);
       routes[`GET ${PROJECT_PATH}/bindings`] = () =>
         page([
           binding(M1, 'owner@example.com', 'admin', 'organization', null, 'admin'),
           binding(M2, 'dev@example.com', 'developer', 'project', 'developer', null),
         ]);
+    });
+
+    it('hides the access and token panels from people who cannot manage them', async () => {
+      routes[`GET ${PROJECT_PATH}/bindings`] = () => json({}, 404);
+      await harness.navigateByUrl(`/orgs/${ORG}/projects/${PROJECT}`);
+      await settle();
+      expect(element().textContent).not.toContain('Give someone a role');
+      expect(element().textContent).not.toContain('API tokens of this project');
+      expect(element().querySelector('#binding-add-password')).toBeNull();
+      expect(element().querySelector('[role="alert"]')).toBeNull();
+    });
+
+    it('lists project tokens and revokes an active one', async () => {
+      const token = (id: string, name: string, status: string) => ({
+        id,
+        name,
+        status,
+        scopes: [{ permission: 'deploy.run', organizationId: ORG, projectId: PROJECT }],
+        project: { organizationId: ORG, projectId: PROJECT },
+        createdAt: stamp.createdAt,
+        expiresAt: '2026-12-07T12:00:00Z',
+        revokedAt: null,
+        lastUsedAt: null,
+        createdBy: M2,
+      });
+      routes[`GET ${PROJECT_PATH}/api-tokens`] = () =>
+        page([token(M1, 'ci-deploy', 'active'), token(M2, 'old-token', 'revoked')]);
+      routes[`POST ${PROJECT_PATH}/api-tokens/${M1}/revoke`] = () =>
+        new Response(null, { status: 204 });
+      await harness.navigateByUrl(`/orgs/${ORG}/projects/${PROJECT}`);
+      await settle();
+      expect(row('old-token').querySelector('button')).toBeNull();
+      await click(row('ci-deploy'), 'Revoke');
+      fill('project-token-password', PASSWORD);
+      await submit('Revoke token');
+      expect(posts).toMatchObject([
+        { path: `${PROJECT_PATH}/api-tokens/${M1}/revoke`, body: { password: PASSWORD } },
+      ]);
+      expect(element().textContent).toContain('The token has been revoked.');
+      expect(element().querySelector('#project-token-password')).toBeNull();
     });
 
     it('removes only direct roles, on the project', async () => {
