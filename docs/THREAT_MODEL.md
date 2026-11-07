@@ -58,7 +58,7 @@ Build containers (untrusted code) inside rootless BuildKit
 
 ## Security engineering requirements
 
-- Node installation trusts the HTTPS control-plane origin for content-addressed installer and binary checksums, validates before execution, rejects existing installation paths and receives enrollment secrets only on stdin. Dedicated Caddy and agent accounts share only the runtime socket group; Caddy has no Docker access. Signed OS/upstream apt metadata supplies dependencies. Independent release signing remains M8.2.
+- Node installation trusts the HTTPS control-plane origin for content-addressed installer and binary checksums, validates before execution, rejects existing installation paths and receives enrollment secrets only on stdin. Dedicated Caddy and agent accounts share only the runtime socket group; Caddy has no Docker access. Signed upstream apt metadata with pinned keys supplies Docker and Caddy. Independent release signing remains M8.2.
 
 - Tenant SQL tables force row-level policies on transaction-local organization context. Restricted-role PostgreSQL tests cover missing context, foreign reads/writes, table-owner queries, attempted RLS disabling and context cleanup. Membership changes take a write lock on the organization; deferred ownership checks reject simultaneous removal of the last owners under both read-committed and repeatable-read isolation. Runtime database-role enforcement and HTTP tenant resolution must be installed before exposing organization endpoints.
 

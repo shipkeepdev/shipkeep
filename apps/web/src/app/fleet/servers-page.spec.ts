@@ -141,6 +141,18 @@ describe('servers page', () => {
     expect(element().textContent).not.toContain('correct horse');
   });
 
+  it('falls back to the manual setup when the installer is unavailable, without the token', async () => {
+    vi.spyOn(TestBed.inject(InstallCommand), 'load').mockRejectedValue(new Error('no manifest'));
+    fill('join-password', 'correct horse browser fixture');
+    await submit('#join-password');
+    expect(element().querySelector<HTMLInputElement>('#join-token')?.value).toBe(TOKEN);
+    expect(element().querySelector('pre[aria-label="Install command"]')).toBeNull();
+    const config = element().querySelector('pre[aria-label="agent.yaml"]')?.textContent ?? '';
+    expect(config).toContain('address: shipkeep.example.com:7443');
+    expect(config).toContain(`ca_fingerprint: ${FINGERPRINT}`);
+    expect(config).not.toContain(TOKEN);
+  });
+
   it('removes a server only after its exact name is typed, with a confirmation token', async () => {
     element().querySelector<HTMLButtonElement>('button[aria-label="Remove edge-1"]')?.click();
     await settle();

@@ -31,7 +31,8 @@ export function installCommand(
     `shipkeep_install_dir=$(mktemp -d) &&\n` +
     `curl --fail --show-error --proto '=https' --max-time 60 -o "$shipkeep_install_dir/install.sh" '${origin}/install/install-${installer}.sh' &&\n` +
     `printf '%s  %s\\n' '${installer}' "$shipkeep_install_dir/install.sh" | sha256sum --check --status &&\n` +
-    `sudo bash "$shipkeep_install_dir/install.sh" --control-plane '${token.gatewayAddress}' --ca-fingerprint '${token.caFingerprint}' --origin '${origin}' --amd64-sha256 '${pins['amd64'] as string}' --arm64-sha256 '${pins['arm64'] as string}'`
+    `sudo bash "$shipkeep_install_dir/install.sh" --control-plane '${token.gatewayAddress}' --ca-fingerprint '${token.caFingerprint}' --origin '${origin}' --amd64-sha256 '${pins['amd64'] as string}' --arm64-sha256 '${pins['arm64'] as string}';\n` +
+    `rm -rf -- "$shipkeep_install_dir"`
   );
 }
 

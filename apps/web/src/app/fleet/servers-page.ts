@@ -11,6 +11,17 @@ import { InstallCommand } from './install-command';
 
 import { FleetApi, type FleetNode, type JoinToken } from './fleet-api';
 
+/** The agent configuration for setting a server up by hand (deploy/agent/agent.example.yaml). */
+export function agentConfig(token: JoinToken): string {
+  return [
+    'control_plane:',
+    `  address: ${token.gatewayAddress}`,
+    `  ca_fingerprint: ${token.caFingerprint}`,
+    '  join_token_file: /etc/shipkeep/join-token',
+    '',
+  ].join('\n');
+}
+
 /** Servers of an organization: status, adding one with a join token, confirmed removal. */
 @Component({
   selector: 'sk-servers-page',
@@ -142,19 +153,33 @@ import { FleetApi, type FleetNode, type JoinToken } from './fleet-api';
           @if (clipboard.message(); as message) {
             <p class="hint" role="status">{{ message }}</p>
           }
-          <p class="mt-4">
-            On a fresh Ubuntu 24.04 server, run this command, then paste the token when prompted.
-            Docker and Caddy will be installed; ports 80 and 443 must be free.
-          </p>
-          <pre
-            class="mt-2 overflow-x-auto rounded-md bg-panel p-3 text-sm"
-            aria-label="Install command"
-            >{{ command() }}</pre>
-          <p class="hint">
-            The command checks the installer and agent checksums. The agent checks the CA
-            fingerprint before enrolling and deletes the token file after saving its credentials.
-            Refresh this page to check for ready.
-          </p>
+          @if (command(); as install) {
+            <p class="mt-4">
+              On a fresh Ubuntu 24.04 server with <code>curl</code> and <code>sudo</code>, run this
+              command, then paste the token when prompted. Docker and Caddy will be installed; ports
+              80 and 443 must be free.
+            </p>
+            <pre
+              class="mt-2 overflow-x-auto rounded-md bg-panel p-3 text-sm"
+              aria-label="Install command"
+              >{{ install }}</pre>
+            <p class="hint">
+              The command checks the installer and agent checksums. The agent checks the CA
+              fingerprint before enrolling and deletes the token file after saving its credentials.
+              Refresh this page to check for ready.
+            </p>
+          } @else {
+            <p class="mt-4" role="status">
+              The one-command installer needs HTTPS and a production build, so set this server up by
+              hand. Save the token, readable only by the agent, as
+              <code>/etc/shipkeep/join-token</code>, then start <code>shipkeep-agent</code> with
+              this <code>agent.yaml</code>:
+            </p>
+            <pre
+              class="mt-2 overflow-x-auto rounded-md bg-panel p-3 text-sm"
+              aria-label="agent.yaml"
+              >{{ manualConfig(token) }}</pre>
+          }
           <button class="button button-secondary mt-4" type="button" (click)="issued.set(null)">
             Done
           </button>
@@ -195,7 +220,8 @@ import { FleetApi, type FleetNode, type JoinToken } from './fleet-api';
 export class ServersPage {
   private readonly api = inject(FleetApi);
   private readonly installer = inject(InstallCommand);
-  protected readonly command = signal('');
+  protected readonly command = signal<string | null>(null);
+  protected readonly manualConfig = agentConfig;
   protected readonly runner = inject(MutationRunner);
   protected readonly clipboard = inject(PrivateClipboard);
   readonly organizationId = input.required<string>();
@@ -231,12 +257,13 @@ export class ServersPage {
     const { password, totp } = this.join.getRawValue();
     const code = totp.trim();
     const outcome = await this.runner.run({ joinToken: this.organizationId() }, async () => {
-      const command = await this.installer.load();
+      // Without HTTPS or built artifacts (development) the page falls back to the manual setup.
+      const command = await this.installer.load().catch(() => null);
       const token = await this.api.issueJoinToken(this.organizationId(), {
         password,
         ...(code ? { totp: code } : {}),
       });
-      return { token, command: command(token) };
+      return { token, command: command?.(token) ?? null };
     });
     this.join.reset();
     if (outcome.ok) {

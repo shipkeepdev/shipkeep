@@ -382,7 +382,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - [ ] **M8.2 CLI** (X). Depends: M3.5
   - Go CLI commands from ARCHITECTURE; `.goreleaser.yaml` for agent and CLI; Homebrew tap and Scoop bucket; first `release.yml` dry run via workflow_dispatch.
 - [ ] **M8.3 Installer and control plane upgrades** (X). Depends: M5.4
-  - [ ] **M8.3a** Agent/Caddy installer and verified command in Servers (first usable version; independent of control-plane upgrades). Implementation and local checks in this PR; a real VM reaching `ready` remains required. Caddy runs with `--resume`; StateReport and the M1.6 VM acceptance remain separate.
+  - [ ] **M8.3a** Agent/Caddy installer and verified command in Servers (first usable version; independent of control-plane upgrades). Implementation and local checks in this PR; a real VM reaching `ready` remains required. Caddy comes from its signed upstream repository (owner's decision, 2026-11-07) and runs with `--resume`; the M1.6 VM acceptance remains separate.
   - `get.shipkeep.dev` installer (CA fingerprint pinning, `shipkeep-build` user, cgroup v2 delegation, AppArmor profile on Ubuntu 24.04), signature checks, conflict detection.
   - `deploy/control-plane.Dockerfile`, Trivy image scan in `release.yml`, `UpgradeControlPlane` action with snapshot and rollback; `UpgradeAgent` with signature check and rollback to the previous binary.
   - Acceptance: upgrade from previous release to current on a VM, then forced failure triggers automatic rollback.
