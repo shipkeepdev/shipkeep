@@ -250,7 +250,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
       - [x] **M2.3f1a** Workspace navigation: organizations (create with password re-authentication), projects and environments (protected by default), the main navigation, and sign-in landing on organizations.
       - [ ] **M2.3f1b** Settings, member and binding screens, API-token scope picker.
         - [x] **M2.3f1b1** Organization, project and environment settings; forms recover after a refused request.
-        - [ ] **M2.3f1b2** Member and binding screens.
+        - [x] **M2.3f1b2** Member and binding screens.
         - [ ] **M2.3f1b3** API-token scope picker and the project token directory.
     - [ ] **M2.3f2** Real-browser acceptance: two organizations, cross-tenant URLs answer 404, role changes take effect on the next request.
   - [x] **M2.3g** Row-level security for the remaining tenant-scoped tables (`nodes`, `join_tokens`, `node_certificates`, `audit_events`), with enrollment token lookup and the agent gateway moved to a separate reviewed cross-tenant role (SPEC 4). Must land before any node, join-token or audit read endpoint is exposed (M2.4, M2.7).

@@ -166,7 +166,9 @@ describe('workspace pages', () => {
           },
           201,
         );
-      return path.endsWith('/environments') ? json({ items: [], nextCursor: null }) : json(project);
+      return path.endsWith('/environments') || path.endsWith('/bindings')
+        ? json({ items: [], nextCursor: null })
+        : json(project);
     };
     await harness.navigateByUrl(`/orgs/${ORG}/projects/${PROJECT}`);
     await settle();

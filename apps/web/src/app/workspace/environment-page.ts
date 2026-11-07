@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 
+import { BindingsPanel } from '../access/bindings-panel';
 import { ApplicationsPanel } from '../delivery/applications-panel';
 import { SecretsPanel } from '../delivery/secrets-panel';
 import { IdentityRequestError } from '../identity/identity-api';
@@ -19,7 +20,7 @@ import { type Environment, WorkspaceApi } from './workspace-api';
 /** One environment: its applications and its write-only secrets (M3.4, M3.7b). */
 @Component({
   selector: 'sk-environment-page',
-  imports: [RouterLink, ApplicationsPanel, EnvironmentSettings, SecretsPanel],
+  imports: [RouterLink, ApplicationsPanel, BindingsPanel, EnvironmentSettings, SecretsPanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <nav aria-label="Breadcrumb" class="mb-4 text-sm">
@@ -44,6 +45,7 @@ import { type Environment, WorkspaceApi } from './workspace-api';
         <sk-applications-panel [environment]="ref()" />
         <sk-secrets-panel [environment]="ref()" />
         <sk-environment-settings [current]="current" (updated)="environment.set($event)" />
+        <sk-bindings-panel [scope]="ref()" />
       }
     </section>
   `,
