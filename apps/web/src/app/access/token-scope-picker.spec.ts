@@ -94,16 +94,18 @@ describe('token scope picker', () => {
     expect(grant()).toEqual({ scopes: [] });
   });
 
-  it('offers only permissions that can match a route at the chosen level', async () => {
+  it('offers each permission only at the level the API accepts it', async () => {
     await create();
     await choose('token-organization', ORG);
-    expect(offered()).toContain('audit.read');
-    expect(offered()).toContain('deploy.run');
-    expect(offered()).not.toContain('member.manage');
-    expect(offered()).not.toContain('profile.read');
+    expect(offered()).toEqual([
+      'organization.read',
+      'organization.update',
+      'project.create',
+      'node.manage',
+      'audit.read',
+    ]);
     await choose('token-project', PROJECT);
-    expect(offered()).not.toContain('audit.read');
-    expect(offered()).toContain('environment.create');
+    expect(offered()).toEqual(['project.read', 'project.update', 'environment.create']);
     await choose('token-environment', ENV);
     expect(offered()).toEqual([
       'environment.read',
@@ -113,13 +115,14 @@ describe('token scope picker', () => {
     ]);
   });
 
-  it('narrows scopes and never keeps one the level no longer offers', async () => {
+  it('never keeps a permission the chosen level does not offer', async () => {
     await create();
     await choose('token-organization', ORG);
     await tick('token-permission-audit.read');
-    await tick('token-permission-deploy.run');
     await choose('token-project', PROJECT);
+    expect(grant()).toEqual({ scopes: [] });
     await choose('token-environment', ENV);
+    await tick('token-permission-deploy.run');
     expect(grant()).toEqual({
       scopes: [
         { permission: 'deploy.run', organizationId: ORG, projectId: PROJECT, environmentId: ENV },
