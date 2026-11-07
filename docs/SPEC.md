@@ -112,7 +112,13 @@ compose:
 - Durations: Go-style (`30s`, `10m`, `72h`). Sizes: Kubernetes-style (`512Mi`, `2Gi`).
 - Domains: valid hostnames, max 50 per app, wildcard only with DNS-01 configured.
 - Volume paths: absolute, no `..`, not under `/proc`, `/sys`, `/dev`, `/etc`, `/var/run`.
-- Compose files are parsed and validated by the control plane. Rejected keys: `privileged`, `pid: host`, `network_mode: host`, `ipc: host`, `cap_add` beyond an allow list (`NET_BIND_SERVICE`, `CHOWN`, `SETUID`, `SETGID`), `devices`, bind mounts outside the app's data directory, `security_opt` disabling seccomp or AppArmor, Docker socket mounts.
+- Compose files are parsed and validated by the control plane, as an allow list that fails closed: a key is translated to what the typed `ContainerSpec` can express, ignored with a warning when it has no effect on safety (`container_name`, `hostname`, `networks`, `logging`), or refused with its reason.
+  - Refused among others: `privileged` (even `false`), `pid`, `ipc`, `uts`, `userns_mode`, every `network_mode`, `cap_add` beyond an allow list (`NET_BIND_SERVICE`, `CHOWN`, `SETUID`, `SETGID`), `cap_drop`, `devices`, `security_opt` other than `no-new-privileges` (which the agent always sets), `entrypoint`, `build`, `env_file`, volume and network drivers or `external`.
+  - All bind mounts are refused, including inside the application's data directory and the Docker socket: `ContainerSpec` mounts only named volumes and tmpfs. Use named volumes declared under `volumes`.
+  - Commands are argv. A string is split only when it holds no shell character, and is otherwise refused.
+  - Ports keep only the container port: nothing is published on the host, and `expose` routes traffic. A publication is reported as a warning.
+  - `${NAME}` is expanded only in `environment`, and names the secrets the service needs. Bare names that would inherit from the host are refused.
+  - Health checks are probed over HTTP or TCP and no command ever runs. A `curl` or `wget` against localhost is read for its URL; any other check is dropped with a warning.
 - Secrets referenced but not set block the deployment with a clear error.
 
 ## 3. Agent protocol

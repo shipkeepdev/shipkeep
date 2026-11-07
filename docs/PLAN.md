@@ -328,6 +328,9 @@ CodeQL and gosec have **not** run on that code. The browser suite ran on 2026-11
   - [x] **M3.7a** Secrets API: write-only, versioned, environment-encrypted, audited, with the protected-environment rule.
   - [x] **M3.7b** Secrets screen in the web UI (with M2.3f1), together with the application screens: create from `shipkeep.yml` (validated in the browser with the same schema), deploy, follow and cancel deployments.
 - [ ] **M3.8 Compose applications** (C). Depends: M3.4
+  - [x] **M3.8a** Pure parser and fail-closed validator (`apps/domain/compose.ts`), with hostile and everyday fixtures. Not reachable from any route yet.
+  - [ ] **M3.8b** Accept `compose:` applications and translate services to container plans.
+  - [ ] **M3.8c** Deploy several services per release in the pipeline.
   - Compose parser and validator (SPEC 2.2), translated to typed `ContainerSpec`s.
   - Acceptance: 15 popular Compose files deploy; 20 malicious Compose files rejected with clear errors.
 
