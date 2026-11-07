@@ -347,6 +347,17 @@ describe('organizations and roles in Chromium', () => {
     expect(await bearer(organization, audit)).toBe(403);
 
     const project = `${organization}/projects/${projectId}`;
+    const environment = `${project}/environments/${environmentId}`;
+    const reader = await createToken('Environment reader', async () => {
+      await owner.locator('#token-organization').selectOption(organizationId);
+      await owner.locator('#token-project').selectOption(projectId);
+      await owner.locator('#token-environment').selectOption(environmentId);
+      await owner.getByLabel('Read environments, applications and deployments').check();
+      await owner.getByLabel('Change applications and deploy them').check();
+    });
+    expect(await bearer(`${environment}/applications`, reader)).toBe(200);
+    expect(await bearer(project, reader)).toBe(403);
+
     const bound = await createToken('Project reader', async () => {
       await owner.locator('#token-organization').selectOption(organizationId);
       await owner.locator('#token-project').selectOption(projectId);

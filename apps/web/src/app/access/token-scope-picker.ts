@@ -28,10 +28,10 @@ export interface TokenGrant {
 export const PROFILE_ONLY: TokenGrant = { scopes: [{ permission: 'profile.read' }] };
 
 /**
- * Permissions a token can use today, from docs/generated/route-role-matrix.md, with the narrowest
- * resource each applies to. A scope narrower than that would never match a route, so it is not
- * offered: `audit.read` on one project grants nothing. The rest of the vocabulary has no bearer
- * route yet or is session only, such as `member.manage`.
+ * Permissions a token can use today, from docs/generated/route-role-matrix.md, each at the one level
+ * the tenant policy accepts it (`validPermissionScope`): the API refuses the whole token otherwise,
+ * even for an owner. `deploy.run` needs an environment, whose protection decides it. The rest of the
+ * vocabulary has no bearer route yet or is session only, such as `member.manage`.
  */
 const PERMISSIONS: readonly { permission: Permission; level: Level; label: string }[] = [
   { permission: 'organization.read', level: 'organization', label: 'Read the organization' },
@@ -59,11 +59,6 @@ const PERMISSIONS: readonly { permission: Permission; level: Level; label: strin
   },
   { permission: 'secret.write', level: 'environment', label: 'Set and remove secrets' },
 ];
-const REACH: Record<Level, readonly Level[]> = {
-  organization: ['organization', 'project', 'environment'],
-  project: ['project', 'environment'],
-  environment: ['environment'],
-};
 const selected = (event: Event): string => (event.target as HTMLSelectElement).value;
 
 /** Chooses what a new API token may do. Nothing is granted until it is ticked. */
@@ -108,7 +103,10 @@ const selected = (event: Event): string => (event.target as HTMLSelectElement).v
       }
       <fieldset class="min-w-0">
         <legend>Permissions</legend>
-        <p class="hint">A token can never do more than you can.</p>
+        <p class="hint">
+          What is offered depends on the choice above: deploying and secrets need an environment. A
+          token can never do more than you can.
+        </p>
         @for (item of available(); track item.permission) {
           <div class="flex items-center gap-2">
             <input
@@ -165,7 +163,7 @@ export class TokenScopePicker {
       : this.projectId()
         ? 'project'
         : 'organization';
-    return PERMISSIONS.filter((item) => REACH[level].includes(item.level));
+    return PERMISSIONS.filter((item) => item.level === level);
   });
   private readonly grant = computed((): TokenGrant => {
     const organizationId = this.organizationId();
