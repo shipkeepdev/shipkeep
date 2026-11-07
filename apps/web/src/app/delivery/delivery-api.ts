@@ -103,6 +103,18 @@ export class DeliveryApi extends WorkspaceApi {
       ),
     );
   }
+  rollback(
+    environment: EnvironmentRef,
+    applicationId: string,
+    deploymentId: string,
+  ): Promise<Schema<'QueuedDeploymentDto'>> {
+    return this.required(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/rollback',
+        { params: { path: { ...environment, applicationId, deploymentId } } },
+      ),
+    );
+  }
   async secrets(environment: EnvironmentRef): Promise<readonly SecretMetadata[]> {
     return (
       await this.required(() =>
