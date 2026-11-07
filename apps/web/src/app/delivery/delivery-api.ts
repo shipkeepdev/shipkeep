@@ -7,6 +7,7 @@ export type Deployment = Schema<'DeploymentDto'>;
 export type SecretMetadata = Schema<'SecretDto'>;
 export type DomainStatus = Schema<'DomainDto'>;
 export type Replica = Schema<'ReplicaDto'>;
+export type Release = Schema<'ReleaseDto'>;
 
 /** The environment an application lives in; every route below is scoped by it. */
 export interface EnvironmentRef {
@@ -68,6 +69,16 @@ export class DeliveryApi extends WorkspaceApi {
       await this.required(() =>
         this.client.GET(
           '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/replicas',
+          { params: { path: { ...environment, applicationId } } },
+        ),
+      )
+    ).items;
+  }
+  async releases(environment: EnvironmentRef, applicationId: string): Promise<readonly Release[]> {
+    return (
+      await this.required(() =>
+        this.client.GET(
+          '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/releases',
           { params: { path: { ...environment, applicationId } } },
         ),
       )

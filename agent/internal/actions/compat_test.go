@@ -55,7 +55,7 @@ func TestControlPlaneActionsPassAgentValidation(t *testing.T) {
 	if err := scanner.Err(); err != nil {
 		t.Fatal(err)
 	}
-	if count < 9 { // network, pull, task, create, start, health, route, unroute, stop
+	if count < 10 { // network, pull, task, create, start, health, route, unroute, stop, remove
 		t.Fatalf("expected the full pipeline, got %d actions", count)
 	}
 }

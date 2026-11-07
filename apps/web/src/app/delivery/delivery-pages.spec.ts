@@ -382,6 +382,37 @@ describe('delivery screens', () => {
     expect(table).toContain('not reported yet');
   });
 
+  it('compares a release with the previous one', async () => {
+    const release = (number: number, port: number) => ({
+      id: `r${String(number)}`,
+      number,
+      image: 'nginx:1.27',
+      imageDigest: null,
+      config: { ...application.config, run: { port } },
+      configSha: 'a'.repeat(64),
+      createdBy: null,
+      createdAt: '2026-11-07T12:00:00Z',
+    });
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: [] }),
+      [`GET ${BASE}/applications/${APP}/releases`]: () =>
+        json({ items: [release(2, 8080), release(1, 80)] }),
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+    );
+    await settle();
+    const list = () => element().querySelector('ul[aria-label="Releases"]');
+    // The oldest release has nothing to compare with.
+    expect(list()?.querySelectorAll('button')).toHaveLength(1);
+    list()?.querySelector('button')?.click();
+    await settle();
+    const diff = element().querySelector('pre[aria-label="Changes in release 2"]')?.textContent;
+    expect(diff).toContain('-   port: 80');
+    expect(diff).toContain('+   port: 8080');
+  });
+
   it('validates shipkeep.yml in the browser before creating an application', async () => {
     let applications: unknown[] = [];
     routes = {

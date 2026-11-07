@@ -356,10 +356,10 @@ succeeded -> rolled_back (when a later rollback targets the previous release)
   - `starting` ensures the network, pulls, creates and starts each replica.
   - `health_checking` probes `run.healthcheck` on each replica (deadline: the start period plus 2 min, at most 30 min).
   - `switching` upserts the application route (id = application id) on each node with that node's replicas as container upstreams (ADR 0017), but only when `domains` is set.
-  - `draining` removes the route from nodes no longer serving, then stops the previous replicas.
+  - `draining` removes the route from nodes no longer serving, then stops the previous replicas and removes their containers, without their volumes.
   - Any action ending in failed, cancelled, expired or compensated fails the deployment, as do a non-zero release exit, an unhealthy replica or a missing container id.
   - `recovery` then:
-    - stops the new replicas that were created;
+    - force-removes the new replicas that were created, which never served traffic;
     - if the switch was interrupted, restores the previous upstreams and removes the route from nodes that only hosted new replicas;
     - does nothing once draining began, because the new release already serves.
   - The worker (`DeploymentPipeline`, run from the pg-boss queue `deployment-run`):

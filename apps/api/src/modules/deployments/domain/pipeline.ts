@@ -90,6 +90,7 @@ export type PipelineStep = { readonly key: string; readonly nodeId: string } & (
     }
   | { readonly kind: 'remove_route'; readonly routeId: string; readonly drainMs: number }
   | { readonly kind: 'stop_container'; readonly container: string; readonly timeoutMs: number }
+  | { readonly kind: 'remove_container'; readonly container: string }
 );
 
 export type PipelineDecision =
@@ -151,7 +152,7 @@ export function plan(context: PipelineContext): PipelineDecision {
 
 /**
  * Best-effort cleanup after a failure (SPEC 5.1): restore the previous upstreams when the switch
- * was interrupted, and stop the new replicas unless they already serve traffic.
+ * was interrupted, and remove the new replicas unless they already serve traffic.
  */
 export function recovery(context: PipelineContext, routing: RoutingOutcome): PipelineStep[] {
   if (routing === 'new_release_serving') return [];
@@ -187,12 +188,12 @@ export function recovery(context: PipelineContext, routing: RoutingOutcome): Pip
     if (
       context.steps.get(key(context, `create:${String(allocation.index)}`))?.state === 'succeeded'
     )
+      // These replicas never served traffic, so a forced removal loses nothing.
       steps.push({
-        kind: 'stop_container',
+        kind: 'remove_container',
         key: key(context, `cleanup:${String(allocation.index)}`),
         nodeId: allocation.nodeId,
         container: allocation.container,
-        timeoutMs: STOP_TIMEOUT_MS,
       });
   return steps;
 }
@@ -325,6 +326,13 @@ function drain(context: PipelineContext): Progress {
         nodeId: replica.nodeId,
         container: replica.container,
         timeoutMs: STOP_TIMEOUT_MS,
+      },
+      // Stopped replicas would pile up on disk; a rollback deploys new containers anyway.
+      {
+        kind: 'remove_container',
+        key: key(context, `remove:${replica.container}`),
+        nodeId: replica.nodeId,
+        container: replica.container,
       },
     ]),
   );
