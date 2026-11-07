@@ -28,37 +28,40 @@ import {
       role="alertdialog"
       aria-labelledby="confirm-title"
       aria-describedby="confirm-description"
-      class="mb-8 border-y border-danger py-6"
+      class="flex max-w-[640px] flex-col gap-3 rounded-[14px] border border-[oklch(0.68_0.17_25/0.5)] bg-black p-5"
     >
-      <h2 id="confirm-title">{{ heading() }}</h2>
-      <div id="confirm-description" class="mb-3">
+      <h2 id="confirm-title" class="text-[15px] font-medium">{{ heading() }}</h2>
+      <div id="confirm-description" class="text-[13.5px] leading-[1.55] text-fg3">
         <ng-content />
-        Type <strong>{{ resourceName() }}</strong> to confirm.
+        {{ typeLabel() }}
+        <span class="font-mono text-fg">{{ resourceName() }}</span>
       </div>
-      <form (submit)="confirm($event)" class="grid gap-4">
-        <div>
-          <label for="confirm-name">{{ fieldLabel() }}</label>
-          <input
-            #field
-            id="confirm-name"
-            [value]="typed()"
-            (input)="typed.set(read($event))"
-            autocomplete="off"
-            autocapitalize="none"
-            spellcheck="false"
-          />
-        </div>
-        <div class="flex flex-wrap gap-3">
+      <form (submit)="confirm($event)" class="flex flex-col gap-3">
+        <label for="confirm-name" class="sr-only">{{ fieldLabel() }}</label>
+        <input
+          #field
+          id="confirm-name"
+          class="input font-mono"
+          [placeholder]="fieldLabel()"
+          [value]="typed()"
+          (input)="typed.set(read($event))"
+          autocomplete="off"
+          autocapitalize="none"
+          spellcheck="false"
+        />
+        <div class="flex flex-wrap gap-2.5">
           <button
-            class="button bg-danger"
+            class="btn font-medium"
+            [class.btn-primary]="false"
+            [style.background]="matches() && !busy() && !blocked() ? 'oklch(0.68 0.17 25)' : null"
+            [style.color]="matches() && !busy() && !blocked() ? '#0B0B0D' : null"
+            [style.border-color]="matches() && !busy() && !blocked() ? 'transparent' : null"
             type="submit"
             [disabled]="busy() || blocked() || !matches()"
           >
             {{ busy() ? busyLabel() : actionLabel() }}
           </button>
-          <button class="button button-secondary" type="button" (click)="cancel()">
-            {{ keepLabel() }}
-          </button>
+          <button class="btn btn-sm" type="button" (click)="cancel()">{{ keepLabel() }}</button>
         </div>
       </form>
     </section>
@@ -75,6 +78,8 @@ export class ConfirmByName implements AfterViewInit, OnDestroy {
   readonly actionLabel = input.required<string>();
   readonly busyLabel = input.required<string>();
   readonly keepLabel = input('Keep it');
+  /** Text before the name to type, already translated. */
+  readonly typeLabel = input('Type this to confirm:');
   readonly busy = input(false);
   /** The server asked to wait: the action is unavailable, but nothing is running. */
   readonly blocked = input(false);

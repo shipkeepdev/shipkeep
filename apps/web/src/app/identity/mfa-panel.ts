@@ -15,12 +15,14 @@ import {
 } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
 
+import { T } from '../ui/i18n';
+
 import { MfaFormStore } from './mfa-form-store';
 import { PrivateClipboard } from './private-clipboard';
 
 @Component({
   selector: 'sk-mfa-panel',
-  imports: [DatePipe, ReactiveFormsModule],
+  imports: [DatePipe, ReactiveFormsModule, T],
   providers: [MfaFormStore, PrivateClipboard],
   templateUrl: './mfa-panel.html',
   changeDetection: ChangeDetectionStrategy.OnPush,

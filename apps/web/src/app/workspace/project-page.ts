@@ -1,4 +1,13 @@
-import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  effect,
+  type ElementRef,
+  inject,
+  input,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 
@@ -6,7 +15,10 @@ import { BindingsPanel } from '../access/bindings-panel';
 import { ProjectTokensPanel } from '../access/project-tokens-panel';
 import { IdentityRequestError } from '../identity/identity-api';
 import { MutationRunner } from '../identity/mutation-runner';
+import { Icon } from '../shell/icon';
 import { ShellContext } from '../shell/shell-context';
+import { T } from '../ui/i18n';
+import { PageCrumbs } from '../dashboard/page-crumbs';
 import { type Tab, Tabs } from '../shell/tabs';
 
 import { Collection } from './collection';
@@ -19,106 +31,173 @@ import { type Environment, type Project, WorkspaceApi } from './workspace-api';
 @Component({
   selector: 'sk-project-page',
   imports: [
+    BindingsPanel,
+    Icon,
+    ProjectSettings,
+    ProjectTokensPanel,
     ReactiveFormsModule,
     RouterLink,
-    ProjectSettings,
-    BindingsPanel,
-    ProjectTokensPanel,
+    T,
     Tabs,
   ],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <nav aria-label="Breadcrumb" class="breadcrumb">
-      <a [routerLink]="['/orgs', organizationId()]">{{
-        shell.organization()?.name ?? 'Organization'
-      }}</a>
-    </nav>
-    <section class="max-w-4xl" aria-labelledby="project-title">
-      <h1 id="project-title">{{ project()?.name ?? 'Project' }}</h1>
-      @if (missing()) {
-        <div class="feedback" role="alert">
-          <p>{{ missing() }}</p>
+    <div class="page gap-[18px]">
+      <div class="page-head">
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-3">
+            <h1 class="page-title">{{ project()?.name ?? '…' }}</h1>
+            <span class="pill">{{
+              '{n} environments' | t: { n: environments.items().length }
+            }}</span>
+          </div>
+          <div class="mt-1.5 max-w-[720px] text-[13px] text-mute2">
+            {{
+              'A project groups the environments of a client or a product. Each environment has its own resources, variables and rights.'
+                | t
+            }}
+          </div>
         </div>
+        <div class="flex flex-wrap gap-2.5">
+          <button type="button" class="btn" (click)="open('settings')">
+            <sk-icon name="settings" />{{ 'Settings' | t }}
+          </button>
+          <button type="button" class="btn btn-primary" (click)="newEnvironment()">
+            <sk-icon name="plus" />{{ 'New environment' | t }}
+          </button>
+        </div>
+      </div>
+      @if (missing()) {
+        <div class="alert" role="alert">{{ missing() | t }}</div>
       } @else {
         <sk-tabs label="Project sections" [tabs]="tabs" [(active)]="tab" />
         <div
           id="panel-environments"
           role="tabpanel"
           aria-labelledby="tab-environments"
+          class="flex flex-col gap-4"
           [hidden]="tab() !== 'environments'"
         >
-          <h2>Environments</h2>
           @switch (environments.state()) {
             @case ('loading') {
-              <p role="status" class="text-muted">Loading environments…</p>
+              <p role="status" class="text-[13px] text-mute2">{{ 'Loading…' | t }}</p>
             }
             @case ('failed') {
-              <div class="feedback" role="alert">
-                <p>{{ environments.problem() }}</p>
-              </div>
+              <div class="alert" role="alert">{{ environments.problem() | t }}</div>
             }
             @default {
-              @if (environments.items().length) {
-                <ul
-                  class="mb-8 divide-y divide-line border-y border-line"
-                  aria-label="Environments"
-                >
-                  @for (environment of environments.items(); track environment.id) {
-                    <li class="py-3">
-                      <a
-                        [routerLink]="[
-                          '/orgs',
-                          organizationId(),
-                          'projects',
-                          projectId(),
-                          'environments',
-                          environment.id,
-                        ]"
-                        >{{ environment.name }}</a
+              <div class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,300px),1fr))] gap-3">
+                @for (environment of environments.items(); track environment.id) {
+                  <a
+                    [routerLink]="[
+                      '/orgs',
+                      organizationId(),
+                      'projects',
+                      projectId(),
+                      'environments',
+                      environment.id,
+                    ]"
+                    class="flex flex-col gap-3 rounded-2xl border bg-black p-4 transition-[border-color] duration-200 hover:border-[#3A3A40]"
+                    [style.border-color]="
+                      environment.protected ? 'rgba(255,92,92,0.35)' : '#1C1C1E'
+                    "
+                  >
+                    <div class="flex items-center gap-3">
+                      <span
+                        class="grid size-[38px] shrink-0 place-items-center rounded-[10px] border border-line"
                       >
-                      @if (environment.protected) {
-                        <span class="ml-2 text-sm text-muted">protected</span>
-                      }
-                    </li>
-                  }
-                </ul>
-              } @else {
-                <p class="mb-8 border-y border-line py-6 text-muted">No environments yet.</p>
-              }
-            }
-          }
-          <section aria-labelledby="create-environment-title" class="border-t border-line pt-6">
-            <h2 id="create-environment-title">Create an environment</h2>
-            @if (runner.problem(); as problem) {
-              <div class="feedback" role="alert">
-                <p>{{ problem }}</p>
+                        <sk-icon
+                          [name]="
+                            environment.protected
+                              ? 'shield-check'
+                              : environment.kind === 'preview'
+                                ? 'git-pull-request'
+                                : 'flask'
+                          "
+                          class="text-[19px] text-fg2"
+                        />
+                      </span>
+                      <div class="min-w-0 flex-1">
+                        <div class="text-[13.5px] font-medium">{{ environment.name }}</div>
+                        <div class="mt-0.5 text-[11.5px] text-dim">
+                          {{
+                            (environment.protected
+                              ? 'protected · admins deploy and set secrets'
+                              : environment.kind === 'preview'
+                                ? 'one copy per pull request'
+                                : 'standard'
+                            ) | t
+                          }}
+                        </div>
+                      </div>
+                    </div>
+                    <div
+                      class="flex flex-wrap gap-3.5 border-t border-line2 pt-3 text-[11.5px] text-mute"
+                    >
+                      <span class="flex items-center gap-[5px]"
+                        ><sk-icon name="heartbeat" class="text-[13px]" />{{
+                          (environment.failoverPolicy === 'none'
+                            ? 'no failover policy'
+                            : 'restore from backup'
+                          ) | t
+                        }}</span
+                      >
+                      <span class="flex items-center gap-[5px]"
+                        ><sk-icon name="clock" class="text-[13px]" />{{
+                          environment.createdAt.slice(0, 10)
+                        }}</span
+                      >
+                    </div>
+                  </a>
+                } @empty {
+                  <p class="text-[13px] text-mute2">{{ 'No environment yet.' | t }}</p>
+                }
               </div>
             }
-            <form [formGroup]="form" (ngSubmit)="create()" class="grid gap-4">
-              <div>
-                <label for="environment-name">Name</label>
+          }
+          <section
+            #createSection
+            class="card flex max-w-[640px] flex-col gap-3 p-5"
+            aria-labelledby="create-environment-title"
+          >
+            <h2 id="create-environment-title" class="text-[15px] font-medium">
+              {{ 'New environment' | t }}
+            </h2>
+            @if (runner.problem(); as problem) {
+              <div class="alert" role="alert">{{ problem | t }}</div>
+            }
+            <form [formGroup]="form" (ngSubmit)="create()" class="flex flex-col gap-3">
+              <div class="flex flex-col gap-1.5">
+                <label for="environment-name" class="text-[12px] text-fg3">{{ 'Name' | t }}</label>
                 <input
                   id="environment-name"
+                  class="input font-mono"
                   formControlName="name"
                   maxlength="40"
                   autocomplete="off"
                   placeholder="production"
                 />
               </div>
-              <div class="flex items-center gap-2">
-                <input id="environment-protected" type="checkbox" formControlName="protected" />
-                <label for="environment-protected" class="mb-0"
-                  >Protected: only administrators deploy and set secrets</label
-                >
-              </div>
+              <label
+                class="flex items-center gap-2.5 text-[12.5px] text-fg3"
+                for="environment-protected"
+              >
+                <input
+                  id="environment-protected"
+                  type="checkbox"
+                  class="size-4 accent-[#f2f2f3]"
+                  formControlName="protected"
+                />
+                {{ 'Protected: only administrators deploy and set secrets' | t }}
+              </label>
               <div>
                 <button
-                  class="button"
+                  class="btn btn-primary"
                   type="submit"
                   [disabled]="runner.busy() || !!runner.cooldown() || form.invalid"
                 >
-                  {{ runner.busy() ? 'Creating…' : 'Create environment' }}
+                  {{ (runner.busy() ? 'Creating…' : 'Create environment') | t }}
                 </button>
               </div>
             </form>
@@ -129,6 +208,7 @@ import { type Environment, type Project, WorkspaceApi } from './workspace-api';
             id="panel-access"
             role="tabpanel"
             aria-labelledby="tab-access"
+            class="legacy-form"
             [hidden]="tab() !== 'access'"
           >
             <sk-bindings-panel
@@ -139,6 +219,7 @@ import { type Environment, type Project, WorkspaceApi } from './workspace-api';
             id="panel-tokens"
             role="tabpanel"
             aria-labelledby="tab-tokens"
+            class="legacy-form"
             [hidden]="tab() !== 'tokens'"
           >
             <sk-project-tokens-panel
@@ -150,13 +231,14 @@ import { type Environment, type Project, WorkspaceApi } from './workspace-api';
             id="panel-settings"
             role="tabpanel"
             aria-labelledby="tab-settings"
+            class="legacy-form"
             [hidden]="tab() !== 'settings'"
           >
             <sk-project-settings [current]="current" (updated)="project.set($event)" />
           </div>
         }
       }
-    </section>
+    </div>
   `,
 })
 export class ProjectPage {
@@ -165,10 +247,10 @@ export class ProjectPage {
   protected readonly shell = inject(ShellContext);
   protected readonly tab = signal('environments');
   protected readonly tabs: readonly Tab[] = [
-    { id: 'environments', label: 'Environments' },
-    { id: 'access', label: 'Access' },
-    { id: 'tokens', label: 'API tokens' },
-    { id: 'settings', label: 'Settings' },
+    { id: 'environments', label: 'Environments', icon: 'stack-2' },
+    { id: 'access', label: 'Members', icon: 'users' },
+    { id: 'tokens', label: 'API tokens', icon: 'key' },
+    { id: 'settings', label: 'Settings', icon: 'settings' },
   ];
   readonly organizationId = input.required<string>();
   readonly projectId = input.required<string>();
@@ -182,10 +264,33 @@ export class ProjectPage {
     protected: new FormControl(true, { nonNullable: true }),
   });
 
+  private readonly crumbs = inject(PageCrumbs);
+  private readonly createSection = viewChild<ElementRef<HTMLElement>>('createSection');
+
   constructor() {
     recoverOnEdit(this.form, this.runner);
     effect(() => {
+      const name = this.project()?.name;
+      if (name)
+        this.crumbs.set([
+          { label: 'Projects', link: ['/orgs', this.organizationId(), 'projects'] },
+          { label: name, raw: true },
+        ]);
+    });
+    effect(() => {
       void this.load(this.organizationId(), this.projectId());
+    });
+  }
+
+  protected open(tab: string): void {
+    this.tab.set(tab);
+  }
+
+  protected newEnvironment(): void {
+    this.tab.set('environments');
+    setTimeout(() => {
+      this.createSection()?.nativeElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      this.createSection()?.nativeElement.querySelector('input')?.focus();
     });
   }
 

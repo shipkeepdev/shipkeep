@@ -3,6 +3,7 @@ import { FormControl, type FormGroup, ReactiveFormsModule, Validators } from '@a
 
 import { passwordValidator } from '../identity/auth-form-store';
 import { MutationRunner } from '../identity/mutation-runner';
+import { T } from '../ui/i18n';
 
 import type { Proof } from './access-api';
 
@@ -29,44 +30,51 @@ export function reauthProof(password: string, code: string): Proof {
  */
 @Component({
   selector: 'sk-reauth-form',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, T],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (runner.problem(); as problem) {
-      <div class="feedback" role="alert">
-        <p>{{ problem }}</p>
-      </div>
+      <div class="alert mb-3" role="alert">{{ problem | t }}</div>
     }
-    <form [formGroup]="form()" (ngSubmit)="submit()" class="grid gap-4">
+    <form [formGroup]="form()" (ngSubmit)="submit()" class="flex flex-col gap-3">
       <ng-content />
-      <div>
-        <label [for]="prefix() + '-password'">Your password</label>
-        <input
-          [id]="prefix() + '-password'"
-          type="password"
-          [formControl]="controls().password"
-          autocomplete="current-password"
-          maxlength="128"
-        />
+      <div class="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2.5">
+        <div class="flex flex-col gap-1.5">
+          <label [for]="prefix() + '-password'" class="text-[12px] text-fg3">{{
+            'Your password' | t
+          }}</label>
+          <input
+            [id]="prefix() + '-password'"
+            class="input"
+            type="password"
+            [formControl]="controls().password"
+            autocomplete="current-password"
+            maxlength="128"
+          />
+        </div>
+        <div class="flex flex-col gap-1.5">
+          <label [for]="prefix() + '-code'" class="text-[12px] text-fg3">{{
+            'Authentication or recovery code' | t
+          }}</label>
+          <input
+            [id]="prefix() + '-code'"
+            class="input font-mono"
+            [formControl]="controls().code"
+            autocomplete="one-time-code"
+            maxlength="32"
+            spellcheck="false"
+            [placeholder]="'if enabled' | t"
+          />
+        </div>
       </div>
-      <div>
-        <label [for]="prefix() + '-code'">Authentication or recovery code (if enabled)</label>
-        <input
-          [id]="prefix() + '-code'"
-          [formControl]="controls().code"
-          autocomplete="one-time-code"
-          maxlength="32"
-          spellcheck="false"
-        />
-      </div>
-      <div class="flex flex-wrap gap-3">
+      <div class="flex flex-wrap gap-2.5">
         <button
-          class="button"
+          class="btn btn-primary"
           type="submit"
           [disabled]="runner.busy() || !!runner.cooldown() || form().invalid"
         >
-          {{ runner.busy() ? 'Working…' : label() }}
+          {{ runner.busy() ? ('Working…' | t) : label() }}
         </button>
         <ng-content select="[secondary]" />
       </div>

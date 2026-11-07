@@ -17,6 +17,7 @@ import {
 import { ReactiveFormsModule } from '@angular/forms';
 
 import { TokenScopePicker } from '../access/token-scope-picker';
+import { I18n, T } from '../ui/i18n';
 
 import { PrivateClipboard } from './private-clipboard';
 import { SessionStore } from './session-store';
@@ -24,7 +25,7 @@ import { TOKEN_LIFETIMES, TokenFormStore } from './token-form-store';
 
 @Component({
   selector: 'sk-token-panel',
-  imports: [DatePipe, TitleCasePipe, ReactiveFormsModule, TokenScopePicker],
+  imports: [DatePipe, TitleCasePipe, ReactiveFormsModule, TokenScopePicker, T],
   providers: [TokenFormStore, PrivateClipboard],
   templateUrl: './token-panel.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -35,6 +36,7 @@ export class TokenPanel {
   protected readonly lifetimes = TOKEN_LIFETIMES;
   protected readonly working = signal(false);
   protected readonly tableOverflows = signal(false);
+  private readonly i18n = inject(I18n);
   private readonly session = inject(SessionStore);
   private readonly focus = inject(FocusMonitor);
   private readonly injector = inject(Injector);
@@ -70,6 +72,13 @@ export class TokenPanel {
         observer.disconnect();
       });
     });
+  }
+  /** The store's English scope line in the interface language; the permission name stays as is. */
+  protected scopeLabel(scope: Parameters<TokenFormStore['scopeLabel']>[0]): string {
+    const label = this.store.scopeLabel(scope);
+    const comma = label.lastIndexOf(', ');
+    if (comma < 0) return this.i18n.t(label);
+    return `${label.slice(0, comma)}, ${this.i18n.t(label.slice(comma + 2))}`;
   }
   protected create(): void {
     if (this.store.beginCreate()) this.focusAfterRender('firstField');

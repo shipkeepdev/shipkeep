@@ -1,202 +1,370 @@
-<section class="auth-card" aria-labelledby="page-title">
-  <span class="auth-badge" aria-hidden="true"><sk-icon [name]="icon()" /></span>
-  <h1 #heading id="page-title" tabindex="-1">{{ copy().title }}</h1>
-  <p class="page-intro">{{ copy().description }}</p>
-
-  @if (store.success(); as success) {
-    <div #feedback class="feedback" role="status" tabindex="-1">
-      <p>{{ success }}</p>
-    </div>
-    <div class="flex flex-wrap gap-3">
-      @if (store.mode() === 'register' || store.mode() === 'request-verification') {
-        <a class="button" routerLink="/auth/verify-email">Enter verification code</a>
-      } @else if (store.mode() === 'forgot-password') {
-        <a class="button" routerLink="/auth/reset-password">Enter reset code</a>
-      } @else {
-        <a class="button" routerLink="/auth/login">Continue to sign in</a>
+<section class="relative flex min-h-dvh flex-col overflow-hidden bg-black font-geist text-paper">
+  <header
+    class="relative z-[2] flex items-center justify-between border-b border-white/8 px-[22px] py-3.5"
+  >
+    <a
+      routerLink="/home"
+      class="flex items-center gap-[9px]"
+      [attr.aria-label]="'Shipkeep home' | t"
+      ><sk-logo
+    /></a>
+    <div class="flex overflow-hidden rounded-lg border border-white/16 text-[11px] font-medium">
+      @for (l of languages; track l) {
+        <button
+          type="button"
+          class="px-[9px] py-[7px]"
+          [class.bg-paper]="i18n.language() === l"
+          [class.text-black]="i18n.language() === l"
+          [style.color]="i18n.language() === l ? null : '#B8B8BC'"
+          [attr.aria-pressed]="i18n.language() === l"
+          (click)="i18n.use(l)"
+        >
+          {{ l.toUpperCase() }}
+        </button>
       }
-      <button type="button" class="button button-secondary" (click)="store.restart()">
-        Start again
-      </button>
     </div>
-  } @else {
-    @if (store.validationProblem() || store.submission.problem(); as problem) {
-      <div #feedback class="feedback" role="alert" tabindex="-1">
-        <p class="text-danger">{{ problem }}</p>
-        @if (store.submission.restartRequired()) {
-          <button type="button" class="button button-secondary mt-3" (click)="store.restart()">
-            Start again
-          </button>
-        }
-      </div>
-    }
-    <form
-      [formGroup]="store.form"
-      (ngSubmit)="submit()"
-      novalidate
-      [attr.aria-busy]="store.submission.busy()"
-    >
-      <fieldset class="min-w-0 space-y-6" [disabled]="store.submission.busy()">
-        <legend class="sr-only">{{ copy().title }}</legend>
-        @if (store.hasEmail()) {
-          <div>
-            <label for="email">Email address</label>
-            <input
-              id="email"
-              name="email"
-              type="email"
-              autocomplete="username"
-              inputmode="email"
-              autocapitalize="none"
-              spellcheck="false"
-              formControlName="email"
-              aria-describedby="email-error"
-              [attr.aria-invalid]="!!store.errorFor('email')"
-              required
-            />
-            <p id="email-error" class="field-error">{{ store.errorFor('email') }}</p>
+  </header>
+
+  <main id="main-content" class="relative z-[2] flex flex-1 items-center justify-center px-5 py-14">
+    <div class="auth-in relative w-full max-w-[420px]">
+      <div
+        class="absolute top-[-1px] right-[12%] left-[12%] h-px bg-[linear-gradient(90deg,rgba(255,80,80,0),#FF5C5C,rgba(255,80,80,0))] shadow-[0_0_18px_3px_rgba(255,60,60,0.55)]"
+      ></div>
+      <div
+        class="flex flex-col gap-5 rounded-[20px] border border-line bg-black px-[30px] pt-[34px] pb-7 max-sm:px-5"
+      >
+        <div class="flex flex-col items-center gap-3 text-center">
+          <span
+            class="grid size-[46px] place-items-center rounded-[13px] border border-ctl bg-black"
+            aria-hidden="true"
+            ><sk-icon [name]="copy().icon" class="text-[22px]"
+          /></span>
+          <h1
+            #heading
+            tabindex="-1"
+            class="text-[22px] leading-[1.15] font-normal tracking-[-0.02em] uppercase"
+          >
+            {{ copy().title | t }}
+          </h1>
+          <p class="max-w-[320px] text-[13.5px] leading-[1.55] text-[#B8B8BC]">
+            {{ copy().sub | t }}
+          </p>
+        </div>
+
+        @if (store.success(); as success) {
+          <div #feedback class="alert alert-ok" role="status" tabindex="-1">
+            <sk-icon name="mail-check" class="text-[22px] text-rose" />
+            <span>{{ success | t }}</span>
           </div>
-        }
-        @if (store.hasCode()) {
-          <div>
-            <label for="code">{{
-              store.mode() === 'verify-email' ? 'Verification code' : 'Reset code'
-            }}</label>
-            <input
-              id="code"
-              name="code"
-              autocomplete="one-time-code"
-              autocapitalize="none"
-              spellcheck="false"
-              formControlName="code"
-              aria-describedby="code-error"
-              [attr.aria-invalid]="!!store.errorFor('code')"
-              required
-            />
-            <p id="code-error" class="field-error">{{ store.errorFor('code') }}</p>
-          </div>
-        }
-        @if (store.hasPassword()) {
-          <div>
-            <label for="password">{{
-              store.mode() === 'reset-password'
-                ? 'New password'
-                : store.mode() === 'verify-email'
-                  ? 'Password you chose when signing up'
-                  : 'Password'
-            }}</label>
-            <input
-              id="password"
-              name="password"
-              type="password"
-              [autocomplete]="
-                store.mode() === 'login' || store.mode() === 'verify-email'
-                  ? 'current-password'
-                  : 'new-password'
+          @if (store.mode() === 'register') {
+            <a class="auth-cta" routerLink="/auth/verify-email"
+              >{{ 'Enter the code' | t }}<sk-icon name="arrow-narrow-right" class="text-[20px]"
+            /></a>
+          } @else {
+            <a class="auth-cta" routerLink="/auth/login"
+              >{{ 'Continue to sign in' | t
+              }}<sk-icon name="arrow-narrow-right" class="text-[20px]"
+            /></a>
+          }
+        } @else {
+          @if (store.validationProblem() || store.submission.problem(); as problem) {
+            <div #feedback class="alert" role="alert" tabindex="-1">
+              <sk-icon name="alert-triangle" class="text-[16px] text-rose" />
+              <div class="flex-1">
+                <p>{{ problem | t }}</p>
+                @if (store.submission.restartRequired()) {
+                  <button type="button" class="btn btn-sm mt-2" (click)="store.restart()">
+                    {{ 'Start again' | t }}
+                  </button>
+                }
+              </div>
+            </div>
+          }
+          @if (screen() === 'totp' && !store.submission.problem()) {
+            <p class="note text-[12px]" role="status">
+              <sk-icon name="info-circle" class="text-[16px] text-mute" />
+              <span>{{
+                'No authenticator on this account? Then the email or password was wrong: go back to sign in.'
+                  | t
+              }}</span>
+            </p>
+          }
+          @if (screen() === 'reset-password' && store.sentTo()) {
+            <div class="flex items-center gap-3 rounded-xl border border-ctl bg-black p-3.5">
+              <sk-icon name="mail-check" class="text-[22px] text-rose" />
+              <div class="text-[13px] leading-normal text-[#C9C9CC]">
+                {{
+                  'Code sent to {email} if it has an account. It expires in 30 minutes.'
+                    | t: { email: store.sentTo() }
+                }}
+              </div>
+            </div>
+          }
+
+          <form
+            [formGroup]="store.form"
+            (ngSubmit)="submit()"
+            novalidate
+            class="flex flex-col gap-5"
+            [attr.aria-busy]="store.submission.busy()"
+          >
+            <fieldset
+              class="m-0 flex min-w-0 flex-col gap-3.5 border-0 p-0"
+              [disabled]="store.submission.busy()"
+            >
+              <legend class="sr-only">{{ copy().title | t }}</legend>
+              @if (store.hasName()) {
+                <ng-container
+                  *ngTemplateOutlet="
+                    field;
+                    context: {
+                      id: 'name',
+                      label: 'Name',
+                      icon: 'user',
+                      type: 'text',
+                      placeholder: 'Your name',
+                      autocomplete: 'name',
+                    }
+                  "
+                />
+              }
+              @if (store.hasEmail()) {
+                <ng-container
+                  *ngTemplateOutlet="
+                    field;
+                    context: {
+                      id: 'email',
+                      label: 'Email',
+                      icon: 'mail',
+                      type: 'email',
+                      placeholder: 'you@company.com',
+                      autocomplete: 'username',
+                    }
+                  "
+                />
+              }
+              @if (store.hasCode()) {
+                <ng-container
+                  *ngTemplateOutlet="
+                    field;
+                    context: {
+                      id: 'code',
+                      label:
+                        store.mode() === 'verify-email' ? 'Verification code' : 'Code received',
+                      icon: 'hash',
+                      type: 'text',
+                      placeholder: 'Paste the code from the email',
+                      autocomplete: 'one-time-code',
+                    }
+                  "
+                />
+              }
+              @if (store.hasPassword()) {
+                <ng-container
+                  *ngTemplateOutlet="
+                    field;
+                    context: {
+                      id: 'password',
+                      label: store.mode() === 'reset-password' ? 'New password' : 'Password',
+                      icon: 'lock',
+                      type: 'password',
+                      placeholder: '••••••••••',
+                      autocomplete:
+                        store.mode() === 'login' || store.mode() === 'verify-email'
+                          ? 'current-password'
+                          : 'new-password',
+                      link:
+                        store.mode() === 'login' || store.mode() === 'verify-email'
+                          ? 'Forgot?'
+                          : '',
+                      withMeter: store.mode() === 'register' || store.mode() === 'reset-password',
+                    }
+                  "
+                />
+              }
+              @if (screen() === 'recovery') {
+                <ng-container
+                  *ngTemplateOutlet="
+                    field;
+                    context: {
+                      id: 'factor',
+                      label: 'Recovery code',
+                      icon: 'key',
+                      type: 'text',
+                      placeholder: '32 letters and digits',
+                      autocomplete: 'one-time-code',
+                    }
+                  "
+                />
+              }
+              @if (screen() === 'totp') {
+                <div class="flex flex-col items-center gap-3">
+                  <label class="relative block cursor-text" for="factor">
+                    <span class="sr-only">{{ '6-digit TOTP code' | t }}</span>
+                    <span
+                      class="grid grid-cols-[repeat(6,46px)] gap-2 max-sm:grid-cols-[repeat(6,38px)]"
+                      aria-hidden="true"
+                    >
+                      @for (d of digits(); track $index) {
+                        <span
+                          class="grid h-[54px] place-items-center rounded-[10px] border bg-black font-mono text-[22px]"
+                          [style.border-color]="d.next ? 'rgba(255,92,92,0.8)' : '#262628'"
+                          [style.box-shadow]="d.next ? '0 0 0 3px rgba(255,60,60,0.18)' : 'none'"
+                          >{{ d.char }}</span
+                        >
+                      }
+                    </span>
+                    <input
+                      #codeInput
+                      id="factor"
+                      formControlName="factor"
+                      class="absolute inset-0 size-full cursor-text opacity-0"
+                      inputmode="numeric"
+                      autocomplete="one-time-code"
+                      maxlength="6"
+                      [attr.aria-invalid]="!!store.errorFor('factor')"
+                      aria-describedby="factor-hint factor-error"
+                      (input)="typeCode($event)"
+                    />
+                  </label>
+                  <div id="factor-hint" class="font-mono text-[11.5px] text-dim">
+                    {{ '6-digit TOTP code' | t }}
+                  </div>
+                  <p id="factor-error" class="field-error">{{ store.errorFor('factor') | t }}</p>
+                </div>
+              }
+            </fieldset>
+
+            <button
+              type="submit"
+              class="auth-cta"
+              [disabled]="
+                store.submission.busy() ||
+                !!store.submission.cooldown() ||
+                store.submission.restartRequired()
               "
-              formControlName="password"
-              aria-describedby="password-hint password-error"
-              [attr.aria-invalid]="!!store.errorFor('password')"
-              required
-            />
-            @if (store.mode() === 'verify-email') {
-              <p id="password-hint" class="hint">
-                Did not create this account, or forgot its password?
-                <a routerLink="/auth/forgot-password">Reset the password</a> to choose your own.
-              </p>
-            } @else {
-              <p id="password-hint" class="hint">
-                Use 15–128 characters. Spaces and long passphrases are welcome.
+            >
+              {{ (store.submission.busy() ? 'Working…' : copy().cta) | t }}
+              <sk-icon name="arrow-narrow-right" class="text-[20px]" />
+            </button>
+            @if (store.submission.cooldown()) {
+              <p class="text-center text-[12.5px] text-mute tabular-nums" role="status">
+                {{ 'Try again in {s} seconds.' | t: { s: store.submission.cooldown() } }}
               </p>
             }
-            <p id="password-error" class="field-error">{{ store.errorFor('password') }}</p>
-          </div>
+          </form>
+
+          @if (screen() === 'password' || screen() === 'register') {
+            <div class="flex flex-col gap-2.5">
+              <div
+                class="flex items-center gap-2.5 text-[11px] tracking-[0.08em] text-dim uppercase"
+              >
+                <span
+                  class="h-px flex-1 bg-[linear-gradient(90deg,rgba(255,255,255,0),rgba(255,255,255,0.12))]"
+                ></span
+                >{{ 'or' | t
+                }}<span
+                  class="h-px flex-1 bg-[linear-gradient(90deg,rgba(255,255,255,0.12),rgba(255,255,255,0))]"
+                ></span>
+              </div>
+              <div class="grid grid-cols-2 gap-2.5">
+                @for (s of ssoProviders; track s.brand) {
+                  <button
+                    type="button"
+                    class="flex items-center justify-center gap-2 rounded-[10px] border border-ctl bg-black p-2.5 text-[13px] hover:bg-hover"
+                    (click)="sso(s.name)"
+                  >
+                    <sk-brand [name]="s.brand" class="size-[15px] text-[#e6e6e8]" />{{ s.name }}
+                  </button>
+                }
+              </div>
+            </div>
+          }
         }
-        @if (store.hasConfirmation()) {
-          <div>
-            <label for="confirmation">Confirm password</label>
-            <input
-              id="confirmation"
-              name="confirmation"
-              type="password"
-              autocomplete="new-password"
-              formControlName="confirmation"
-              aria-describedby="confirmation-error"
-              [attr.aria-invalid]="!!store.errorFor('confirmation')"
-              required
-            />
-            <p id="confirmation-error" class="field-error">{{ store.errorFor('confirmation') }}</p>
-          </div>
+
+        <div class="flex flex-wrap justify-center gap-1.5 text-[13px] text-mute">
+          {{ copy().foot | t }}
+          @if (copy().footRoute; as route) {
+            <a class="text-white hover:underline" [routerLink]="route">{{ copy().footLink | t }}</a>
+          } @else {
+            <a class="text-white hover:underline" href="#" (click)="footClick($event)">{{
+              copy().footLink | t
+            }}</a>
+          }
+        </div>
+        @if (screen() === 'totp' || screen() === 'recovery') {
+          <a
+            routerLink="/auth/login"
+            class="-mt-3 text-center text-[12.5px] text-dim hover:text-fg3"
+            (click)="store.goTo('password')"
+            >{{ 'Back to sign in' | t }}</a
+          >
         }
-        @if (store.mode() === 'login') {
-          <details #factorDetails class="border-y border-line py-3">
-            <summary class="min-h-11 content-center text-sm font-semibold">
-              Two-factor authentication
-            </summary>
-            <p class="hint mb-4">
-              If enabled on your account, enter an authenticator or recovery code.
-            </p>
-            <label for="factor-kind">Code type</label>
-            <select id="factor-kind" formControlName="factorKind">
-              <option value="totp">Authenticator code</option>
-              <option value="recovery">Recovery code</option>
-            </select>
-            <label class="mt-4" for="factor">{{
-              store.form.controls.factorKind.value === 'totp'
-                ? 'Authenticator code'
-                : 'Recovery
-          code'
-            }}</label>
-            <input
-              id="factor"
-              name="factor"
-              autocomplete="one-time-code"
-              autocapitalize="none"
-              spellcheck="false"
-              [attr.inputmode]="
-                store.form.controls.factorKind.value === 'totp' ? 'numeric' : 'text'
-              "
-              formControlName="factor"
-              aria-describedby="factor-error"
-              [attr.aria-invalid]="!!store.errorFor('factor')"
-            />
-            <p id="factor-error" class="field-error">{{ store.errorFor('factor') }}</p>
-          </details>
-        }
-        <button
-          class="button w-full sm:w-auto"
-          type="submit"
-          [disabled]="
-            store.submission.busy() ||
-            !!store.submission.cooldown() ||
-            store.submission.restartRequired()
-          "
-        >
-          {{ store.submission.busy() ? 'Working…' : copy().action }}
-        </button>
-      </fieldset>
-      @if (store.submission.cooldown()) {
-        <p class="hint tabular-nums" role="status">
-          Try again in {{ store.submission.cooldown() }} seconds.
-        </p>
-      }
-    </form>
-  }
-  <nav class="form-links" aria-label="Account help">
-    @if (store.mode() === 'login') {
-      <a routerLink="/auth/forgot-password">Forgot password?</a
-      ><a routerLink="/auth/register">Create an account</a>
-    } @else {
-      <a routerLink="/auth/login">Back to sign in</a>
-    }
-    @if (store.mode() === 'verify-email') {
-      <a routerLink="/auth/request-verification">Send a new verification email</a>
-    }
-    @if (store.mode() === 'reset-password') {
-      <a routerLink="/auth/forgot-password">Request a new reset code</a>
-    }
-    @if (store.mode() === 'forgot-password') {
-      <a routerLink="/auth/reset-password">I already have a code</a>
-    }
-  </nav>
+      </div>
+      <div class="mt-[18px] flex justify-center gap-2 text-[11.5px] text-dim">
+        <sk-icon name="shield-lock" class="text-[14px]" />{{
+          'Encrypted sessions · TOTP 2FA · no telemetry' | t
+        }}
+      </div>
+    </div>
+  </main>
 </section>
+
+<ng-template
+  #field
+  let-id="id"
+  let-label="label"
+  let-icon="icon"
+  let-type="type"
+  let-placeholder="placeholder"
+  let-autocomplete="autocomplete"
+  let-link="link"
+  let-withMeter="withMeter"
+>
+  <div class="flex flex-col gap-[7px]" [formGroup]="store.form">
+    <span class="flex justify-between text-[12.5px] text-[#C9C9CC]">
+      <label [for]="id">{{ label | t }}</label>
+      @if (link) {
+        <a routerLink="/auth/forgot-password" class="text-[12px] text-rose hover:underline">{{
+          link | t
+        }}</a>
+      }
+    </span>
+    <span class="relative block">
+      <sk-icon
+        [name]="icon"
+        class="absolute top-1/2 left-3 -translate-y-1/2 text-[16px] text-dim"
+      />
+      <input
+        [id]="id"
+        [type]="type"
+        [formControlName]="id"
+        [placeholder]="placeholder | t"
+        [autocomplete]="autocomplete"
+        [attr.inputmode]="type === 'email' ? 'email' : null"
+        [attr.autocapitalize]="type === 'email' || id === 'code' || id === 'factor' ? 'none' : null"
+        [attr.spellcheck]="type === 'email' || id === 'code' || id === 'factor' ? 'false' : null"
+        [attr.aria-invalid]="!!store.errorFor(id)"
+        [attr.aria-describedby]="id + '-error'"
+        class="input py-[11px] pl-[38px] text-[14px]"
+      />
+    </span>
+    @if (withMeter) {
+      <span class="flex items-center gap-2" aria-hidden="true">
+        <span class="grid flex-1 grid-cols-4 gap-1">
+          @for (m of meter(); track $index) {
+            <span
+              class="h-[3px] rounded-sm transition-[background] duration-300"
+              [style.background]="m"
+            ></span>
+          }
+        </span>
+        <span class="min-w-16 text-right text-[11px] text-mute">{{ meterLabel() | t }}</span>
+      </span>
+      <span class="text-[11.5px] text-dim">{{
+        'Use 15–128 characters. Spaces and long passphrases are welcome.' | t
+      }}</span>
+    }
+    <p [id]="id + '-error'" class="field-error">{{ store.errorFor(id) | t }}</p>
+  </div>
+</ng-template>

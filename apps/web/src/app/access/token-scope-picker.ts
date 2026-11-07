@@ -9,6 +9,7 @@ import {
 } from '@angular/core';
 import { type components } from '@shipkeep/api-client';
 
+import { T } from '../ui/i18n';
 import { Collection } from '../workspace/collection';
 import {
   type Environment,
@@ -64,26 +65,27 @@ const selected = (event: Event): string => (event.target as HTMLSelectElement).v
 /** Chooses what a new API token may do. Nothing is granted until it is ticked. */
 @Component({
   selector: 'sk-token-scope-picker',
+  imports: [T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div>
-      <label for="token-organization">Access</label>
+      <label for="token-organization">{{ 'Access' | t }}</label>
       <select id="token-organization" (change)="chooseOrganization($event)">
-        <option value="">Only my account profile</option>
+        <option value="">{{ 'Only my account profile' | t }}</option>
         @for (organization of organizations.items(); track organization.id) {
           <option [value]="organization.id">{{ organization.name }}</option>
         }
       </select>
       @if (organizations.problem(); as problem) {
-        <p class="field-error" role="alert">{{ problem }}</p>
+        <p class="field-error" role="alert">{{ problem | t }}</p>
       }
     </div>
     @if (organizationId()) {
       @if (projects.state() === 'ready') {
         <div>
-          <label for="token-project">Project</label>
+          <label for="token-project">{{ 'Project' | t }}</label>
           <select id="token-project" (change)="chooseProject($event)">
-            <option value="">All projects</option>
+            <option value="">{{ 'All projects' | t }}</option>
             @for (project of projects.items(); track project.id) {
               <option [value]="project.id">{{ project.name }}</option>
             }
@@ -92,9 +94,9 @@ const selected = (event: Event): string => (event.target as HTMLSelectElement).v
       }
       @if (projectId() && environments.state() === 'ready') {
         <div>
-          <label for="token-environment">Environment</label>
+          <label for="token-environment">{{ 'Environment' | t }}</label>
           <select id="token-environment" (change)="chooseEnvironment($event)">
-            <option value="">All environments</option>
+            <option value="">{{ 'All environments' | t }}</option>
             @for (environment of environments.items(); track environment.id) {
               <option [value]="environment.id">{{ environment.name }}</option>
             }
@@ -102,10 +104,12 @@ const selected = (event: Event): string => (event.target as HTMLSelectElement).v
         </div>
       }
       <fieldset class="min-w-0">
-        <legend>Permissions</legend>
+        <legend>{{ 'Permissions' | t }}</legend>
         <p class="hint">
-          What is offered depends on the choice above: deploying and secrets need an environment. A
-          token can never do more than you can.
+          {{
+            'What is offered depends on the choice above: deploying and secrets need an environment. A token can never do more than you can.'
+              | t
+          }}
         </p>
         @for (item of available(); track item.permission) {
           <div class="flex items-center gap-2">
@@ -116,7 +120,7 @@ const selected = (event: Event): string => (event.target as HTMLSelectElement).v
               (change)="toggle(item.permission)"
             />
             <label class="mb-0" [for]="'token-permission-' + item.permission">{{
-              item.label
+              item.label | t
             }}</label>
           </div>
         }
@@ -130,15 +134,17 @@ const selected = (event: Event): string => (event.target as HTMLSelectElement).v
             [checked]="bound()"
             (change)="bound.set(!bound())"
           />
-          <label class="mb-0" for="token-bound">Tie this token to the project</label>
+          <label class="mb-0" for="token-bound">{{ 'Tie this token to the project' | t }}</label>
         </div>
         <p id="token-bound-hint" class="hint">
-          Project administrators can then see and revoke it, and it is deleted with the project. You
-          need to manage the project's members to do this.
+          {{
+            "Project administrators can then see and revoke it, and it is deleted with the project. You need to manage the project's members to do this."
+              | t
+          }}
         </p>
       }
     } @else {
-      <p class="text-sm">This token can only read your account profile.</p>
+      <p class="text-sm">{{ 'This token can only read your account profile.' | t }}</p>
     }
   `,
 })
