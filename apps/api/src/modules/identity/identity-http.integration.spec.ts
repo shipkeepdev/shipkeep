@@ -100,9 +100,9 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
     const email = 'flow@example.com';
     await post('register', { email, password }).expect(202).expect('Cache-Control', 'no-store');
     await post('login', { email, password }).expect(401);
-    await post('verify', { token: await mailCode(email) }).expect(204);
+    await post('verify', { token: await mailCode(email), password }).expect(204);
     await prisma.identityThrottle.deleteMany();
-    await post('verify', { token: await mailCode(email) }).expect(401);
+    await post('verify', { token: await mailCode(email), password }).expect(401);
     const first = await post('login', { email, password }).expect(200);
     expect(first.body).toEqual({
       userId: expect.any(String),
@@ -207,7 +207,7 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
     await post('register', { email: 'other@example.com', password })
       .set('Idempotency-Key', key)
       .expect(409);
-    await post('verify', { token: await mailCode(email) }).expect(204);
+    await post('verify', { token: await mailCode(email), password }).expect(204);
     const loginKey = uuidv7();
     const first = await post('login', { email, password })
       .set('Idempotency-Key', loginKey)
@@ -253,7 +253,7 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
     expect(await prisma.user.count({ where: { email: 'invalid-key@example.com' } })).toBe(0);
     const email = 'retry-rollback@example.com';
     await post('register', { email, password }).expect(202);
-    await post('verify', { token: await mailCode(email) }).expect(204);
+    await post('verify', { token: await mailCode(email), password }).expect(204);
     const key = uuidv7();
     await prisma.$executeRaw`ALTER TABLE identity_replays ADD CONSTRAINT test_http_reject_replay CHECK (false) NOT VALID`;
     try {
