@@ -6,13 +6,15 @@ import { IdentityRequestError } from '../identity/identity-api';
 import { MutationRunner } from '../identity/mutation-runner';
 
 import { Collection } from './collection';
+import { recoverOnEdit } from './form-recovery';
+import { OrganizationSettings } from './organization-settings';
 import { required, slug } from './validators';
 import { type Organization, type Project, WorkspaceApi } from './workspace-api';
 
 /** One organization: its projects, and creating a project (organization admins). */
 @Component({
   selector: 'sk-organization-page',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, OrganizationSettings],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -85,6 +87,9 @@ import { type Organization, type Project, WorkspaceApi } from './workspace-api';
             </div>
           </form>
         </section>
+        @if (organization(); as current) {
+          <sk-organization-settings [current]="current" (updated)="organization.set($event)" />
+        }
       }
     </section>
   `,
@@ -107,6 +112,7 @@ export class OrganizationPage {
   });
 
   constructor() {
+    recoverOnEdit(this.form, this.runner);
     effect(() => {
       const id = this.organizationId();
       void this.load(id);

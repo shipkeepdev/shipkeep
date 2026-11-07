@@ -5,6 +5,7 @@ import { type ConfigIssue, parseShipkeepConfig } from '@shipkeep/config-schema';
 
 import { MutationRunner } from '../identity/mutation-runner';
 import { Collection } from '../workspace/collection';
+import { recoverOnEdit } from '../workspace/form-recovery';
 
 import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-api';
 
@@ -108,6 +109,7 @@ export class ApplicationsPanel {
   protected readonly issues = signal<readonly ConfigIssue[]>([]);
 
   constructor() {
+    recoverOnEdit(this.form, this.runner);
     effect(() => {
       this.environment();
       void this.list.refresh();

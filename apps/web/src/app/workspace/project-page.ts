@@ -6,13 +6,15 @@ import { IdentityRequestError } from '../identity/identity-api';
 import { MutationRunner } from '../identity/mutation-runner';
 
 import { Collection } from './collection';
+import { recoverOnEdit } from './form-recovery';
+import { ProjectSettings } from './project-settings';
 import { required } from './validators';
 import { type Environment, type Project, WorkspaceApi } from './workspace-api';
 
 /** One project: its environments, and creating one (protected by default, SPEC 7). */
 @Component({
   selector: 'sk-project-page',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, ProjectSettings],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -95,6 +97,9 @@ import { type Environment, type Project, WorkspaceApi } from './workspace-api';
             </div>
           </form>
         </section>
+        @if (project(); as current) {
+          <sk-project-settings [current]="current" (updated)="project.set($event)" />
+        }
       }
     </section>
   `,
@@ -115,6 +120,7 @@ export class ProjectPage {
   });
 
   constructor() {
+    recoverOnEdit(this.form, this.runner);
     effect(() => {
       void this.load(this.organizationId(), this.projectId());
     });
