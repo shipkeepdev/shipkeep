@@ -89,6 +89,7 @@ const POLL_MS = 3000;
                   <th class="py-2 font-semibold">Started</th>
                   <th class="py-2 font-semibold">State</th>
                   <th class="py-2 font-semibold">Details</th>
+                  <th class="py-2"><span class="sr-only">Actions</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -104,11 +105,31 @@ const POLL_MS = 3000;
                     >
                       {{ deployment.state }}
                     </td>
-                    <td class="py-2 text-muted">{{ deployment.error ?? '' }}</td>
+                    <td class="py-2 text-muted">
+                      {{
+                        deployment.error ?? (deployment.trigger === 'rollback' ? 'Rollback' : '')
+                      }}
+                    </td>
+                    <td class="py-2 text-right">
+                      @if (canRollBack(deployment)) {
+                        <button
+                          class="button button-secondary"
+                          type="button"
+                          [disabled]="runner.busy() || !!active()"
+                          (click)="rollback(deployment.id)"
+                        >
+                          Roll back
+                        </button>
+                      }
+                    </td>
                   </tr>
                 }
               </tbody>
             </table>
+            <p class="hint mb-8">
+              Rolling back deploys that version's image and configuration again, without its release
+              command. Database migrations are not undone.
+            </p>
           } @else {
             <p class="mb-8 border-y border-line py-6 text-muted">Not deployed yet.</p>
           }
@@ -184,6 +205,20 @@ export class ApplicationPage {
   protected async deploy(): Promise<void> {
     const outcome = await this.runner.run({ deploy: this.applicationId() }, () =>
       this.api.deploy(this.environment(), this.applicationId()),
+    );
+    if (outcome.ok) await this.refresh();
+  }
+
+  /** Versions that ran, other than the one serving now (the latest success). */
+  protected canRollBack(deployment: Deployment): boolean {
+    if (deployment.state !== 'succeeded' && deployment.state !== 'rolled_back') return false;
+    const serving = this.deployments.items().find((item) => item.state === 'succeeded');
+    return deployment.releaseId !== serving?.releaseId;
+  }
+
+  protected async rollback(deploymentId: string): Promise<void> {
+    const outcome = await this.runner.run({ rollback: deploymentId }, () =>
+      this.api.rollback(this.environment(), this.applicationId(), deploymentId),
     );
     if (outcome.ok) await this.refresh();
   }

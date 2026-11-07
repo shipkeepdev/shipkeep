@@ -33,7 +33,12 @@ const config: ShipkeepConfig = {
 };
 
 function world(
-  options: { nodes?: NodeView[]; secrets?: string[]; resolve?: () => Promise<string> } = {},
+  options: {
+    nodes?: NodeView[];
+    secrets?: string[];
+    resolve?: () => Promise<string>;
+    trigger?: DeploymentRecord['trigger'];
+  } = {},
 ) {
   let deployment: DeploymentRecord = {
     id: '0190f5a8-7b1c-7e2d-8f3a-00000000000d',
@@ -42,7 +47,7 @@ function world(
     releaseId: '0190f5a8-7b1c-7e2d-8f3a-00000000000f',
     state: 'queued',
     plan: { build: false, release: false },
-    trigger: 'manual',
+    trigger: options.trigger ?? 'manual',
     actorId: null,
     startedAt: NOW,
     finishedAt: null,
@@ -75,9 +80,16 @@ function world(
     },
   ];
 
+  const replaced: DeploymentRecord = { ...deployment, id: 'd-old', state: 'succeeded' };
+  const superseded: { id: string; state: string }[] = [];
   const deployments = {
     byId: () => Promise.resolve(deployment),
+    succeededOf: () => Promise.resolve([replaced]),
     transition: (next: DeploymentRecord, expected: string) => {
+      if (next.id === replaced.id) {
+        superseded.push({ id: next.id, state: next.state });
+        return Promise.resolve(true);
+      }
       if (deployment.state !== expected) return Promise.resolve(false);
       deployment = next;
       return Promise.resolve(true);
@@ -166,6 +178,7 @@ function world(
   return {
     subject,
     events,
+    superseded,
     queued,
     outcomes,
     agentsFinish,
@@ -222,6 +235,33 @@ describe('DeploymentPipeline', () => {
       w.events.every((e) => e.actor.kind === 'system' && !JSON.stringify(e).includes('fixture')),
     ).toBe(true);
     expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
+  });
+
+  it('supersedes the replaced deployment when a rollback succeeds', async () => {
+    const w = world({ trigger: 'rollback' });
+    for (
+      let round = 0;
+      round < 10 && (await w.subject.run(ORG, w.deployment.id, () => NOW)) === 'wait';
+      round++
+    )
+      w.agentsFinish();
+    expect(w.deployment.state).toBe('succeeded');
+    expect(w.superseded).toEqual([{ id: 'd-old', state: 'rolled_back' }]);
+    expect(w.events.at(-1)).toMatchObject({
+      type: 'deployment.rolled_back',
+      target: { id: 'd-old' },
+    });
+  });
+
+  it('supersedes nothing after an ordinary deployment', async () => {
+    const w = world();
+    for (
+      let round = 0;
+      round < 10 && (await w.subject.run(ORG, w.deployment.id, () => NOW)) === 'wait';
+      round++
+    )
+      w.agentsFinish();
+    expect(w.superseded).toEqual([]);
   });
 
   it('fails with an operator explanation when no node can take a replica', async () => {

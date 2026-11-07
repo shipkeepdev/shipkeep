@@ -540,6 +540,10 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - It is refused with 409 `secrets_missing` (listing the names) while a referenced secret is unset, and with 409 `deployment_in_progress` while another deployment is unfinished.
   - `GET …/deployments` lists the 50 most recent deployments; `GET …/deployments/{deploymentId}` reads one; `GET …/releases` lists the 50 most recent releases (`environment.read`).
   - `POST …/deployments/{deploymentId}/cancel` (`deploy.run`) cancels an unfinished deployment through the aggregate. The pipeline (M3.4c) acts on the reported routing outcome.
+  - `POST …/deployments/{deploymentId}/rollback` (201, `deploy.run`) deploys a new release copying the pinned image and configuration of the release that deployment ran.
+    - The target must have succeeded (or been rolled back) and must not be the release serving now; otherwise 409 `rollback_target_invalid` or `release_already_serving`. A release that never resolved its image answers 409 `release_not_deployable`.
+    - The release command does not run again, because migrations of an older version must not be replayed over newer data. Secrets use their current values, and the application's own configuration does not change, so the next deployment uses it again.
+    - When the rollback succeeds, the deployment it replaced becomes `rolled_back`, audited as `deployment.rolled_back`.
   - Database guarantees:
     - a partial unique index keeps one unfinished deployment per application;
     - releases are immutable: a trigger and the runtime grants allow only recording the image digest, once;

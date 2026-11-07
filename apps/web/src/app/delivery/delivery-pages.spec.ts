@@ -228,6 +228,46 @@ describe('delivery screens', () => {
     expect(element().querySelector('h1')?.textContent).toBe('next-app');
   });
 
+  it('offers a rollback only for earlier versions that ran, and follows it', async () => {
+    const older = { ...deployment('succeeded'), id: 'd-old', releaseId: 'r-old' };
+    const current = { ...deployment('succeeded'), id: 'd-new', releaseId: 'r-new' };
+    const broken = {
+      ...deployment('failed', 'Step pull failed.'),
+      id: 'd-bad',
+      releaseId: 'r-bad',
+    };
+    let deployments = [broken, current, older];
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: deployments }),
+      [`POST ${BASE}/applications/${APP}/deployments/d-old/rollback`]: () => {
+        deployments = [
+          { ...deployment('queued'), id: 'd-roll', releaseId: 'r-roll', trigger: 'rollback' },
+          ...deployments,
+        ];
+        return json({ release: {}, deployment: deployments[0] }, 201);
+      },
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+    );
+    await settle();
+    const rollbacks = () =>
+      Array.from(element().querySelectorAll('tbody button')).filter((b) =>
+        b.textContent.includes('Roll back'),
+      );
+    // Neither the serving version nor the failed one can be rolled back to.
+    expect(rollbacks()).toHaveLength(1);
+    (rollbacks()[0] as HTMLButtonElement).click();
+    await settle();
+    expect(requests.filter((r) => r.method === 'POST').map((r) => r.path)).toEqual([
+      `${BASE}/applications/${APP}/deployments/d-old/rollback`,
+    ]);
+    expect(element().querySelector('[role="status"]')?.textContent).toContain('queued');
+    expect(element().querySelector('table')?.textContent).toContain('Rollback');
+    expect((rollbacks()[0] as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('validates shipkeep.yml in the browser before creating an application', async () => {
     let applications: unknown[] = [];
     routes = {

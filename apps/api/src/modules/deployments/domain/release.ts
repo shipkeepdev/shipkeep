@@ -77,3 +77,36 @@ export function deploymentInProgress(state?: DeploymentState): ConflictError {
     state ? { state } : undefined,
   );
 }
+
+/**
+ * A rollback deploys a new release copying an earlier one's pinned image and configuration, so the
+ * pipeline, allocations and history work as for any release. The release command does not run
+ * again: migrations of an older version must not be replayed over newer data.
+ */
+export function rollbackDraft(source: Release): ReleaseDraft {
+  if (!source.imageDigest)
+    throw new ConflictError(
+      'release_not_deployable',
+      'This release never resolved its image, so it cannot be rolled back to.',
+    );
+  return {
+    image: source.image,
+    plan: { build: false, release: false },
+    secrets: [...new Set(source.config.secrets ?? [])].sort(),
+  };
+}
+
+/** Only a version that actually ran, and is not the one serving now, can be rolled back to. */
+export function assertRollbackTarget(
+  target: DeploymentRecord,
+  serving: DeploymentRecord | undefined,
+): void {
+  if (target.state !== 'succeeded' && target.state !== 'rolled_back')
+    throw new ConflictError(
+      'rollback_target_invalid',
+      'Only a deployment that succeeded can be rolled back to.',
+      { state: target.state },
+    );
+  if (serving?.releaseId === target.releaseId)
+    throw new ConflictError('release_already_serving', 'This release is already serving.');
+}
