@@ -212,6 +212,8 @@ Self-reconciliation (M1.6, `agent/internal/reconcile`):
 - **Every 30 s,** with or without the control plane, the agent starts each managed container that should run but is not running, and records each observation in the journal's actual state. Missing containers are left to the control plane, because their secrets are not stored on the node.
 - **Facts:** `CollectFacts` reports hostname, OS, kernel, architecture, CPU count, memory (`/proc/meminfo`), state-directory disk size and free space, the Docker version and the agent version, without running any command.
 
+State-report collection (M1.6b1) reads Docker's complete managed-container inventory, including stopped containers, every second. It emits on observed changes and every 30 seconds, starting again after each Welcome, with the session epoch and collection-start timestamp. Only canonical container IDs/names, runtime state and `sk.managed` are transmitted; arbitrary labels, environment, commands and health claims are excluded. A container Docker reports as `removing` counts as absent. An invalid inventory, Docker failure, more than 256 managed containers or a frame over 60 KiB suppresses the whole observation, never a partial snapshot; such failures are logged when they start and when they end. Collection runs separately from the single stream writer and stops with its session. The runtime activation is coupled to the receiver in M1.6b2; this first part does not send reports to older gateways that reject them.
+
 `HealthCheck` probes a managed container from the agent:
 
 - **Target:** its private network address only, never loopback, link-local (for example cloud metadata) or public addresses. The port is the requested TCP port, or for HTTP the single exposed TCP port.

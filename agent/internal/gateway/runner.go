@@ -40,6 +40,8 @@ type Runner struct {
 	Logger   *slog.Logger
 	// Actions executes ActionRequests; nil refuses them (identity and heartbeats only).
 	Actions ActionHandler
+	// Report is enabled by the daemon once the control plane supports state-report ingestion.
+	Report func(context.Context) (*agentv1.StateReport, error)
 
 	// inflight tracks running actions so Run returns only after they stopped.
 	inflight sync.WaitGroup
@@ -205,6 +207,17 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 		}
 	}
 	r.Logger.Info("agent connected", "node_id", bundle.NodeID)
+	reports := make(chan *agentv1.StateReport)
+	if r.Report != nil {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			ticker := time.NewTicker(time.Second)
+			defer ticker.Stop()
+			r.reportStates(streamCtx, bundle.LeaseEpoch, reports, ticker.C)
+		}()
+		defer func() { cancel(); <-done }()
+	}
 	// Action goroutines outlive the session; once it ends their updates are dropped and the
 	// control plane learns the journaled outcome from its redelivery with the same key.
 	updates := make(chan *agentv1.ActionUpdate, 64)
@@ -233,6 +246,10 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 		case update := <-updates:
 			if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_ActionUpdate{ActionUpdate: update}}); err != nil {
 				return fmt.Errorf("send action update: %w", err)
+			}
+		case report := <-reports:
+			if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_StateReport{StateReport: report}}); err != nil {
+				return fmt.Errorf("send state report: %w", err)
 			}
 		case frame := <-incoming:
 			if frame.err != nil {

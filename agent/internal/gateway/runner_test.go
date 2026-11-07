@@ -54,6 +54,14 @@ func (g *testGateway) Connect(stream grpc.BidiStreamingServer[agentv1.ConnectReq
 			g.updates <- update
 			continue
 		}
+		if report := request.GetStateReport(); report != nil && g.reports != nil {
+			select {
+			case g.reports <- report:
+			case <-stream.Context().Done():
+				return nil
+			}
+			continue
+		}
 		if request.GetHeartbeat() == nil {
 			return status.Error(codes.InvalidArgument, "missing heartbeat")
 		}
