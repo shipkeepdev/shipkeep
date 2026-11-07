@@ -6,6 +6,7 @@ import { MutationRunner } from '../identity/mutation-runner';
 import { SessionStore } from '../identity/session-store';
 
 import { Collection } from './collection';
+import { recoverOnEdit } from './form-recovery';
 import { required, slug } from './validators';
 import { WorkspaceApi } from './workspace-api';
 
@@ -122,6 +123,7 @@ export class OrganizationsPage {
   });
 
   constructor() {
+    recoverOnEdit(this.form, this.runner);
     void this.list.refresh();
   }
 

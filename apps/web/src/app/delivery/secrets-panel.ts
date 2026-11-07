@@ -3,6 +3,7 @@ import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angula
 
 import { MutationRunner } from '../identity/mutation-runner';
 import { Collection } from '../workspace/collection';
+import { recoverOnEdit } from '../workspace/form-recovery';
 import { required } from '../workspace/validators';
 
 import { DeliveryApi, type EnvironmentRef, type SecretMetadata } from './delivery-api';
@@ -97,6 +98,7 @@ export class SecretsPanel {
   });
 
   constructor() {
+    recoverOnEdit(this.form, this.runner);
     effect(() => {
       this.environment();
       void this.list.refresh();
