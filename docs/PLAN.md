@@ -273,7 +273,7 @@ CodeQL and gosec have **not** run on that code. The browser suite ran on 2026-11
   - [x] **M2.5b** Shared confirmation in the web UI (`ConfirmByName`). Server removal uses it; volume, database and environment deletion will use it when those screens and actions exist.
   - `/confirmations` endpoint, UI confirmation dialog that requires typing the resource name.
   - Acceptance: destructive endpoints reject requests without a valid, unused, matching token.
-- [ ] **M2.6 Web UI shell** (W). Depends: M2.2. Partly done in M2.2e: shell, routing, auth flows, design tokens, Tailwind and CDK. Remaining: the Lighthouse check; axe (WCAG A and AA) passes on every workspace screen in `tenant.browser.spec.ts`. Done: navigation (M2.3f1a) and live updates per environment (M2.6b).
+- [ ] **M2.6 Web UI shell** (W). Depends: M2.2. Partly done in M2.2e: shell, routing, auth flows, design tokens, Tailwind and CDK. Remaining: only the Lighthouse score itself, which has not been measured. In `tenant.browser.spec.ts`, axe passes WCAG A and AA on every workspace screen, and every rule including best practices on sign-in and the landing pages. Lists have empty states. Done: navigation (M2.3f1a) and live updates per environment (M2.6b).
   - Angular app shell, routing, auth flows, org/project/environment navigation, design tokens, Tailwind, CDK, empty states, SSE client.
   - Acceptance: Lighthouse accessibility score at least 95 on login and dashboard; core flows keyboard-navigable.
 - [ ] **M2.7 Fleet administration endpoints** (C + W). Depends: M2.3d, M2.3g1. Moved from M1.2b.

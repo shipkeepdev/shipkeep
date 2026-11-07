@@ -3,6 +3,7 @@ import type { Download, Page } from 'playwright';
 import { browserApp } from './browser-app';
 import {
   accessible,
+  accessibleStrict,
   createAccount,
   fillPrivate,
   FIXTURE_PASSWORD,
@@ -234,6 +235,26 @@ describe('organizations and roles in Chromium', () => {
         .waitFor();
     } finally {
       await other.close();
+    }
+  });
+
+  it('meets every axe rule on sign-in and the signed-in landing pages', async () => {
+    const anonymous = await (await fixture.newContext()).newPage();
+    try {
+      await anonymous.goto('/auth/login');
+      await anonymous.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
+      await accessibleStrict(anonymous);
+    } finally {
+      await anonymous.close();
+    }
+    for (const [path, heading] of [
+      ['/orgs', 'Organizations'],
+      [`/orgs/${organizationId}`, 'Acme'],
+    ] as const) {
+      await owner.goto(path);
+      await owner.getByRole('heading', { name: heading, exact: true, level: 1 }).waitFor();
+      await owner.waitForLoadState('networkidle');
+      await accessibleStrict(owner);
     }
   });
 

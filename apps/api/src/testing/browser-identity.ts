@@ -77,6 +77,16 @@ export async function createAccount(page: Page, messages: string[], email: strin
   await signIn(page, email);
 }
 
+/** Every axe rule, best practices included, naming the rule and the element it found. */
+export async function accessibleStrict(page: Page): Promise<void> {
+  const result = await new AxeBuilder({ page }).analyze();
+  expect(
+    result.violations.flatMap(({ id, nodes }) =>
+      nodes.map((node) => `${id}: ${String(node.target.at(0))}`),
+    ),
+  ).toEqual([]);
+}
+
 // Playwright failure call logs can include fill arguments. Keep private values out of diagnostics.
 export async function fillPrivate(field: Locator, value: string): Promise<void> {
   try {
