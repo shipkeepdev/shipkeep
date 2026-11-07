@@ -19,11 +19,13 @@ import {
 import { TenantAccess } from '../../organizations/application/tenant-access';
 import { SECRET_STORE, type SecretStore } from '../../secrets/application/ports';
 import {
+  assertRollbackTarget,
   assertSecretsSet,
   type DeploymentRecord,
   deploymentInProgress,
   type Release,
   releaseDraft,
+  rollbackDraft,
 } from '../domain/release';
 
 import {
@@ -87,6 +89,49 @@ export class DeploymentCommands {
         }),
       ]);
       // The pipeline run commits with the deployment (PLAN M3.4c4c).
+      await this.waker.wake(application.organizationId, deployment.id);
+      return { release, deployment };
+    });
+  }
+
+  /** Deploys a copy of the release an earlier deployment ran (SPEC 5.1, PLAN M3.5a). */
+  rollback(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+    deploymentId: string,
+    now = new Date(),
+  ): Promise<{ release: Release; deployment: DeploymentRecord }> {
+    return this.scoped(context, 'deploy.run', target, applicationId, async (application) => {
+      const previous = await this.store.find(application.id, deploymentId);
+      if (!previous) throw new NotFoundError('deployment');
+      assertRollbackTarget(previous, await this.store.serving(application.id));
+      const source = await this.store.release(application.id, previous.releaseId);
+      if (!source) throw new NotFoundError('release');
+      const draft = rollbackDraft(source);
+      const set = await this.secrets.list(target);
+      assertSecretsSet(
+        draft.secrets,
+        set.map((secret) => secret.name),
+      );
+      const running = await this.store.active(application.id);
+      if (running) throw deploymentInProgress(running.state);
+      const release = await this.store.copyRelease(source, context.userId, now);
+      if (!release) throw deploymentInProgress();
+      const deployment = await this.store.queue(release, draft, 'rollback', context.userId, now);
+      if (!deployment) throw deploymentInProgress();
+      await this.events.publish([
+        this.event('release.created', context, application, release.id, now, {
+          number: release.number,
+          image: release.image,
+          configSha: release.configSha,
+          rollbackOf: source.number,
+        }),
+        this.event('deployment.queued', context, application, deployment.id, now, {
+          releaseId: release.id,
+          trigger: deployment.trigger,
+        }),
+      ]);
       await this.waker.wake(application.organizationId, deployment.id);
       return { release, deployment };
     });

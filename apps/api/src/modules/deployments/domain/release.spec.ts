@@ -1,6 +1,14 @@
 import type { ShipkeepConfig } from '@shipkeep/config-schema';
 
-import { assertSecretsSet, deploymentInProgress, releaseDraft } from './release';
+import {
+  assertRollbackTarget,
+  assertSecretsSet,
+  type DeploymentRecord,
+  deploymentInProgress,
+  type Release,
+  releaseDraft,
+  rollbackDraft,
+} from './release';
 
 const config = (overrides: Partial<ShipkeepConfig> = {}): ShipkeepConfig => ({
   version: 1,
@@ -61,5 +69,65 @@ describe('deploymentInProgress', () => {
       details: { state: 'queued' },
     });
     expect(deploymentInProgress().details).toBeUndefined();
+  });
+});
+
+describe('rollback', () => {
+  const release = (overrides: Partial<Release> = {}): Release => ({
+    id: 'r1',
+    organizationId: 'o',
+    applicationId: 'a',
+    number: 1,
+    image: 'ghcr.io/acme/billing:1.4.2',
+    imageDigest: `sha256:${'a'.repeat(64)}`,
+    config: config({ release: { command: ['migrate'] }, secrets: ['B', 'A', 'B'] }),
+    configSha: 'c'.repeat(64),
+    createdBy: null,
+    createdAt: new Date(0),
+    ...overrides,
+  });
+  const deployment = (state: DeploymentRecord['state'], releaseId = 'r1'): DeploymentRecord => ({
+    id: `d-${releaseId}`,
+    organizationId: 'o',
+    applicationId: 'a',
+    releaseId,
+    state,
+    plan: { build: false, release: false },
+    trigger: 'manual',
+    actorId: null,
+    startedAt: new Date(0),
+    finishedAt: null,
+    error: null,
+  });
+
+  it('copies the release but never replays its release command', () => {
+    expect(rollbackDraft(release())).toEqual({
+      image: 'ghcr.io/acme/billing:1.4.2',
+      plan: { build: false, release: false },
+      secrets: ['A', 'B'],
+    });
+  });
+
+  it('refuses a release that never resolved its image', () => {
+    expect(() => rollbackDraft(release({ imageDigest: null }))).toThrow(
+      expect.objectContaining({ code: 'release_not_deployable' }),
+    );
+  });
+
+  it('accepts only versions that ran and are not serving', () => {
+    const serving = deployment('succeeded', 'r2');
+    expect(() => {
+      assertRollbackTarget(deployment('succeeded'), serving);
+    }).not.toThrow();
+    expect(() => {
+      assertRollbackTarget(deployment('rolled_back'), serving);
+    }).not.toThrow();
+    for (const state of ['failed', 'cancelled', 'queued', 'switching'] as const)
+      expect(() => {
+        assertRollbackTarget(deployment(state), serving);
+      }).toThrow(expect.objectContaining({ code: 'rollback_target_invalid' }));
+    expect(() => {
+      assertRollbackTarget(deployment('succeeded', 'r2'), serving);
+    }).toThrow(expect.objectContaining({ code: 'release_already_serving' }));
   });
 });

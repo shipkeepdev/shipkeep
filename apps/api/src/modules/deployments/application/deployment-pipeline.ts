@@ -6,6 +6,7 @@ import {
   isDomainError,
   placeReplica,
   placeReplicas,
+  rollBack,
   type RoutingOutcome,
   stop,
   SYSTEM_ACTOR,
@@ -298,8 +299,27 @@ export class DeploymentPipeline {
         }),
       ];
       // The new release serves: the replaced replicas are gone once draining succeeded.
-      if (next.state === 'succeeded')
+      if (next.state === 'succeeded') {
         await this.pipeline.stop(application.id, loaded.previousReleases, now);
+        // SPEC 5.1: a succeeded rollback supersedes the deployment it replaced.
+        if (current.trigger === 'rollback')
+          for (const replaced of await this.deployments.succeededOf(
+            application.id,
+            loaded.previousReleases,
+          ))
+            if (
+              await this.deployments.transition(
+                { ...replaced, ...rollBack(replaced) },
+                'succeeded',
+                now,
+              )
+            )
+              events.push(
+                this.event('deployment.rolled_back', application, 'deployment', replaced.id, now, {
+                  rollback: current.id,
+                }),
+              );
+      }
       await this.events.publish(events);
     });
     return 'continue';
