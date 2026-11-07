@@ -1,6 +1,7 @@
 // Generates TypeScript artifacts from packages/config-schema/shipkeep.schema.json.
 // Run through `pnpm gen`. Output is committed and never edited by hand (CLAUDE.md, rule 9).
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -45,7 +46,47 @@ const schemaModule = `${header}
 export const shipkeepSchema = ${JSON.stringify(schema, null, 2)} as const;
 `;
 
+// The validator is compiled here, not at runtime: Ajv's runtime compiler builds functions from
+// strings, which the web UI's Content-Security-Policy rightly refuses.
+const require = createRequire(join(root, 'packages', 'config-schema', 'package.json'));
+const { Ajv2020 } = require('ajv/dist/2020.js');
+const standalone = require('ajv/dist/standalone').default;
+const ajv = new Ajv2020({
+  allErrors: true,
+  strict: true,
+  // The schema uses `required` inside `not` and `oneOf` branches to express exclusivity; that is
+  // valid JSON Schema but Ajv's strictRequired heuristic rejects it.
+  strictRequired: false,
+  allowUnionTypes: true,
+  // Pattern strings are RE2-compatible on purpose so Go and TypeScript agree (no lookarounds).
+  unicodeRegExp: true,
+  code: { source: true, esm: true },
+});
+const compiled = standalone(ajv, ajv.compile(schema));
+const runtime = new Map([
+  ['require("ajv/dist/runtime/ucs2length").default', 'ucs2length'],
+  ['require("ajv/dist/runtime/equal").default', 'deepEqual'],
+]);
+let body = compiled;
+for (const [required, local] of runtime) body = body.replaceAll(required, local);
+const exported = 'export const validate = validate20;export default validate20;';
+if (!body.includes(exported) || /\brequire\(|new Function|\beval\(/.test(body))
+  throw new Error('The standalone validator has an unexpected shape.');
+body = body.replace(exported, '').replace(/^"use strict";/, '');
+const validatorModule = `${header}// @ts-nocheck
+import type { ErrorObject } from 'ajv';
+
+import { deepEqual, ucs2length } from '../lib/validator-runtime.js';
+
+export const validate = validate20 as unknown as {
+  (data: unknown): boolean;
+  errors?: ErrorObject[] | null;
+};
+${body}
+`;
+
 await mkdir(outDir, { recursive: true });
 await writeFile(join(outDir, 'shipkeep-config.ts'), types);
 await writeFile(join(outDir, 'schema.ts'), schemaModule);
-console.log(`generated ${outDir}/shipkeep-config.ts and schema.ts`);
+await writeFile(join(outDir, 'validator.ts'), validatorModule);
+console.log(`generated ${outDir}/shipkeep-config.ts, schema.ts and validator.ts`);
