@@ -24,7 +24,7 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('header a')?.textContent).toContain('Shipkeep');
+    expect(compiled.querySelector('header a')?.textContent).toContain('shipkeep');
     expect(compiled.querySelector('nav[aria-label="Main"]')?.textContent).toContain('Sign in');
     expect(compiled.querySelector('.skip-link')?.getAttribute('href')).toBe('#main-content');
   });

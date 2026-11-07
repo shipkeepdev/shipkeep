@@ -48,6 +48,7 @@ async function createOrganization(page: Page, name: string, slug: string): Promi
 
 async function createProject(page: Page, organizationId: string): Promise<string> {
   await page.goto(`/orgs/${organizationId}`);
+  await page.getByText('Create a project', { exact: true }).click();
   await page.locator('#project-name').fill('Billing');
   await page.locator('#project-slug').fill('billing');
   return created(page, 'Create project', `${API}/${organizationId}/projects`);
@@ -169,6 +170,7 @@ describe('organizations and roles in Chromium', () => {
 
     // A viewer role on the project: readable, and the administration panels stay away.
     await owner.goto(`/orgs/${organizationId}/projects/${projectId}`);
+    await owner.getByRole('tab', { name: 'Access' }).click();
     await owner.locator('#binding-add-email').fill(outsiderEmail);
     await fillPrivate(owner.locator('#binding-add-password'), FIXTURE_PASSWORD);
     await submit(owner, 'Give role', `${project}/bindings`);
@@ -178,11 +180,14 @@ describe('organizations and roles in Chromium', () => {
     await outsider.goto(`/orgs/${organizationId}/projects/${projectId}`);
     await outsider.getByRole('heading', { name: 'Billing', exact: true }).waitFor();
     await outsider.getByRole('heading', { name: 'Environments', exact: true }).waitFor();
+    await outsider.getByRole('tab', { name: 'Access' }).click();
+    await outsider.waitForLoadState('networkidle');
     expect(await outsider.getByRole('heading', { name: 'Access', exact: true }).count()).toBe(0);
     expect(await outsider.locator('#binding-add-password').count()).toBe(0);
 
     // Removing the role, then the membership.
     await owner.reload();
+    await owner.getByRole('tab', { name: 'Access' }).click();
     const person = owner.getByRole('listitem').filter({ hasText: outsiderEmail });
     await person.getByRole('button', { name: `Remove role of ${outsiderEmail}` }).click();
     await fillPrivate(owner.locator('#binding-remove-password'), FIXTURE_PASSWORD);
@@ -368,6 +373,7 @@ describe('organizations and roles in Chromium', () => {
     expect(await bearer(organization, bound)).toBe(403);
 
     await owner.goto(`/orgs/${organizationId}/projects/${projectId}`);
+    await owner.getByRole('tab', { name: 'API tokens' }).click();
     const row = owner.getByRole('listitem').filter({ hasText: 'Project reader' });
     await row.getByRole('button', { name: 'Revoke token Project reader' }).click();
     await fillPrivate(owner.locator('#project-token-password'), FIXTURE_PASSWORD);
@@ -383,6 +389,7 @@ describe('organizations and roles in Chromium', () => {
 
   it('saves settings and keeps a corrected slug working after a refusal', async () => {
     await owner.goto(`/orgs/${organizationId}`);
+    await owner.getByText('Organization settings', { exact: true }).click();
     await owner.locator('#organization-settings-slug').fill('other');
     await owner.getByRole('button', { name: 'Save settings', exact: true }).click();
     await owner.getByRole('alert').first().waitFor();

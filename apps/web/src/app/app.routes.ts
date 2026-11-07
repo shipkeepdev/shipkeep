@@ -11,7 +11,12 @@ const titles = {
   'reset-password': 'Choose a new password',
 };
 export const appRoutes: Route[] = [
-  { path: '', pathMatch: 'full', redirectTo: 'orgs' },
+  { path: '', pathMatch: 'full', redirectTo: 'home' },
+  {
+    path: 'home',
+    title: 'Shipkeep',
+    loadComponent: () => import('./workspace/landing-page').then((module) => module.LandingPage),
+  },
   // Existing email messages use these public paths; codes are entered in the form only.
   { path: 'verify-email', pathMatch: 'full', redirectTo: 'auth/verify-email' },
   { path: 'reset-password', pathMatch: 'full', redirectTo: 'auth/reset-password' },

@@ -14,6 +14,9 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ReactiveFormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 
+import { Icon } from '../shell/icon';
+import type { IconName } from '../shell/icons';
+
 import { AuthFormStore, isAuthMode, type AuthMode } from './auth-form-store';
 import { MutationRunner } from './mutation-runner';
 
@@ -51,9 +54,18 @@ const COPY: Record<AuthMode, { title: string; description: string; action: strin
   },
 };
 
+const ICONS_BY_MODE: Record<AuthMode, IconName> = {
+  login: 'login-2',
+  register: 'user-plus',
+  'verify-email': 'mail-opened',
+  'request-verification': 'mail-opened',
+  'forgot-password': 'lock-question',
+  'reset-password': 'lock-cog',
+};
+
 @Component({
   selector: 'sk-auth-page',
-  imports: [ReactiveFormsModule, RouterLink],
+  imports: [ReactiveFormsModule, RouterLink, Icon],
   providers: [AuthFormStore, MutationRunner],
   templateUrl: './auth-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -61,6 +73,7 @@ const COPY: Record<AuthMode, { title: string; description: string; action: strin
 export class AuthPage {
   protected readonly store = inject(AuthFormStore);
   protected readonly copy = computed(() => COPY[this.store.mode()]);
+  protected readonly icon = computed(() => ICONS_BY_MODE[this.store.mode()]);
   private readonly router = inject(Router);
   private readonly focus = inject(FocusMonitor);
   private readonly injector = inject(Injector);

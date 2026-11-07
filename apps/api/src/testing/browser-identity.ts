@@ -55,9 +55,8 @@ export async function signIn(
   await openAccountSecurity(page);
 }
 
-/** Sign-in lands on organizations; account security is one navigation away. */
+/** Sign-in lands on the organization or the list of them; account security is in the sidebar. */
 export async function openAccountSecurity(page: Page): Promise<void> {
-  await page.getByRole('heading', { name: 'Organizations', exact: true }).waitFor();
   await page.getByRole('link', { name: 'Account security', exact: true }).click();
   await page.getByRole('button', { name: 'Sign out', exact: true }).waitFor();
 }

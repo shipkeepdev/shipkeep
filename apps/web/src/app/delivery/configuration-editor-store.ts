@@ -4,12 +4,11 @@ import {
   parseShipkeepConfig,
   type ShipkeepConfig,
 } from '@shipkeep/config-schema';
-import { stringify } from 'yaml';
 
 import { IdentityRequestError } from '../identity/identity-api';
 import { MutationRunner } from '../identity/mutation-runner';
 
-import { configDiff } from './config-diff';
+import { configDiff, configYaml } from './config-diff';
 import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-api';
 
 /** Component-scoped draft; an optimistic hash protects every save from concurrent edits. */
@@ -35,7 +34,7 @@ export class ConfigurationEditorStore {
     this.runner.reset();
     this.environment = environment;
     this.current.set(application);
-    this.draft.set(stringify(application.config));
+    this.draft.set(configYaml(application.config));
     this.issues.set([]);
     this.preview.set(null);
     this.conflict.set(false);
@@ -93,7 +92,7 @@ export class ConfigurationEditorStore {
     );
     if (!outcome.ok || !outcome.value) return;
     this.current.set(outcome.value);
-    this.draft.set(stringify(outcome.value.config));
+    this.draft.set(configYaml(outcome.value.config));
     this.preview.set(null);
     this.notice.set('Configuration saved. Deploy when you are ready to apply it.');
   }
