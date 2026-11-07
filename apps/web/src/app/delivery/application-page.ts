@@ -16,6 +16,7 @@ import { Collection } from '../workspace/collection';
 
 import { ConfigurationEditor } from './configuration-editor';
 import { LiveEvents } from './live-events';
+import { ReleaseHistory } from './release-history';
 import {
   type Application,
   DeliveryApi,
@@ -34,7 +35,7 @@ const LIVE_POLL_MS = 15_000;
 /** One application: its configuration, deploying it and following its deployments. */
 @Component({
   selector: 'sk-application-page',
-  imports: [RouterLink, ConfigurationEditor],
+  imports: [RouterLink, ConfigurationEditor, ReleaseHistory],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -191,6 +192,11 @@ const LIVE_POLL_MS = 15_000;
             <p class="mb-8 border-y border-line py-6 text-muted">Not deployed yet.</p>
           }
         </section>
+        <sk-release-history
+          [environment]="environment()"
+          [applicationId]="current.id"
+          [revision]="deployments.items().length"
+        />
         <sk-configuration-editor [application]="current" [environment]="environment()" />
       }
     </section>
