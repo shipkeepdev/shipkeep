@@ -52,6 +52,12 @@ export function applicationConfig(value: unknown): ApplicationConfig {
       'unsupported_application_source',
       'Only image applications (build.type: image) can be created for now.',
     );
+  // Wildcards need DNS-01 (SPEC 2.2), which neither the agent nor the control plane offers yet.
+  if (config.domains?.some((hostname) => hostname.startsWith('*.')))
+    throw new InvalidInputError(
+      'wildcard_domain_unsupported',
+      'Wildcard domains are not supported yet.',
+    );
   const canonical = canonicalJson(config);
   if (new TextEncoder().encode(canonical).length > MAX_APPLICATION_CONFIG_BYTES)
     throw new InvalidInputError(
@@ -87,4 +93,26 @@ function sortKeys(value: unknown): unknown {
         .map((key) => [key, sortKeys((value as Record<string, unknown>)[key])]),
     );
   return value;
+}
+
+/** Where a domain points, as far as the control plane may say (SPEC 8, PLAN M3.6a). */
+export type DomainDnsStatus = 'public' | 'private' | 'none' | 'unknown';
+
+export interface DomainDns {
+  readonly hostname: string;
+  readonly status: DomainDnsStatus;
+  /** Public addresses only: answers about internal names must not reach tenants. */
+  readonly addresses: readonly string[];
+}
+
+/** `addresses` undefined means the lookup itself failed, which says nothing about the record. */
+export function domainDns(
+  hostname: string,
+  addresses: readonly string[] | undefined,
+  isPublic: (address: string) => boolean,
+): DomainDns {
+  if (!addresses) return { hostname, status: 'unknown', addresses: [] };
+  if (!addresses.length) return { hostname, status: 'none', addresses: [] };
+  const visible = addresses.filter(isPublic);
+  return { hostname, status: visible.length ? 'public' : 'private', addresses: visible };
 }

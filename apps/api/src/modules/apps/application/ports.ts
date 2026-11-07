@@ -20,7 +20,22 @@ export interface ApplicationStore {
     now: Date,
   ): Promise<Application | undefined>;
   find(target: ApplicationTarget, applicationId: string): Promise<Application | undefined>;
+  /**
+   * Makes `hostnames` the application's claimed domains. Returns a hostname another application of
+   * the organization already claims, in which case the caller must abort the transaction.
+   */
+  syncDomains(
+    application: Pick<Application, 'id' | 'organizationId'>,
+    hostnames: readonly string[],
+    now: Date,
+  ): Promise<string | undefined>;
   list(target: ApplicationTarget): Promise<Application[]>;
+}
+
+export const DOMAIN_RESOLVER = Symbol('DomainResolver');
+/** Looks up a hostname's addresses; undefined when the lookup itself failed. */
+export interface DomainResolver {
+  addresses(hostname: string): Promise<readonly string[] | undefined>;
 }
 
 export const APPLICATION_TRANSACTION = Symbol('ApplicationTransaction');

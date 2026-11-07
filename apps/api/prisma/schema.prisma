@@ -415,6 +415,7 @@ model Application {
   releases       Release[]
   deployments    Deployment[]
   allocations    Allocation[]
+  domains        Domain[]
 
   @@unique([environmentId, name])
   @@unique([organizationId, id])
@@ -505,4 +506,18 @@ model AllocationObservation {
 
   @@unique([organizationId, allocationId])
   @@map("allocation_observations")
+}
+
+/// A hostname claimed by an application, unique per organization; synced from its configuration.
+model Domain {
+  id             String      @id @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  applicationId  String      @map("application_id") @db.Uuid
+  hostname       String      @db.VarChar(253)
+  createdAt      DateTime    @map("created_at") @db.Timestamptz(6)
+  application    Application @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "domains_application_fkey")
+
+  @@unique([organizationId, hostname])
+  @@index([applicationId])
+  @@map("domains")
 }

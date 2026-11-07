@@ -314,6 +314,8 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - Keep N images; one-click rollback; release diff view (image, config).
   - Acceptance: rollback under load with zero failed requests.
 - [ ] **M3.6 Domains and TLS** (A + C + W). Depends: M1.5
+  - [x] **M3.6a** Hostnames unique per organization, wildcards refused, and a live DNS check on the application page. HTTP-01 certificates already work through the routes Caddy serves, unproven until the VM run.
+  - [ ] **M3.6b** Node public addresses for real verification, certificate expiry tracking, DNS-01 for Cloudflare.
   - Custom domains, HTTP-01, DNS-01 for Cloudflare first, verification status, certificate expiry tracking.
   - Acceptance: domain added and served over HTTPS in an E2E test.
 - [ ] **M3.7 Secrets** (C + W). Depends: M2.3

@@ -4,6 +4,7 @@ import {
   applicationConfig,
   assertSameName,
   canonicalJson,
+  domainDns,
   MAX_APPLICATION_CONFIG_BYTES,
 } from './application';
 
@@ -90,5 +91,32 @@ describe('applicationConfig', () => {
     expect(() => {
       assertSameName({ name: 'billing-web' }, next);
     }).not.toThrow();
+  });
+});
+
+describe('domains', () => {
+  it('refuses wildcard domains until DNS-01 exists', () => {
+    expect(rejection(image({ domains: ['*.acme.example.com'] })).code).toBe(
+      'wildcard_domain_unsupported',
+    );
+    expect(applicationConfig(image({ domains: ['api.acme.example.com'] })).name).toBe(
+      'billing-api',
+    );
+  });
+
+  it('never reveals non-public addresses', () => {
+    const isPublic = (address: string) => !address.startsWith('10.');
+    expect(domainDns('a.example.com', ['203.0.113.4', '10.0.0.5'], isPublic)).toEqual({
+      hostname: 'a.example.com',
+      status: 'public',
+      addresses: ['203.0.113.4'],
+    });
+    expect(domainDns('internal.example.com', ['10.0.0.5'], isPublic)).toEqual({
+      hostname: 'internal.example.com',
+      status: 'private',
+      addresses: [],
+    });
+    expect(domainDns('a.example.com', [], isPublic).status).toBe('none');
+    expect(domainDns('a.example.com', undefined, isPublic).status).toBe('unknown');
   });
 });
