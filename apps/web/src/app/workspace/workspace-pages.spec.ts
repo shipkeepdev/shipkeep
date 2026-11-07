@@ -166,7 +166,9 @@ describe('workspace pages', () => {
           },
           201,
         );
-      return path.endsWith('/environments') || path.endsWith('/bindings')
+      return path.endsWith('/environments') ||
+        path.endsWith('/bindings') ||
+        path.endsWith('/api-tokens')
         ? json({ items: [], nextCursor: null })
         : json(project);
     };

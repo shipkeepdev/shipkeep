@@ -185,4 +185,22 @@ describe('API-token forms', () => {
     expect(store.beginRevoke(expiring.id)).toBe(false);
     expect(api.listTokens).toHaveBeenCalledTimes(1);
   });
+
+  it('sends the chosen scopes and project, and refuses a token with no permission', async () => {
+    await store.refresh();
+    const scope = { permission: 'project.read' as const, organizationId: 'o', projectId: 'p' };
+    api.createToken.mockResolvedValue({ ...token, token: 'B'.repeat(43) });
+    store.beginCreate();
+    store.form.patchValue({ name: 'Deploy', password: 'correct horse browser fixture' });
+    store.setGrant({ scopes: [] });
+    await store.submit();
+    expect(api.createToken).not.toHaveBeenCalled();
+    expect(store.problem()).toContain('at least one permission');
+
+    const project = { organizationId: 'o', projectId: 'p' };
+    store.setGrant({ scopes: [scope], project });
+    await store.submit();
+    expect(api.createToken.mock.calls.at(-1)?.[0]).toMatchObject({ scopes: [scope], project });
+    expect(store.scopeLabel(scope)).toBe('project.read, one project');
+  });
 });

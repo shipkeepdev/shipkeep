@@ -16,11 +16,14 @@ export class PagedList<T> {
   private readonly status = signal<'loading' | 'ready' | 'failed'>('loading');
   private readonly failure = signal<string | null>(null);
   private readonly extending = signal(false);
+  private readonly refused = signal(false);
   private revision = 0;
   readonly items = this.loaded.asReadonly();
   readonly state = this.status.asReadonly();
   readonly problem = this.failure.asReadonly();
   readonly loadingMore = this.extending.asReadonly();
+  /** The API hides what the caller may not manage: a panel for it has nothing to offer. */
+  readonly denied = this.refused.asReadonly();
   readonly hasMore = (): boolean => this.cursor() !== null;
 
   constructor(private readonly load: (cursor?: string) => Promise<Page<T>>) {}
@@ -35,12 +38,14 @@ export class PagedList<T> {
       this.loaded.set(page.items);
       this.cursor.set(page.nextCursor);
       this.failure.set(null);
+      this.refused.set(false);
       this.status.set('ready');
     } catch (error: unknown) {
       if (revision !== this.revision) return;
       this.loaded.set([]);
       this.cursor.set(null);
       this.failure.set(message(error));
+      this.refused.set(error instanceof IdentityRequestError && [403, 404].includes(error.status));
       this.status.set('failed');
     }
   }
