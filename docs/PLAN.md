@@ -309,6 +309,8 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
       - [x] **M3.4c4c** The pg-boss worker: one job per deployment, woken by action results, audited transitions and recovery.
   - [x] **M3.4d Configuration editor** (W). Edit YAML with schema validation, review a diff, and save with `expectedConfigSha`. A 409 keeps the draft and requires reloading the latest version and reviewing again. Saving does not deploy.
 - [ ] **M3.5 Rollback and release history** (C + W). Depends: M3.4
+  - [x] **M3.5a** One-click rollback: a new release copying an earlier one's pinned image and configuration, without replaying its release command; the replaced deployment becomes `rolled_back`.
+  - [ ] **M3.5b** Release history with a diff view, removal of replaced containers, and image retention (`deploy.keep_images`, which needs an image-removal agent action).
   - Keep N images; one-click rollback; release diff view (image, config).
   - Acceptance: rollback under load with zero failed requests.
 - [ ] **M3.6 Domains and TLS** (A + C + W). Depends: M1.5
