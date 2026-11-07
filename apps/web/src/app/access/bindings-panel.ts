@@ -7,6 +7,7 @@ import {
   Validators,
 } from '@angular/forms';
 
+import { T } from '../ui/i18n';
 import { required } from '../workspace/validators';
 
 import {
@@ -27,47 +28,52 @@ const email: ValidatorFn = (control) => Validators.email(control);
  */
 @Component({
   selector: 'sk-bindings-panel',
-  imports: [ReactiveFormsModule, ReauthForm],
+  imports: [ReactiveFormsModule, ReauthForm, T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (!bindings.denied()) {
       <section aria-labelledby="bindings-title" class="mt-8 border-t border-line pt-6">
-        <h2 id="bindings-title">Access</h2>
+        <h2 id="bindings-title">{{ 'Access' | t }}</h2>
         @if (scope().environmentId) {
-          <p class="page-intro">A role set here replaces the person's project role here.</p>
+          <p class="page-intro">
+            {{ "A role set here replaces the person's project role here." | t }}
+          </p>
         }
         @if (notice(); as text) {
-          <p role="status" class="feedback">{{ text }}</p>
+          <p role="status" class="feedback">{{ text | t }}</p>
         }
         @if (bindings.problem(); as problem) {
           <div class="feedback" role="alert">
-            <p>{{ problem }}</p>
+            <p>{{ problem | t }}</p>
           </div>
         }
         @switch (bindings.state()) {
           @case ('loading') {
-            <p role="status" class="text-muted">Loading access…</p>
+            <p role="status" class="text-muted">{{ 'Loading access…' | t }}</p>
           }
           @case ('ready') {
             @if (bindings.items().length) {
-              <ul class="mb-8 divide-y divide-line border-y border-line" aria-label="Access">
+              <ul
+                class="mb-8 divide-y divide-line border-y border-line"
+                [attr.aria-label]="'Access' | t"
+              >
                 @for (binding of bindings.items(); track binding.id) {
                   <li class="py-3">
                     <div class="flex flex-wrap items-center justify-between gap-3">
                       <span>
                         <span class="break-all">{{ binding.email }}</span>
                         <span class="ml-2 text-sm text-muted"
-                          >{{ binding.role }}, from {{ binding.source }}</span
+                          >{{ binding.role | t }}, {{ 'from ' + binding.source | t }}</span
                         >
                       </span>
                       @if (binding.directRole) {
                         <button
                           class="button button-secondary"
                           type="button"
-                          [attr.aria-label]="'Remove role of ' + binding.email"
+                          [attr.aria-label]="'Remove role of {email}' | t: { email: binding.email }"
                           (click)="select(binding)"
                         >
-                          Remove role
+                          {{ 'Remove role' | t }}
                         </button>
                       }
                     </div>
@@ -76,13 +82,14 @@ const email: ValidatorFn = (control) => Validators.email(control);
                         <p class="hint">
                           {{
                             binding.inheritedRole
-                              ? 'They keep the role ' + binding.inheritedRole + ' they inherit.'
-                              : 'They lose access here.'
+                              ? ('They keep the role {role} they inherit.'
+                                | t: { role: (binding.inheritedRole | t) })
+                              : ('They lose access here.' | t)
                           }}
                         </p>
                         <sk-reauth-form
                           prefix="binding-remove"
-                          label="Remove role"
+                          [label]="'Remove role' | t"
                           [form]="removeForm"
                           [send]="remove"
                           (done)="finished('Role removed.')"
@@ -93,7 +100,7 @@ const email: ValidatorFn = (control) => Validators.email(control);
                             type="button"
                             (click)="selected.set(null)"
                           >
-                            Cancel
+                            {{ 'Cancel' | t }}
                           </button>
                         </sk-reauth-form>
                       </div>
@@ -103,7 +110,7 @@ const email: ValidatorFn = (control) => Validators.email(control);
               </ul>
             } @else {
               <p class="mb-8 border-y border-line py-6 text-muted">
-                Only organization owners and administrators have access for now.
+                {{ 'Only organization owners and administrators have access for now.' | t }}
               </p>
             }
             @if (bindings.hasMore()) {
@@ -114,23 +121,23 @@ const email: ValidatorFn = (control) => Validators.email(control);
                   [disabled]="bindings.loadingMore()"
                   (click)="bindings.more()"
                 >
-                  {{ bindings.loadingMore() ? 'Loading…' : 'Show more people' }}
+                  {{ (bindings.loadingMore() ? 'Loading…' : 'Show more people') | t }}
                 </button>
               </div>
             }
           }
         }
-        <h3>Give someone a role</h3>
-        <p class="hint">They must already be a member of the organization.</p>
+        <h3>{{ 'Give someone a role' | t }}</h3>
+        <p class="hint">{{ 'They must already be a member of the organization.' | t }}</p>
         <sk-reauth-form
           prefix="binding-add"
-          label="Give role"
+          [label]="'Give role' | t"
           [form]="assignForm"
           [send]="assign"
           (done)="assigned()"
         >
           <div>
-            <label for="binding-add-email">Email</label>
+            <label for="binding-add-email">{{ 'Email' | t }}</label>
             <input
               id="binding-add-email"
               type="email"
@@ -141,10 +148,10 @@ const email: ValidatorFn = (control) => Validators.email(control);
             />
           </div>
           <div>
-            <label for="binding-add-role">Role</label>
+            <label for="binding-add-role">{{ 'Role' | t }}</label>
             <select id="binding-add-role" [formControl]="assignForm.controls.role">
               @for (role of roles; track role) {
-                <option [value]="role">{{ role }}</option>
+                <option [value]="role">{{ role | t }}</option>
               }
             </select>
           </div>

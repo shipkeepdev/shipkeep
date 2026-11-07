@@ -1,59 +1,144 @@
-<section class="max-w-2xl" aria-labelledby="account-title">
-  <h1 #heading id="account-title" tabindex="-1">Account security</h1>
-  <p class="page-intro">Manage access to your Shipkeep account.</p>
-  @switch (store.session.state()) {
-    @case ('loading') {
-      <p role="status" class="border-y border-line py-6 text-muted">Checking your session…</p>
-    }
-    @case ('unavailable') {
-      <div class="feedback" role="alert">
-        <p>Your session could not be checked. Try again when the service is available.</p>
-      </div>
-      <button class="button" type="button" (click)="store.session.refresh()">
-        Check session again
+@let email = store.session.profile()?.email ?? '';
+<div class="flex flex-col gap-[18px]">
+  <div class="page-head">
+    <div class="min-w-0">
+      <h1 #heading tabindex="-1" class="page-title">
+        {{ email.split('@')[0] || ('Profile' | t) }}
+      </h1>
+      <div class="mt-1.5 text-[13px] text-mute2">{{ email }}</div>
+    </div>
+    @if (store.session.state() === 'authenticated') {
+      <button
+        class="btn"
+        type="button"
+        (click)="signOut()"
+        [disabled]="
+          store.submission.busy() ||
+          !!store.submission.cooldown() ||
+          store.submission.restartRequired()
+        "
+      >
+        <sk-icon name="logout" />{{ (store.signingOut() ? 'Signing out…' : 'Sign out') | t }}
       </button>
     }
-    @case ('anonymous') {
-      <p class="mb-6">Sign in to manage your account security.</p>
-      <a class="button" routerLink="/auth/login">Sign in</a>
+  </div>
+  @switch (store.session.state()) {
+    @case ('loading') {
+      <p role="status" class="text-[13px] text-mute2">{{ 'Checking your session…' | t }}</p>
     }
-    @case ('authenticated') {
-      <dl class="mb-8 border-y border-line py-5">
-        <dt class="mb-2 text-sm text-muted">Signed in as</dt>
-        <dd class="break-all font-semibold">{{ store.session.profile()?.email }}</dd>
-      </dl>
-      @if (store.submission.problem(); as problem) {
-        <div #feedback class="feedback" role="alert" tabindex="-1">
-          <p>{{ problem }}</p>
-          @if (store.submission.restartRequired()) {
-            <a class="button button-secondary mt-3" href="/account/security">Reload account</a>
-          }
-        </div>
-      }
-      @if (store.submission.cooldown()) {
-        <p class="hint tabular-nums">Try again in {{ store.submission.cooldown() }} seconds.</p>
-      }
-      <section aria-labelledby="password-title" class="border-b border-line pb-8">
-        <h2 id="password-title">Password</h2>
-        <p class="mb-4 text-sm text-muted">Use an email reset code to choose a new password.</p>
-        <a routerLink="/auth/forgot-password">Change your password</a>
-      </section>
-      <sk-mfa-panel />
-      <sk-token-panel />
-      <div class="mt-8">
-        <button
-          class="button button-secondary"
-          type="button"
-          (click)="signOut()"
-          [disabled]="
-            store.submission.busy() ||
-            !!store.submission.cooldown() ||
-            store.submission.restartRequired()
-          "
-        >
-          {{ store.signingOut() ? 'Signing out…' : 'Sign out' }}
+    @case ('unavailable') {
+      <div class="alert" role="alert">
+        {{ 'Your session could not be checked. Try again when the service is available.' | t }}
+      </div>
+      <div>
+        <button class="btn btn-sm" type="button" (click)="store.session.refresh()">
+          {{ 'Check session again' | t }}
         </button>
       </div>
     }
+    @case ('anonymous') {
+      <p class="text-[13px] text-fg3">{{ 'Sign in to manage your account security.' | t }}</p>
+      <div>
+        <a class="btn btn-primary" routerLink="/auth/login">{{ 'Sign in' | t }}</a>
+      </div>
+    }
+    @case ('authenticated') {
+      @if (store.submission.problem(); as problem) {
+        <div #feedback class="alert" role="alert" tabindex="-1">
+          <div>
+            <p>{{ problem | t }}</p>
+            @if (store.submission.restartRequired()) {
+              <a class="btn btn-sm mt-2" [href]="reloadUrl()">{{ 'Reload' | t }}</a>
+            }
+          </div>
+        </div>
+      }
+      @if (store.submission.cooldown()) {
+        <p class="text-[12.5px] text-mute tabular-nums">
+          {{ 'Try again in {s} seconds.' | t: { s: store.submission.cooldown() } }}
+        </p>
+      }
+      <div class="grid items-start gap-7 md:grid-cols-[210px_minmax(0,1fr)]">
+        <nav
+          class="flex flex-col gap-0.5 max-md:flex-row max-md:overflow-x-auto md:sticky md:top-3"
+          [attr.aria-label]="'Profile' | t"
+        >
+          @for (x of sections; track x.k) {
+            <a
+              class="sidenav-item max-md:whitespace-nowrap"
+              [routerLink]="[]"
+              [queryParams]="{ section: x.k }"
+              [attr.aria-current]="x.k === section() ? 'page' : null"
+            >
+              <sk-icon [name]="x.icon" /><span class="flex-1">{{ x.label | t }}</span>
+            </a>
+          }
+        </nav>
+        <div class="flex min-w-0 flex-col gap-4">
+          <span class="sec-title">{{ current().label | t }}</span>
+          <div [hidden]="section() !== 'account'" class="card px-5 py-1.5">
+            <div class="field-row">
+              <div class="field-label">{{ 'Email' | t }}</div>
+              <div class="field-box font-mono">
+                <span class="truncate">{{ email }}</span>
+              </div>
+            </div>
+            <div class="field-row">
+              <div>
+                <div class="field-label">{{ 'Password' | t }}</div>
+                <div class="field-hint">{{ 'Changing it signs out your other sessions.' | t }}</div>
+              </div>
+              <div>
+                <a class="btn btn-sm" routerLink="/auth/forgot-password">{{
+                  'Change your password' | t
+                }}</a>
+              </div>
+            </div>
+            <div class="field-row">
+              <div class="field-label">{{ 'Language' | t }}</div>
+              <div class="seg w-fit" role="group" [attr.aria-label]="'Language' | t">
+                <button
+                  type="button"
+                  [attr.aria-pressed]="i18n.language() === 'en'"
+                  (click)="i18n.use('en')"
+                >
+                  English
+                </button>
+                <button
+                  type="button"
+                  [attr.aria-pressed]="i18n.language() === 'fr'"
+                  (click)="i18n.use('fr')"
+                >
+                  Français
+                </button>
+              </div>
+            </div>
+          </div>
+          <div [hidden]="section() !== 'security'" class="legacy-form card p-5">
+            <sk-mfa-panel />
+          </div>
+          <div [hidden]="section() !== 'tokens'" class="legacy-form card p-5">
+            <sk-token-panel />
+          </div>
+          <div [hidden]="section() !== 'appearance'" class="card px-5 py-1.5">
+            <div class="field-row">
+              <div class="field-label">{{ 'Theme' | t }}</div>
+              <div class="field-box">
+                <span>{{ 'Black' | t }}</span>
+              </div>
+            </div>
+            <div class="field-row">
+              <div>
+                <div class="field-label">{{ 'Reduced motion' | t }}</div>
+                <div class="field-hint">{{ 'Follows the setting of your system.' | t }}</div>
+              </div>
+              <div class="field-box">
+                <span>{{ 'system' | t }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    }
   }
-</section>
+</div>

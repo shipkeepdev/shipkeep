@@ -1,129 +1,158 @@
-import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
-import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
-import { RouterLink } from '@angular/router';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  effect,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { map } from 'rxjs';
 
+import { BlockView } from '../dashboard/block-view';
+import { type Block } from '../dashboard/screen-model';
 import { IdentityRequestError } from '../identity/identity-api';
-import { MutationRunner } from '../identity/mutation-runner';
-
-import { Collection } from './collection';
-import { recoverOnEdit } from './form-recovery';
-import { OrganizationOverview } from './organization-overview';
+import { Icon } from '../shell/icon';
+import { type IconName } from '../shell/icons';
+import { ShellContext } from '../shell/shell-context';
+import { T } from '../ui/i18n';
 import { OrganizationSettings } from './organization-settings';
-import { required, slug } from './validators';
-import { type Organization, type Project, WorkspaceApi } from './workspace-api';
+import { type Organization, WorkspaceApi } from './workspace-api';
 
-/** One organization: its projects, and creating a project (organization admins). */
+interface OrgSection {
+  readonly k: string;
+  readonly label: string;
+  readonly icon: IconName;
+}
+const SECTIONS: readonly OrgSection[] = [
+  { k: 'general', label: 'General', icon: 'building' },
+  { k: 'members', label: 'Members', icon: 'users' },
+  { k: 'invites', label: 'Invitations', icon: 'mail-forward' },
+  { k: 'audit', label: 'Audit log', icon: 'history' },
+  { k: 'danger', label: 'Danger zone', icon: 'alert-triangle' },
+];
+const DANGER: Block = {
+  type: 'danger',
+  items: [
+    ['Transfer ownership', 'Another admin becomes the owner.', 'Transfer'],
+    ['Delete the organization', 'Deletes projects, resources and linked servers.', 'Delete'],
+  ],
+};
+
+/** 20 Organization: its name and identifier, members, and what can end it. */
 @Component({
   selector: 'sk-organization-page',
-  imports: [ReactiveFormsModule, RouterLink, OrganizationOverview, OrganizationSettings],
-  providers: [MutationRunner],
+  imports: [BlockView, Icon, OrganizationSettings, RouterLink, T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <section aria-labelledby="organization-title">
-      <div class="page-header">
+    <div class="flex flex-col gap-[18px]">
+      <div class="page-head">
         <div class="min-w-0">
-          <h1 id="organization-title">{{ organization()?.name ?? 'Organization' }}</h1>
-          <p class="text-[13.5px] text-muted">Overview of what runs in this organization.</p>
+          <h1 class="page-title">{{ organization()?.name ?? '…' }}</h1>
+          <div class="mt-1.5 text-[13px] text-mute2">
+            {{
+              'Organization · {members} members · {projects} projects'
+                | t: { members: shell.members() ?? '—', projects: shell.projects().length }
+            }}
+          </div>
         </div>
       </div>
       @if (missing()) {
-        <div class="feedback" role="alert">
-          <p>{{ missing() }}</p>
-        </div>
-      } @else {
-        <sk-organization-overview [organizationId]="organizationId()" />
-        <h2>Projects</h2>
-        @switch (projects.state()) {
-          @case ('loading') {
-            <p role="status" class="text-muted">Loading projects…</p>
+        <div class="alert" role="alert">{{ missing() | t }}</div>
+      }
+      <div class="grid items-start gap-7 md:grid-cols-[210px_minmax(0,1fr)]">
+        <nav
+          class="flex flex-col gap-0.5 max-md:flex-row max-md:overflow-x-auto md:sticky md:top-3"
+          [attr.aria-label]="'Organization' | t"
+        >
+          @for (x of sections; track x.k) {
+            <a
+              class="sidenav-item max-md:whitespace-nowrap"
+              [class.danger]="x.k === 'danger'"
+              [routerLink]="[]"
+              [queryParams]="{ section: x.k }"
+              [attr.aria-current]="x.k === section() ? 'page' : null"
+            >
+              <sk-icon [name]="x.icon" /><span class="flex-1">{{ x.label | t }}</span>
+            </a>
           }
-          @case ('failed') {
-            <div class="feedback" role="alert">
-              <p>{{ projects.problem() }}</p>
-            </div>
-          }
-          @default {
-            @if (projects.items().length) {
-              <ul class="mb-6 divide-y divide-line border-y border-line" aria-label="Projects">
-                @for (project of projects.items(); track project.id) {
-                  <li class="py-3">
-                    <a [routerLink]="['/orgs', organizationId(), 'projects', project.id]">{{
-                      project.name
-                    }}</a>
-                    <span class="ml-2 text-sm text-muted">{{ project.slug }}</span>
-                  </li>
-                }
-              </ul>
-            } @else {
-              <p class="mb-6 border-y border-line py-6 text-muted">No projects yet.</p>
+        </nav>
+        <div class="flex min-w-0 flex-col gap-4">
+          <span class="sec-title">{{ current().label | t }}</span>
+          @switch (section()) {
+            @case ('general') {
+              @if (organization(); as org) {
+                <div class="card legacy-form p-5">
+                  <sk-organization-settings [current]="org" (updated)="organization.set($event)" />
+                </div>
+              }
+            }
+            @case ('members') {
+              <div class="note">
+                <sk-icon name="users" class="text-mute" />
+                <span>{{
+                  '{n} members. Add people, change roles and see project roles under Members & access.'
+                    | t: { n: shell.members() ?? '—' }
+                }}</span>
+              </div>
+              <div>
+                <a class="btn btn-sm" [routerLink]="['/orgs', organizationId(), 'members']">{{
+                  'Open Members & access' | t
+                }}</a>
+              </div>
+            }
+            @case ('invites') {
+              <div class="note note-warn">
+                <sk-icon name="info-circle" class="text-amber" />
+                <span>{{
+                  'Email invitations are not built yet. For now, add people who already have an account, under Members & access.'
+                    | t
+                }}</span>
+              </div>
+            }
+            @case ('audit') {
+              <div class="note">
+                <sk-icon name="info-circle" class="text-mute" />
+                <span>{{ 'The full journal is on the Audit log screen.' | t }}</span>
+              </div>
+              <div>
+                <a class="btn btn-sm" [routerLink]="['/orgs', organizationId(), 'audit']">{{
+                  'Open the audit log' | t
+                }}</a>
+              </div>
+            }
+            @case ('danger') {
+              <sk-block [block]="danger" [organizationId]="organizationId()" />
             }
           }
-        }
-        <details class="disclosure">
-          <summary>Create a project</summary>
-          @if (runner.problem(); as problem) {
-            <div class="feedback" role="alert">
-              <p>{{ problem }}</p>
-            </div>
-          }
-          <form [formGroup]="form" (ngSubmit)="create()" class="grid gap-4">
-            <div>
-              <label for="project-name">Name</label>
-              <input id="project-name" formControlName="name" maxlength="80" autocomplete="off" />
-            </div>
-            <div>
-              <label for="project-slug">Slug</label>
-              <input
-                id="project-slug"
-                formControlName="slug"
-                maxlength="40"
-                autocomplete="off"
-                spellcheck="false"
-              />
-            </div>
-            <div>
-              <button
-                class="button"
-                type="submit"
-                [disabled]="runner.busy() || !!runner.cooldown() || form.invalid"
-              >
-                {{ runner.busy() ? 'Creating…' : 'Create project' }}
-              </button>
-            </div>
-          </form>
-        </details>
-        @if (organization(); as current) {
-          <details class="disclosure">
-            <summary>Organization settings</summary>
-            <sk-organization-settings [current]="current" (updated)="organization.set($event)" />
-          </details>
-        }
-      }
-    </section>
+        </div>
+      </div>
+    </div>
   `,
 })
 export class OrganizationPage {
   private readonly api = inject(WorkspaceApi);
-  protected readonly runner = inject(MutationRunner);
+  protected readonly shell = inject(ShellContext);
   readonly organizationId = input.required<string>();
+  protected readonly sections = SECTIONS;
+  protected readonly danger = DANGER;
   protected readonly organization = signal<Organization | null>(null);
   protected readonly missing = signal<string | null>(null);
-  protected readonly projects = new Collection<Project>(() =>
-    this.api.projects(this.organizationId()),
+  private readonly query = toSignal(
+    inject(ActivatedRoute).queryParamMap.pipe(map((q) => q.get('section'))),
   );
-  protected readonly form = new FormGroup({
-    name: new FormControl('', { nonNullable: true, validators: [required] }),
-    slug: new FormControl('', {
-      nonNullable: true,
-      validators: [required, slug],
-    }),
-  });
+  protected readonly section = computed(() =>
+    SECTIONS.some((s) => s.k === this.query()) ? (this.query() as string) : 'general',
+  );
+  protected readonly current = computed(
+    () => SECTIONS.find((s) => s.k === this.section()) ?? SECTIONS[0],
+  );
 
   constructor() {
-    recoverOnEdit(this.form, this.runner);
     effect(() => {
-      const id = this.organizationId();
-      void this.load(id);
+      void this.load(this.organizationId());
     });
   }
 
@@ -131,7 +160,6 @@ export class OrganizationPage {
     this.missing.set(null);
     try {
       this.organization.set(await this.api.organization(id));
-      await this.projects.refresh();
     } catch (error: unknown) {
       this.organization.set(null);
       this.missing.set(
@@ -140,20 +168,5 @@ export class OrganizationPage {
           : 'This organization could not be loaded.',
       );
     }
-  }
-
-  protected async create(): Promise<void> {
-    const value = this.form.getRawValue();
-    const body = {
-      name: value.name.trim(),
-      slug: value.slug.trim(),
-      gitWriteMode: 'commit' as const,
-    };
-    const outcome = await this.runner.run(body, (key) =>
-      this.api.createProject(this.organizationId(), body, key),
-    );
-    if (!outcome.ok) return;
-    this.form.reset();
-    await this.projects.refresh();
   }
 }

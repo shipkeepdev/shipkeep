@@ -47,6 +47,9 @@ export class MutationRunner {
   private readonly failure = signal<string | null>(null);
   private readonly remaining = signal(0);
   private readonly restart = signal(false);
+  private readonly lastStatus = signal<number | null>(null);
+  /** HTTP status of the last refusal, or null. */
+  readonly status = this.lastStatus.asReadonly();
   readonly busy = this.pending.asReadonly();
   readonly problem = this.failure.asReadonly();
   readonly cooldown = this.remaining.asReadonly();
@@ -69,6 +72,7 @@ export class MutationRunner {
     const revision = ++this.#revision;
     this.pending.set(true);
     this.failure.set(null);
+    this.lastStatus.set(null);
     try {
       const value = await operation(this.#attempt.keyFor(body), () => revision === this.#revision);
       if (revision !== this.#revision) return { ok: false };
@@ -80,6 +84,7 @@ export class MutationRunner {
         this.failure.set(error.message);
         this.restart.set(true);
       } else if (error instanceof IdentityRequestError) {
+        this.lastStatus.set(error.status);
         this.failure.set(error.message);
         this.restart.set(error.status === 409);
         // A timeout may follow a commit, and a later retry can be throttled before replay lookup.
@@ -101,6 +106,7 @@ export class MutationRunner {
     this.#attempt.reset();
     this.pending.set(false);
     this.failure.set(null);
+    this.lastStatus.set(null);
     this.restart.set(false);
     // Starting over never bypasses an outstanding server-requested wait.
   }

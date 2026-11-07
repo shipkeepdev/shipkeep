@@ -91,6 +91,10 @@ export class IdentityApi {
     fetch: (input: Request) => this.send(browserRequest(input, this.origin, this.document.cookie)),
   });
 
+  /** Public: the control plane version, shown in the dashboard frame. */
+  health(): Promise<IdentitySchema<'HealthDto'>> {
+    return this.required(() => this.client.GET('/api/v1/health'));
+  }
   session(): Promise<SessionProfile> {
     return this.required(() => this.client.GET('/api/v1/auth/session'));
   }

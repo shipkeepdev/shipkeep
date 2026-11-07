@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
 import { appRoutes } from '../app.routes';
@@ -51,7 +51,11 @@ describe('access screens', () => {
     };
     TestBed.configureTestingModule({
       providers: [
-        provideRouter(appRoutes, withComponentInputBinding()),
+        provideRouter(
+          appRoutes,
+          withComponentInputBinding(),
+          withRouterConfig({ paramsInheritanceStrategy: 'always' }),
+        ),
         {
           provide: IDENTITY_FETCH,
           useValue: async (request: Request) => {
@@ -63,6 +67,9 @@ describe('access screens', () => {
                 key: request.headers.get('idempotency-key'),
               });
             const answer = routes[`${request.method} ${url.pathname}`];
+            // The dashboard frame reads the organization on every page.
+            if (!answer && url.pathname === ORG_PATH)
+              return json({ id: ORG, name: 'Acme', slug: 'acme', ...stamp });
             return answer ? answer(url) : json({}, 404);
           },
         },
@@ -108,8 +115,8 @@ describe('access screens', () => {
     return found;
   }
   function row(text: string): HTMLElement {
-    const found = [...element().querySelectorAll('li')].find((item) =>
-      item.textContent.includes(text),
+    const found = [...element().querySelectorAll<HTMLElement>('li, [role="listitem"]')].find(
+      (item) => item.textContent.includes(text),
     );
     if (!found) throw new Error(`missing ${text}`);
     return found;
@@ -131,6 +138,8 @@ describe('access screens', () => {
   async function members(): Promise<void> {
     await harness.navigateByUrl(`/orgs/${ORG}/members`);
     await settle();
+    // Adding someone starts from the Invite button, as in the design.
+    await click(element(), 'Invite');
   }
 
   it('adds a member with a fresh password and forgets it afterwards', async () => {

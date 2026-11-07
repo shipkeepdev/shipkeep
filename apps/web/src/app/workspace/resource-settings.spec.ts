@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
 import { appRoutes } from '../app.routes';
@@ -54,7 +54,11 @@ describe('resource settings', () => {
     };
     TestBed.configureTestingModule({
       providers: [
-        provideRouter(appRoutes, withComponentInputBinding()),
+        provideRouter(
+          appRoutes,
+          withComponentInputBinding(),
+          withRouterConfig({ paramsInheritanceStrategy: 'always' }),
+        ),
         {
           provide: IDENTITY_FETCH,
           useValue: async (request: Request) => {
@@ -118,7 +122,7 @@ describe('resource settings', () => {
 
   it('renames an organization and shows the saved values', async () => {
     routes[`POST ${ORG_PATH}/settings`] = (body) => json({ ...organization, ...body });
-    await harness.navigateByUrl(`/orgs/${ORG}`);
+    await harness.navigateByUrl(`/orgs/${ORG}/organization`);
     await settle();
     expect(control('organization-settings-name').value).toBe('Acme');
     expect(saveButton().disabled).toBe(true);
@@ -136,7 +140,7 @@ describe('resource settings', () => {
   });
 
   it('refuses names and slugs the API would refuse', async () => {
-    await harness.navigateByUrl(`/orgs/${ORG}`);
+    await harness.navigateByUrl(`/orgs/${ORG}/organization`);
     await settle();
     for (const name of ['', '   ', 'a'.repeat(81), 'bad\u0000name', 'bidi‮name']) {
       fill('organization-settings-name', name);
@@ -153,7 +157,7 @@ describe('resource settings', () => {
   it('accepts a corrected slug after one was refused as taken', async () => {
     routes[`POST ${ORG_PATH}/settings`] = (body) =>
       body['slug'] === 'taken' ? json({}, 409) : json({ ...organization, ...body });
-    await harness.navigateByUrl(`/orgs/${ORG}`);
+    await harness.navigateByUrl(`/orgs/${ORG}/organization`);
     await settle();
     fill('organization-settings-slug', 'taken');
     await save();
@@ -170,7 +174,11 @@ describe('resource settings', () => {
   it('applies the same recovery to a create form', async () => {
     routes[`POST ${ORG_PATH}/projects`] = (body) =>
       body['slug'] === 'taken' ? json({}, 409) : json({ ...project, ...body }, 201);
-    await harness.navigateByUrl(`/orgs/${ORG}`);
+    await harness.navigateByUrl(`/orgs/${ORG}/projects`);
+    await settle();
+    [...element().querySelectorAll('button')]
+      .find((b) => b.textContent.includes('New project'))
+      ?.click();
     await settle();
     fill('project-name', 'Billing');
     fill('project-slug', 'taken');
@@ -193,11 +201,11 @@ describe('resource settings', () => {
       json({ ...organization, id: OTHER_ORG, name: 'Other', slug: 'other' });
     routes[`GET /api/v1/organizations/${OTHER_ORG}/projects`] = () =>
       json({ items: [], nextCursor: null });
-    await harness.navigateByUrl(`/orgs/${ORG}`);
+    await harness.navigateByUrl(`/orgs/${ORG}/organization`);
     await settle();
     fill('organization-settings-name', 'Renamed');
     await save();
-    await harness.navigateByUrl(`/orgs/${OTHER_ORG}`);
+    await harness.navigateByUrl(`/orgs/${OTHER_ORG}/organization`);
     await settle();
     release(json({ ...organization, name: 'Renamed' }));
     await settle();

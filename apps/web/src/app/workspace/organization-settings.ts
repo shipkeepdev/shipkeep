@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, inject } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 
 import { MutationRunner } from '../identity/mutation-runner';
+import { T } from '../ui/i18n';
 
 import { ResourceSettings } from './resource-settings';
 import { displayName, required, slug } from './validators';
@@ -16,27 +17,27 @@ const settingsForm = () =>
 /** An organization's name and slug (`organization.update`). */
 @Component({
   selector: 'sk-organization-settings',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, T],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section aria-labelledby="organization-settings-title" class="mt-8 border-t border-line pt-6">
-      <h2 id="organization-settings-title">Settings</h2>
+      <h2 id="organization-settings-title">{{ 'Settings' | t }}</h2>
       @if (runner.problem(); as problem) {
         <div class="feedback" role="alert">
-          <p>{{ problem }}</p>
+          <p>{{ problem | t }}</p>
         </div>
       }
       @if (saved()) {
-        <p role="status" class="feedback">Settings saved.</p>
+        <p role="status" class="feedback">{{ 'Settings saved.' | t }}</p>
       }
       <form [formGroup]="form" (ngSubmit)="save()" class="grid gap-4">
         <div>
-          <label for="organization-settings-name">Name</label>
+          <label for="organization-settings-name">{{ 'Name' | t }}</label>
           <input id="organization-settings-name" formControlName="name" maxlength="80" />
         </div>
         <div>
-          <label for="organization-settings-slug">Slug</label>
+          <label for="organization-settings-slug">{{ 'Slug' | t }}</label>
           <input
             id="organization-settings-slug"
             formControlName="slug"
@@ -51,7 +52,7 @@ const settingsForm = () =>
             type="submit"
             [disabled]="runner.busy() || !!runner.cooldown() || form.invalid || form.pristine"
           >
-            {{ runner.busy() ? 'Saving…' : 'Save settings' }}
+            {{ (runner.busy() ? 'Saving…' : 'Save settings') | t }}
           </button>
         </div>
       </form>

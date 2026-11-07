@@ -1,8 +1,10 @@
 <section class="border-b border-line py-8" aria-labelledby="token-title">
-  <h2 #heading id="token-title" tabindex="-1">API tokens</h2>
+  <h2 #heading id="token-title" tabindex="-1">{{ 'API tokens' | t }}</h2>
   <p class="mb-5 text-sm text-muted">
-    Allow a script or tool to act with the permissions you choose, never more than your own. Keep
-    tokens private. You can have up to 50 active tokens.
+    {{
+      'Allow a script or tool to act with the permissions you choose, never more than your own. Keep tokens private. You can have up to 50 active tokens.'
+        | t
+    }}
   </p>
   @if (store.problem() || store.notice(); as message) {
     <div
@@ -11,15 +13,15 @@
       tabindex="-1"
       [attr.role]="store.problem() ? 'alert' : 'status'"
     >
-      <p>{{ message }}</p>
+      <p>{{ message | t }}</p>
     </div>
   }
   @if (clipboard.message(); as message) {
-    <p class="hint" role="status">{{ message }}</p>
+    <p class="hint" role="status">{{ message | t }}</p>
   }
   @if (store.credential(); as credential) {
     <div class="my-6 max-w-md">
-      <h3 class="mb-3 font-semibold">Save your API token</h3>
+      <h3 class="mb-3 font-semibold">{{ 'Save your API token' | t }}</h3>
       <label for="new-token">{{ credential.name }}</label>
       <input
         id="new-token"
@@ -31,8 +33,10 @@
         aria-describedby="new-token-help"
       />
       <p id="new-token-help" class="hint">
-        Save this token before leaving. It is shown only once and cannot be viewed here again after
-        you close this display or leave this page.
+        {{
+          'Save this token before leaving. It is shown only once and cannot be viewed here again after you close this display or leave this page.'
+            | t
+        }}
       </p>
       <div class="mt-4 flex flex-wrap gap-3">
         <button
@@ -40,7 +44,7 @@
           type="button"
           (click)="clipboard.copy(credential.token)"
         >
-          Copy API token
+          {{ 'Copy API token' | t }}
         </button>
         <button
           class="button"
@@ -48,7 +52,7 @@
           (click)="dismiss()"
           [disabled]="store.submission.busy()"
         >
-          I have saved this token
+          {{ 'I have saved this token' | t }}
         </button>
       </div>
     </div>
@@ -61,18 +65,20 @@
       [attr.aria-busy]="working()"
     >
       <h3 class="mb-4 font-semibold">
-        {{ store.mode() === 'create' ? 'Create an API token' : 'Revoke an API token' }}
+        {{ (store.mode() === 'create' ? 'Create an API token' : 'Revoke an API token') | t }}
       </h3>
       @if (store.selected(); as selected) {
         <p class="mb-5 text-sm">
-          {{ selected.name }} will stop working immediately after revocation.
+          {{
+            '{name} will stop working immediately after revocation.' | t: { name: selected.name }
+          }}
         </p>
       }
       <fieldset class="min-w-0 space-y-5" [disabled]="store.submission.busy()">
-        <legend class="sr-only">API token details and confirmation</legend>
+        <legend class="sr-only">{{ 'API token details and confirmation' | t }}</legend>
         @if (store.mode() === 'create') {
           <div>
-            <label for="token-name">Token name</label>
+            <label for="token-name">{{ 'Token name' | t }}</label>
             <input
               #firstField
               id="token-name"
@@ -83,12 +89,12 @@
               required
             />
             <p id="token-name-hint" class="hint">
-              Choose a name that identifies the tool using this token.
+              {{ 'Choose a name that identifies the tool using this token.' | t }}
             </p>
-            <p id="token-name-error" class="field-error">{{ store.errorFor('name') }}</p>
+            <p id="token-name-error" class="field-error">{{ store.errorFor('name') | t }}</p>
           </div>
           <div>
-            <label for="token-lifetime">Expires after</label>
+            <label for="token-lifetime">{{ 'Expires after' | t }}</label>
             <select
               id="token-lifetime"
               formControlName="lifetimeDays"
@@ -96,18 +102,20 @@
               [attr.aria-invalid]="!!store.errorFor('lifetimeDays')"
             >
               @for (days of lifetimes; track days) {
-                <option [ngValue]="days">{{ days }} {{ days === 1 ? 'day' : 'days' }}</option>
+                <option [ngValue]="days">{{ days }} {{ (days === 1 ? 'day' : 'days') | t }}</option>
               }
             </select>
-            <p id="token-expiry" class="hint">Expires {{ store.expiresAt() | date: 'medium' }}.</p>
+            <p id="token-expiry" class="hint">
+              {{ 'Expires {date}.' | t: { date: (store.expiresAt() | date: 'medium') ?? '' } }}
+            </p>
             <p id="token-lifetime-error" class="field-error">
-              {{ store.errorFor('lifetimeDays') }}
+              {{ store.errorFor('lifetimeDays') | t }}
             </p>
           </div>
           <sk-token-scope-picker (grantChange)="store.setGrant($event)" />
         }
         <div>
-          <label for="token-password">Current password</label>
+          <label for="token-password">{{ 'Current password' | t }}</label>
           <input
             #firstField
             id="token-password"
@@ -118,21 +126,22 @@
             [attr.aria-invalid]="!!store.errorFor('password')"
             required
           />
-          <p id="token-password-error" class="field-error">{{ store.errorFor('password') }}</p>
+          <p id="token-password-error" class="field-error">{{ store.errorFor('password') | t }}</p>
         </div>
         @if (store.mfaRequired()) {
           <div>
-            <label for="token-factor-kind">Code type</label
+            <label for="token-factor-kind">{{ 'Code type' | t }}</label
             ><select id="token-factor-kind" formControlName="factorKind">
-              <option value="totp">Authenticator code</option>
-              <option value="recovery">Recovery code</option>
+              <option value="totp">{{ 'Authenticator code' | t }}</option>
+              <option value="recovery">{{ 'Recovery code' | t }}</option>
             </select>
           </div>
           <div>
             <label for="token-factor">{{
-              store.form.controls.factorKind.value === 'totp'
+              (store.form.controls.factorKind.value === 'totp'
                 ? 'Authenticator code'
                 : 'Recovery code'
+              ) | t
             }}</label>
             <input
               id="token-factor"
@@ -147,7 +156,7 @@
               [attr.aria-invalid]="!!store.errorFor('factor')"
               required
             />
-            <p id="token-factor-error" class="field-error">{{ store.errorFor('factor') }}</p>
+            <p id="token-factor-error" class="field-error">{{ store.errorFor('factor') | t }}</p>
           </div>
         }
         <div class="flex flex-wrap gap-3">
@@ -161,11 +170,12 @@
             "
           >
             {{
-              working()
+              (working()
                 ? 'Working…'
                 : store.mode() === 'create'
                   ? 'Create API token'
                   : 'Revoke API token'
+              ) | t
             }}
           </button>
           <button
@@ -174,7 +184,7 @@
             (click)="dismiss()"
             [disabled]="store.submission.busy()"
           >
-            Cancel
+            {{ 'Cancel' | t }}
           </button>
         </div>
       </fieldset>
@@ -182,10 +192,12 @@
   }
 
   @if (store.state() === 'loading') {
-    <p class="border-y border-line py-5 text-muted" role="status">Loading API tokens…</p>
+    <p class="border-y border-line py-5 text-muted" role="status">
+      {{ 'Loading API tokens…' | t }}
+    </p>
   } @else if (store.state() === 'unavailable') {
     <p class="mb-4 text-danger" role="alert">
-      API tokens could not be loaded. Try again before making changes.
+      {{ 'API tokens could not be loaded. Try again before making changes.' | t }}
     </p>
     <button
       class="button button-secondary"
@@ -193,7 +205,7 @@
       (click)="store.refresh()"
       [disabled]="store.submission.busy()"
     >
-      Load tokens again
+      {{ 'Load tokens again' | t }}
     </button>
   } @else {
     <div class="mb-5 flex flex-wrap gap-3">
@@ -204,7 +216,7 @@
           (click)="create()"
           [disabled]="store.submission.busy()"
         >
-          Create API token
+          {{ 'Create API token' | t }}
         </button>
       }
       <button
@@ -213,33 +225,35 @@
         (click)="store.refresh()"
         [disabled]="store.submission.busy()"
       >
-        Refresh tokens
+        {{ 'Refresh tokens' | t }}
       </button>
     </div>
     @if (store.items().length) {
       @if (tableOverflows()) {
         <p id="token-scroll-hint" class="mb-3 text-sm text-muted">
-          Scroll horizontally to see all columns, including token actions.
+          {{ 'Scroll horizontally to see all columns, including token actions.' | t }}
         </p>
       }
       <div
         #tokenList
         class="overflow-x-auto"
         role="region"
-        aria-label="API token list"
+        [attr.aria-label]="'API token list' | t"
         [attr.aria-describedby]="tableOverflows() ? 'token-scroll-hint' : null"
         tabindex="0"
       >
         <table class="w-full min-w-[36rem] text-left text-sm">
           <caption class="sr-only">
-            API tokens, expiry and current access
+            {{
+              'API tokens, expiry and current access' | t
+            }}
           </caption>
           <thead>
             <tr class="border-y border-line text-muted">
-              <th class="py-3 pr-4 font-medium" scope="col">Name and use</th>
-              <th class="py-3 pr-4 font-medium" scope="col">Expires</th>
-              <th class="py-3 pr-4 font-medium" scope="col">Status</th>
-              <th class="py-3 font-medium" scope="col">Manage</th>
+              <th class="py-3 pr-4 font-medium" scope="col">{{ 'Name and use' | t }}</th>
+              <th class="py-3 pr-4 font-medium" scope="col">{{ 'Expires' | t }}</th>
+              <th class="py-3 pr-4 font-medium" scope="col">{{ 'Status' | t }}</th>
+              <th class="py-3 font-medium" scope="col">{{ 'Manage' | t }}</th>
             </tr>
           </thead>
           <tbody>
@@ -249,15 +263,16 @@
                   <p class="break-words font-semibold">{{ token.name }}</p>
                   @for (scope of token.scopes; track $index) {
                     <p class="mt-1 text-xs text-muted">
-                      {{ store.scopeLabel(scope) }}
+                      {{ scopeLabel(scope) }}
                     </p>
                   }
                   @if (token.project) {
-                    <p class="mt-1 text-xs text-muted">Tied to a project</p>
+                    <p class="mt-1 text-xs text-muted">{{ 'Tied to a project' | t }}</p>
                   }
                   <p class="mt-2 text-xs text-muted">
-                    Created {{ token.createdAt | date: 'mediumDate' }}<br />Last used:
-                    {{ token.lastUsedAt ? (token.lastUsedAt | date: 'medium') : 'Never' }}
+                    {{ 'Created {date}' | t: { date: (token.createdAt | date: 'mediumDate') ?? '' }
+                    }}<br />{{ 'Last used:' | t }}
+                    {{ token.lastUsedAt ? (token.lastUsedAt | date: 'medium') : ('Never' | t) }}
                   </p>
                 </th>
                 <td class="py-4 pr-4 whitespace-nowrap">
@@ -265,9 +280,10 @@
                 </td>
                 <td class="py-4 pr-4" [class.text-success]="store.statusFor(token) === 'active'">
                   {{
-                    store.statusFor(token) === 'invalidated'
+                    (store.statusFor(token) === 'invalidated'
                       ? 'Security settings changed'
                       : (store.statusFor(token) | titlecase)
+                    ) | t
                   }}
                 </td>
                 <td class="py-3">
@@ -275,14 +291,14 @@
                     class="button button-secondary"
                     type="button"
                     (click)="revoke(token.id)"
-                    [attr.aria-label]="'Revoke token ' + token.name"
+                    [attr.aria-label]="'Revoke token {name}' | t: { name: token.name }"
                     [disabled]="
                       store.submission.busy() ||
                       !!store.credential() ||
                       store.statusFor(token) !== 'active'
                     "
                   >
-                    Revoke
+                    {{ 'Revoke' | t }}
                   </button>
                 </td>
               </tr>
@@ -293,30 +309,31 @@
     } @else {
       <p class="border-y border-line py-5 text-sm text-muted">
         {{
-          store.page()
+          (store.page()
             ? 'There are no more tokens on this page.'
             : 'No API tokens yet. Create one when a script or tool needs access.'
+          ) | t
         }}
       </p>
     }
     @if (store.page() || store.nextCursor()) {
-      <nav aria-label="Token pages" class="mt-4 flex items-center gap-3">
+      <nav [attr.aria-label]="'Token pages' | t" class="mt-4 flex items-center gap-3">
         <button
           class="button button-secondary"
           type="button"
           (click)="store.previousPage()"
           [disabled]="!store.page() || store.submission.busy()"
         >
-          Previous
+          {{ 'Previous' | t }}
         </button>
-        <span class="text-sm tabular-nums">Page {{ store.page() + 1 }}</span>
+        <span class="text-sm tabular-nums">{{ 'Page {n}' | t: { n: store.page() + 1 } }}</span>
         <button
           class="button button-secondary"
           type="button"
           (click)="store.nextPage()"
           [disabled]="!store.nextCursor() || store.submission.busy()"
         >
-          Next
+          {{ 'Next' | t }}
         </button>
       </nav>
     }

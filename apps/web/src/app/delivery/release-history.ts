@@ -1,5 +1,6 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
 
+import { T } from '../ui/i18n';
 import { Collection } from '../workspace/collection';
 
 import { configDiff } from './config-diff';
@@ -8,12 +9,16 @@ import { DeliveryApi, type EnvironmentRef, type Release } from './delivery-api';
 /** Releases of an application, each comparable with the one before it (PLAN M3.5b). */
 @Component({
   selector: 'sk-release-history',
+  imports: [T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (releases.items().length) {
       <section aria-labelledby="releases-title" class="border-t border-line pt-6">
-        <h2 id="releases-title">Releases</h2>
-        <ul class="mb-8 divide-y divide-line border-y border-line" aria-label="Releases">
+        <h2 id="releases-title">{{ 'Releases' | t }}</h2>
+        <ul
+          class="mb-8 divide-y divide-line border-y border-line"
+          [attr.aria-label]="'Releases' | t"
+        >
           @for (release of releases.items(); track release.id; let index = $index) {
             <li class="py-3">
               <div class="flex flex-wrap items-center justify-between gap-3">
@@ -31,7 +36,7 @@ import { DeliveryApi, type EnvironmentRef, type Release } from './delivery-api';
                     [attr.aria-expanded]="open() === release.id"
                     (click)="toggle(release.id)"
                   >
-                    {{ open() === release.id ? 'Hide changes' : 'Show changes' }}
+                    {{ (open() === release.id ? 'Hide changes' : 'Show changes') | t }}
                   </button>
                 }
               </div>
@@ -39,8 +44,8 @@ import { DeliveryApi, type EnvironmentRef, type Release } from './delivery-api';
                 <pre
                   class="mt-3 overflow-x-auto rounded-md bg-panel p-3 text-sm"
                   tabindex="0"
-                  [attr.aria-label]="'Changes in release ' + release.number"
-                  >{{ changes(index) }}</pre>
+                  [attr.aria-label]="'Changes in release {n}' | t: { n: release.number }"
+                  >{{ changes(index) | t }}</pre>
               }
             </li>
           }

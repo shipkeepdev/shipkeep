@@ -16,6 +16,8 @@ export interface ApplicationRow {
   readonly name: string;
   readonly project: string;
   readonly environment: string;
+  /** The image it runs, when built from one. */
+  readonly image: string | null;
   readonly link: readonly string[];
   /** Most recent first. */
   readonly deployments: readonly Deployment[];
@@ -23,6 +25,11 @@ export interface ApplicationRow {
 export interface DeploymentRow {
   readonly application: ApplicationRow;
   readonly deployment: Deployment;
+}
+
+function imageOf(config: object | undefined): string | null {
+  const build = (config as { build?: { image?: unknown } } | undefined)?.build;
+  return typeof build?.image === 'string' ? build.image : null;
 }
 
 /** What an organization's overview shows. All of it comes from the API; nothing is estimated. */
@@ -115,6 +122,7 @@ export class OverviewStore {
           name: application.name,
           project: project.name,
           environment: environment.name,
+          image: imageOf(application.config),
           link: [
             '/orgs',
             organizationId,

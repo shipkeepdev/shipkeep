@@ -2,6 +2,8 @@ import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
 import { FormGroup } from '@angular/forms';
 
+import { T } from '../ui/i18n';
+
 import { AccessApi, type ProjectToken, type Proof } from './access-api';
 import { PagedList } from './paged-list';
 import { ReauthForm, reauthControls } from './reauth-form';
@@ -9,55 +11,60 @@ import { ReauthForm, reauthControls } from './reauth-form';
 /** Tokens tied to a project, which its administrators can see and revoke (SPEC 7). */
 @Component({
   selector: 'sk-project-tokens-panel',
-  imports: [DatePipe, ReauthForm],
+  imports: [DatePipe, ReauthForm, T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (!tokens.denied()) {
       <section aria-labelledby="project-tokens-title" class="mt-8 border-t border-line pt-6">
-        <h2 id="project-tokens-title">API tokens of this project</h2>
+        <h2 id="project-tokens-title">{{ 'API tokens of this project' | t }}</h2>
         @if (notice(); as text) {
-          <p role="status" class="feedback">{{ text }}</p>
+          <p role="status" class="feedback">{{ text | t }}</p>
         }
         @if (tokens.problem(); as problem) {
           <div class="feedback" role="alert">
-            <p>{{ problem }}</p>
+            <p>{{ problem | t }}</p>
           </div>
         }
         @switch (tokens.state()) {
           @case ('loading') {
-            <p role="status" class="text-muted">Loading tokens…</p>
+            <p role="status" class="text-muted">{{ 'Loading tokens…' | t }}</p>
           }
           @case ('ready') {
             @if (tokens.items().length) {
-              <ul class="divide-y divide-line border-y border-line" aria-label="Project API tokens">
+              <ul
+                class="divide-y divide-line border-y border-line"
+                [attr.aria-label]="'Project API tokens' | t"
+              >
                 @for (token of tokens.items(); track token.id) {
                   <li class="py-3">
                     <div class="flex flex-wrap items-center justify-between gap-3">
                       <span>
                         <span class="break-words">{{ token.name }}</span>
-                        <span class="ml-2 text-sm text-muted">{{ token.status }}</span>
+                        <span class="ml-2 text-sm text-muted">{{ token.status | t }}</span>
                         <span class="block text-sm text-muted">
-                          Created by <code class="break-all">{{ token.createdBy }}</code
-                          >, expires {{ token.expiresAt | date: 'mediumDate' }}
+                          {{ 'Created by' | t }} <code class="break-all">{{ token.createdBy }}</code
+                          >{{ ', expires' | t }} {{ token.expiresAt | date: 'mediumDate' }}
                         </span>
                       </span>
                       @if (token.status === 'active') {
                         <button
                           class="button button-secondary"
                           type="button"
-                          [attr.aria-label]="'Revoke token ' + token.name"
+                          [attr.aria-label]="'Revoke token {name}' | t: { name: token.name }"
                           (click)="select(token)"
                         >
-                          Revoke
+                          {{ 'Revoke' | t }}
                         </button>
                       }
                     </div>
                     @if (selected()?.id === token.id) {
                       <div class="mt-4">
-                        <p class="hint">{{ token.name }} stops working immediately.</p>
+                        <p class="hint">
+                          {{ '{name} stops working immediately.' | t: { name: token.name } }}
+                        </p>
                         <sk-reauth-form
                           prefix="project-token"
-                          label="Revoke token"
+                          [label]="'Revoke token' | t"
                           [form]="form"
                           [send]="revoke"
                           (done)="revoked()"
@@ -68,7 +75,7 @@ import { ReauthForm, reauthControls } from './reauth-form';
                             type="button"
                             (click)="selected.set(null)"
                           >
-                            Cancel
+                            {{ 'Cancel' | t }}
                           </button>
                         </sk-reauth-form>
                       </div>
@@ -84,13 +91,16 @@ import { ReauthForm, reauthControls } from './reauth-form';
                     [disabled]="tokens.loadingMore()"
                     (click)="tokens.more()"
                   >
-                    {{ tokens.loadingMore() ? 'Loading…' : 'Show more tokens' }}
+                    {{ (tokens.loadingMore() ? 'Loading…' : 'Show more tokens') | t }}
                   </button>
                 </div>
               }
             } @else {
               <p class="border-y border-line py-6 text-muted">
-                No token is tied to this project. Create one from your account security page.
+                {{
+                  'No token is tied to this project. Create one from your account security page.'
+                    | t
+                }}
               </p>
             }
           }

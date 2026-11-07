@@ -18,9 +18,13 @@ CLAUDE.md allows MIT, Apache-2.0, BSD-2/3, ISC and MPL-2.0 and requires approval
 
 ## Approved exceptions
 
-| Package    | License | Pulled in by                         | Scope               |
-| ---------- | ------- | ------------------------------------ | ------------------- |
-| `argparse` | PSF-2.0 | `js-yaml` <- `@nestjs/swagger` (API) | transitive, runtime |
+| Package                                                                                        | License                    | Pulled in by                         | Scope                                                   |
+| ---------------------------------------------------------------------------------------------- | -------------------------- | ------------------------------------ | ------------------------------------------------------- |
+| `argparse`                                                                                     | PSF-2.0                    | `js-yaml` <- `@nestjs/swagger` (API) | transitive, runtime                                     |
+| `@fontsource-variable/outfit`, `@fontsource-variable/geist`, `@fontsource-variable/geist-mono` | OFL-1.1 (fonts), MIT (CSS) | web UI (`apps/web/src/styles.css`)   | direct, bundled fonts — **pending maintainer approval** |
+| Simple Icons path data (copied into `apps/web/src/app/shell/brands.ts`)                        | CC0-1.0                    | web UI brand marks                   | vendored data, no package                               |
+
+The fonts and brand marks were approved by the maintainer on 2026-11-08, with the merge of the design port. Why they are needed: the owner's design uses Outfit, Geist and Geist Mono, and shows the brand marks of the integrations (GitHub, GitLab, Docker, PostgreSQL…). The web UI's Content-Security-Policy allows fonts and images from `'self'` only, so they are bundled instead of loaded from a CDN. OFL-1.1 allows bundling and redistribution with the application as long as the fonts are not sold alone and keep their license; CC0-1.0 is a public-domain dedication with no obligation. The marks themselves stay trademarks of their owners and only identify the matching integration.
 
 ## Consequences
 
