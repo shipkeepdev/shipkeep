@@ -82,5 +82,8 @@ section{padding-left:16px!important;padding-right:16px!important}
 .scp3:hover { background: rgb(26, 10, 11) !important; transform: scale(1.04) !important; }
 .scp4:hover { transform: translateY(-4px) !important; border-color: rgba(255, 120, 120, 0.45) !important; }
 #sk-status{position:relative;z-index:50;margin:0;padding:9px 16px;background:#1A0A0B;border-bottom:1px solid rgba(255,92,92,0.3);color:#FFD9D9;font-size:13px;line-height:1.4;text-align:center}
-a:focus-visible,button:focus-visible,[role="button"]:focus-visible{outline:2px solid #FF9C9C;outline-offset:2px}
 [data-dc-tpl="192"]{color:#86868C!important}
+[data-dc-tpl="281"],[data-dc-tpl="281"]~div{color:#8E8E94!important}
+[data-dc-tpl="281"]~div a{color:#C9C9CC}
+footer div{flex-wrap:wrap}
+a:focus-visible,button:focus-visible,[role="button"]:focus-visible{outline:2px solid #FF9C9C;outline-offset:2px}
