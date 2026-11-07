@@ -132,3 +132,7 @@ Signing uses cosign keyless (GitHub OIDC), so no signing key secret is needed. G
 
 - Tags `vMAJOR.MINOR.PATCH` trigger `release.yml`: agent and CLI binaries (GoReleaser), control plane image on `ghcr.io/$OWNER/shipkeep`, all signed with cosign, SBOM and provenance attached.
 - Pre-releases use `-alpha.N`, `-beta.N`, `-rc.N`.
+
+## Automated review (optional) [human]
+
+CodeRabbit (ADR 0018) is a GitHub App, so the owner installs it in a browser: open <https://github.com/apps/coderabbitai>, choose **Install**, select the `shipkeepdev` organization and **Only select repositories**, then pick `shipkeep`. `.coderabbit.yaml` holds its settings. It reviews new pull requests from then on.
