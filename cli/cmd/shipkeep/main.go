@@ -1,38 +1,30 @@
 // Command shipkeep is the command line client for the Shipkeep control plane REST API.
-//
-// Task M0.1 only provides the binary skeleton. The real CLI (login, init, deploy, rollback, logs, status and more)
-// arrives with task M8.2.
 package main
 
 import (
-	"flag"
+	"context"
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
+	"syscall"
 
+	"github.com/shipkeepdev/shipkeep/cli/internal/commands"
 	"github.com/shipkeepdev/shipkeep/lib/buildinfo"
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	code := run(ctx, os.Args[1:], os.Stdin, os.Stdout, os.Stderr)
+	stop()
+	os.Exit(code)
 }
 
-// run parses the command line and executes the CLI. It is separated from main so tests
-// can drive it without spawning a process.
-func run(args []string, stdout, stderr io.Writer) int {
-	fs := flag.NewFlagSet("shipkeep", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	showVersion := fs.Bool("version", false, "print version information and exit")
-
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-
-	if *showVersion {
+// run is separated from main so tests can drive it without spawning a process.
+func run(ctx context.Context, args []string, stdin *os.File, stdout, stderr io.Writer) int {
+	if len(args) == 1 && (args[0] == "--version" || args[0] == "version") {
 		_, _ = fmt.Fprintln(stdout, buildinfo.String("shipkeep"))
 		return 0
 	}
-
-	_, _ = fmt.Fprintln(stderr, "shipkeep: not implemented yet (see docs/PLAN.md, task M8.2)")
-	return 1
+	return commands.New(stdin, stdout, stderr).Run(ctx, args)
 }
