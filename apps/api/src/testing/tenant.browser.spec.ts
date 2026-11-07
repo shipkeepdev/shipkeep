@@ -42,13 +42,14 @@ async function createOrganization(page: Page, name: string, slug: string): Promi
   await page.locator('#organization-slug').fill(slug);
   await fillPrivate(page.locator('#organization-password'), FIXTURE_PASSWORD);
   const id = await created(page, 'Create organization', API);
-  await page.getByRole('heading', { name, exact: true, level: 1 }).waitFor();
+  await page.getByRole('heading', { name: 'Overview', exact: true, level: 1 }).waitFor();
+  await page.getByRole('button', { name: new RegExp(`${name}\\s*Organization`) }).waitFor();
   return id;
 }
 
 async function createProject(page: Page, organizationId: string): Promise<string> {
-  await page.goto(`/orgs/${organizationId}`);
-  await page.getByText('Create a project', { exact: true }).click();
+  await page.goto(`/orgs/${organizationId}/projects`);
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.locator('#project-name').fill('Billing');
   await page.locator('#project-slug').fill('billing');
   return created(page, 'Create project', `${API}/${organizationId}/projects`);
@@ -123,7 +124,7 @@ describe('organizations and roles in Chromium', () => {
       `/orgs/${organizationId}`,
       `/orgs/${organizationId}/members`,
       `/orgs/${organizationId}/audit`,
-      `/orgs/${organizationId}/nodes`,
+      `/orgs/${organizationId}/servers`,
       project,
       `${project}/environments/${environmentId}`,
     ]) {
@@ -159,6 +160,7 @@ describe('organizations and roles in Chromium', () => {
 
     // Membership: reads the organization, but no project without a role.
     await owner.goto(`/orgs/${organizationId}/members`);
+    await owner.getByRole('button', { name: 'Invite', exact: true }).click();
     await owner.locator('#member-add-email').fill(outsiderEmail);
     await fillPrivate(owner.locator('#member-add-password'), FIXTURE_PASSWORD);
     await submit(owner, 'Add member', `${organization}/members`, 201);
@@ -170,7 +172,7 @@ describe('organizations and roles in Chromium', () => {
 
     // A viewer role on the project: readable, and the administration panels stay away.
     await owner.goto(`/orgs/${organizationId}/projects/${projectId}`);
-    await owner.getByRole('tab', { name: 'Access' }).click();
+    await owner.getByRole('tab', { name: 'Members' }).click();
     await owner.locator('#binding-add-email').fill(outsiderEmail);
     await fillPrivate(owner.locator('#binding-add-password'), FIXTURE_PASSWORD);
     await submit(owner, 'Give role', `${project}/bindings`);
@@ -179,15 +181,15 @@ describe('organizations and roles in Chromium', () => {
     expect(await status(outsider, project)).toBe(200);
     await outsider.goto(`/orgs/${organizationId}/projects/${projectId}`);
     await outsider.getByRole('heading', { name: 'Billing', exact: true }).waitFor();
-    await outsider.getByRole('heading', { name: 'Environments', exact: true }).waitFor();
-    await outsider.getByRole('tab', { name: 'Access' }).click();
+    await outsider.getByRole('tab', { name: 'Environments' }).waitFor();
+    await outsider.getByRole('tab', { name: 'Members' }).click();
     await outsider.waitForLoadState('networkidle');
     expect(await outsider.getByRole('heading', { name: 'Access', exact: true }).count()).toBe(0);
     expect(await outsider.locator('#binding-add-password').count()).toBe(0);
 
     // Removing the role, then the membership.
     await owner.reload();
-    await owner.getByRole('tab', { name: 'Access' }).click();
+    await owner.getByRole('tab', { name: 'Members' }).click();
     const person = owner.getByRole('listitem').filter({ hasText: outsiderEmail });
     await person.getByRole('button', { name: `Remove role of ${outsiderEmail}` }).click();
     await fillPrivate(owner.locator('#binding-remove-password'), FIXTURE_PASSWORD);
@@ -217,7 +219,7 @@ describe('organizations and roles in Chromium', () => {
     const environment = `/orgs/${organizationId}/projects/${projectId}/environments/${environmentId}`;
     const collection = `${API}/${organizationId}/projects/${projectId}/environments/${environmentId}/applications`;
     await owner.goto(environment);
-    const config = owner.getByLabel('shipkeep.yml');
+    const config = owner.getByLabel('shipkeep.yml', { exact: true });
     await config.fill('version: 1\nname: "../etc"\n');
     await owner.getByRole('button', { name: 'Create application', exact: true }).click();
     await owner.getByRole('alert').first().waitFor();
@@ -225,6 +227,7 @@ describe('organizations and roles in Chromium', () => {
     const id = await created(owner, 'Create application', collection);
     await owner.getByRole('link', { name: 'storefront', exact: true }).click();
     await owner.getByRole('heading', { name: 'storefront', exact: true, level: 1 }).waitFor();
+    await owner.getByRole('tab', { name: 'Deployments' }).click();
     await owner.getByRole('heading', { name: 'Deployments', exact: true }).waitFor();
     await accessible(owner);
 
@@ -254,7 +257,7 @@ describe('organizations and roles in Chromium', () => {
     }
     for (const [path, heading] of [
       ['/orgs', 'Organizations'],
-      [`/orgs/${organizationId}`, 'Acme'],
+      [`/orgs/${organizationId}`, 'Overview'],
     ] as const) {
       await owner.goto(path);
       await owner.getByRole('heading', { name: heading, exact: true, level: 1 }).waitFor();
@@ -267,13 +270,18 @@ describe('organizations and roles in Chromium', () => {
     const project = `/orgs/${organizationId}/projects/${projectId}`;
     for (const [path, heading] of [
       ['/orgs', 'Organizations'],
-      [`/orgs/${organizationId}`, 'Acme'],
-      [`/orgs/${organizationId}/members`, 'Members'],
+      [`/orgs/${organizationId}`, 'Overview'],
+      [`/orgs/${organizationId}/applications`, 'Applications'],
+      [`/orgs/${organizationId}/members`, 'Members & access'],
       [`/orgs/${organizationId}/audit`, 'Audit log'],
-      [`/orgs/${organizationId}/nodes`, 'Servers'],
+      [`/orgs/${organizationId}/servers`, 'Servers'],
+      [`/orgs/${organizationId}/projects`, 'Projects'],
+      [`/orgs/${organizationId}/organization`, 'Acme'],
+      [`/orgs/${organizationId}/new`, 'New resource'],
+      [`/orgs/${organizationId}/profile`, 'tenant-owner'],
       [project, 'Billing'],
       [`${project}/environments/${environmentId}`, 'production'],
-      ['/account/security', 'Account security'],
+      ['/account/security', 'tenant-owner'],
     ] as const) {
       await owner.goto(path);
       await owner.getByRole('heading', { name: heading, exact: true, level: 1 }).waitFor();
@@ -286,7 +294,7 @@ describe('organizations and roles in Chromium', () => {
       .getByRole('button', { name: 'Change role of tenant-owner@example.com', exact: true })
       .click();
     await accessible(owner);
-    await owner.goto('/account/security');
+    await owner.goto('/account?section=tokens');
     await owner.getByRole('button', { name: 'Create API token', exact: true }).click();
     await owner.locator('#token-organization').selectOption(organizationId);
     await accessible(owner);
@@ -295,13 +303,16 @@ describe('organizations and roles in Chromium', () => {
 
   it('downloads the audit export under the production CSP', async () => {
     await owner.goto(`/orgs/${organizationId}/audit`);
-    const table = owner.getByRole('table', { name: 'Audit events' });
-    await table.waitFor();
+    const table = owner.getByRole('region', { name: 'Audit events' });
+    await table.locator('button[aria-expanded]').first().waitFor();
     expect(await table.innerText()).toContain('project');
+    await owner.getByRole('button', { name: 'Filter', exact: true }).click();
     await owner.locator('#audit-targetType').fill('project');
     await owner.getByRole('button', { name: 'Apply filters', exact: true }).click();
     await expect
-      .poll(async () => (await table.getByRole('row').count()) > 1, { timeout: 10_000 })
+      .poll(async () => (await table.locator('button[aria-expanded]').count()) > 0, {
+        timeout: 10_000,
+      })
       .toBe(true);
     const [download] = (await Promise.all([
       owner.waitForEvent('download'),
@@ -331,7 +342,7 @@ describe('organizations and roles in Chromium', () => {
       }
     };
     const createToken = async (name: string, choose: () => Promise<void>): Promise<string> => {
-      await owner.goto('/account/security');
+      await owner.goto('/account?section=tokens');
       await owner.getByRole('button', { name: 'Create API token', exact: true }).click();
       await owner.getByLabel('Token name').fill(name);
       await choose();
@@ -388,8 +399,7 @@ describe('organizations and roles in Chromium', () => {
   });
 
   it('saves settings and keeps a corrected slug working after a refusal', async () => {
-    await owner.goto(`/orgs/${organizationId}`);
-    await owner.getByText('Organization settings', { exact: true }).click();
+    await owner.goto(`/orgs/${organizationId}/organization`);
     await owner.locator('#organization-settings-slug').fill('other');
     await owner.getByRole('button', { name: 'Save settings', exact: true }).click();
     await owner.getByRole('alert').first().waitFor();

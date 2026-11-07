@@ -48,7 +48,7 @@ describe('production identity in Chromium', () => {
         expect(response?.headers()['content-security-policy']).toContain("script-src 'self'");
         await page
           .getByRole('button', {
-            name: /^(Sign in|Create account|Verify email|Send verification email|Send reset email|Update password)$/,
+            name: /^(Sign in|Create account|Verify|Send code|Save)$/,
           })
           .waitFor();
         await accessible(page);
@@ -81,25 +81,26 @@ describe('production identity in Chromium', () => {
     const email = 'browser-account@example.com';
     try {
       await page.goto('/auth/register');
-      await page.getByLabel('Email address').fill(email);
+      await page.getByLabel('Name', { exact: true }).fill('Browser Fixture');
+      await page.getByLabel('Email', { exact: true }).fill(email);
       await fillPrivate(page.getByLabel('Password', { exact: true }), password);
-      await fillPrivate(page.getByLabel('Confirm password'), password);
       await page.getByRole('button', { name: 'Create account', exact: true }).click();
-      await page.getByRole('link', { name: 'Enter verification code' }).waitFor();
+      await page.getByRole('link', { name: 'Enter the code' }).waitFor();
       await expect.poll(() => fixture.messages.length, { timeout: 30_000 }).toBe(1);
       const message = fixture.messages.at(0) ?? '';
       const code = message.match(/^([A-Za-z0-9_-]{43})$/m)?.at(1);
       if (!code) throw new Error('Verification mail did not contain a valid code.');
       expect(message.includes(`${fixture.origin}/verify-email`)).toBe(true);
-      await page.getByRole('link', { name: 'Enter verification code' }).click();
-      await fillPrivate(page.getByLabel('Verification code'), code);
-      await fillPrivate(page.getByLabel('Password you chose when signing up'), password);
-      await page.getByRole('button', { name: 'Verify email', exact: true }).click();
+      await page.getByRole('link', { name: 'Enter the code' }).click();
+      await fillPrivate(page.getByLabel('Verification code', { exact: true }), code);
+      await fillPrivate(page.getByLabel('Password', { exact: true }), password);
+      await page.getByRole('button', { name: 'Verify', exact: true }).click();
       await page.getByRole('link', { name: 'Continue to sign in' }).click();
-      await page.getByLabel('Email address').fill(email);
+      await page.getByLabel('Email', { exact: true }).fill(email);
       await fillPrivate(page.getByLabel('Password', { exact: true }), password);
       await page.getByRole('button', { name: 'Sign in', exact: true }).click();
       await openAccountSecurity(page);
+      await page.getByRole('link', { name: 'API tokens', exact: true }).click();
       await page
         .getByText('No API tokens yet. Create one when a script or tool needs access.', {
           exact: true,
