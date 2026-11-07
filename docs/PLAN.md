@@ -24,7 +24,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 - `go vet`, `go test -race` and golangci-lint;
 - generation drift, Semgrep and Prettier.
 
-Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **not** run on that code. The first task once Actions is available again is **CI-1**: run the full `ci` and `security` workflows on `main`, then fix every failure in its own `fix/...` PR before any new feature merges.
+Browser acceptance, CodeQL and gosec have **not** run on that code. The integration suite ran once on 2026-11-07, against a disposable local PostgreSQL 18.4 rather than the pinned 17 and without Docker: everything passed except three tests expecting `23503` for `ON DELETE RESTRICT`, which PostgreSQL 18 reports as `23001`. Nothing has run against a real Docker daemon or server. The first task once Actions is available again is **CI-1**: run the full `ci` and `security` workflows on `main`, then fix every failure in its own `fix/...` PR before any new feature merges.
 
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
