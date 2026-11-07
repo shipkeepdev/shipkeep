@@ -11,6 +11,7 @@ import (
 	"os"
 	"regexp"
 	"strings"
+	"time"
 
 	"golang.org/x/term"
 
@@ -29,6 +30,9 @@ const usage = `Usage: shipkeep <command> [flags]
   secrets list     Show the names of an environment's secrets
   secrets set      Set a secret, reading its value from standard input
   secrets unset    Remove a secret
+  deploy           Save shipkeep.yml on the control plane and deploy it
+  rollback         Return to an earlier good release
+  server remove    Remove a server, given its exact name with --confirm
 
 Commands that reach an environment take --org, --project and --env, or
 SHIPKEEP_ORG, SHIPKEEP_PROJECT and SHIPKEEP_ENV. SHIPKEEP_URL and SHIPKEEP_TOKEN
@@ -45,6 +49,8 @@ type App struct {
 	CredentialsPath func() (string, error)
 	// ReadSecret reads one secret value: without echo on a terminal, otherwise all of In.
 	ReadSecret func(prompt string) (string, error)
+	// PollEvery is how often a deployment is checked; zero means the default.
+	PollEvery time.Duration
 }
 
 // New returns an App bound to the process's own streams and environment.
@@ -121,6 +127,12 @@ func (a *App) dispatch(ctx context.Context, args []string) error {
 		return a.status(ctx, rest)
 	case "secrets":
 		return a.secrets(ctx, rest)
+	case "deploy":
+		return a.deploy(ctx, rest)
+	case "rollback":
+		return a.rollback(ctx, rest)
+	case "server":
+		return a.server(ctx, rest)
 	default:
 		_, _ = fmt.Fprintf(a.Err, "shipkeep: unknown command %q\n", client.Clean(command))
 		return a.showUsage()

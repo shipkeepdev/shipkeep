@@ -389,7 +389,7 @@ CodeQL and gosec have **not** run on that code. The browser suite ran on 2026-11
   - Org-level OIDC (Google, GitHub, Microsoft Entra, Keycloak tested), JIT provisioning with default role, enforce-SSO option.
 - [ ] **M8.2 CLI** (X). Depends: M3.5
   - [x] **M8.2a** Foundation: `login`, `logout`, `init`, `status`, `secrets`, reached with an API token.
-  - [ ] **M8.2b** `deploy`, `rollback`, `server remove`, and a run against the real API.
+  - [x] **M8.2b** `deploy`, `rollback`, `server remove`, and a run of the real binary against the real API (`cli.integration.spec.ts`).
   - [ ] **M8.2c** `logs`, `env`, `db`, `backup`, `preview`, `server add`, as their bearer routes appear.
   - [ ] **M8.2d** Release tooling below (needs the owner's tap, bucket and Actions).
   - Go CLI commands from ARCHITECTURE; `.goreleaser.yaml` for agent and CLI; Homebrew tap and Scoop bucket; first `release.yml` dry run via workflow_dispatch.
