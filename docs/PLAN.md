@@ -26,10 +26,16 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 
 CodeQL and gosec have **not** run on that code. The browser suite ran on 2026-11-07 in Chromium, also against that local PostgreSQL, and passes. The integration suite ran once on 2026-11-07, against a disposable local PostgreSQL 18.4 rather than the pinned 17 and without Docker: everything passed except three tests expecting `23503` for `ON DELETE RESTRICT`, which PostgreSQL 18 reports as `23001`. Nothing has run against a real Docker daemon or server. The first task once Actions is available again is **CI-1**: run the full `ci` and `security` workflows on `main`, then fix every failure in its own `fix/...` PR before any new feature merges.
 
-**Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
+**Next tasks.** Web administration, audit, confirmation, browser acceptance (M2.3f, M2.4b, M2.5b) and the CLI's core (M8.2a, M8.2b) are done. What remains depends on someone else first:
 
-1. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
-2. M3 (deploy pipeline), then `StateReport` delivery for M1.6.
+1. **A test VM:** the installer (#171, M8.3a), and real-infrastructure acceptance of M1.4, M1.5, M1.6, M3.4 and M10.1.
+2. **Owner decisions:**
+   - the source of a Compose file before Git exists: upload through the API, or wait for M3.1 (M3.8b);
+   - an image-removal agent action (M3.5c);
+   - a GitHub App for Git providers (M3.1, then M3.2, M3.3, M7.1);
+   - a Cloudflare account for DNS-01 (M3.6b).
+3. **Billing:** CI-1, which also runs CodeQL, gosec, PostgreSQL 17 and the Lighthouse check the local run could not do (M2.6).
+4. **Open to pick up without any of these:** the node public address of M3.6b, Go fuzz targets for the agent validators (M10.2), then M6 (logs, metrics, alerts).
 
 **Before going public** (the maintainer changes the visibility; ADR 0016):
 
