@@ -23,6 +23,7 @@ export interface ReportedContainer {
 export interface ObservedAllocation {
   readonly id: string;
   readonly applicationId: string;
+  readonly environmentId: string;
   readonly container: string;
   readonly observation: {
     readonly state: ObservedState;
@@ -33,6 +34,7 @@ export interface ObservedAllocation {
 export interface ObservationChange {
   readonly allocationId: string;
   readonly applicationId: string;
+  readonly environmentId: string;
   readonly container: string;
   /** Null once the container is gone. */
   readonly containerId: string | null;
@@ -66,6 +68,7 @@ export function observationChanges(
     changes.push({
       allocationId: allocation.id,
       applicationId: allocation.applicationId,
+      environmentId: allocation.environmentId,
       container: allocation.container,
       containerId: container?.containerId ?? null,
       state,
@@ -74,4 +77,17 @@ export function observationChanges(
     });
   }
   return changes;
+}
+
+/** A placed replica as the API shows it: where it runs and what its agent last saw. */
+export interface ReplicaStatus {
+  readonly id: string;
+  readonly releaseId: string;
+  readonly replica: number;
+  readonly nodeId: string;
+  readonly nodeName: string;
+  readonly container: string;
+  /** Null until its agent has seen the container. */
+  readonly state: ObservedState | null;
+  readonly observedAt: Date | null;
 }

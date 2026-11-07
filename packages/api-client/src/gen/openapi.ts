@@ -708,6 +708,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/replicas": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listReplicas"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/bindings": {
         readonly parameters: {
             readonly query?: never;
@@ -1432,6 +1448,27 @@ export type components = {
         readonly RemoveNodeDto: {
             /** @description Confirmation token for `node.remove` on this node (SPEC 3.6). */
             readonly confirmation: string;
+        };
+        readonly ReplicaDto: {
+            readonly container: string;
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly nodeId: string;
+            readonly nodeName: string;
+            /** Format: date-time */
+            readonly observedAt: string | null;
+            /** Format: uuid */
+            readonly releaseId: string;
+            readonly replica: number;
+            /**
+             * @description What the agent last saw; null until it has seen the container.
+             * @enum {string|null}
+             */
+            readonly state: "created" | "running" | "paused" | "restarting" | "exited" | "dead" | "missing" | null;
+        };
+        readonly ReplicaListDto: {
+            readonly items: readonly components["schemas"]["ReplicaDto"][];
         };
         readonly RequestConfirmationDto: {
             /** @enum {string} */
@@ -2873,6 +2910,30 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ReleaseListDto"];
+                };
+            };
+        };
+    };
+    readonly listReplicas: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ReplicaListDto"];
                 };
             };
         };

@@ -88,6 +88,7 @@ export class AllocationObservations implements OnModuleInit {
             target: { type: 'allocation', id: change.allocationId },
             payload: {
               applicationId: change.applicationId,
+              environmentId: change.environmentId,
               nodeId: identity.nodeId,
               container: change.container,
               from: change.from,
