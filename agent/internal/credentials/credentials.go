@@ -17,7 +17,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/lib/secret"
+	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
 // MaxBytes bounds a persisted credential bundle before parsing it.

@@ -107,6 +107,24 @@ export class DeploymentController {
     );
   }
 
+  @Post(`${APPLICATION}/deployments/:deploymentId/rollback`)
+  @HttpCode(201)
+  @RequireTenant('deploy.run', 'environment')
+  @AllowApiToken('deploy.run')
+  @ApiCreatedResponse({ type: QueuedDeploymentDto })
+  async rollback(
+    @Req() request: IdentityRequest,
+    @Param() path: DeploymentPathDto,
+  ): Promise<QueuedDeploymentDto> {
+    const queued = await this.deployments.rollback(
+      resourceContext(request),
+      target(path),
+      path.applicationId,
+      path.deploymentId,
+    );
+    return { release: releaseDto(queued.release), deployment: deploymentDto(queued.deployment) };
+  }
+
   @Get(`${APPLICATION}/releases`)
   @RequireTenant('environment.read', 'environment')
   @AllowApiToken('environment.read')

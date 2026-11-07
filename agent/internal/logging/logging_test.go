@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/logging"
-	"github.com/samuelmbabhazi/shipkeep/lib/secret"
+	"github.com/shipkeepdev/shipkeep/agent/internal/logging"
+	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
 func TestJSONLoggerWritesOneObjectPerLine(t *testing.T) {

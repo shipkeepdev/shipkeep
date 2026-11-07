@@ -58,6 +58,52 @@ export class PrismaDeploymentStore implements DeploymentStore {
     return inserted.count === 1 ? release : undefined;
   }
 
+  async copyRelease(source: Release, actorId: string, now: Date): Promise<Release | undefined> {
+    const last = await this.database.client.release.aggregate({
+      where: { applicationId: source.applicationId },
+      _max: { number: true },
+    });
+    const release: Release = {
+      ...source,
+      id: uuidv7(),
+      number: (last._max.number ?? 0) + 1,
+      createdBy: actorId,
+      createdAt: now,
+    };
+    const config: object = source.config;
+    const inserted = await this.database.client.release.createMany({
+      data: { ...release, config },
+      skipDuplicates: true,
+    });
+    return inserted.count === 1 ? release : undefined;
+  }
+
+  async release(applicationId: string, releaseId: string): Promise<Release | undefined> {
+    const row = await this.database.client.release.findFirst({
+      where: { applicationId, id: releaseId },
+    });
+    return row ? releaseRecord(row) : undefined;
+  }
+
+  async serving(applicationId: string): Promise<DeploymentRecord | undefined> {
+    const row = await this.database.client.deployment.findFirst({
+      where: { applicationId, state: 'succeeded' },
+      orderBy: [{ finishedAt: 'desc' }, { id: 'desc' }],
+    });
+    return row ? deployment(row) : undefined;
+  }
+
+  async succeededOf(
+    applicationId: string,
+    releaseIds: readonly string[],
+  ): Promise<DeploymentRecord[]> {
+    const rows = await this.database.client.deployment.findMany({
+      where: { applicationId, state: 'succeeded', releaseId: { in: [...releaseIds] } },
+      take: MAX_LISTED,
+    });
+    return rows.map(deployment);
+  }
+
   async queue(
     release: Release,
     draft: ReleaseDraft,
@@ -125,22 +171,7 @@ export class PrismaDeploymentStore implements DeploymentStore {
       orderBy: { number: 'desc' },
       take: MAX_LISTED,
     });
-    return rows.map((row) => {
-      // Snapshot of a schema-validated configuration; the column CHECK keeps it an object.
-      const config: unknown = row.config;
-      return {
-        id: row.id,
-        organizationId: row.organizationId,
-        applicationId: row.applicationId,
-        number: row.number,
-        image: row.image,
-        imageDigest: row.imageDigest,
-        config: config as ShipkeepConfig,
-        configSha: row.configSha,
-        createdBy: row.createdBy,
-        createdAt: row.createdAt,
-      };
-    });
+    return rows.map(releaseRecord);
   }
 
   async transition(
@@ -163,6 +194,33 @@ export class PrismaDeploymentStore implements DeploymentStore {
     });
     return updated.count === 1;
   }
+}
+
+function releaseRecord(row: {
+  id: string;
+  organizationId: string;
+  applicationId: string;
+  number: number;
+  image: string;
+  imageDigest: string | null;
+  config: unknown;
+  configSha: string;
+  createdBy: string | null;
+  createdAt: Date;
+}): Release {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    applicationId: row.applicationId,
+    number: row.number,
+    image: row.image,
+    imageDigest: row.imageDigest,
+    // Snapshot of a schema-validated configuration; the column CHECK keeps it an object.
+    config: row.config as ShipkeepConfig,
+    configSha: row.configSha,
+    createdBy: row.createdBy,
+    createdAt: row.createdAt,
+  };
 }
 
 function deployment(row: {

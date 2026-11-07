@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/config"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/reconcile"
-	"github.com/samuelmbabhazi/shipkeep/lib/buildinfo"
+	"github.com/shipkeepdev/shipkeep/agent/internal/config"
+	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
+	"github.com/shipkeepdev/shipkeep/agent/internal/reconcile"
+	"github.com/shipkeepdev/shipkeep/lib/buildinfo"
 )
 
 // ShutdownTimeout bounds how long components may take to stop after a signal.

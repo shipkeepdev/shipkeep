@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
+	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
 )
 
 type engine struct {

@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	nodecredentials "github.com/samuelmbabhazi/shipkeep/agent/internal/credentials"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
+	nodecredentials "github.com/shipkeepdev/shipkeep/agent/internal/credentials"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 var errIdentity = errors.New("gateway rejected the node identity or epoch; operator recovery is required")

@@ -512,8 +512,8 @@ const file_shipkeep_agent_v1_exec_proto_rawDesc = "" +
 	"\bExecExit\x12\x1b\n" +
 	"\texit_code\x18\x01 \x01(\x05R\bexitCode\"%\n" +
 	"\tExecError\x12\x18\n" +
-	"\amessage\x18\x01 \x01(\tR\amessageB\xce\x01\n" +
-	"\x15com.shipkeep.agent.v1B\tExecProtoP\x01ZDgithub.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1;agentv1\xa2\x02\x03SAX\xaa\x02\x11Shipkeep.Agent.V1\xca\x02\x11Shipkeep\\Agent\\V1\xe2\x02\x1dShipkeep\\Agent\\V1\\GPBMetadata\xea\x02\x13Shipkeep::Agent::V1b\x06proto3"
+	"\amessage\x18\x01 \x01(\tR\amessageB\xcb\x01\n" +
+	"\x15com.shipkeep.agent.v1B\tExecProtoP\x01ZAgithub.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1;agentv1\xa2\x02\x03SAX\xaa\x02\x11Shipkeep.Agent.V1\xca\x02\x11Shipkeep\\Agent\\V1\xe2\x02\x1dShipkeep\\Agent\\V1\\GPBMetadata\xea\x02\x13Shipkeep::Agent::V1b\x06proto3"
 
 var (
 	file_shipkeep_agent_v1_exec_proto_rawDescOnce sync.Once

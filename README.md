@@ -9,7 +9,7 @@ Shipkeep is a self-hosted platform to deploy applications, databases and service
 
 ## Contributing
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [`good first issue`](https://github.com/samuelmbabhazi/shipkeep/labels/good%20first%20issue) label. Remaining work is tracked in [docs/PLAN.md](docs/PLAN.md) and the GitHub milestones.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [`good first issue`](https://github.com/shipkeepdev/shipkeep/labels/good%20first%20issue) label. Remaining work is tracked in [docs/PLAN.md](docs/PLAN.md) and the GitHub milestones.
 
 ## Documentation
 

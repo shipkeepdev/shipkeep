@@ -10,7 +10,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/samuelmbabhazi/shipkeep/lib/secret"
+	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
 const raw = "sk_test_fake_do_not_leak_9f8e7d"

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/samuelmbabhazi/shipkeep/lib/config"
+	"github.com/shipkeepdev/shipkeep/lib/config"
 )
 
 // Golden fixtures are shared with the TypeScript validator (packages/config-schema/fixtures).

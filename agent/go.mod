@@ -1,10 +1,10 @@
-module github.com/samuelmbabhazi/shipkeep/agent
+module github.com/shipkeepdev/shipkeep/agent
 
 go 1.26.0
 
 require (
 	github.com/google/uuid v1.6.0
-	github.com/samuelmbabhazi/shipkeep/lib v0.0.0
+	github.com/shipkeepdev/shipkeep/lib v0.0.0
 	golang.org/x/sys v0.49.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
@@ -25,4 +25,4 @@ require (
 	modernc.org/memory v1.12.1 // indirect
 )
 
-replace github.com/samuelmbabhazi/shipkeep/lib => ../lib
+replace github.com/shipkeepdev/shipkeep/lib => ../lib

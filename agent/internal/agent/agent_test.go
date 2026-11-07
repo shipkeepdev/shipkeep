@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/agent"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/config"
+	"github.com/shipkeepdev/shipkeep/agent/internal/agent"
+	"github.com/shipkeepdev/shipkeep/agent/internal/config"
 )
 
 // startupBuffer signals only after startup has completed; readers wait for Run to stop.

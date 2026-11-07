@@ -9,9 +9,9 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/caddy"
-	"github.com/samuelmbabhazi/shipkeep/lib/agentproto"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/agent/internal/caddy"
+	"github.com/shipkeepdev/shipkeep/lib/agentproto"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 // TestControlPlaneActionsPassAgentValidation plans every action the control plane's deployment

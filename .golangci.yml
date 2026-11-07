@@ -36,7 +36,7 @@ linters:
     wrapcheck:
       # Errors from our own modules are already wrapped where they originate.
       ignore-package-globs:
-        - github.com/samuelmbabhazi/shipkeep/*
+        - github.com/shipkeepdev/shipkeep/*
       ignore-sigs:
         - .Errorf(
         - errors.New(
@@ -62,4 +62,4 @@ formatters:
   settings:
     goimports:
       local-prefixes:
-        - github.com/samuelmbabhazi/shipkeep
+        - github.com/shipkeepdev/shipkeep

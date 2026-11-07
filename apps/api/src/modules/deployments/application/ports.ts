@@ -18,6 +18,13 @@ export interface DeploymentStore {
     actorId: string,
     now: Date,
   ): Promise<Release | undefined>;
+  /** Copies an earlier release as the next number (rollback); undefined on a concurrent insert. */
+  copyRelease(source: Release, actorId: string, now: Date): Promise<Release | undefined>;
+  release(applicationId: string, releaseId: string): Promise<Release | undefined>;
+  /** The most recently finished succeeded deployment: the version serving now. */
+  serving(applicationId: string): Promise<DeploymentRecord | undefined>;
+  /** Succeeded deployments of these releases, which a successful rollback supersedes. */
+  succeededOf(applicationId: string, releaseIds: readonly string[]): Promise<DeploymentRecord[]>;
   /** Inserts a queued deployment; undefined when another one is active (SPEC 4 invariant). */
   queue(
     release: Release,

@@ -10,7 +10,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/samuelmbabhazi/shipkeep/lib/buildinfo"
+	"github.com/shipkeepdev/shipkeep/lib/buildinfo"
 )
 
 func main() {

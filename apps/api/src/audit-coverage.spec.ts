@@ -62,6 +62,8 @@ const AUDITED: Readonly<Record<string, readonly string[]>> = {
     ['application.updated'],
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/deployments':
     ['release.created', 'deployment.queued'],
+  'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/deployments/:deploymentId/rollback':
+    ['release.created', 'deployment.queued'],
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/deployments/:deploymentId/cancel':
     ['deployment.cancelled'],
 };
