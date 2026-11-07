@@ -48,7 +48,6 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 | `ExecStream`                                                               | M6.1   |
 | `CollectFacts`                                                             | M1.6   |
 | `UpgradeAgent`                                                             | M8.3   |
-| The SSE `/api/v1/events` endpoint                                          | M2.6   |
 | Retry-safe certificate renewal (SPEC 16)                                   | M4.5   |
 | The web token scope picker                                                 | M2.3f1 |
 
@@ -270,7 +269,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - [ ] **M2.5b** Confirmation dialog in the web UI. Server removal uses it (M2.7c); a shared dialog for volumes, databases and environments follows with those screens.
   - `/confirmations` endpoint, UI confirmation dialog that requires typing the resource name.
   - Acceptance: destructive endpoints reject requests without a valid, unused, matching token.
-- [ ] **M2.6 Web UI shell** (W). Depends: M2.2. Partly done in M2.2e: shell, routing, auth flows, design tokens, Tailwind and CDK. Remaining: org/project/environment navigation (with M2.3f1), empty states, the SSE `/api/v1/events` endpoint and its client, and the Lighthouse check.
+- [ ] **M2.6 Web UI shell** (W). Depends: M2.2. Partly done in M2.2e: shell, routing, auth flows, design tokens, Tailwind and CDK. Remaining: empty states and the Lighthouse check. Done: navigation (M2.3f1a) and live updates per environment (M2.6b).
   - Angular app shell, routing, auth flows, org/project/environment navigation, design tokens, Tailwind, CDK, empty states, SSE client.
   - Acceptance: Lighthouse accessibility score at least 95 on login and dashboard; core flows keyboard-navigable.
 - [ ] **M2.7 Fleet administration endpoints** (C + W). Depends: M2.3d, M2.3g1. Moved from M1.2b.
