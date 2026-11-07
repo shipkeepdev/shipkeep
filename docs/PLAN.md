@@ -24,7 +24,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 - `go vet`, `go test -race` and golangci-lint;
 - generation drift, Semgrep and Prettier.
 
-Browser acceptance, CodeQL and gosec have **not** run on that code. The integration suite ran once on 2026-11-07, against a disposable local PostgreSQL 18.4 rather than the pinned 17 and without Docker: everything passed except three tests expecting `23503` for `ON DELETE RESTRICT`, which PostgreSQL 18 reports as `23001`. Nothing has run against a real Docker daemon or server. The first task once Actions is available again is **CI-1**: run the full `ci` and `security` workflows on `main`, then fix every failure in its own `fix/...` PR before any new feature merges.
+CodeQL and gosec have **not** run on that code. The browser suite ran on 2026-11-07 in Chromium, also against that local PostgreSQL, and passes. The integration suite ran once on 2026-11-07, against a disposable local PostgreSQL 18.4 rather than the pinned 17 and without Docker: everything passed except three tests expecting `23503` for `ON DELETE RESTRICT`, which PostgreSQL 18 reports as `23001`. Nothing has run against a real Docker daemon or server. The first task once Actions is available again is **CI-1**: run the full `ci` and `security` workflows on `main`, then fix every failure in its own `fix/...` PR before any new feature merges.
 
 **Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
 
@@ -252,7 +252,7 @@ Browser acceptance, CodeQL and gosec have **not** run on that code. The integrat
         - [x] **M2.3f1b1** Organization, project and environment settings; forms recover after a refused request.
         - [x] **M2.3f1b2** Member and binding screens.
         - [x] **M2.3f1b3** API-token scope picker and the project token directory.
-    - [ ] **M2.3f2** Real-browser acceptance: two organizations, cross-tenant URLs answer 404, role changes take effect on the next request.
+    - [x] **M2.3f2** Real-browser acceptance: two organizations, cross-tenant URLs answer 404, role changes take effect on the next request (`tenant.browser.spec.ts`).
   - [x] **M2.3g** Row-level security for the remaining tenant-scoped tables (`nodes`, `join_tokens`, `node_certificates`, `audit_events`), with enrollment token lookup and the agent gateway moved to a separate reviewed cross-tenant role (SPEC 4). Must land before any node, join-token or audit read endpoint is exposed (M2.4, M2.7).
     - [x] **M2.3g1** Fleet tables. `node_certificates` has no `organization_id`: add it with a composite foreign key to `nodes`, rather than relying on a join policy. Gateway lookups use the organization of the verified certificate; enrollment uses a context-bound, SELECT-only token lookup instead of a separate role (ADR 0015).
       - [x] **M2.3g1a** `node_certificates.organization_id` with a composite foreign key to its node, backfilled by migration (ADR 0015).
@@ -273,7 +273,7 @@ Browser acceptance, CodeQL and gosec have **not** run on that code. The integrat
   - [x] **M2.5b** Shared confirmation in the web UI (`ConfirmByName`). Server removal uses it; volume, database and environment deletion will use it when those screens and actions exist.
   - `/confirmations` endpoint, UI confirmation dialog that requires typing the resource name.
   - Acceptance: destructive endpoints reject requests without a valid, unused, matching token.
-- [ ] **M2.6 Web UI shell** (W). Depends: M2.2. Partly done in M2.2e: shell, routing, auth flows, design tokens, Tailwind and CDK. Remaining: empty states and the Lighthouse check. Done: navigation (M2.3f1a) and live updates per environment (M2.6b).
+- [ ] **M2.6 Web UI shell** (W). Depends: M2.2. Partly done in M2.2e: shell, routing, auth flows, design tokens, Tailwind and CDK. Remaining: the Lighthouse check; axe (WCAG A and AA) passes on every workspace screen in `tenant.browser.spec.ts`. Done: navigation (M2.3f1a) and live updates per environment (M2.6b).
   - Angular app shell, routing, auth flows, org/project/environment navigation, design tokens, Tailwind, CDK, empty states, SSE client.
   - Acceptance: Lighthouse accessibility score at least 95 on login and dashboard; core flows keyboard-navigable.
 - [ ] **M2.7 Fleet administration endpoints** (C + W). Depends: M2.3d, M2.3g1. Moved from M1.2b.

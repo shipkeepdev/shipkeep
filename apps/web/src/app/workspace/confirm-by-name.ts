@@ -49,7 +49,11 @@ import {
           />
         </div>
         <div class="flex flex-wrap gap-3">
-          <button class="button bg-danger" type="submit" [disabled]="busy() || !matches()">
+          <button
+            class="button bg-danger"
+            type="submit"
+            [disabled]="busy() || blocked() || !matches()"
+          >
             {{ busy() ? busyLabel() : actionLabel() }}
           </button>
           <button class="button button-secondary" type="button" (click)="cancel()">
@@ -72,6 +76,8 @@ export class ConfirmByName implements AfterViewInit, OnDestroy {
   readonly busyLabel = input.required<string>();
   readonly keepLabel = input('Keep it');
   readonly busy = input(false);
+  /** The server asked to wait: the action is unavailable, but nothing is running. */
+  readonly blocked = input(false);
   readonly confirmed = output<string>();
   readonly cancelled = output();
   protected readonly typed = signal('');
@@ -98,7 +104,7 @@ export class ConfirmByName implements AfterViewInit, OnDestroy {
   }
   protected confirm(event: Event): void {
     event.preventDefault();
-    if (this.matches() && !this.busy()) this.confirmed.emit(this.typed());
+    if (this.matches() && !this.busy() && !this.blocked()) this.confirmed.emit(this.typed());
   }
   protected cancel(): void {
     if (!this.busy()) this.cancelled.emit();

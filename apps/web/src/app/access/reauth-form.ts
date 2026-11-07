@@ -61,7 +61,11 @@ export function reauthProof(password: string, code: string): Proof {
         />
       </div>
       <div class="flex flex-wrap gap-3">
-        <button class="button" type="submit" [disabled]="runner.busy() || form().invalid">
+        <button
+          class="button"
+          type="submit"
+          [disabled]="runner.busy() || !!runner.cooldown() || form().invalid"
+        >
           {{ runner.busy() ? 'Working…' : label() }}
         </button>
         <ng-content select="[secondary]" />

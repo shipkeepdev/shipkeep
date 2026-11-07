@@ -82,7 +82,11 @@ import { type Organization, type Project, WorkspaceApi } from './workspace-api';
               />
             </div>
             <div>
-              <button class="button" type="submit" [disabled]="runner.busy() || form.invalid">
+              <button
+                class="button"
+                type="submit"
+                [disabled]="runner.busy() || !!runner.cooldown() || form.invalid"
+              >
                 {{ runner.busy() ? 'Creating…' : 'Create project' }}
               </button>
             </div>

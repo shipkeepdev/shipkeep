@@ -64,6 +64,7 @@ const email: ValidatorFn = (control) => Validators.email(control);
                         <button
                           class="button button-secondary"
                           type="button"
+                          [attr.aria-label]="'Remove role of ' + binding.email"
                           (click)="select(binding)"
                         >
                           Remove role

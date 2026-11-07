@@ -1,5 +1,5 @@
 import { browserApp } from './browser-app';
-import { accessible, fillPrivate } from './browser-identity';
+import { accessible, fillPrivate, openAccountSecurity } from './browser-identity';
 
 // These names are used only inside callbacks serialized into Chromium. Keep DOM lib globals
 // out of the Node test project (notably its WebCrypto/X.509 types).
@@ -99,7 +99,7 @@ describe('production identity in Chromium', () => {
       await page.getByLabel('Email address').fill(email);
       await fillPrivate(page.getByLabel('Password', { exact: true }), password);
       await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-      await page.getByRole('button', { name: 'Sign out', exact: true }).waitFor();
+      await openAccountSecurity(page);
       await page
         .getByText('No API tokens yet. Create one when a script or tool needs access.', {
           exact: true,

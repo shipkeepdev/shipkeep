@@ -59,6 +59,7 @@ const email: ValidatorFn = (control) => Validators.email(control);
                     <button
                       class="button button-secondary"
                       type="button"
+                      [attr.aria-label]="'Change role of ' + member.email"
                       (click)="select(member, 'role')"
                     >
                       Change role
@@ -66,6 +67,7 @@ const email: ValidatorFn = (control) => Validators.email(control);
                     <button
                       class="button button-secondary"
                       type="button"
+                      [attr.aria-label]="'Remove ' + member.email"
                       (click)="select(member, 'remove')"
                     >
                       Remove

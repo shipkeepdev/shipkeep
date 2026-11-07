@@ -45,7 +45,7 @@ import { DeliveryApi, type EnvironmentRef, type SecretMetadata } from './deliver
                     class="button button-secondary"
                     type="button"
                     [attr.aria-label]="'Remove ' + secret.name"
-                    [disabled]="runner.busy()"
+                    [disabled]="runner.busy() || !!runner.cooldown()"
                     (click)="remove(secret.name)"
                   >
                     Remove
@@ -74,7 +74,11 @@ import { DeliveryApi, type EnvironmentRef, type SecretMetadata } from './deliver
           <input id="secret-value" type="password" formControlName="value" autocomplete="off" />
         </div>
         <div>
-          <button class="button" type="submit" [disabled]="runner.busy() || form.invalid">
+          <button
+            class="button"
+            type="submit"
+            [disabled]="runner.busy() || !!runner.cooldown() || form.invalid"
+          >
             {{ runner.busy() ? 'Saving…' : 'Set secret' }}
           </button>
         </div>
