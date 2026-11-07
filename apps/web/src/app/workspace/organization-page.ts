@@ -7,6 +7,7 @@ import { MutationRunner } from '../identity/mutation-runner';
 
 import { Collection } from './collection';
 import { recoverOnEdit } from './form-recovery';
+import { OrganizationOverview } from './organization-overview';
 import { OrganizationSettings } from './organization-settings';
 import { required, slug } from './validators';
 import { type Organization, type Project, WorkspaceApi } from './workspace-api';
@@ -14,24 +15,23 @@ import { type Organization, type Project, WorkspaceApi } from './workspace-api';
 /** One organization: its projects, and creating a project (organization admins). */
 @Component({
   selector: 'sk-organization-page',
-  imports: [ReactiveFormsModule, RouterLink, OrganizationSettings],
+  imports: [ReactiveFormsModule, RouterLink, OrganizationOverview, OrganizationSettings],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <nav aria-label="Breadcrumb" class="mb-4 text-sm"><a routerLink="/orgs">Organizations</a></nav>
-    <section class="max-w-3xl" aria-labelledby="organization-title">
-      <h1 id="organization-title">{{ organization()?.name ?? 'Organization' }}</h1>
+    <section aria-labelledby="organization-title">
+      <div class="page-header">
+        <div class="min-w-0">
+          <h1 id="organization-title">{{ organization()?.name ?? 'Organization' }}</h1>
+          <p class="text-[13.5px] text-muted">Overview of what runs in this organization.</p>
+        </div>
+      </div>
       @if (missing()) {
         <div class="feedback" role="alert">
           <p>{{ missing() }}</p>
         </div>
       } @else {
-        <p class="page-intro">
-          Projects group the environments of one product.
-          <a [routerLink]="['/orgs', organizationId(), 'nodes']">Manage servers</a> ·
-          <a [routerLink]="['/orgs', organizationId(), 'members']">Members</a> ·
-          <a [routerLink]="['/orgs', organizationId(), 'audit']">Audit log</a>
-        </p>
+        <sk-organization-overview [organizationId]="organizationId()" />
         <h2>Projects</h2>
         @switch (projects.state()) {
           @case ('loading') {
@@ -44,7 +44,7 @@ import { type Organization, type Project, WorkspaceApi } from './workspace-api';
           }
           @default {
             @if (projects.items().length) {
-              <ul class="mb-8 divide-y divide-line border-y border-line" aria-label="Projects">
+              <ul class="mb-6 divide-y divide-line border-y border-line" aria-label="Projects">
                 @for (project of projects.items(); track project.id) {
                   <li class="py-3">
                     <a [routerLink]="['/orgs', organizationId(), 'projects', project.id]">{{
@@ -55,12 +55,12 @@ import { type Organization, type Project, WorkspaceApi } from './workspace-api';
                 }
               </ul>
             } @else {
-              <p class="mb-8 border-y border-line py-6 text-muted">No projects yet.</p>
+              <p class="mb-6 border-y border-line py-6 text-muted">No projects yet.</p>
             }
           }
         }
-        <section aria-labelledby="create-project-title" class="border-t border-line pt-6">
-          <h2 id="create-project-title">Create a project</h2>
+        <details class="disclosure">
+          <summary>Create a project</summary>
           @if (runner.problem(); as problem) {
             <div class="feedback" role="alert">
               <p>{{ problem }}</p>
@@ -91,9 +91,12 @@ import { type Organization, type Project, WorkspaceApi } from './workspace-api';
               </button>
             </div>
           </form>
-        </section>
+        </details>
         @if (organization(); as current) {
-          <sk-organization-settings [current]="current" (updated)="organization.set($event)" />
+          <details class="disclosure">
+            <summary>Organization settings</summary>
+            <sk-organization-settings [current]="current" (updated)="organization.set($event)" />
+          </details>
         }
       }
     </section>

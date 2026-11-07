@@ -1,62 +1,105 @@
-<a
-  class="skip-link"
-  href="#main-content"
-  (click)="$event.preventDefault(); mainContent.focus(); mainContent.scrollIntoView()"
-  >Skip to content</a
->
-<div class="min-h-dvh md:grid md:grid-cols-[13rem_1fr]">
-  <header class="flex flex-col border-b border-line bg-panel p-5 md:border-r md:border-b-0 md:p-6">
-    <a routerLink="/" class="text-xl font-semibold text-ink no-underline">Shipkeep</a>
-    <nav aria-label="Main" class="mt-5 flex flex-wrap gap-1 md:mt-8 md:flex-col">
+<a class="skip-link" href="#main-content" (click)="skipToContent($event)">Skip to content</a>
+@if (shell.public()) {
+  <div class="auth-layout">
+    <header class="auth-header">
+      <a routerLink="/" class="no-underline" aria-label="Shipkeep home"><sk-logo /></a>
+    </header>
+    <main id="main-content" tabindex="-1" class="auth-main">
+      <router-outlet />
+    </main>
+  </div>
+} @else {
+  <div class="app-layout">
+    <header class="sidebar">
+      <a [routerLink]="home()" class="px-2 no-underline" aria-label="Shipkeep home"><sk-logo /></a>
       @if (session.profile()) {
-        <a
-          class="nav-link"
-          routerLink="/orgs"
-          routerLinkActive="selected"
-          ariaCurrentWhenActive="page"
-          >Organizations</a
-        >
-        <a
-          class="nav-link"
-          routerLink="/account/security"
-          routerLinkActive="selected"
-          ariaCurrentWhenActive="page"
-          >Account security</a
-        >
+        @if (shell.organization(); as organization) {
+          <a routerLink="/orgs" class="switcher">
+            <span class="sr-only">Switch organization. Current:</span>
+            <span class="switcher-badge" aria-hidden="true">{{ initials() }}</span>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-[13px] font-medium">{{ organization.name }}</span>
+              <span class="block text-[11px] text-muted">Organization</span>
+            </span>
+            <sk-icon name="selector" class="text-[15px] text-muted" />
+          </a>
+          <nav aria-label="Organization">
+            <p class="nav-heading">Platform</p>
+            <a
+              class="nav-link"
+              [routerLink]="['/orgs', organization.id]"
+              routerLinkActive="selected"
+              [routerLinkActiveOptions]="{ exact: true }"
+              ariaCurrentWhenActive="page"
+              ><sk-icon name="layout-dashboard" />Overview</a
+            >
+            <a
+              class="nav-link"
+              [routerLink]="['/orgs', organization.id, 'nodes']"
+              routerLinkActive="selected"
+              ariaCurrentWhenActive="page"
+              ><sk-icon name="server-2" />Servers</a
+            >
+            <a
+              class="nav-link"
+              [routerLink]="['/orgs', organization.id, 'members']"
+              routerLinkActive="selected"
+              ariaCurrentWhenActive="page"
+              ><sk-icon name="users" />Members</a
+            >
+            <a
+              class="nav-link"
+              [routerLink]="['/orgs', organization.id, 'audit']"
+              routerLinkActive="selected"
+              ariaCurrentWhenActive="page"
+              ><sk-icon name="file-search" />Audit log</a
+            >
+          </nav>
+          @if (shell.projects().length) {
+            <nav aria-label="Projects">
+              <p class="nav-heading">Projects</p>
+              @for (project of shell.projects(); track project.id) {
+                <a
+                  class="nav-link"
+                  [routerLink]="['/orgs', organization.id, 'projects', project.id]"
+                  routerLinkActive="selected"
+                  ariaCurrentWhenActive="page"
+                  ><sk-icon name="folder" /><span class="truncate">{{ project.name }}</span></a
+                >
+              }
+            </nav>
+          }
+        }
+        <nav aria-label="Main" class="md:mt-auto">
+          <p class="nav-heading">Account</p>
+          <a
+            class="nav-link"
+            routerLink="/orgs"
+            routerLinkActive="selected"
+            [routerLinkActiveOptions]="{ exact: true }"
+            ariaCurrentWhenActive="page"
+            ><sk-icon name="building-community" />Organizations</a
+          >
+          <a
+            class="nav-link"
+            routerLink="/account/security"
+            routerLinkActive="selected"
+            ariaCurrentWhenActive="page"
+            ><sk-icon name="shield-lock" />Account security</a
+          >
+          <p class="truncate px-2.5 pt-3 text-[11px] text-muted">{{ session.profile()?.email }}</p>
+        </nav>
       } @else {
-        <a
-          class="nav-link"
-          routerLink="/auth/login"
-          routerLinkActive="selected"
-          ariaCurrentWhenActive="page"
-          >Sign in</a
-        >
-        <a
-          class="nav-link"
-          routerLink="/auth/register"
-          routerLinkActive="selected"
-          ariaCurrentWhenActive="page"
-          >Create account</a
-        >
+        <nav aria-label="Main">
+          <a class="nav-link" routerLink="/auth/login"><sk-icon name="login-2" />Sign in</a>
+          <a class="nav-link" routerLink="/auth/register"
+            ><sk-icon name="user-plus" />Create account</a
+          >
+        </nav>
       }
-      <a
-        class="nav-link"
-        routerLink="/auth/verify-email"
-        routerLinkActive="selected"
-        ariaCurrentWhenActive="page"
-        >Verify email</a
-      >
-    </nav>
-    <p class="mt-6 hidden text-sm leading-relaxed text-muted md:mt-auto md:block md:pt-12">
-      Your own cloud<br />on your own servers.
-    </p>
-  </header>
-  <main
-    #mainContent
-    id="main-content"
-    tabindex="-1"
-    class="min-w-0 px-5 py-8 md:px-12 md:py-12 lg:px-16"
-  >
-    <router-outlet />
-  </main>
-</div>
+    </header>
+    <main id="main-content" tabindex="-1" class="min-w-0 px-5 py-8 md:px-10 md:py-9">
+      <router-outlet />
+    </main>
+  </div>
+}

@@ -12,6 +12,8 @@ import { RouterLink } from '@angular/router';
 
 import { IdentityRequestError } from '../identity/identity-api';
 import { MutationRunner } from '../identity/mutation-runner';
+import { ShellContext } from '../shell/shell-context';
+import { type Tab, Tabs } from '../shell/tabs';
 import { Collection } from '../workspace/collection';
 
 import { ConfigurationEditor } from './configuration-editor';
@@ -35,12 +37,17 @@ const LIVE_POLL_MS = 15_000;
 /** One application: its configuration, deploying it and following its deployments. */
 @Component({
   selector: 'sk-application-page',
-  imports: [RouterLink, ConfigurationEditor, ReleaseHistory],
+  imports: [RouterLink, ConfigurationEditor, ReleaseHistory, Tabs],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <nav aria-label="Breadcrumb" class="mb-4 text-sm">
-      <a routerLink="/orgs">Organizations</a> /
+    <nav aria-label="Breadcrumb" class="breadcrumb">
+      <a [routerLink]="['/orgs', organizationId()]">{{
+        shell.organization()?.name ?? 'Organization'
+      }}</a>
+      <span aria-hidden="true">/</span>
+      <a [routerLink]="['/orgs', organizationId(), 'projects', projectId()]">{{ projectName() }}</a>
+      <span aria-hidden="true">/</span>
       <a
         [routerLink]="[
           '/orgs',
@@ -53,7 +60,7 @@ const LIVE_POLL_MS = 15_000;
         >Environment</a
       >
     </nav>
-    <section class="max-w-3xl" aria-labelledby="application-title">
+    <section class="max-w-4xl" aria-labelledby="application-title">
       <h1 id="application-title">{{ application()?.name ?? 'Application' }}</h1>
       @if (missing()) {
         <div class="feedback" role="alert">
@@ -86,118 +93,140 @@ const LIVE_POLL_MS = 15_000;
             </button>
           }
         </div>
-        @if (replicas.items().length) {
-          <section aria-labelledby="replicas-title" class="border-t border-line pt-6">
-            <h2 id="replicas-title">Replicas</h2>
-            <table class="mb-8 w-full text-left text-sm" aria-label="Replicas">
-              <thead>
-                <tr class="border-b border-line">
-                  <th class="py-2 font-semibold">Container</th>
-                  <th class="py-2 font-semibold">Server</th>
-                  <th class="py-2 font-semibold">State</th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (replica of replicas.items(); track replica.id) {
-                  <tr class="border-b border-line align-top">
-                    <td class="py-2 break-all">
-                      <code>{{ replica.container }}</code>
-                    </td>
-                    <td class="py-2">{{ replica.nodeName }}</td>
-                    <td
-                      class="py-2"
-                      [class.text-success]="replica.state === 'running'"
-                      [class.text-danger]="
-                        replica.state === 'missing' ||
-                        replica.state === 'dead' ||
-                        replica.state === 'exited'
-                      "
-                    >
-                      {{ replica.state ?? 'not reported yet' }}
-                    </td>
+        <sk-tabs label="Application sections" [tabs]="tabs" [(active)]="tab" />
+        <div
+          id="panel-overview"
+          role="tabpanel"
+          aria-labelledby="tab-overview"
+          [hidden]="tab() !== 'overview'"
+        >
+          @if (replicas.items().length) {
+            <section aria-labelledby="replicas-title" class="border-t border-line pt-6">
+              <h2 id="replicas-title">Replicas</h2>
+              <table class="mb-8 w-full text-left text-sm" aria-label="Replicas">
+                <thead>
+                  <tr class="border-b border-line">
+                    <th class="py-2 font-semibold">Container</th>
+                    <th class="py-2 font-semibold">Server</th>
+                    <th class="py-2 font-semibold">State</th>
                   </tr>
-                }
-              </tbody>
-            </table>
-          </section>
-        }
-        @if (domains.items().length) {
-          <section aria-labelledby="domains-title" class="border-t border-line pt-6">
-            <h2 id="domains-title">Domains</h2>
-            <ul class="mb-3 divide-y divide-line border-y border-line" aria-label="Domains">
-              @for (domain of domains.items(); track domain.hostname) {
-                <li class="py-3">
-                  <code>{{ domain.hostname }}</code>
-                  <span class="ml-2 text-sm text-muted">{{ describeDomain(domain) }}</span>
-                </li>
-              }
-            </ul>
-            <p class="hint mb-8">
-              Point each domain at the server running this application. Certificates are issued
-              automatically once it answers on ports 80 and 443.
-            </p>
-          </section>
-        }
-        <section aria-labelledby="deployments-title" class="border-t border-line pt-6">
-          <h2 id="deployments-title">Deployments</h2>
-          @if (deployments.items().length) {
-            <table class="mb-8 w-full text-left text-sm">
-              <thead>
-                <tr class="border-b border-line">
-                  <th class="py-2 font-semibold">Started</th>
-                  <th class="py-2 font-semibold">State</th>
-                  <th class="py-2 font-semibold">Details</th>
-                  <th class="py-2"><span class="sr-only">Actions</span></th>
-                </tr>
-              </thead>
-              <tbody>
-                @for (deployment of deployments.items(); track deployment.id) {
-                  <tr class="border-b border-line align-top">
-                    <td class="py-2 tabular-nums">
-                      {{ deployment.startedAt.slice(0, 19).replace('T', ' ') }}
-                    </td>
-                    <td
-                      class="py-2"
-                      [class.text-danger]="deployment.state === 'failed'"
-                      [class.text-success]="deployment.state === 'succeeded'"
-                    >
-                      {{ deployment.state }}
-                    </td>
-                    <td class="py-2 text-muted">
-                      {{
-                        deployment.error ?? (deployment.trigger === 'rollback' ? 'Rollback' : '')
-                      }}
-                    </td>
-                    <td class="py-2 text-right">
-                      @if (canRollBack(deployment)) {
-                        <button
-                          class="button button-secondary"
-                          type="button"
-                          [disabled]="runner.busy() || !!runner.cooldown() || !!active()"
-                          (click)="rollback(deployment.id)"
-                        >
-                          Roll back
-                        </button>
-                      }
-                    </td>
-                  </tr>
-                }
-              </tbody>
-            </table>
-            <p class="hint mb-8">
-              Rolling back deploys that version's image and configuration again, without its release
-              command. Database migrations are not undone.
-            </p>
-          } @else {
-            <p class="mb-8 border-y border-line py-6 text-muted">Not deployed yet.</p>
+                </thead>
+                <tbody>
+                  @for (replica of replicas.items(); track replica.id) {
+                    <tr class="border-b border-line align-top">
+                      <td class="py-2 break-all">
+                        <code>{{ replica.container }}</code>
+                      </td>
+                      <td class="py-2">{{ replica.nodeName }}</td>
+                      <td
+                        class="py-2"
+                        [class.text-success]="replica.state === 'running'"
+                        [class.text-danger]="
+                          replica.state === 'missing' ||
+                          replica.state === 'dead' ||
+                          replica.state === 'exited'
+                        "
+                      >
+                        {{ replica.state ?? 'not reported yet' }}
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </section>
           }
-        </section>
-        <sk-release-history
-          [environment]="environment()"
-          [applicationId]="current.id"
-          [revision]="deployments.items().length"
-        />
-        <sk-configuration-editor [application]="current" [environment]="environment()" />
+          @if (domains.items().length) {
+            <section aria-labelledby="domains-title" class="border-t border-line pt-6">
+              <h2 id="domains-title">Domains</h2>
+              <ul class="mb-3 divide-y divide-line border-y border-line" aria-label="Domains">
+                @for (domain of domains.items(); track domain.hostname) {
+                  <li class="py-3">
+                    <code>{{ domain.hostname }}</code>
+                    <span class="ml-2 text-sm text-muted">{{ describeDomain(domain) }}</span>
+                  </li>
+                }
+              </ul>
+              <p class="hint mb-8">
+                Point each domain at the server running this application. Certificates are issued
+                automatically once it answers on ports 80 and 443.
+              </p>
+            </section>
+          }
+          <section aria-labelledby="deployments-title" class="border-t border-line pt-6">
+            <h2 id="deployments-title">Deployments</h2>
+            @if (deployments.items().length) {
+              <table class="mb-8 w-full text-left text-sm">
+                <thead>
+                  <tr class="border-b border-line">
+                    <th class="py-2 font-semibold">Started</th>
+                    <th class="py-2 font-semibold">State</th>
+                    <th class="py-2 font-semibold">Details</th>
+                    <th class="py-2"><span class="sr-only">Actions</span></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (deployment of deployments.items(); track deployment.id) {
+                    <tr class="border-b border-line align-top">
+                      <td class="py-2 tabular-nums">
+                        {{ deployment.startedAt.slice(0, 19).replace('T', ' ') }}
+                      </td>
+                      <td
+                        class="py-2"
+                        [class.text-danger]="deployment.state === 'failed'"
+                        [class.text-success]="deployment.state === 'succeeded'"
+                      >
+                        {{ deployment.state }}
+                      </td>
+                      <td class="py-2 text-muted">
+                        {{
+                          deployment.error ?? (deployment.trigger === 'rollback' ? 'Rollback' : '')
+                        }}
+                      </td>
+                      <td class="py-2 text-right">
+                        @if (canRollBack(deployment)) {
+                          <button
+                            class="button button-secondary"
+                            type="button"
+                            [disabled]="runner.busy() || !!runner.cooldown() || !!active()"
+                            (click)="rollback(deployment.id)"
+                          >
+                            Roll back
+                          </button>
+                        }
+                      </td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+              <p class="hint mb-8">
+                Rolling back deploys that version's image and configuration again, without its
+                release command. Database migrations are not undone.
+              </p>
+            } @else {
+              <p class="mb-8 border-y border-line py-6 text-muted">Not deployed yet.</p>
+            }
+          </section>
+        </div>
+        <div
+          id="panel-releases"
+          role="tabpanel"
+          aria-labelledby="tab-releases"
+          [hidden]="tab() !== 'releases'"
+        >
+          <sk-release-history
+            [environment]="environment()"
+            [applicationId]="current.id"
+            [revision]="deployments.items().length"
+          />
+        </div>
+        <div
+          id="panel-configuration"
+          role="tabpanel"
+          aria-labelledby="tab-configuration"
+          [hidden]="tab() !== 'configuration'"
+        >
+          <sk-configuration-editor [application]="current" [environment]="environment()" />
+        </div>
       }
     </section>
   `,
@@ -206,6 +235,17 @@ export class ApplicationPage {
   private readonly api = inject(DeliveryApi);
   private readonly liveEvents = inject(LiveEvents);
   protected readonly runner = inject(MutationRunner);
+  protected readonly shell = inject(ShellContext);
+  protected readonly tab = signal('overview');
+  protected readonly tabs: readonly Tab[] = [
+    { id: 'overview', label: 'Overview' },
+    { id: 'releases', label: 'Releases' },
+    { id: 'configuration', label: 'Configuration' },
+  ];
+  protected readonly projectName = computed(
+    () =>
+      this.shell.projects().find((project) => project.id === this.projectId())?.name ?? 'Project',
+  );
   readonly organizationId = input.required<string>();
   readonly projectId = input.required<string>();
   readonly environmentId = input.required<string>();

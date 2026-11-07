@@ -76,7 +76,7 @@ describe('account forms', () => {
     expect(await store.submit()).toBeNull();
     expect(session.login).not.toHaveBeenCalled();
     store.form.controls.factor.setValue(' 123456 ');
-    expect(await store.submit()).toBe('/orgs');
+    expect(await store.submit()).toBe('/home');
     expect(session.login).toHaveBeenLastCalledWith(
       { email: 'person@example.com', password, totp: '123456' },
       expect.any(String),

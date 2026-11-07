@@ -90,8 +90,8 @@ describe('account route presentation', () => {
     const form = store();
     form.form.patchValue({ email: profile.email, password: 'correct horse browser fixture' });
     await submit();
-    expect(TestBed.inject(Router).url).toBe('/orgs');
-    expect(element().textContent).toContain('Organizations');
+    expect(TestBed.inject(Router).url).toBe('/home');
+    expect(element().querySelector('#password')).toBeNull();
     expect(form.form.controls.password.value).toBe('');
   });
   it('honors public email links and submits their codes without changing the URL', async () => {

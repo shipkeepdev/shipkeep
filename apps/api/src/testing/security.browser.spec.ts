@@ -183,8 +183,8 @@ describe('account security in Chromium', () => {
       expect(
         await page.getByRole('button', { name: 'Set up two-factor authentication' }).isEnabled(),
       ).toBe(false);
-      await page.getByRole('link', { name: 'Verify email', exact: true }).click();
-      await page.getByLabel('Verification code').waitFor();
+      await page.getByRole('link', { name: 'Organizations', exact: true }).click();
+      await page.getByRole('heading', { name: 'Organizations', exact: true }).waitFor();
       const delivered = page.waitForResponse(
         (response) =>
           response.request().method() === 'POST' &&

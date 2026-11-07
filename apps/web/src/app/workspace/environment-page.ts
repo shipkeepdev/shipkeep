@@ -13,6 +13,8 @@ import { BindingsPanel } from '../access/bindings-panel';
 import { ApplicationsPanel } from '../delivery/applications-panel';
 import { SecretsPanel } from '../delivery/secrets-panel';
 import { IdentityRequestError } from '../identity/identity-api';
+import { ShellContext } from '../shell/shell-context';
+import { type Tab, Tabs } from '../shell/tabs';
 
 import { EnvironmentSettings } from './environment-settings';
 import { type Environment, WorkspaceApi } from './workspace-api';
@@ -20,15 +22,17 @@ import { type Environment, WorkspaceApi } from './workspace-api';
 /** One environment: its applications and its write-only secrets (M3.4, M3.7b). */
 @Component({
   selector: 'sk-environment-page',
-  imports: [RouterLink, ApplicationsPanel, BindingsPanel, EnvironmentSettings, SecretsPanel],
+  imports: [RouterLink, ApplicationsPanel, BindingsPanel, EnvironmentSettings, SecretsPanel, Tabs],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <nav aria-label="Breadcrumb" class="mb-4 text-sm">
-      <a routerLink="/orgs">Organizations</a> /
-      <a [routerLink]="['/orgs', organizationId()]">Organization</a> /
-      <a [routerLink]="['/orgs', organizationId(), 'projects', projectId()]">Project</a>
+    <nav aria-label="Breadcrumb" class="breadcrumb">
+      <a [routerLink]="['/orgs', organizationId()]">{{
+        shell.organization()?.name ?? 'Organization'
+      }}</a>
+      <span aria-hidden="true">/</span>
+      <a [routerLink]="['/orgs', organizationId(), 'projects', projectId()]">{{ projectName() }}</a>
     </nav>
-    <section class="max-w-3xl" aria-labelledby="environment-title">
+    <section class="max-w-4xl" aria-labelledby="environment-title">
       <h1 id="environment-title">{{ environment()?.name ?? 'Environment' }}</h1>
       @if (missing()) {
         <div class="feedback" role="alert">
@@ -42,16 +46,57 @@ import { type Environment, WorkspaceApi } from './workspace-api';
               : 'Developers can deploy here.'
           }}
         </p>
-        <sk-applications-panel [environment]="ref()" />
-        <sk-secrets-panel [environment]="ref()" />
-        <sk-environment-settings [current]="current" (updated)="environment.set($event)" />
-        <sk-bindings-panel [scope]="ref()" />
+        <sk-tabs label="Environment sections" [tabs]="tabs" [(active)]="tab" />
+        <div
+          id="panel-applications"
+          role="tabpanel"
+          aria-labelledby="tab-applications"
+          [hidden]="tab() !== 'applications'"
+        >
+          <sk-applications-panel [environment]="ref()" />
+        </div>
+        <div
+          id="panel-secrets"
+          role="tabpanel"
+          aria-labelledby="tab-secrets"
+          [hidden]="tab() !== 'secrets'"
+        >
+          <sk-secrets-panel [environment]="ref()" />
+        </div>
+        <div
+          id="panel-access"
+          role="tabpanel"
+          aria-labelledby="tab-access"
+          [hidden]="tab() !== 'access'"
+        >
+          <sk-bindings-panel [scope]="ref()" />
+        </div>
+        <div
+          id="panel-settings"
+          role="tabpanel"
+          aria-labelledby="tab-settings"
+          [hidden]="tab() !== 'settings'"
+        >
+          <sk-environment-settings [current]="current" (updated)="environment.set($event)" />
+        </div>
       }
     </section>
   `,
 })
 export class EnvironmentPage {
   private readonly api = inject(WorkspaceApi);
+  protected readonly shell = inject(ShellContext);
+  protected readonly tab = signal('applications');
+  protected readonly tabs: readonly Tab[] = [
+    { id: 'applications', label: 'Applications' },
+    { id: 'secrets', label: 'Secrets' },
+    { id: 'access', label: 'Access' },
+    { id: 'settings', label: 'Settings' },
+  ];
+  protected readonly projectName = computed(
+    () =>
+      this.shell.projects().find((project) => project.id === this.projectId())?.name ?? 'Project',
+  );
   readonly organizationId = input.required<string>();
   readonly projectId = input.required<string>();
   readonly environmentId = input.required<string>();

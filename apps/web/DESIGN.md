@@ -1,16 +1,17 @@
 ---
 name: Shipkeep identity
-description: Compact account access and security controls.
+description: Dark workspace from the Claude Design mockups. Sidebar, cards and tabs, no inline styles.
 colors:
-  accent: '#1759ba'
-  ink: '#192b3b'
-  muted: '#526171'
-  line: '#c6d0d9'
-  control: '#7a8896'
-  panel: '#f2f5f7'
-  white: '#ffffff'
-  danger: '#a02127'
-  success: '#176145'
+  accent: '#ff8a8a'
+  ink: '#ededef'
+  muted: '#9a9aa2'
+  line: '#1f1f22'
+  control: '#2e2e33'
+  panel: '#0c0c0e'
+  black: '#000000'
+  danger: '#ff6b6b'
+  success: '#3dd68c'
+  warning: '#f5a524'
 typography:
   headline: { fontSize: '1.75rem', fontWeight: 600, lineHeight: 1.25 }
   title: { fontSize: '1.25rem', fontWeight: 600, lineHeight: 1.4 }
@@ -32,15 +33,15 @@ spacing:
 components:
   button-primary:
     {
-      backgroundColor: '{colors.accent}',
-      textColor: '{colors.white}',
+      backgroundColor: '{colors.ink}',
+      textColor: '{colors.black}',
       typography: '{typography.label}',
       rounded: '{rounded.md}',
       padding: '0.625rem 1.25rem',
     }
   button-secondary:
     {
-      backgroundColor: '{colors.white}',
+      backgroundColor: '{colors.black}',
       textColor: '{colors.ink}',
       typography: '{typography.label}',
       rounded: '{rounded.md}',
@@ -48,7 +49,7 @@ components:
     }
   input:
     {
-      backgroundColor: '{colors.white}',
+      backgroundColor: '{colors.black}',
       textColor: '{colors.ink}',
       typography: '{typography.body}',
       rounded: '{rounded.md}',
