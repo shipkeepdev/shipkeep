@@ -526,6 +526,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
   - `POST` with `{config}` creates an application from a `shipkeep.yml` document sent as JSON (201). It needs `deploy.run`, so developers may do it only on unprotected environments (SPEC 7), because the configuration takes effect at the next deployment.
   - `GET` lists the environment's applications, and `GET …/{applicationId}` reads one (`environment.read`).
   - `POST …/{applicationId}/config` with `{expectedConfigSha, config}` replaces the configuration if it still has that hash, otherwise 409 `application_config_changed`. The name cannot change. Saving an identical configuration records nothing.
+  - The web editor validates YAML locally and shows a diff before saving. On 409 it retains the draft, loads the latest version on request, and requires another review before retrying with the new hash. Drafts live only in the component; saving does not start a deployment.
   - Rules:
     - documents are validated against the schema, and errors list JSON pointers and schema messages without input values;
     - only `build.type: image` is accepted until git (M3.1) and Compose (M3.8) sources;

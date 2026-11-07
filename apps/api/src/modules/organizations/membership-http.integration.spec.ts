@@ -203,9 +203,14 @@ describe('membership mutations over HTTP', () => {
       { ...body, email: 'not-an-address' },
       { ...body, organizationId: uuidv7() },
       { email: subject.email, role: 'member' },
-    ])
+    ]) {
+      // Each validation case needs its own attempt budget to reach the DTO checks.
+      await resetLimits();
       await post(owner, path(), input).expect(400);
+    }
+    await resetLimits();
     await post(owner, path(`/${uuidv7()}/role`), { role: 'admin', ...proof }).expect(404);
+    await resetLimits();
     await post(owner, path('/invalid/role'), { role: 'admin', ...proof }).expect(400);
     expect(
       await count('SELECT count(*) FROM memberships WHERE organization_id = $1', [organizationId]),
