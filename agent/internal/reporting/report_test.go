@@ -45,6 +45,15 @@ func TestSnapshotReportsStoppedAndRemovedContainersWithoutPrivateLabels(t *testi
 	}
 }
 
+func TestSnapshotTreatsRemovingContainersAsAbsent(t *testing.T) {
+	going := managed("sk-going", "removing")
+	going.ID = strings.Repeat("b", 64)
+	report, err := Snapshot(t.Context(), engine{containers: []docker.ContainerSummary{managed("sk-healthy", "running"), going}})
+	if err != nil || len(report.GetContainers()) != 1 || report.Containers[0].Name != "sk-healthy" {
+		t.Fatalf("a removing container changed the inventory: %v, %v", report, err)
+	}
+}
+
 func TestSnapshotNeverPublishesPartialInventories(t *testing.T) {
 	large := make([]docker.ContainerSummary, 257)
 	for i := range large {

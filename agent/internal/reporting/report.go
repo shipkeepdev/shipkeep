@@ -36,6 +36,12 @@ func Snapshot(ctx context.Context, engine Engine) (*agentv1.StateReport, error) 
 		if len(container.Names) != 1 || !containerID.MatchString(container.ID) {
 			return nil, errors.New("invalid managed container identity")
 		}
+		// Docker reports `removing` while deleting a container, possibly for a long time when the
+		// removal is stuck. The container is going away, so it counts as absent: one such container
+		// must not suppress the inventory of every other one.
+		if container.State == "removing" {
+			continue
+		}
 		name := strings.TrimPrefix(container.Names[0], "/")
 		state := map[string]agentv1.ContainerStatus_State{
 			"created": agentv1.ContainerStatus_STATE_CREATED, "running": agentv1.ContainerStatus_STATE_RUNNING,

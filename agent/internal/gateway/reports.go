@@ -12,16 +12,22 @@ import (
 
 // reportStates samples independently of the stream writer, keeping heartbeats responsive.
 // A fresh session starts with a full snapshot. Changes are sampled every second, with a full
-// refresh every 30 seconds. Collection failures retain the last good observation remotely.
+// refresh every 30 seconds. Collection failures retain the last good observation remotely and are
+// logged when they start and when they end, not on every sample.
 func (r *Runner) reportStates(ctx context.Context, epoch uint64, output chan<- *agentv1.StateReport, ticks <-chan time.Time) {
 	var previous *agentv1.StateReport
 	var sentAt time.Time
+	failing := false
 	for {
 		started := time.Now()
 		collectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		report, err := r.Report(collectCtx)
 		cancel()
 		if err == nil && report != nil && proto.Size(report) < 60*1024 {
+			if failing {
+				failing = false
+				r.Logger.Info("state report collection recovered")
+			}
 			report = proto.CloneOf(report)
 			if !proto.Equal(previous, report) || time.Since(sentAt) >= 30*time.Second {
 				previous = proto.CloneOf(report)
@@ -33,7 +39,8 @@ func (r *Runner) reportStates(ctx context.Context, epoch uint64, output chan<- *
 					return
 				}
 			}
-		} else if ctx.Err() == nil {
+		} else if ctx.Err() == nil && !failing {
+			failing = true
 			r.Logger.Warn("state report collection failed")
 		}
 		select {

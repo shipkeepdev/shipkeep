@@ -1,10 +1,12 @@
 package gateway
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
+	"strings"
 	"sync"
 	"testing"
 	"testing/synctest"
@@ -69,6 +71,39 @@ func TestStateReportsRefreshOnChangeAndPeriodicallyWithoutFalseEmptySnapshots(t 
 		}
 		cancel()
 		<-done
+	})
+}
+
+func TestStateReportFailuresLogOncePerOutage(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		var logs bytes.Buffer
+		var mu sync.Mutex
+		failure := errors.New("daemon unavailable")
+		r := Runner{Logger: slog.New(slog.NewTextHandler(&logs, nil)), Report: func(context.Context) (*agentv1.StateReport, error) {
+			mu.Lock()
+			defer mu.Unlock()
+			return &agentv1.StateReport{}, failure
+		}}
+		output := make(chan *agentv1.StateReport, 8)
+		ticker := time.NewTicker(time.Second)
+		defer ticker.Stop()
+		done := make(chan struct{})
+		go func() { defer close(done); r.reportStates(ctx, 1, output, ticker.C) }()
+		time.Sleep(60 * time.Second)
+		synctest.Wait()
+		mu.Lock()
+		failure = nil
+		mu.Unlock()
+		time.Sleep(2 * time.Second)
+		synctest.Wait()
+		cancel()
+		<-done
+		text := logs.String()
+		if strings.Count(text, "collection failed") != 1 || strings.Count(text, "collection recovered") != 1 {
+			t.Fatalf("unexpected outage logging: %s", text)
+		}
 	})
 }
 
