@@ -13,12 +13,13 @@ import { ApplicationsPanel } from '../delivery/applications-panel';
 import { SecretsPanel } from '../delivery/secrets-panel';
 import { IdentityRequestError } from '../identity/identity-api';
 
+import { EnvironmentSettings } from './environment-settings';
 import { type Environment, WorkspaceApi } from './workspace-api';
 
 /** One environment: its applications and its write-only secrets (M3.4, M3.7b). */
 @Component({
   selector: 'sk-environment-page',
-  imports: [RouterLink, ApplicationsPanel, SecretsPanel],
+  imports: [RouterLink, ApplicationsPanel, EnvironmentSettings, SecretsPanel],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <nav aria-label="Breadcrumb" class="mb-4 text-sm">
@@ -42,6 +43,7 @@ import { type Environment, WorkspaceApi } from './workspace-api';
         </p>
         <sk-applications-panel [environment]="ref()" />
         <sk-secrets-panel [environment]="ref()" />
+        <sk-environment-settings [current]="current" (updated)="environment.set($event)" />
       }
     </section>
   `,

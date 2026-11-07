@@ -39,6 +39,18 @@ export class WorkspaceApi {
       this.client.POST('/api/v1/organizations', { body, params: this.mutation(key) }),
     );
   }
+  updateOrganization(
+    organizationId: string,
+    body: Schema<'OrganizationSettingsDto'>,
+    key: string,
+  ): Promise<Organization> {
+    return this.required(() =>
+      this.client.POST('/api/v1/organizations/{organizationId}/settings', {
+        body,
+        params: { ...this.mutation(key), path: { organizationId } },
+      }),
+    );
+  }
   async projects(organizationId: string): Promise<readonly Project[]> {
     return (
       await this.required(() =>
@@ -64,6 +76,19 @@ export class WorkspaceApi {
       this.client.POST('/api/v1/organizations/{organizationId}/projects', {
         body,
         params: { ...this.mutation(key), path: { organizationId } },
+      }),
+    );
+  }
+  updateProject(
+    organizationId: string,
+    projectId: string,
+    body: Schema<'ProjectSettingsDto'>,
+    key: string,
+  ): Promise<Project> {
+    return this.required(() =>
+      this.client.POST('/api/v1/organizations/{organizationId}/projects/{projectId}/settings', {
+        body,
+        params: { ...this.mutation(key), path: { organizationId, projectId } },
       }),
     );
   }
@@ -102,6 +127,24 @@ export class WorkspaceApi {
         body,
         params: { ...this.mutation(key), path: { organizationId, projectId } },
       }),
+    );
+  }
+
+  updateEnvironment(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    body: Schema<'EnvironmentSettingsDto'>,
+    key: string,
+  ): Promise<Environment> {
+    return this.required(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/settings',
+        {
+          body,
+          params: { ...this.mutation(key), path: { organizationId, projectId, environmentId } },
+        },
+      ),
     );
   }
 
