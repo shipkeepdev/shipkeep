@@ -5,6 +5,8 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { appRoutes } from '../app.routes';
 import { IDENTITY_FETCH } from '../identity/identity-api';
 
+import { EVENT_SOURCE } from './live-events';
+
 const ORG = '0190f5a8-7b1c-7e2d-8f3a-0000000000aa';
 const PROJECT = '0190f5a8-7b1c-7e2d-8f3a-0000000000bb';
 const ENV = '0190f5a8-7b1c-7e2d-8f3a-0000000000cc';
@@ -50,16 +52,43 @@ const deployment = (state: string, error: string | null = null) => ({
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+class FakeEventSource {
+  closed = false;
+  onopen: (() => void) | null = null;
+  onerror: (() => void) | null = null;
+  private listener: ((event: { data: string }) => void) | undefined;
+  constructor(readonly url: string) {}
+  addEventListener(_type: string, listener: (event: { data: string }) => void): void {
+    this.listener = listener;
+  }
+  emit(data: unknown): void {
+    this.listener?.({ data: JSON.stringify(data) });
+  }
+  close(): void {
+    this.closed = true;
+  }
+}
+
 describe('delivery screens', () => {
   let harness: RouterTestingHarness;
+  let sources: FakeEventSource[];
   let requests: { method: string; path: string; body: unknown }[];
   let routes: Partial<Record<string, () => Response | Promise<Response>>>;
 
   beforeEach(async () => {
     requests = [];
+    sources = [];
     TestBed.configureTestingModule({
       providers: [
         provideRouter(appRoutes, withComponentInputBinding()),
+        {
+          provide: EVENT_SOURCE,
+          useValue: (url: string) => {
+            const source = new FakeEventSource(url);
+            sources.push(source);
+            return source;
+          },
+        },
         {
           provide: IDENTITY_FETCH,
           useValue: async (request: Request) => {
@@ -289,6 +318,28 @@ describe('delivery screens', () => {
     expect(list).toContain('points to 203.0.113.4');
     expect(list).toContain('points to a private address');
     expect(list).toContain('no DNS record yet');
+  });
+
+  it('reloads deployments when a live event names this application, and closes on leaving', async () => {
+    let deployments = [deployment('succeeded')];
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: deployments }),
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+    );
+    await settle();
+    expect(sources.map((source) => new URL(source.url).pathname)).toEqual([`${BASE}/events`]);
+    deployments = [deployment('failed', 'Live failure.')];
+    sources[0]?.emit({ applicationId: 'another-application' });
+    await settle();
+    expect(element().querySelector('table')?.textContent).not.toContain('Live failure.');
+    sources[0]?.emit({ applicationId: APP });
+    await settle();
+    expect(element().querySelector('table')?.textContent).toContain('Live failure.');
+    await harness.navigateByUrl('/orgs');
+    expect(sources[0]?.closed).toBe(true);
   });
 
   it('validates shipkeep.yml in the browser before creating an application', async () => {

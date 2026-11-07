@@ -15,6 +15,7 @@ import { MutationRunner } from '../identity/mutation-runner';
 import { Collection } from '../workspace/collection';
 
 import { ConfigurationEditor } from './configuration-editor';
+import { LiveEvents } from './live-events';
 import {
   type Application,
   DeliveryApi,
@@ -26,6 +27,8 @@ import {
 const FINISHED = new Set(['succeeded', 'failed', 'cancelled', 'rolled_back']);
 /** While a deployment runs, its state is refreshed this often. */
 const POLL_MS = 3000;
+/** With live updates, polling only covers an event the stream could miss. */
+const LIVE_POLL_MS = 15_000;
 
 /** One application: its configuration, deploying it and following its deployments. */
 @Component({
@@ -159,6 +162,7 @@ const POLL_MS = 3000;
 })
 export class ApplicationPage {
   private readonly api = inject(DeliveryApi);
+  private readonly liveEvents = inject(LiveEvents);
   protected readonly runner = inject(MutationRunner);
   readonly organizationId = input.required<string>();
   readonly projectId = input.required<string>();
@@ -191,6 +195,14 @@ export class ApplicationPage {
     effect(() => {
       void this.load(this.environment(), this.applicationId());
     });
+    effect((onCleanup) => {
+      const events = this.liveEvents.connect(this.environment(), (applicationId) => {
+        if (applicationId === this.applicationId()) void this.refresh();
+      });
+      onCleanup(() => {
+        events?.close();
+      });
+    });
   }
 
   private async load(environment: EnvironmentRef, applicationId: string): Promise<void> {
@@ -219,9 +231,12 @@ export class ApplicationPage {
     clearTimeout(this.timer);
     await this.deployments.refresh();
     if (this.active())
-      this.timer = setTimeout(() => {
-        void this.refresh();
-      }, POLL_MS);
+      this.timer = setTimeout(
+        () => {
+          void this.refresh();
+        },
+        this.liveEvents.connected() ? LIVE_POLL_MS : POLL_MS,
+      );
   }
 
   protected async deploy(): Promise<void> {
