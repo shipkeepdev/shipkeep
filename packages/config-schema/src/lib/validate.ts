@@ -1,8 +1,8 @@
-import { Ajv2020, type ErrorObject } from 'ajv/dist/2020.js';
+import type { ErrorObject } from 'ajv';
 import { parse as parseYaml, YAMLParseError } from 'yaml';
 
-import { shipkeepSchema } from '../gen/schema.js';
 import type { ShipkeepConfig } from '../gen/shipkeep-config.js';
+import { validate as validateFn } from '../gen/validator.js';
 
 /** One validation problem, located by a JSON pointer into the document. */
 export interface ConfigIssue {
@@ -28,24 +28,12 @@ const YAML_OPTIONS = {
 /** Upper bound on a shipkeep.yml document, in bytes. */
 export const MAX_CONFIG_BYTES = 256 * 1024;
 
-const ajv = new Ajv2020({
-  allErrors: true,
-  strict: true,
-  // The schema uses `required` inside `not` and `oneOf` branches to express exclusivity; that is
-  // valid JSON Schema but Ajv's strictRequired heuristic rejects it.
-  strictRequired: false,
-  allowUnionTypes: true,
-  // Pattern strings are RE2-compatible on purpose so Go and TypeScript agree (no lookarounds).
-  unicodeRegExp: true,
-});
-const validateFn = ajv.compile<ShipkeepConfig>(shipkeepSchema);
-
 /**
  * Validates an already parsed document against the shipkeep.yml schema.
  */
 export function validateShipkeepConfig(value: unknown): ValidationResult {
   if (validateFn(value)) {
-    return { ok: true, config: value };
+    return { ok: true, config: value as ShipkeepConfig };
   }
   return { ok: false, issues: toIssues(validateFn.errors ?? []) };
 }
