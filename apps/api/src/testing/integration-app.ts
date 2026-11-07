@@ -13,7 +13,11 @@ import { resetDatabase } from './reset-database';
 import { runtimeDatabase } from './runtime-database';
 import { POSTGRES_TEST_IMAGE } from './postgres-image';
 
-/** Integration files run serially and must only receive a disposable DATABASE_URL. */
+/**
+ * Integration files run serially and must only receive a disposable DATABASE_URL. One app per spec
+ * file: configuration is read once per module graph, so a second app in a file would still look
+ * for the first one's deleted KEK file.
+ */
 export async function integrationApp(
   overrides: { token: InjectionToken; value: unknown }[] = [],
   options: {
