@@ -27,6 +27,7 @@ apps/
                       prisma/         schema.prisma and migrations; prisma.config.ts for the CLI
                       openapi.json    generated contract of the REST API (pnpm gen:openapi)
   web/              Web UI, Angular (TypeScript)
+  landing/          Static marketing page, deployed on Vercel (see its README)
 agent/              Node agent, Go module github.com/shipkeepdev/shipkeep/agent (single static binary)
 cli/                CLI, Go module github.com/shipkeepdev/shipkeep/cli (single static binary)
 lib/                Shared Go module github.com/shipkeepdev/shipkeep/lib:
