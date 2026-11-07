@@ -9,6 +9,7 @@ import { IdentityModule } from '../identity/identity.module';
 import { TenantAccessModule } from '../organizations/tenant-access.module';
 import { SecretsModule } from '../secrets/secrets.module';
 
+import { AllocationObservations } from './application/allocation-observations';
 import { DeploymentCommands } from './application/deployment-commands';
 import { DeploymentPipeline } from './application/deployment-pipeline';
 import {
@@ -17,11 +18,13 @@ import {
   DEPLOYMENT_TRANSACTION,
   DEPLOYMENT_WAKER,
   IMAGE_RESOLVER,
+  OBSERVATION_STORE,
   PIPELINE_STORE,
 } from './application/ports';
 import { DeploymentQueue } from './infrastructure/deployment-queue';
 import { DeploymentWorker } from './infrastructure/deployment-worker';
 import { PrismaDeploymentStore } from './infrastructure/prisma-deployment.store';
+import { PrismaObservationStore } from './infrastructure/prisma-observation.store';
 import { PrismaPipelineStore } from './infrastructure/prisma-pipeline.store';
 import { RegistryResolver } from './infrastructure/registry/registry-resolver';
 import { DeploymentController } from './interface/deployment.controller';
@@ -40,6 +43,8 @@ import { DeploymentController } from './interface/deployment.controller';
     DeploymentQueue,
     { provide: DEPLOYMENT_WAKER, useExisting: DeploymentQueue },
     DeploymentPipeline,
+    { provide: OBSERVATION_STORE, useClass: PrismaObservationStore },
+    AllocationObservations,
     DeploymentWorker,
   ],
   exports: [DEPLOYMENT_STORE, IMAGE_RESOLVER, DeploymentWorker],

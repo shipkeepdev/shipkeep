@@ -11,6 +11,7 @@ import {
 import { AgentActions } from '../application/agent-actions';
 import { AuthenticateNode } from '../application/authenticate-node';
 import { NodeLiveness } from '../application/node-liveness';
+import { StateReports } from '../application/state-reports';
 import { NodeAuthenticationError, type NodeIdentity } from '../domain/node-identity';
 
 const pollMs = 1000;
@@ -31,6 +32,7 @@ export class NodeStream {
     private readonly authenticate: AuthenticateNode,
     private readonly actions: AgentActions,
     private readonly liveness: NodeLiveness,
+    private readonly reports: StateReports,
   ) {}
 
   async *connect(
@@ -93,6 +95,10 @@ export class NodeStream {
           });
         } else if (message.case === 'actionUpdate') {
           await this.actions.record(identity, message.value);
+        } else if (message.case === 'stateReport') {
+          if (message.value.leaseEpoch !== BigInt(credential.leaseEpoch))
+            throw new ConnectError('state report with a stale epoch', Code.FailedPrecondition);
+          await this.reports.deliver(identity, message.value);
         } else if (
           message.case !== 'heartbeat' ||
           message.value.leaseEpoch !== BigInt(credential.leaseEpoch) ||

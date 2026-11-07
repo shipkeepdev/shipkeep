@@ -16,7 +16,9 @@ import (
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/gateway"
 	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
+	"github.com/samuelmbabhazi/shipkeep/agent/internal/reporting"
 	"github.com/samuelmbabhazi/shipkeep/lib/buildinfo"
+	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
 	"github.com/samuelmbabhazi/shipkeep/lib/secret"
 )
 
@@ -77,7 +79,10 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	// Facts are read when the result is built, after the action's context ended.
 	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine) //nolint:contextcheck // see above
 	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts), Epoch: func() uint64 { return epoch }}
-	runner := gateway.Runner{Address: a.cfg.ControlPlane.Address, StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher}
+	runner := gateway.Runner{
+		Address: a.cfg.ControlPlane.Address, StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher,
+		Report: func(ctx context.Context) (*agentv1.StateReport, error) { return reporting.Snapshot(ctx, engine) },
+	}
 	return runner.Run(ctx, bundle)
 }
 
