@@ -1,5 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, Router, withComponentInputBinding } from '@angular/router';
+import {
+  provideRouter,
+  Router,
+  withComponentInputBinding,
+  withRouterConfig,
+} from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
 import { appRoutes } from '../app.routes';
@@ -32,7 +37,11 @@ describe('workspace pages', () => {
     requests = [];
     TestBed.configureTestingModule({
       providers: [
-        provideRouter(appRoutes, withComponentInputBinding()),
+        provideRouter(
+          appRoutes,
+          withComponentInputBinding(),
+          withRouterConfig({ paramsInheritanceStrategy: 'always' }),
+        ),
         {
           provide: IDENTITY_FETCH,
           useValue: async (request: Request) => {
@@ -84,7 +93,9 @@ describe('workspace pages', () => {
   it('lists organizations and creates one with the password, adopting the new session', async () => {
     handler = (request) =>
       request.method === 'GET'
-        ? json({ items: [organization], nextCursor: null })
+        ? new URL(request.url).pathname === '/api/v1/organizations'
+          ? json({ items: [organization], nextCursor: null })
+          : json({ items: [], nextCursor: null })
         : json(
             {
               organization: {
@@ -127,6 +138,9 @@ describe('workspace pages', () => {
     let projects = [project];
     handler = (request) => {
       const path = new URL(request.url).pathname;
+      // The dashboard frame lists servers and members too.
+      if (/\/(members|nodes|audit-events)$/.test(path))
+        return json({ items: [], nextCursor: null });
       if (request.method === 'POST') {
         projects = [...projects, { ...project, id: 'p2', name: 'Web', slug: 'web' }];
         return json(projects.at(-1), 201);
@@ -135,10 +149,14 @@ describe('workspace pages', () => {
         ? json({ items: projects, nextCursor: null })
         : json(organization);
     };
-    await harness.navigateByUrl(`/orgs/${ORG}`);
+    await harness.navigateByUrl(`/orgs/${ORG}/projects`);
     await settle();
-    expect(element().querySelector('h1')?.textContent).toContain('Acme');
-    expect(element().querySelector('ul[aria-label="Projects"]')?.textContent).toContain('Billing');
+    expect(element().querySelector('h1')?.textContent).toContain('Projects');
+    expect(element().querySelector('main')?.textContent).toContain('Billing');
+    [...element().querySelectorAll('button')]
+      .find((b) => b.textContent.includes('New project'))
+      ?.click();
+    await settle();
     fill('project-name', 'Web');
     fill('project-slug', 'web');
     await submit();
@@ -146,12 +164,15 @@ describe('workspace pages', () => {
       path: `/api/v1/organizations/${ORG}/projects`,
       body: { name: 'Web', slug: 'web', gitWriteMode: 'commit' },
     });
-    expect(element().querySelector('ul[aria-label="Projects"]')?.textContent).toContain('Web');
+    expect(element().querySelector('main')?.textContent).toContain('Web');
   });
 
   it('creates protected environments by default', async () => {
     handler = (request) => {
       const path = new URL(request.url).pathname;
+      // The dashboard frame lists servers and members too.
+      if (/\/(members|nodes|audit-events)$/.test(path))
+        return json({ items: [], nextCursor: null });
       if (request.method === 'POST')
         return json(
           {
@@ -174,7 +195,7 @@ describe('workspace pages', () => {
     };
     await harness.navigateByUrl(`/orgs/${ORG}/projects/${PROJECT}`);
     await settle();
-    expect(element().textContent).toContain('No environments yet.');
+    expect(element().textContent).toContain('No environment yet.');
     fill('environment-name', 'production');
     await submit();
     expect(requests.find((r) => r.method === 'POST')?.body).toEqual({
@@ -188,7 +209,7 @@ describe('workspace pages', () => {
   it('explains a missing or forbidden organization without server details', async () => {
     handler = () =>
       json({ type: 'https://shipkeep.dev/problems/not_found', detail: 'internal detail' }, 404);
-    await harness.navigateByUrl(`/orgs/${ORG}`);
+    await harness.navigateByUrl(`/orgs/${ORG}/organization`);
     await settle();
     expect(element().querySelector('[role="alert"]')?.textContent).toContain(
       'This item is no longer available.',

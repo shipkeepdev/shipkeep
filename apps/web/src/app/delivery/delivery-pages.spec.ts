@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
 import { appRoutes } from '../app.routes';
@@ -80,7 +80,11 @@ describe('delivery screens', () => {
     sources = [];
     TestBed.configureTestingModule({
       providers: [
-        provideRouter(appRoutes, withComponentInputBinding()),
+        provideRouter(
+          appRoutes,
+          withComponentInputBinding(),
+          withRouterConfig({ paramsInheritanceStrategy: 'always' }),
+        ),
         {
           provide: EVENT_SOURCE,
           useValue: (url: string) => {
@@ -144,13 +148,16 @@ describe('delivery screens', () => {
     await settle();
   }
 
+  const deploymentsText = () => element().querySelector('#panel-deployments')?.textContent ?? '';
+  const configText = () => element().querySelector('#panel-config')?.textContent ?? '';
+
   async function openEditor(): Promise<void> {
     routes = {
       [`GET ${BASE}/applications/${APP}`]: () => json(application),
       [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: [] }),
     };
     await harness.navigateByUrl(
-      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}?section=yml`,
     );
     await settle();
   }
@@ -282,7 +289,7 @@ describe('delivery screens', () => {
     );
     await settle();
     const rollbacks = () =>
-      Array.from(element().querySelectorAll('tbody button')).filter((b) =>
+      Array.from(element().querySelectorAll('#panel-deployments button')).filter((b) =>
         b.textContent.includes('Roll back'),
       );
     // Neither the serving version nor the failed one can be rolled back to.
@@ -293,7 +300,7 @@ describe('delivery screens', () => {
       `${BASE}/applications/${APP}/deployments/d-old/rollback`,
     ]);
     expect(element().querySelector('[role="status"]')?.textContent).toContain('queued');
-    expect(element().querySelector('table')?.textContent).toContain('Rollback');
+    expect(deploymentsText()).toContain('rollback');
     expect((rollbacks()[0] as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -311,13 +318,14 @@ describe('delivery screens', () => {
         }),
     };
     await harness.navigateByUrl(
-      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}?section=domains`,
     );
     await settle();
-    const list = element().querySelector('ul[aria-label="Domains"]')?.textContent ?? '';
-    expect(list).toContain('points to 203.0.113.4');
-    expect(list).toContain('points to a private address');
-    expect(list).toContain('no DNS record yet');
+    const list = configText();
+    expect(list).toContain('a.example.com');
+    expect(list).toContain('203.0.113.4');
+    expect(list).toContain('private address');
+    expect(list).toContain('no record');
   });
 
   it('reloads deployments when a live event names this application, and closes on leaving', async () => {
@@ -334,10 +342,10 @@ describe('delivery screens', () => {
     deployments = [deployment('failed', 'Live failure.')];
     sources[0]?.emit({ applicationId: 'another-application' });
     await settle();
-    expect(element().querySelector('table')?.textContent).not.toContain('Live failure.');
+    expect(deploymentsText()).not.toContain('Live failure.');
     sources[0]?.emit({ applicationId: APP });
     await settle();
-    expect(element().querySelector('table')?.textContent).toContain('Live failure.');
+    expect(deploymentsText()).toContain('Live failure.');
     await harness.navigateByUrl('/orgs');
     expect(sources[0]?.closed).toBe(true);
   });
@@ -373,10 +381,10 @@ describe('delivery screens', () => {
         }),
     };
     await harness.navigateByUrl(
-      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}?section=placement`,
     );
     await settle();
-    const table = element().querySelector('table[aria-label="Replicas"]')?.textContent ?? '';
+    const table = configText();
     expect(table).toContain('edge-1');
     expect(table).toContain('running');
     expect(table).toContain('not reported yet');
@@ -400,7 +408,7 @@ describe('delivery screens', () => {
         json({ items: [release(2, 8080), release(1, 80)] }),
     };
     await harness.navigateByUrl(
-      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}?section=rollback`,
     );
     await settle();
     const list = () => element().querySelector('ul[aria-label="Releases"]');
@@ -426,7 +434,7 @@ describe('delivery screens', () => {
     };
     await harness.navigateByUrl(`/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}`);
     await settle();
-    expect(element().textContent).toContain('No applications yet.');
+    expect(element().textContent).toContain('No application yet.');
 
     fill('application-config', 'version: 1\nname: Bad Name\nbuild: { type: image }\n');
     await submit(0);
@@ -443,9 +451,7 @@ describe('delivery screens', () => {
       path: `${BASE}/applications`,
       body: { config: application.config },
     });
-    expect(element().querySelector('ul[aria-label="Applications"]')?.textContent).toContain(
-      'billing-api',
-    );
+    expect(element().querySelector('#panel-applications')?.textContent).toContain('billing-api');
   });
 
   it('sets write-only secrets and never shows their values', async () => {
@@ -496,14 +502,14 @@ describe('delivery screens', () => {
       },
     };
     await harness.navigateByUrl(
-      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}?section=yml`,
     );
     await settle();
     expect(element().querySelector('h1')?.textContent).toContain('billing-api');
     expect(element().querySelector<HTMLTextAreaElement>('#configuration-draft')?.value).toContain(
       'image: nginx:1.27',
     );
-    expect(element().querySelector('table')?.textContent).toContain('Step pull failed.');
+    expect(deploymentsText()).toContain('Step pull failed.');
 
     const deploy = Array.from(element().querySelectorAll('button')).find((b) =>
       b.textContent.includes('Deploy'),
@@ -518,7 +524,7 @@ describe('delivery screens', () => {
     );
     cancel?.click();
     await settle();
-    expect(element().querySelector('table')?.textContent).toContain('cancelled');
+    expect(deploymentsText()).toContain('cancelled');
     expect(element().querySelector('[role="status"]')).toBeNull();
   });
 });

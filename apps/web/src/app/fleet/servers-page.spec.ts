@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
 import { appRoutes } from '../app.routes';
@@ -53,7 +53,11 @@ describe('servers page', () => {
     };
     TestBed.configureTestingModule({
       providers: [
-        provideRouter(appRoutes, withComponentInputBinding()),
+        provideRouter(
+          appRoutes,
+          withComponentInputBinding(),
+          withRouterConfig({ paramsInheritanceStrategy: 'always' }),
+        ),
         {
           provide: IDENTITY_FETCH,
           useValue: async (request: Request) => {
@@ -71,7 +75,7 @@ describe('servers page', () => {
       ],
     });
     harness = await RouterTestingHarness.create();
-    await harness.navigateByUrl(`/orgs/${ORG}/nodes`);
+    await harness.navigateByUrl(`/orgs/${ORG}/servers`);
     await settle();
   });
 
@@ -103,10 +107,11 @@ describe('servers page', () => {
   }
 
   it('lists servers with their status and capacity', () => {
-    const table = element().querySelector('table[aria-label="Servers"]')?.textContent ?? '';
+    const table =
+      element().querySelector('[role="region"][aria-label="Servers"]')?.textContent ?? '';
     expect(table).toContain('edge-1');
     expect(table).toContain('ready');
-    expect(table).toContain('4 CPU, 8 GiB');
+    expect(table).toContain('4 CPU · 8 GiB');
   });
 
   it('issues a join token after re-authentication and shows the agent configuration', async () => {
@@ -131,7 +136,7 @@ describe('servers page', () => {
     await settle();
     const confirm = () =>
       Array.from(element().querySelectorAll<HTMLButtonElement>('button')).find((b) =>
-        b.textContent.includes('Remove server'),
+        b.textContent.includes('Remove the server'),
       );
     fill('confirm-name', 'edge');
     expect(confirm()?.disabled).toBe(true);
@@ -150,6 +155,6 @@ describe('servers page', () => {
         body: { confirmation: 'confirmation-fixture' },
       },
     ]);
-    expect(element().textContent).toContain('No servers yet.');
+    expect(element().textContent).toContain('No server yet.');
   });
 });

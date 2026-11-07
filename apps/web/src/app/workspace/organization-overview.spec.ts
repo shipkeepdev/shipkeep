@@ -1,5 +1,10 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, Router as RouterToken, withComponentInputBinding } from '@angular/router';
+import {
+  provideRouter,
+  Router as RouterToken,
+  withComponentInputBinding,
+  withRouterConfig,
+} from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
 import { appRoutes } from '../app.routes';
@@ -42,19 +47,44 @@ describe('organization overview', () => {
         page([
           {
             id: 'd2',
+            releaseId: 'r2',
             state: 'failed',
+            trigger: 'manual',
             error: 'No node can run replica 1 of 1 (no nodes).',
             startedAt: '2026-11-07T12:00:00Z',
+            finishedAt: '2026-11-07T12:00:05Z',
           },
-          { id: 'd1', state: 'succeeded', error: null, startedAt: '2026-11-06T12:00:00Z' },
+          {
+            id: 'd1',
+            releaseId: 'r1',
+            state: 'succeeded',
+            trigger: 'manual',
+            error: null,
+            startedAt: '2026-11-06T12:00:00Z',
+            finishedAt: '2026-11-06T12:01:00Z',
+          },
         ]),
       [`GET ${O}/nodes`]: () => page([]),
       [`GET ${O}/audit-events`]: () =>
-        page([{ id: 'a1', action: 'deployment.failed', createdAt: stamp.createdAt }]),
+        page([
+          {
+            id: 'a1',
+            action: 'deployment.failed',
+            actorKind: 'system',
+            actorId: null,
+            targetType: 'deployment',
+            targetId: 'd2',
+            createdAt: stamp.createdAt,
+          },
+        ]),
     };
     TestBed.configureTestingModule({
       providers: [
-        provideRouter(appRoutes, withComponentInputBinding()),
+        provideRouter(
+          appRoutes,
+          withComponentInputBinding(),
+          withRouterConfig({ paramsInheritanceStrategy: 'always' }),
+        ),
         {
           provide: IDENTITY_FETCH,
           useValue: (request: Request) => {
@@ -84,49 +114,52 @@ describe('organization overview', () => {
     [...element().querySelectorAll('ul[aria-label="Summary"] li')]
       .find((item) => item.textContent.includes(label))
       ?.textContent.replace(/\s+/g, ' ');
+  const section = (id: string) =>
+    element().querySelector(`[aria-labelledby="${id}"]`)?.textContent.replace(/\s+/g, ' ') ?? '';
 
   it('summarizes what the API reports and says what is failing', async () => {
     await open();
-    expect(stat('Applications')).toContain('1 failing');
-    expect(stat('Applications')).toContain('In 1 environments');
-    expect(stat('Servers ready')).toContain('0 / 0');
-    const table = element().querySelector('table')?.textContent ?? '';
-    expect(table).toContain('storefront');
-    expect(table).toContain('No node can run replica 1 of 1');
-    expect(element().textContent).toContain('deployment.failed');
+    expect(stat('Apps live')).toContain('1 failing');
+    expect(stat('Apps live')).toMatch(/0\s*\/\s*1/);
+    expect(stat('Servers ready')).toMatch(/0\s*\/\s*0/);
+    expect(section('recent-title')).toContain('storefront');
+    expect(section('alerts-title')).toContain('storefront: deployment failed');
+    expect(section('alerts-title')).toContain('No node can run replica 1 of 1');
+    expect(section('activity-title')).toContain('deployment.failed');
   });
 
   it('says what to do next when no server is connected, and not otherwise', async () => {
     await open();
     expect(element().querySelector('.next-step')?.textContent).toContain('No server connected');
     expect(element().querySelector('.next-step a')?.getAttribute('href')).toBe(
-      `/orgs/${ORG}/nodes`,
+      `/orgs/${ORG}/servers`,
     );
 
     routes[`GET ${O}/nodes`] = () => page([node('edge-1', 'ready'), node('edge-2', 'down')]);
     await harness.navigateByUrl('/orgs');
     await open();
     expect(element().querySelector('.next-step')).toBeNull();
-    expect(stat('Servers ready')).toContain('1 / 2');
+    expect(stat('Servers ready')).toMatch(/1\s*\/\s*2/);
+    expect(section('alerts-title')).toContain('edge-2 down');
   });
 
-  it('leaves out what this account may not see instead of showing it empty', async () => {
+  it('says what this account may not see instead of showing it empty', async () => {
     routes[`GET ${O}/nodes`] = () => json({}, 404);
     routes[`GET ${O}/audit-events`] = () => json({}, 404);
     await open();
     expect(element().querySelector('.next-step')).toBeNull();
-    expect(element().querySelector('#servers-title')).toBeNull();
-    expect(element().querySelector('#activity-title')).toBeNull();
-    expect(element().querySelector('table')?.textContent).toContain('storefront');
+    expect(section('servers-title')).toContain('Visible to administrators');
+    expect(section('activity-title')).toContain('Only admins see the audit log.');
+    expect(section('recent-title')).toContain('storefront');
     expect(stat('Servers ready')).toContain('Visible to administrators');
   });
 
   it('still shows the rest when applications cannot be listed', async () => {
     routes[`GET ${E}/applications`] = () => json({}, 500);
     await open();
-    expect(stat('Applications')).toContain('0');
-    expect(element().textContent).toContain('deployment.failed');
-    expect(element().textContent).toContain('Nothing deployed yet');
+    expect(stat('Apps live')).toMatch(/0\s*\/\s*0/);
+    expect(section('activity-title')).toContain('deployment.failed');
+    expect(section('recent-title')).toContain('No deployment yet.');
   });
 
   it('never fetches for more applications than its bound', async () => {
@@ -148,7 +181,11 @@ describe('landing after sign-in', () => {
   async function landing(answer: () => Response): Promise<string> {
     TestBed.configureTestingModule({
       providers: [
-        provideRouter(appRoutes, withComponentInputBinding()),
+        provideRouter(
+          appRoutes,
+          withComponentInputBinding(),
+          withRouterConfig({ paramsInheritanceStrategy: 'always' }),
+        ),
         {
           provide: IDENTITY_FETCH,
           useValue: (request: Request) =>

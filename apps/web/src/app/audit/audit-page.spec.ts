@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { provideRouter, withComponentInputBinding } from '@angular/router';
+import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
 import { appRoutes } from '../app.routes';
@@ -32,7 +32,11 @@ describe('audit page', () => {
     answer = () => json({ items: [event('e1')], nextCursor: null });
     TestBed.configureTestingModule({
       providers: [
-        provideRouter(appRoutes, withComponentInputBinding()),
+        provideRouter(
+          appRoutes,
+          withComponentInputBinding(),
+          withRouterConfig({ paramsInheritanceStrategy: 'always' }),
+        ),
         {
           provide: IDENTITY_FETCH,
           useValue: async (request: Request) => {
@@ -52,7 +56,14 @@ describe('audit page', () => {
   async function open(): Promise<void> {
     await harness.navigateByUrl(`/orgs/${ORG}/audit`);
     await settle();
+    // The filters are folded away, as in the design; open them.
+    button('Filter').click();
+    await settle();
   }
+  const rows = () => [
+    ...element().querySelectorAll('[aria-label="Audit events"] button[aria-expanded]'),
+  ];
+  const listed = () => element().querySelector('[aria-label="Audit events"]')?.textContent ?? '';
   function element(): HTMLElement {
     const element = harness.routeNativeElement;
     if (!element) throw new Error('missing route');
@@ -93,9 +104,11 @@ describe('audit page', () => {
         nextCursor: null,
       });
     await open();
-    const table = element().querySelector('table[aria-label="Audit events"]');
+    const table = element().querySelector('[aria-label="Audit events"]');
     expect(table?.textContent).toContain('application.created');
     expect(table?.textContent).toContain('192.0.2.1');
+    (rows()[0] as HTMLButtonElement | undefined)?.click();
+    await settle();
     expect(table?.querySelector('pre')?.textContent).toContain('<img src=x onerror=alert(1)>');
     expect(table?.querySelector('img')).toBeNull();
     expect(button('Apply filters').disabled).toBe(false);
@@ -143,7 +156,7 @@ describe('audit page', () => {
     button('Load older events').click();
     await settle();
     expect(urls.at(-1)?.searchParams.get('cursor')).toBe(CURSOR);
-    const text = element().querySelector('table')?.textContent ?? '';
+    const text = listed();
     expect(text).toContain('application.created');
     expect(text).toContain('project.created');
     expect(element().textContent).not.toContain('Load older events');
@@ -157,7 +170,7 @@ describe('audit page', () => {
     button('Load older events').click();
     await settle();
     expect(element().querySelector('[role="alert"]')).not.toBeNull();
-    expect(element().querySelector('table')?.textContent).toContain('application.created');
+    expect(listed()).toContain('application.created');
     expect(button('Load older events').disabled).toBe(false);
   });
 
@@ -176,7 +189,7 @@ describe('audit page', () => {
     await apply();
     stale(json({ items: [event('e4', 'project.created')], nextCursor: null }));
     await settle();
-    const text = element().querySelector('table')?.textContent ?? '';
+    const text = listed();
     expect(text).toContain('node.removed');
     expect(text).not.toContain('project.created');
   });
@@ -185,7 +198,7 @@ describe('audit page', () => {
     answer = () => json({}, 404);
     await open();
     expect(element().querySelector('[role="alert"]')).not.toBeNull();
-    expect(element().querySelector('table')).toBeNull();
+    expect(rows()).toHaveLength(0);
 
     answer = () => json({ items: [], nextCursor: null });
     fill('audit-action', 'node.removed');
@@ -231,6 +244,6 @@ describe('audit page', () => {
     await settle();
     expect(element().querySelector('[role="alert"]')).not.toBeNull();
     expect(click).not.toHaveBeenCalled();
-    expect(element().querySelector('table')).not.toBeNull();
+    expect(rows().length).toBeGreaterThan(0);
   });
 });

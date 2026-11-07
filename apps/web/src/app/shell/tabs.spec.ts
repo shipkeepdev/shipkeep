@@ -1,5 +1,6 @@
 import { Component, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 
 import { type Tab, Tabs } from './tabs';
 
@@ -17,6 +18,7 @@ class Host {
 
 describe('tabs', () => {
   function setup() {
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
     const fixture = TestBed.createComponent(Host);
     fixture.detectChanges();
     const element = fixture.nativeElement as HTMLElement;
