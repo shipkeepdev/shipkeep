@@ -53,7 +53,7 @@ const json = (body: unknown, status = 200) =>
 describe('delivery screens', () => {
   let harness: RouterTestingHarness;
   let requests: { method: string; path: string; body: unknown }[];
-  let routes: Partial<Record<string, () => Response>>;
+  let routes: Partial<Record<string, () => Response | Promise<Response>>>;
 
   beforeEach(async () => {
     requests = [];
@@ -105,6 +105,128 @@ describe('delivery screens', () => {
       .dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await settle();
   }
+
+  async function click(label: string): Promise<void> {
+    const button = Array.from(element().querySelectorAll('button')).find(
+      (b) => b.textContent.trim() === label,
+    );
+    if (!button) throw new Error(`missing button ${label}`);
+    button.click();
+    await settle();
+  }
+
+  async function openEditor(): Promise<void> {
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: [] }),
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+    );
+    await settle();
+  }
+
+  it('validates and reviews YAML, invalidates the preview on edits, and saves without deploying', async () => {
+    await openEditor();
+    const draft = () =>
+      element().querySelector<HTMLTextAreaElement>('#configuration-draft')?.value ?? '';
+    const initial = draft();
+    for (const invalid of [
+      'name: [',
+      initial.replace('billing-api', 'renamed'),
+      initial + '\nrun: {}',
+    ]) {
+      fill('configuration-draft', invalid);
+      await submit(0);
+      expect(element().querySelector('#configuration-draft')?.getAttribute('aria-invalid')).toBe(
+        'true',
+      );
+      expect(requests.some((r) => r.method === 'POST')).toBe(false);
+    }
+    fill('configuration-draft', initial.replace('port: 80', 'port: 8080'));
+    await submit(0);
+    expect(element().querySelector('pre')?.textContent).toContain('-   port: 80');
+    expect(element().querySelector('pre')?.textContent).toContain('+   port: 8080');
+    fill('configuration-draft', initial.replace('port: 80', 'port: 8081'));
+    await settle();
+    expect(element().querySelector('pre')).toBeNull();
+    await submit(0);
+    const updated = {
+      ...application,
+      configSha: 'b'.repeat(64),
+      config: { ...application.config, run: { port: 8081 } },
+    };
+    routes[`POST ${BASE}/applications/${APP}/config`] = () => json(updated);
+    await click('Save configuration');
+    expect(requests.filter((r) => r.method === 'POST')).toEqual([
+      {
+        method: 'POST',
+        path: `${BASE}/applications/${APP}/config`,
+        body: { expectedConfigSha: application.configSha, config: updated.config },
+      },
+    ]);
+    expect(element().textContent).toContain('Configuration saved.');
+    expect(element().textContent).toContain('bbbbbbbbbbbb');
+  });
+
+  it('preserves a conflicting draft, retries reload failures and requires review against the new hash', async () => {
+    await openEditor();
+    const initial =
+      element().querySelector<HTMLTextAreaElement>('#configuration-draft')?.value ?? '';
+    const draft = initial.replace('port: 80', 'port: 8080');
+    fill('configuration-draft', draft);
+    await submit(0);
+    routes[`POST ${BASE}/applications/${APP}/config`] = () => json({}, 409);
+    await click('Save configuration');
+    expect(element().textContent).toContain('Your draft has been kept.');
+    await click('Save configuration');
+    expect(requests.filter((r) => r.method === 'POST')).toHaveLength(1);
+    routes[`GET ${BASE}/applications/${APP}`] = () => json({}, 503);
+    await click('Load latest version');
+    expect(element().textContent).toContain('temporarily unavailable');
+    expect(element().querySelector<HTMLTextAreaElement>('#configuration-draft')?.value).toBe(draft);
+    const latest = {
+      ...application,
+      configSha: 'b'.repeat(64),
+      config: { ...application.config, run: { port: 81 } },
+    };
+    routes[`GET ${BASE}/applications/${APP}`] = () => json(latest);
+    await click('Load latest version');
+    expect(element().querySelector('pre')).toBeNull();
+    await submit(0);
+    expect(element().querySelector('pre')?.textContent).toContain('-   port: 81');
+    routes[`POST ${BASE}/applications/${APP}/config`] = () => json(latest);
+    await click('Save configuration');
+    expect(requests.filter((r) => r.method === 'POST').at(-1)?.body).toMatchObject({
+      expectedConfigSha: latest.configSha,
+      config: { run: { port: 8080 } },
+    });
+  });
+
+  it('ignores an application load that finishes after navigation to another application', async () => {
+    let resolveOld: (response: Response) => void = () => undefined;
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () =>
+        new Promise((resolve) => {
+          resolveOld = resolve;
+        }),
+    };
+    const next = APP.replace(/dd$/, 'ab');
+    routes[`GET ${BASE}/applications/${next}`] = () =>
+      json({ ...application, id: next, name: 'next-app' });
+    routes[`GET ${BASE}/applications/${next}/deployments`] = () => json({ items: [] });
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+    );
+    await settle();
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${next}`,
+    );
+    await settle();
+    resolveOld(json(application));
+    await settle();
+    expect(element().querySelector('h1')?.textContent).toBe('next-app');
+  });
 
   it('validates shipkeep.yml in the browser before creating an application', async () => {
     let applications: unknown[] = [];
@@ -193,7 +315,9 @@ describe('delivery screens', () => {
     );
     await settle();
     expect(element().querySelector('h1')?.textContent).toContain('billing-api');
-    expect(element().querySelector('pre')?.textContent).toContain('image: nginx:1.27');
+    expect(element().querySelector<HTMLTextAreaElement>('#configuration-draft')?.value).toContain(
+      'image: nginx:1.27',
+    );
     expect(element().querySelector('table')?.textContent).toContain('Step pull failed.');
 
     const deploy = Array.from(element().querySelectorAll('button')).find((b) =>

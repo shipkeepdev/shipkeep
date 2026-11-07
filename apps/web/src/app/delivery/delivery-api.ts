@@ -45,6 +45,22 @@ export class DeliveryApi extends WorkspaceApi {
       ),
     );
   }
+  updateConfig(
+    environment: EnvironmentRef,
+    applicationId: string,
+    expectedConfigSha: string,
+    config: object,
+  ): Promise<Application> {
+    return this.required(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/config',
+        {
+          params: { path: { ...environment, applicationId } },
+          body: { expectedConfigSha, config: { ...config } },
+        },
+      ),
+    );
+  }
   deploy(
     environment: EnvironmentRef,
     applicationId: string,
