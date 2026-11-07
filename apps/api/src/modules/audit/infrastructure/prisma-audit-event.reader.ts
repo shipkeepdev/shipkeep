@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { ActorKind } from '@shipkeep/domain';
 
+import type { AuditEvent } from '../../../platform/prisma/generated/client';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { AuditEventReader, AuditFilter } from '../application/audit-event-reader';
 import type { AuditRecord } from '../domain/audit-record';
@@ -37,17 +38,41 @@ export class PrismaAuditEventReader implements AuditEventReader {
         take: limit,
       }),
     );
-    return rows.map((row) => ({
-      id: row.id,
-      organizationId: row.organizationId,
-      actorKind: row.actorKind as ActorKind,
-      actorId: row.actorId,
-      ip: row.ip,
-      action: row.action,
-      targetType: row.targetType,
-      targetId: row.targetId,
-      metadata: row.metadata as Record<string, unknown>,
-      createdAt: row.createdAt,
-    }));
+    return rows.map(auditRecord);
   }
+
+  async afterInEnvironment(
+    organizationId: string,
+    environmentId: string,
+    afterId: string,
+    limit: number,
+  ): Promise<AuditRecord[]> {
+    const rows = await this.database.runTenant(organizationId, () =>
+      this.database.client.auditEvent.findMany({
+        where: {
+          organizationId,
+          id: { gt: afterId },
+          metadata: { path: ['environmentId'], equals: environmentId },
+        },
+        orderBy: { id: 'asc' },
+        take: limit,
+      }),
+    );
+    return rows.map(auditRecord);
+  }
+}
+
+function auditRecord(row: AuditEvent): AuditRecord {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    actorKind: row.actorKind as ActorKind,
+    actorId: row.actorId,
+    ip: row.ip,
+    action: row.action,
+    targetType: row.targetType,
+    targetId: row.targetId,
+    metadata: row.metadata as Record<string, unknown>,
+    createdAt: row.createdAt,
+  };
 }
