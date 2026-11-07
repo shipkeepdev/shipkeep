@@ -69,7 +69,7 @@ const LIVE_POLL_MS = 15_000;
           <button
             class="button"
             type="button"
-            [disabled]="runner.busy() || !!active()"
+            [disabled]="runner.busy() || !!runner.cooldown() || !!active()"
             (click)="deploy()"
           >
             {{ runner.busy() ? 'Starting…' : 'Deploy' }}
@@ -79,7 +79,7 @@ const LIVE_POLL_MS = 15_000;
             <button
               class="button button-secondary"
               type="button"
-              [disabled]="runner.busy()"
+              [disabled]="runner.busy() || !!runner.cooldown()"
               (click)="cancel(running.id)"
             >
               Cancel deployment
@@ -173,7 +173,7 @@ const LIVE_POLL_MS = 15_000;
                         <button
                           class="button button-secondary"
                           type="button"
-                          [disabled]="runner.busy() || !!active()"
+                          [disabled]="runner.busy() || !!runner.cooldown() || !!active()"
                           (click)="rollback(deployment.id)"
                         >
                           Roll back

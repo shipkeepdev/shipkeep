@@ -10,6 +10,7 @@ import {
   fillPrivate,
   FIXTURE_PASSWORD,
   mailCode,
+  openAccountSecurity,
   signIn,
   submit,
 } from './browser-identity';
@@ -138,7 +139,10 @@ describe('account security in Chromium', () => {
     expect(await page.locator('sk-token-panel img').count()).toBe(0);
     await accessible(page);
     expect(await bearerStatus(token)).toBe(200);
+    // Shown once, so no timer may hide it: only an acknowledgement does (WCAG 2.2.1).
     await page.clock.fastForward(600_001);
+    await page.getByRole('heading', { name: 'Save your API token' }).waitFor();
+    await page.getByRole('button', { name: 'I have saved this token' }).click();
     await page.getByRole('heading', { name: 'Save your API token' }).waitFor({ state: 'hidden' });
     expect(await bearerStatus(token)).toBe(200);
     await page.reload();
@@ -271,7 +275,10 @@ describe('account security in Chromium', () => {
       await submit(page, 'Replace recovery codes', '/api/v1/auth/mfa/recovery');
       const replacement = await recoveryCodes();
       expect(replacement.every((code) => !codes.includes(code))).toBe(true);
+      // Shown once, so no timer may hide them: only an acknowledgement does (WCAG 2.2.1).
       await page.clock.fastForward(600_001);
+      await page.getByRole('list', { name: 'Recovery codes' }).waitFor();
+      await page.getByRole('button', { name: 'I have saved these codes' }).click();
       await page.getByRole('list', { name: 'Recovery codes' }).waitFor({ state: 'hidden' });
       await submit(page, 'Sign out', '/api/v1/auth/logout', 204);
       await loginWithFactor(email, 'recovery', codes[3], 401);
@@ -323,8 +330,7 @@ describe('account security in Chromium', () => {
       code,
     );
     await submit(page, 'Sign in', '/api/v1/auth/login', expected);
-    if (expected === 200)
-      await page.getByRole('button', { name: 'Sign out', exact: true }).waitFor();
+    if (expected === 200) await openAccountSecurity(page);
   }
   async function bearerStatus(token: string): Promise<number> {
     return (

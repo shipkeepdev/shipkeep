@@ -52,6 +52,13 @@ export async function signIn(
   await page.getByLabel('Email address').fill(email);
   await fillPrivate(page.getByLabel('Password', { exact: true }), password);
   await submit(page, 'Sign in', '/api/v1/auth/login');
+  await openAccountSecurity(page);
+}
+
+/** Sign-in lands on organizations; account security is one navigation away. */
+export async function openAccountSecurity(page: Page): Promise<void> {
+  await page.getByRole('heading', { name: 'Organizations', exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Account security', exact: true }).click();
   await page.getByRole('button', { name: 'Sign out', exact: true }).waitFor();
 }
 

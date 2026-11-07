@@ -58,6 +58,10 @@
   select {
     @apply block min-h-11 w-full rounded-md border border-control bg-white px-3 py-2 text-base text-ink;
   }
+  /* WCAG 2.5.8: at least 24 by 24 CSS pixels. */
+  input[type='checkbox'] {
+    @apply size-6 shrink-0;
+  }
   input[aria-invalid='true'] {
     @apply border-danger;
   }

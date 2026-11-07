@@ -109,6 +109,7 @@ export function agentConfig(token: JoinToken): string {
           actionLabel="Remove server"
           busyLabel="Removing…"
           [busy]="runner.busy()"
+          [blocked]="!!runner.cooldown()"
           (confirmed)="remove(node, $event)"
           (cancelled)="keep()"
         >
@@ -189,7 +190,11 @@ sudo install -m 0600 /dev/stdin /etc/shipkeep/join-token   # paste the token, th
               />
             </div>
             <div>
-              <button class="button" type="submit" [disabled]="runner.busy() || join.invalid">
+              <button
+                class="button"
+                type="submit"
+                [disabled]="runner.busy() || !!runner.cooldown() || join.invalid"
+              >
                 {{ runner.busy() ? 'Creating…' : 'Create join token' }}
               </button>
             </div>

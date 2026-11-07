@@ -49,7 +49,7 @@ const settingsForm = () =>
           <button
             class="button"
             type="submit"
-            [disabled]="runner.busy() || form.invalid || form.pristine"
+            [disabled]="runner.busy() || !!runner.cooldown() || form.invalid || form.pristine"
           >
             {{ runner.busy() ? 'Saving…' : 'Save settings' }}
           </button>

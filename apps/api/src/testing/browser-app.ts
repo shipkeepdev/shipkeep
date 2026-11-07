@@ -60,6 +60,8 @@ export async function browserApp(): Promise<{
     const backend = await integrationApp([], {
       // Never reset an inherited developer DATABASE_URL, including one loaded by Nx.
       isolatedDatabase: true,
+      // The production role: tenant commands refuse one that could bypass row security.
+      restrictedDatabase: true,
       httpsOptions: await localhostTls(),
       beforeInit: (app) =>
         installWebApp(app, resolve(__dirname, '../../../../dist/apps/web/browser')),

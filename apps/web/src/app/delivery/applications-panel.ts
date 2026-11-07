@@ -88,7 +88,7 @@ run:
           ></textarea>
         </div>
         <div>
-          <button class="button" type="submit" [disabled]="runner.busy()">
+          <button class="button" type="submit" [disabled]="runner.busy() || !!runner.cooldown()">
             {{ runner.busy() ? 'Creating…' : 'Create application' }}
           </button>
         </div>
