@@ -2,6 +2,7 @@ import type { Actor, DeploymentState } from '@shipkeep/domain';
 import type { ActionRequest } from '@shipkeep/proto-ts';
 
 import type { Application } from '../../apps/domain/application';
+import type { ObservationChange, ObservedAllocation } from '../domain/observations';
 import type { Allocation, StepOutcome } from '../domain/pipeline';
 import type { NodeLoad, NodeView } from '../domain/placement';
 import type { DeploymentRecord, DeploymentTrigger, Release, ReleaseDraft } from '../domain/release';
@@ -75,6 +76,13 @@ export interface PipelineApplication {
   readonly projectId: string;
   readonly environmentId: string;
   readonly name: string;
+}
+
+export const OBSERVATION_STORE = Symbol('ObservationStore');
+/** What agents observed for their replicas; every method runs inside `runTenant`. */
+export interface ObservationStore {
+  placedOnNode(organizationId: string, nodeId: string): Promise<ObservedAllocation[]>;
+  apply(organizationId: string, changes: readonly ObservationChange[], now: Date): Promise<void>;
 }
 
 export const DEPLOYMENT_WAKER = Symbol('DeploymentWaker');

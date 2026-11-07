@@ -468,26 +468,41 @@ model Deployment {
 
 /// One replica of a release on a node (SPEC 4), placed before the pipeline starts it.
 model Allocation {
-  id             String      @id @db.Uuid
-  organizationId String      @map("organization_id") @db.Uuid
-  applicationId  String      @map("application_id") @db.Uuid
-  releaseId      String      @map("release_id") @db.Uuid
-  nodeId         String      @map("node_id") @db.Uuid
+  id             String                 @id @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  applicationId  String                 @map("application_id") @db.Uuid
+  releaseId      String                 @map("release_id") @db.Uuid
+  nodeId         String                 @map("node_id") @db.Uuid
   replica        Int
-  container      String      @db.VarChar(63)
+  container      String                 @db.VarChar(63)
   port           Int
-  cpuMillis      Int         @map("cpu_millis")
-  memoryBytes    BigInt      @map("memory_bytes")
-  state          String      @db.VarChar(16)
-  createdAt      DateTime    @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime    @map("updated_at") @db.Timestamptz(6)
-  application    Application @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "allocations_application_fkey")
-  release        Release     @relation(fields: [organizationId, releaseId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "allocations_release_fkey")
-  node           Node        @relation(fields: [organizationId, nodeId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict, map: "allocations_node_fkey")
+  cpuMillis      Int                    @map("cpu_millis")
+  memoryBytes    BigInt                 @map("memory_bytes")
+  state          String                 @db.VarChar(16)
+  createdAt      DateTime               @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime               @map("updated_at") @db.Timestamptz(6)
+  application    Application            @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "allocations_application_fkey")
+  release        Release                @relation(fields: [organizationId, releaseId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "allocations_release_fkey")
+  node           Node                   @relation(fields: [organizationId, nodeId], references: [organizationId, id], onDelete: Restrict, onUpdate: Restrict, map: "allocations_node_fkey")
+  observation    AllocationObservation?
 
+  @@unique([organizationId, id])
   @@unique([releaseId, replica])
   @@unique([nodeId, container])
   @@index([applicationId, state])
   @@index([organizationId, nodeId, state])
   @@map("allocations")
+}
+
+/// What the agent last observed for an allocation; never changes the scheduler's reservation.
+model AllocationObservation {
+  allocationId   String     @id @map("allocation_id") @db.Uuid
+  organizationId String     @map("organization_id") @db.Uuid
+  containerId    String?    @map("container_id") @db.Char(64)
+  state          String     @db.VarChar(16)
+  observedAt     DateTime   @map("observed_at") @db.Timestamptz(6)
+  allocation     Allocation @relation(fields: [organizationId, allocationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "allocation_observations_allocation_fkey")
+
+  @@unique([organizationId, allocationId])
+  @@map("allocation_observations")
 }
