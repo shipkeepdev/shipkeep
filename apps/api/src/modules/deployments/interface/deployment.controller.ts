@@ -23,6 +23,8 @@ import {
   QueuedDeploymentDto,
   releaseDto,
   ReleaseListDto,
+  replicaDto,
+  ReplicaListDto,
 } from './deployment.dto';
 
 const APPLICATION =
@@ -123,6 +125,22 @@ export class DeploymentController {
       path.deploymentId,
     );
     return { release: releaseDto(queued.release), deployment: deploymentDto(queued.deployment) };
+  }
+
+  @Get(`${APPLICATION}/replicas`)
+  @RequireTenant('environment.read', 'environment')
+  @AllowApiToken('environment.read')
+  @ApiOkResponse({ type: ReplicaListDto })
+  async listReplicas(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+  ): Promise<ReplicaListDto> {
+    const items = await this.deployments.replicas(
+      resourceContext(request),
+      target(path),
+      path.applicationId,
+    );
+    return { items: items.map(replicaDto) };
   }
 
   @Get(`${APPLICATION}/releases`)

@@ -3,6 +3,7 @@ import { DEPLOYMENT_STATES } from '@shipkeep/domain';
 import { Length, Matches } from 'class-validator';
 
 import { ApplicationPathDto } from '../../apps/interface/application.dto';
+import { OBSERVED_STATES, type ReplicaStatus } from '../domain/observations';
 import { DEPLOYMENT_TRIGGERS, type DeploymentRecord, type Release } from '../domain/release';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -43,6 +44,39 @@ export class ReleaseDto {
 export class ReleaseListDto {
   @ApiProperty({ type: [ReleaseDto], description: 'Most recent first, at most 50.' })
   items!: ReleaseDto[];
+}
+
+export class ReplicaDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ format: 'uuid' }) releaseId!: string;
+  @ApiProperty({ type: 'integer' }) replica!: number;
+  @ApiProperty({ format: 'uuid' }) nodeId!: string;
+  @ApiProperty() nodeName!: string;
+  @ApiProperty() container!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: OBSERVED_STATES,
+    description: 'What the agent last saw; null until it has seen the container.',
+  })
+  state!: string | null;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) observedAt!: string | null;
+}
+export class ReplicaListDto {
+  @ApiProperty({ type: [ReplicaDto] }) items!: ReplicaDto[];
+}
+
+export function replicaDto(replica: ReplicaStatus): ReplicaDto {
+  return {
+    id: replica.id,
+    releaseId: replica.releaseId,
+    replica: replica.replica,
+    nodeId: replica.nodeId,
+    nodeName: replica.nodeName,
+    container: replica.container,
+    state: replica.state,
+    observedAt: replica.observedAt?.toISOString() ?? null,
+  };
 }
 
 export class QueuedDeploymentDto {

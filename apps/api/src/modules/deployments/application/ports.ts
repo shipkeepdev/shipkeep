@@ -2,7 +2,7 @@ import type { Actor, DeploymentState } from '@shipkeep/domain';
 import type { ActionRequest } from '@shipkeep/proto-ts';
 
 import type { Application } from '../../apps/domain/application';
-import type { ObservationChange, ObservedAllocation } from '../domain/observations';
+import type { ObservationChange, ObservedAllocation, ReplicaStatus } from '../domain/observations';
 import type { Allocation, StepOutcome } from '../domain/pipeline';
 import type { NodeLoad, NodeView } from '../domain/placement';
 import type { DeploymentRecord, DeploymentTrigger, Release, ReleaseDraft } from '../domain/release';
@@ -90,6 +90,8 @@ export const OBSERVATION_STORE = Symbol('ObservationStore');
 export interface ObservationStore {
   placedOnNode(organizationId: string, nodeId: string): Promise<ObservedAllocation[]>;
   apply(organizationId: string, changes: readonly ObservationChange[], now: Date): Promise<void>;
+  /** Placed replicas of the application, with where they run and their last observation. */
+  forApplication(applicationId: string): Promise<ReplicaStatus[]>;
 }
 
 export const DEPLOYMENT_WAKER = Symbol('DeploymentWaker');

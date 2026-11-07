@@ -31,6 +31,7 @@ function setup(allocations: ObservedAllocation[]) {
   const events: DomainEvent[] = [];
   const nodes: string[] = [];
   const store: ObservationStore = {
+    forApplication: () => Promise.resolve([]),
     placedOnNode: (_organization, nodeId) => {
       nodes.push(nodeId);
       return Promise.resolve(allocations);
@@ -54,6 +55,7 @@ function setup(allocations: ObservedAllocation[]) {
 const placed = (observation: ObservedAllocation['observation']): ObservedAllocation => ({
   id: 'a1',
   applicationId: 'app',
+  environmentId: 'env',
   container: 'sk-web-1',
   observation,
 });
@@ -68,7 +70,14 @@ describe('AllocationObservations', () => {
       [
         'allocation.observed',
         { kind: 'node', id: NODE },
-        { applicationId: 'app', nodeId: NODE, container: 'sk-web-1', from: null, to: 'running' },
+        {
+          applicationId: 'app',
+          environmentId: 'env',
+          nodeId: NODE,
+          container: 'sk-web-1',
+          from: null,
+          to: 'running',
+        },
       ],
     ]);
   });

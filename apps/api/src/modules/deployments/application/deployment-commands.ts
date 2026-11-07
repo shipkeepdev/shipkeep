@@ -18,6 +18,7 @@ import {
 } from '../../identity/application/resource-security-context';
 import { TenantAccess } from '../../organizations/application/tenant-access';
 import { SECRET_STORE, type SecretStore } from '../../secrets/application/ports';
+import type { ReplicaStatus } from '../domain/observations';
 import {
   assertRollbackTarget,
   assertSecretsSet,
@@ -35,6 +36,8 @@ import {
   type DeploymentStore,
   type DeploymentTransaction,
   type DeploymentWaker,
+  OBSERVATION_STORE,
+  type ObservationStore,
 } from './ports';
 
 const CANCELLED_BY_USER = 'Cancelled by a user.';
@@ -53,6 +56,7 @@ export class DeploymentCommands {
     @Inject(APPLICATION_STORE) private readonly applications: ApplicationStore,
     @Inject(SECRET_STORE) private readonly secrets: SecretStore,
     @Inject(DEPLOYMENT_WAKER) private readonly waker: DeploymentWaker,
+    @Inject(OBSERVATION_STORE) private readonly observations: ObservationStore,
     private readonly accounts: AccountMutationAuthority,
     private readonly access: TenantAccess,
     private readonly events: DomainEventBus,
@@ -208,6 +212,16 @@ export class DeploymentCommands {
   ): Promise<Release[]> {
     return this.scoped(context, 'environment.read', target, applicationId, (application) =>
       this.store.releases(application.id),
+    );
+  }
+
+  replicas(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+  ): Promise<ReplicaStatus[]> {
+    return this.scoped(context, 'environment.read', target, applicationId, (application) =>
+      this.observations.forApplication(application.id),
     );
   }
 

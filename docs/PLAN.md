@@ -131,6 +131,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - [ ] **M1.6 Agent self-reconciliation** (A). Depends: M1.4, M1.5. Done: the intent journal, the 30 s reconciler restarting stopped managed containers offline, and `CollectFacts`. Remaining: send `StateReport` to the control plane; have the installer run Caddy with `--resume` so routes survive a Caddy restart (M8.3); the end-to-end acceptance on a VM.
   - Reconcile loop every 30 s against `desired`; restart crashed managed containers; report `StateReport`; answer `CollectFacts`.
   - [x] **M1.6b1** Bounded managed-container snapshots and stream reporter: sample changes every second, refresh every 30 s, include stopped containers and suppress incomplete inventories. Unit/race tests cover shutdown, transport, missing containers and redaction. Daemon activation waits for the control-plane receiver (M1.6b2), so older gateways keep working.
+  - [x] **M1.6b3** Show replicas with their node and observed state, in the API and on the application page.
   - [x] **M1.6b2** Accept state reports under the node identity and persist audited allocation observations in a separate table (model approved by the owner on 2026-11-07), without changing scheduler reservations; activate the daemon reporter.
   - Acceptance: with control plane stopped, a killed container is restarted and routing keeps serving.
 

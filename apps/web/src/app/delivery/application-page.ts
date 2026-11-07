@@ -22,6 +22,7 @@ import {
   type Deployment,
   type DomainStatus,
   type EnvironmentRef,
+  type Replica,
 } from './delivery-api';
 
 const FINISHED = new Set(['succeeded', 'failed', 'cancelled', 'rolled_back']);
@@ -84,6 +85,41 @@ const LIVE_POLL_MS = 15_000;
             </button>
           }
         </div>
+        @if (replicas.items().length) {
+          <section aria-labelledby="replicas-title" class="border-t border-line pt-6">
+            <h2 id="replicas-title">Replicas</h2>
+            <table class="mb-8 w-full text-left text-sm" aria-label="Replicas">
+              <thead>
+                <tr class="border-b border-line">
+                  <th class="py-2 font-semibold">Container</th>
+                  <th class="py-2 font-semibold">Server</th>
+                  <th class="py-2 font-semibold">State</th>
+                </tr>
+              </thead>
+              <tbody>
+                @for (replica of replicas.items(); track replica.id) {
+                  <tr class="border-b border-line align-top">
+                    <td class="py-2 break-all">
+                      <code>{{ replica.container }}</code>
+                    </td>
+                    <td class="py-2">{{ replica.nodeName }}</td>
+                    <td
+                      class="py-2"
+                      [class.text-success]="replica.state === 'running'"
+                      [class.text-danger]="
+                        replica.state === 'missing' ||
+                        replica.state === 'dead' ||
+                        replica.state === 'exited'
+                      "
+                    >
+                      {{ replica.state ?? 'not reported yet' }}
+                    </td>
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </section>
+        }
         @if (domains.items().length) {
           <section aria-labelledby="domains-title" class="border-t border-line pt-6">
             <h2 id="domains-title">Domains</h2>
@@ -178,6 +214,9 @@ export class ApplicationPage {
   protected readonly deployments = new Collection<Deployment>(() =>
     this.api.deployments(this.environment(), this.applicationId()),
   );
+  protected readonly replicas = new Collection<Replica>(() =>
+    this.api.replicas(this.environment(), this.applicationId()),
+  );
   protected readonly domains = new Collection<DomainStatus>(() =>
     this.api.domains(this.environment(), this.applicationId()),
   );
@@ -229,6 +268,7 @@ export class ApplicationPage {
   /** Reloads the deployments, and keeps doing so while one is still running. */
   private async refresh(): Promise<void> {
     clearTimeout(this.timer);
+    void this.replicas.refresh();
     await this.deployments.refresh();
     if (this.active())
       this.timer = setTimeout(
