@@ -1,11 +1,92 @@
+<p align="center">
+  <a href="https://shipkeep.vercel.app"><img src="docs/assets/readme-banner.jpg" alt="Shipkeep: keep the keys. Your cloud, on your servers." width="100%"></a>
+</p>
+
+<p align="center">
+  <a href="https://shipkeep.vercel.app"><strong>Website</strong></a> ·
+  <a href="docs/PRODUCT.md"><strong>Product brief</strong></a> ·
+  <a href="docs/ARCHITECTURE.md"><strong>Architecture</strong></a> ·
+  <a href="docs/PLAN.md"><strong>Roadmap</strong></a> ·
+  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
+</p>
+
+<p align="center">
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-E0282E"></a>
+  <img alt="Status: in development" src="https://img.shields.io/badge/status-in%20development-F5A524">
+  <img alt="Written in TypeScript and Go" src="https://img.shields.io/badge/built%20with-TypeScript%20%2B%20Go-2A2A2E">
+</p>
+
 # Shipkeep
 
-Your own cloud on your own servers, without leaving the root key in a web panel.
+**Your own cloud on your own servers, without leaving the root key in a web panel.**
 
-Shipkeep is a self-hosted platform to deploy applications, databases and services on servers you own: git push to deploy, automatic HTTPS, managed databases with backups, preview environments, logs, metrics and alerts, across one or many servers.
+Shipkeep is a self-hosted platform to deploy applications, databases and services on servers you own: git push to deploy, automatic HTTPS, managed databases with backups, preview environments, logs, metrics and alerts, without Kubernetes.
 
-> Status: private, pre-v0.1, licensed under [Apache-2.0](LICENSE). The repository will be made public later (ADR 0016).
-> Continuous integration is paused (GitHub Actions billing); pull requests are merged after the local checks listed in [CONTRIBUTING.md](CONTRIBUTING.md), and a full CI run on `main` is tracked in issue #137.
+> [!NOTE]
+> **Shipkeep is in development and cannot be installed yet.** This page describes the first release being built, and [what works today](#what-works-today) says where it stands. The repository is private for now and will open before the first release ([ADR 0016](docs/adr/0016-license-now-publication-later.md)), under [Apache-2.0](LICENSE).
+
+## Why Shipkeep
+
+|                         |                                                                                                                                                                     |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Secure by design**    | No SSH root key on the control plane, and no shell command built from strings. An agent on each server calls out over mTLS and runs a closed list of typed actions. |
+| **Config in your repo** | Each application is described by a versioned `shipkeep.yml`. The UI writes to that file instead of hiding state.                                                    |
+| **Real multi-node**     | Placement, health-based failover, a private WireGuard network and replicated routing, without Kubernetes.                                                           |
+| **Safe by default**     | Snapshots before upgrades, resumable operations, and explicit confirmation for anything destructive.                                                                |
+
+<p align="center">
+  <img src="docs/assets/dashboard-mockup.jpg" alt="Mockup of the Shipkeep dashboard: applications, servers, requests served, deployments and alerts." width="100%">
+  <br>
+  <sub>Design mockup with fictional data. The web UI in this repository is simpler today.</sub>
+</p>
+
+## How it works
+
+```mermaid
+flowchart LR
+  you["You: web UI, CLI, git push"] --> cp["Control plane"]
+  a1["Agent, server A"] -- "outbound mTLS" --> cp
+  a2["Agent, server B"] -- "outbound mTLS" --> cp
+  a1 --> w1["Docker and Caddy"]
+  a2 --> w2["Docker and Caddy"]
+```
+
+Agents connect out to the control plane, so it never needs a key to your servers. Running applications and routing keep working if the control plane goes down.
+
+Describe an application in a file:
+
+```yaml
+# shipkeep.yml
+version: 1
+name: storefront
+build:
+  type: image
+  image: nginx:1.27
+run:
+  port: 80
+```
+
+Then deploy it with the CLI. The API token is read from a prompt or a pipe, never from a flag:
+
+```bash
+shipkeep login --url https://shipkeep.example.com
+shipkeep deploy --org <id> --project <id> --env <id>
+shipkeep status --org <id> --project <id> --env <id>
+```
+
+## What works today
+
+| Area                                                                                                       | State                                                                                            |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Accounts, two-factor authentication, API tokens, roles, audit log                                          | Built, tested against a real database and browser                                                |
+| Web UI: organizations, members, servers, applications, deployments, secrets, audit                         | Built, tested in a real browser, except removing a server and a deployment running past `queued` |
+| CLI: `login`, `init`, `deploy`, `rollback`, `status`, `secrets`, `server remove`                           | Built, tested against the real API                                                               |
+| Agent, deployment pipeline, rollback, routing through Caddy                                                | Built and unit tested. **Not yet run on a real server**                                          |
+| Installer                                                                                                  | Draft, waiting for a test server                                                                 |
+| Compose applications                                                                                       | Validator built, not connected yet                                                               |
+| Git providers, builds, WireGuard network, failover, managed databases, backups, logs and metrics, previews | Planned, see the [roadmap](docs/PLAN.md)                                                         |
+
+Continuous integration is paused (GitHub Actions billing): pull requests are merged after the local checks listed in [CONTRIBUTING.md](CONTRIBUTING.md), and a full CI run on `main` is tracked in issue #137.
 
 ## Contributing
 
@@ -63,8 +144,8 @@ pnpm gen               # regenerate code from proto/ and shipkeep.schema.json
 
 Service ports on the host: PostgreSQL 5432, VictoriaLogs 9428, VictoriaMetrics 8428, registry 5000. If one is already taken, set the matching `SHIPKEEP_DEV_*_PORT` in `.env` (see `.env.example`) and adjust both PostgreSQL URLs. Data lives in named Docker volumes. `pnpm dev` provisions a restricted API login after migrations; existing `.env` files need separate runtime and migration URLs as described in [database roles](docs/DATABASE_ROLES.md).
 
-Browser acceptance requires Docker and always creates a fresh PostgreSQL container, even when
-`DATABASE_URL` is set. Chromium uses the production Angular assets against a loopback HTTPS API
+Browser acceptance always creates a fresh PostgreSQL container, even when `DATABASE_URL` is set.
+Without Docker, set `SHIPKEEP_DISPOSABLE_DATABASE_URL` to a database that is safe to wipe. Chromium uses the production Angular assets against a loopback HTTPS API
 and a local TLS SMTP fixture; no external email is sent. Self-signed certificate acceptance is
 limited to that browser context. The suite checks public forms, signup, email verification,
 login/logout, cookie/CSRF/Origin boundaries, CSP, automated WCAG rules and horizontal overflow
