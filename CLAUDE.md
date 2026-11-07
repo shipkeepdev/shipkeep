@@ -27,9 +27,9 @@ apps/
                       prisma/         schema.prisma and migrations; prisma.config.ts for the CLI
                       openapi.json    generated contract of the REST API (pnpm gen:openapi)
   web/              Web UI, Angular (TypeScript)
-agent/              Node agent, Go module github.com/samuelmbabhazi/shipkeep/agent (single static binary)
-cli/                CLI, Go module github.com/samuelmbabhazi/shipkeep/cli (single static binary)
-lib/                Shared Go module github.com/samuelmbabhazi/shipkeep/lib:
+agent/              Node agent, Go module github.com/shipkeepdev/shipkeep/agent (single static binary)
+cli/                CLI, Go module github.com/shipkeepdev/shipkeep/cli (single static binary)
+lib/                Shared Go module github.com/shipkeepdev/shipkeep/lib:
                       lib/gen      generated protobuf and gRPC code
                       lib/config   shipkeep.yml types (generated), embedded schema copy (generated) and validator, shared by agent, cli and fuzz tests
                       lib/secret   Secret wrappers that redact in fmt, slog, JSON and YAML (rule 8)
@@ -51,7 +51,7 @@ e2e/                End-to-end tests against real VMs
 
 - Node.js 22 LTS (`.nvmrc`), pnpm 11 (pinned in `package.json` `packageManager`, use Corepack or `pnpm@11`), Nx 24 for the TypeScript workspace.
 - Go 1.26+ for `agent/`, `cli/` and `lib/` (three modules in one Go workspace, `go.work` at repo root, no root module).
-- The repository lives under the `samuelmbabhazi` account; the `shipkeephq` organization does not exist yet. If the repository is transferred, update the Go module paths and `docs/GITHUB_SETUP.md` in one PR.
+- The repository lives under the `shipkeepdev` organization. If it is ever transferred, update the Go module paths and `docs/GITHUB_SETUP.md` in one PR.
 - `buf` (from the `@bufbuild/buf` npm package, so `pnpm exec buf` always matches CI) for protobuf lint, breaking-change checks and code generation. Plugins run remotely on buf.build with versions pinned in `buf.gen.yaml`.
 - Docker with BuildKit for local integration tests.
 

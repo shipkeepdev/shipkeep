@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/config"
+	"github.com/shipkeepdev/shipkeep/agent/internal/config"
 )
 
 const fingerprint = "sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"

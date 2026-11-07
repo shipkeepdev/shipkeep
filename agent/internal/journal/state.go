@@ -13,7 +13,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 	"google.golang.org/protobuf/types/descriptorpb"
 
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 const localSchema = `CREATE TABLE IF NOT EXISTS desired(resource_id TEXT PRIMARY KEY,spec_json TEXT NOT NULL,version INTEGER NOT NULL);

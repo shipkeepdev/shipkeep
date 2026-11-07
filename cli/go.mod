@@ -1,7 +1,7 @@
-module github.com/samuelmbabhazi/shipkeep/cli
+module github.com/shipkeepdev/shipkeep/cli
 
 go 1.26.0
 
-require github.com/samuelmbabhazi/shipkeep/lib v0.0.0
+require github.com/shipkeepdev/shipkeep/lib v0.0.0
 
-replace github.com/samuelmbabhazi/shipkeep/lib => ../lib
+replace github.com/shipkeepdev/shipkeep/lib => ../lib

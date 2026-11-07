@@ -6,7 +6,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
 )
 
 func journalOutcome() journal.Outcome { return journal.Outcome{} }

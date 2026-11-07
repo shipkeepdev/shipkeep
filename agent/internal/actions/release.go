@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/journal"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 const (

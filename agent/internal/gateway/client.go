@@ -17,9 +17,9 @@ import (
 	"google.golang.org/grpc/keepalive"
 	"google.golang.org/grpc/status"
 
-	nodecredentials "github.com/samuelmbabhazi/shipkeep/agent/internal/credentials"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
-	"github.com/samuelmbabhazi/shipkeep/lib/secret"
+	nodecredentials "github.com/shipkeepdev/shipkeep/agent/internal/credentials"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
 const rpcTimeout = 30 * time.Second

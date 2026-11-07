@@ -9,8 +9,8 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/docker"
-	agentv1 "github.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 // Interval between passes (SPEC 3.5).

@@ -8,7 +8,7 @@ Shipkeep deploys software on servers that its users own, so security rules come 
 
 1. Read the [product brief](docs/PRODUCT.md) and the [architecture](docs/ARCHITECTURE.md). Then skim the [specification](docs/SPEC.md) sections that relate to your change.
 2. Pick an issue.
-   - [`good first issue`](https://github.com/samuelmbabhazi/shipkeep/labels/good%20first%20issue) issues are small, self-contained and testable locally without Docker.
+   - [`good first issue`](https://github.com/shipkeepdev/shipkeep/labels/good%20first%20issue) issues are small, self-contained and testable locally without Docker.
    - Issues labelled `blocked` or `needs-decision` are not ready yet.
 3. Comment on the issue to say you are working on it. Larger changes that are not in an issue need a short discussion first, in an issue.
 

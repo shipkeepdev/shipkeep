@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/samuelmbabhazi/shipkeep/lib/secret"
+	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
 func fixture(t *testing.T) Bundle {

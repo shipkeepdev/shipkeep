@@ -16,10 +16,10 @@ import (
 	"path/filepath"
 	"syscall"
 
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/agent"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/config"
-	"github.com/samuelmbabhazi/shipkeep/agent/internal/logging"
-	"github.com/samuelmbabhazi/shipkeep/lib/buildinfo"
+	"github.com/shipkeepdev/shipkeep/agent/internal/agent"
+	"github.com/shipkeepdev/shipkeep/agent/internal/config"
+	"github.com/shipkeepdev/shipkeep/agent/internal/logging"
+	"github.com/shipkeepdev/shipkeep/lib/buildinfo"
 )
 
 // Exit codes.

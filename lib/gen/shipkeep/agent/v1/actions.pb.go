@@ -3910,8 +3910,8 @@ const file_shipkeep_agent_v1_actions_proto_rawDesc = "" +
 	"\x14TLS_MODE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12TLS_MODE_AUTO_HTTP\x10\x01\x12\x15\n" +
 	"\x11TLS_MODE_AUTO_DNS\x10\x02\x12\x10\n" +
-	"\fTLS_MODE_OFF\x10\x03B\xd1\x01\n" +
-	"\x15com.shipkeep.agent.v1B\fActionsProtoP\x01ZDgithub.com/samuelmbabhazi/shipkeep/lib/gen/shipkeep/agent/v1;agentv1\xa2\x02\x03SAX\xaa\x02\x11Shipkeep.Agent.V1\xca\x02\x11Shipkeep\\Agent\\V1\xe2\x02\x1dShipkeep\\Agent\\V1\\GPBMetadata\xea\x02\x13Shipkeep::Agent::V1b\x06proto3"
+	"\fTLS_MODE_OFF\x10\x03B\xce\x01\n" +
+	"\x15com.shipkeep.agent.v1B\fActionsProtoP\x01ZAgithub.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1;agentv1\xa2\x02\x03SAX\xaa\x02\x11Shipkeep.Agent.V1\xca\x02\x11Shipkeep\\Agent\\V1\xe2\x02\x1dShipkeep\\Agent\\V1\\GPBMetadata\xea\x02\x13Shipkeep::Agent::V1b\x06proto3"
 
 var (
 	file_shipkeep_agent_v1_actions_proto_rawDescOnce sync.Once
