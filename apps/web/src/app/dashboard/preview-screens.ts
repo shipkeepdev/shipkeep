@@ -1356,7 +1356,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'invoices',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 'run',
               ],
@@ -1368,7 +1368,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'invoices',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 'run',
               ],
@@ -1380,7 +1380,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: '••••••••',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: 'secret',
@@ -1410,7 +1410,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: '/var/lib/postgresql/data',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 '18 GiB',
               ],
@@ -1545,7 +1545,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'grafana/grafana:11.3.1',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: 'grafana.atelier-nord.fr',
@@ -1565,7 +1565,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'postgres:16',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: 'internal',
@@ -1585,7 +1585,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'grafana/grafana-image-renderer',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: 'internal',
@@ -1670,7 +1670,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'https://grafana.atelier-nord.fr',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: 'generated',
@@ -1685,7 +1685,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: '••••••••',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: 'secret',
@@ -1701,7 +1701,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: '••••••••',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: 'linked',
@@ -1767,7 +1767,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'grafana-cli export',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: '0 4 * * *',
@@ -1947,7 +1947,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 's3.fr-par.scw.cloud/atelier-nord-backups',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 '11 resources',
                 {
@@ -1964,7 +1964,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 's3.eu-central-003.backblazeb2.com',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 '4 resources',
                 {
@@ -2169,7 +2169,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: '••••••••',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: 'secret',
@@ -2186,7 +2186,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'smtp.mailgun.org',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 'text',
                 '8 apps',
@@ -2199,7 +2199,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'Europe/Paris',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 'text',
                 'all',
@@ -2228,7 +2228,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'acct_1Q…',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 'text',
               ],
@@ -2241,7 +2241,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: '••••••••',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: 'secret',
@@ -2258,7 +2258,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: '••••••••',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: 'secret',
@@ -2290,7 +2290,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'https://factures.lumen.fr',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
               ],
               [
@@ -2302,7 +2302,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'https://staging.factures.lumen.fr',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
               ],
               [
@@ -2314,7 +2314,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'https://pr-{n}.factures.lumen.fr',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
               ],
             ],
@@ -2343,7 +2343,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'par',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
               ],
               [
@@ -2358,7 +2358,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'fra',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
               ],
               [
@@ -2373,7 +2373,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'ams',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
               ],
             ],
@@ -2785,7 +2785,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'samuel@atelier-nord.fr',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: 'owner',
@@ -2803,7 +2803,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'ines@atelier-nord.fr',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 'admin',
                 {
@@ -2817,7 +2817,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'marc@atelier-nord.fr',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 'member',
                 {
@@ -2831,7 +2831,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'yuki@atelier-nord.fr',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 'member',
                 {
@@ -2845,7 +2845,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 {
                   t: 'claire@lumen.fr',
                   mono: true,
-                  fg: '#6B6B74',
+                  fg: '#7E7E87',
                 },
                 {
                   t: 'client',
@@ -3300,7 +3300,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
             {
               t: 'worker-mails:9a0c771',
               mono: true,
-              fg: '#6B6B74',
+              fg: '#7E7E87',
             },
             {
               t: '3.0.15',
@@ -3321,7 +3321,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
             {
               t: 'worker-mails:9a0c771',
               mono: true,
-              fg: '#6B6B74',
+              fg: '#7E7E87',
             },
             {
               t: '2.6.3',
@@ -3342,7 +3342,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
             {
               t: 'caddy:2.9-alpine',
               mono: true,
-              fg: '#6B6B74',
+              fg: '#7E7E87',
             },
             {
               t: '1.36.1-r2',

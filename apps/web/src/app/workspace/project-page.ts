@@ -186,7 +186,7 @@ import { type Environment, type Project, WorkspaceApi } from './workspace-api';
                 <input
                   id="environment-protected"
                   type="checkbox"
-                  class="size-4 accent-[#f2f2f3]"
+                  class="shrink-0"
                   formControlName="protected"
                 />
                 {{ 'Protected: only administrators deploy and set secrets' | t }}

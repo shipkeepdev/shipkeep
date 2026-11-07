@@ -67,6 +67,9 @@ describe('access screens', () => {
                 key: request.headers.get('idempotency-key'),
               });
             const answer = routes[`${request.method} ${url.pathname}`];
+            // The dashboard frame reads the organization on every page.
+            if (!answer && url.pathname === ORG_PATH)
+              return json({ id: ORG, name: 'Acme', slug: 'acme', ...stamp });
             return answer ? answer(url) : json({}, 404);
           },
         },

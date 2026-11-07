@@ -5,7 +5,7 @@ import { filter, map } from 'rxjs';
 
 import { AccessApi, type OrganizationRole } from '../access/access-api';
 import { type FleetNode, FleetApi } from '../fleet/fleet-api';
-import { IdentityApi } from '../identity/identity-api';
+import { IdentityApi, IdentityRequestError } from '../identity/identity-api';
 import { SessionStore } from '../identity/session-store';
 import { type Organization, type Project, WorkspaceApi } from '../workspace/workspace-api';
 
@@ -39,6 +39,8 @@ export class ShellContext {
   readonly public = computed(() => this.url().startsWith('/auth/'));
   readonly organizationId = computed(() => ORGANIZATION.exec(this.url())?.at(1) ?? null);
   readonly organization = signal<Organization | null>(null);
+  /** The organization in the URL could not be read: missing, or not this account's. */
+  readonly refused = signal(false);
   readonly organizations = signal<readonly Organization[]>([]);
   readonly projects = signal<readonly ShellProject[]>([]);
   readonly nodes = signal<readonly FleetNode[] | null>(null);
@@ -72,10 +74,18 @@ export class ShellContext {
     void this.loadOnce();
     try {
       const [organization, projects] = await Promise.all([
-        this.api.organization(id),
-        this.api.projects(id),
+        this.api.organization(id).catch((error: unknown) => {
+          // Only a refused organization earns the message; other failures stay quiet here.
+          if (current())
+            this.refused.set(
+              error instanceof IdentityRequestError && [403, 404].includes(error.status),
+            );
+          throw error;
+        }),
+        this.api.projects(id).catch(() => []),
       ]);
       if (!current()) return;
+      this.refused.set(false);
       this.organization.set(organization);
       const known = new Map(this.projects().map((project) => [project.id, project.environments]));
       this.projects.set(projects.map((p) => ({ ...p, environments: known.get(p.id) ?? null })));

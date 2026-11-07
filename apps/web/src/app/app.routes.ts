@@ -164,13 +164,26 @@ export const appRoutes: Route[] = [
     title: `${titles[mode]} · Shipkeep`,
     loadComponent: () => import('./identity/auth-page').then((module) => module.AuthPage),
   })),
-  { path: 'account/security', pathMatch: 'full', redirectTo: 'home' },
+  { path: 'account/security', pathMatch: 'full', redirectTo: 'account?section=security' },
   {
-    path: 'orgs',
-    pathMatch: 'full',
-    title: 'Organizations · Shipkeep',
-    loadComponent: () =>
-      import('./workspace/organizations-page').then((module) => module.OrganizationsPage),
+    // Pages of the account, outside any organization.
+    path: '',
+    loadComponent: () => import('./shell/public-frame').then((module) => module.PublicFrame),
+    children: [
+      {
+        path: 'orgs',
+        pathMatch: 'full',
+        title: 'Organizations · Shipkeep',
+        loadComponent: () =>
+          import('./workspace/organizations-page').then((module) => module.OrganizationsPage),
+      },
+      {
+        path: 'account',
+        pathMatch: 'full',
+        title: 'Account · Shipkeep',
+        loadComponent: () => import('./identity/account-page').then((module) => module.AccountPage),
+      },
+    ],
   },
   {
     path: 'orgs/:organizationId',

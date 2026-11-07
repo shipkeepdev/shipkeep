@@ -209,7 +209,14 @@ describe('landing after sign-in', () => {
     );
   });
   it('lists several, or none', async () => {
-    expect(await landing(() => page([{ id: 'a' }, { id: 'b' }]))).toBe('/orgs');
+    expect(
+      await landing(() =>
+        page([
+          { id: 'a', name: 'A', slug: 'a' },
+          { id: 'b', name: 'B', slug: 'b' },
+        ]),
+      ),
+    ).toBe('/orgs');
   });
   it('asks to sign in when there is no session', async () => {
     expect(await landing(() => json({}, 401))).toBe('/auth/login');

@@ -73,17 +73,18 @@ run:
                 @for (application of list.items(); track application.id) {
                   @let last = latest().get(application.id);
                   @let s = last ? status(last.state) : null;
-                  <a
-                    [routerLink]="['applications', application.id]"
+                  <div
                     [class]="
                       columns +
-                      ' grid-table border-t border-line2 px-[18px] py-3 text-[12.5px] hover:bg-[#0a0a0b]'
+                      ' relative grid-table border-t border-line2 px-[18px] py-3 text-[12.5px] hover:bg-[#0a0a0b]'
                     "
                   >
                     <span class="flex min-w-0 items-center gap-[7px] text-fg2"
-                      ><sk-icon name="box" class="text-[15px] text-mute" /><span class="truncate">{{
-                        application.name
-                      }}</span></span
+                      ><sk-icon name="box" class="text-[15px] text-mute" /><a
+                        [routerLink]="['applications', application.id]"
+                        class="truncate after:absolute after:inset-0"
+                        >{{ application.name }}</a
+                      ></span
                     >
                     <span class="text-fg2">{{ 'Application' | t }}</span>
                     <span class="truncate font-mono text-fg2">{{ image(application) }}</span>
@@ -100,7 +101,7 @@ run:
                         ? (last.finishedAt ?? last.startedAt).slice(0, 16).replace('T', ' ')
                         : '—'
                     }}</span>
-                  </a>
+                  </div>
                 } @empty {
                   <p class="border-t border-line2 px-[18px] py-3 text-[12.5px] text-mute2">
                     {{ 'No application yet.' | t }}

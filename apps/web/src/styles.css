@@ -6,7 +6,9 @@
 
 /*
  * Design tokens from the Shipkeep dashboard and sign-in mockups (docs/design). Names describe the
- * role of a value, from the brightest text (fg) to the faintest (dim3).
+ * role of a value, from the brightest text (fg) to the faintest (dim3). The three dim grays are
+ * lighter than in the mockups (#6b6b74, #5e5e67, #4c4c55): those fail WCAG AA contrast (4.5:1) as
+ * text on black, and the accessibility gate requires AA on every screen.
  */
 @theme {
   --font-sans: 'Outfit Variable', ui-sans-serif, system-ui, sans-serif;
@@ -18,9 +20,9 @@
   --color-fg3: #a6a6ae;
   --color-mute: #8b8b93;
   --color-mute2: #7c7c85;
-  --color-dim: #6b6b74;
-  --color-dim2: #5e5e67;
-  --color-dim3: #4c4c55;
+  --color-dim: #7e7e87;
+  --color-dim2: #7b7b84;
+  --color-dim3: #7b7b84;
   --color-sep: #3a3a42;
   --color-line: #1c1c1e;
   --color-line2: #17171b;
@@ -96,7 +98,7 @@
   }
   input::placeholder,
   textarea::placeholder {
-    color: #5e5e67;
+    color: #7b7b84;
   }
   [tabindex='-1']:focus {
     outline: none;
@@ -509,8 +511,9 @@
   .legacy-form textarea {
     @apply font-mono;
   }
-  .legacy-form input[type='checkbox'] {
-    @apply size-5 shrink-0 accent-[#f2f2f3];
+  /* WCAG 2.5.8: at least 24 by 24 CSS pixels. */
+  input[type='checkbox'] {
+    @apply size-6 shrink-0 accent-[#f2f2f3];
   }
 }
 

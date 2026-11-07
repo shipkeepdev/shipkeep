@@ -120,7 +120,7 @@ export function configSection(key: string, data: SectionData): SectionCopy | nul
           const secret = known.get(name);
           return [
             mono(name),
-            mono('••••••••', '#6B6B74'),
+            mono('••••••••', '#7E7E87'),
             secret ? state('secret', AMBER) : state('not set', RED),
             { t: secret ? secret.updatedAt.slice(0, 10) : '—', dim: true },
           ];

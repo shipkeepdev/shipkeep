@@ -51,17 +51,18 @@ const COLUMNS =
             @for (a of store.applications(); track a.id) {
               @let last = a.deployments.at(0);
               @let s = last ? status(last.state) : null;
-              <a
-                [routerLink]="a.link"
+              <div
                 [class]="
                   columns +
-                  ' grid items-center gap-3 border-b border-line2 px-5 py-[11px] text-[13px] hover:bg-hover'
+                  ' relative grid items-center gap-3 border-b border-line2 px-5 py-[11px] text-[13px] hover:bg-hover'
                 "
               >
                 <span class="flex min-w-0 items-center gap-2.5"
-                  ><sk-icon name="box" class="text-[16px] text-mute" /><span class="truncate">{{
-                    a.name
-                  }}</span></span
+                  ><sk-icon name="box" class="text-[16px] text-mute" /><a
+                    [routerLink]="a.link"
+                    class="truncate after:absolute after:inset-0"
+                    >{{ a.name }}</a
+                  ></span
                 >
                 <span class="truncate text-[12px] text-fg3"
                   >{{ a.project }} · {{ a.environment }}</span
@@ -79,7 +80,7 @@ const COLUMNS =
                     ? shortDate(last.startedAt) + ' · ' + duration(last.startedAt, last.finishedAt)
                     : '—'
                 }}</span>
-              </a>
+              </div>
             } @empty {
               <div class="flex flex-col items-start gap-3 px-5 py-6">
                 <p class="text-[13px] text-mute2">{{ 'No application yet.' | t }}</p>

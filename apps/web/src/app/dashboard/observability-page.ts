@@ -35,9 +35,9 @@ const LOGS = [
 const RULES = [
   ['p95 latency > 800 ms', 'p95(http_latency) > 800ms for 2m', 'triggered', RED],
   ['Suspect server', 'node.heartbeat_age > 15s', 'triggered', AMBER],
-  ['Disk > 85%', 'node.disk_used_ratio > 0.85', 'ok', '#6B6B74'],
-  ['Missed backup', 'backup.age > 26h', 'ok', '#6B6B74'],
-  ['5xx rate > 2%', 'rate(http_5xx) / rate(http) > 0.02', 'ok', '#6B6B74'],
+  ['Disk > 85%', 'node.disk_used_ratio > 0.85', 'ok', '#7E7E87'],
+  ['Missed backup', 'backup.age > 26h', 'ok', '#7E7E87'],
+  ['5xx rate > 2%', 'rate(http_5xx) / rate(http) > 0.02', 'ok', '#7E7E87'],
 ] as const;
 
 /** 05 Observability: logs, metrics and alert rules. Not built yet: the design's sample. */
@@ -105,7 +105,7 @@ const RULES = [
                 <button
                   type="button"
                   class="rounded-[7px] border px-2.5 py-1.5 font-mono text-[11px]"
-                  [style.border-color]="level() === l.k ? '#4C4C55' : '#24242A'"
+                  [style.border-color]="level() === l.k ? '#7B7B84' : '#24242A'"
                   [style.color]="level() === l.k ? '#EDEDEF' : '#7C7C85'"
                   (click)="level.set(l.k)"
                 >

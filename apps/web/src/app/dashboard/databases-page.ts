@@ -237,7 +237,7 @@ export class DatabasesPage {
       const fail = i === 5 && db === 1;
       return {
         h: `${String(fail ? 18 : 55 + ((i * 7 + db * 5) % 30))}%`,
-        bg: fail ? RED : i === 13 ? '#EDEDEF' : '#5E5E67',
+        bg: fail ? RED : i === 13 ? '#EDEDEF' : '#7B7B84',
         d: String(i + 25 > 31 ? i - 6 : i + 25),
       };
     });

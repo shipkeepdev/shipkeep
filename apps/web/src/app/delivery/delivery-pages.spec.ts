@@ -104,6 +104,9 @@ describe('delivery screens', () => {
               body: text ? (JSON.parse(text) as unknown) : undefined,
             });
             const handler = routes[`${request.method} ${path}`];
+            // The dashboard frame reads the organization on every page.
+            if (!handler && path === `/api/v1/organizations/${ORG}`)
+              return json({ id: ORG, name: 'Acme', slug: 'acme' });
             return handler ? handler() : json({}, 404);
           },
         },

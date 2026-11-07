@@ -405,6 +405,7 @@ export const FR: Readonly<Record<string, string>> = {
   'Create account': 'Créer le compte',
   'Create an API token': "Créer un jeton d'API",
   'Create an account': 'Créer un compte',
+  'Create an organization': 'Créer une organisation',
   'Create application': "Créer l'application",
   'Create environment': "Créer l'environnement",
   'Create environments': 'Créer des environnements',
@@ -415,6 +416,8 @@ export const FR: Readonly<Record<string, string>> = {
   Created: 'Créée',
   'Created by': 'Créé par',
   'Created {date}': 'Créé le {date}',
+  'Creating an organization makes you its owner, so it needs your password.':
+    'Créer une organisation vous en rend propriétaire : votre mot de passe est demandé.',
   'Creating…': 'Création…',
   Critical: 'Critiques',
   'Current password': 'Mot de passe actuel',
@@ -482,6 +485,8 @@ export const FR: Readonly<Record<string, string>> = {
   'Drop-in MySQL replacement.': 'Remplacement compatible de MySQL.',
   Duration: 'Durée',
   'Each code works only once.': "Chaque code ne fonctionne qu'une fois.",
+  'Each organization owns its servers, projects and members.':
+    'Chaque organisation possède ses serveurs, ses projets et ses membres.',
   Edit: 'Modifiez',
   'Edit shipkeep.yml': 'Modifier shipkeep.yml',
   Email: 'E-mail',
@@ -712,6 +717,8 @@ export const FR: Readonly<Record<string, string>> = {
   'Logs and metrics are kept for 30 days. Alerts go out by email, Slack or webhook.':
     'Logs et métriques conservés 30 jours. Les alertes partent par e-mail, Slack ou webhook.',
   'Lost your device?': 'Appareil perdu ?',
+  'Lowercase letters, digits and hyphens. Used in URLs.':
+    'Minuscules, chiffres et tirets. Utilisé dans les URL.',
   'Lowercase, such as application.': 'En minuscules, par exemple application.',
   'Lumen · production · deployed on srv-par-1, srv-fra-2, srv-ams-3':
     'Lumen · production · déployée sur srv-par-1, srv-fra-2, srv-ams-3',
@@ -839,6 +846,7 @@ export const FR: Readonly<Record<string, string>> = {
   'Organization · Admin': 'Organisation · Admin',
   'Organization · {members} members · {projects} projects':
     'Organisation · {members} membres · {projects} projets',
+  Organizations: 'Organisations',
   Origin: 'Origine',
   'Outbound mTLS · no SSH key stored': 'mTLS sortant · aucune clé SSH stockée',
   'Outgoing email': 'E-mail sortant',
@@ -984,6 +992,7 @@ export const FR: Readonly<Record<string, string>> = {
   Result: 'Résultat',
   Retention: 'Rétention',
   'Retries before failure': 'Essais avant échec',
+  Retry: 'Réessayer',
   'Review changes': 'Vérifier les changements',
   Revoke: 'Révoquer',
   'Revoke API token': "Révoquer le jeton d'API",
@@ -1089,6 +1098,7 @@ export const FR: Readonly<Record<string, string>> = {
   'Sign in': 'Se connecter',
   'Sign in to manage your account security.':
     'Connectez-vous pour gérer la sécurité de votre compte.',
+  'Sign in to see your organizations.': 'Connectez-vous pour voir vos organisations.',
   'Sign in to your control plane.': 'Connectez-vous à votre plan de contrôle.',
   'Sign out': 'Se déconnecter',
   'Sign up': 'Inscription',
@@ -1197,6 +1207,8 @@ export const FR: Readonly<Record<string, string>> = {
   'This list could not be loaded.': "Cette liste n'a pas pu être chargée.",
   'This must be after the start.': 'Doit être après le début.',
   'This organization could not be loaded.': "Cette organisation n'a pas pu être chargée.",
+  'This organization is not available to your account, or it no longer exists.':
+    "Cette organisation n'est pas accessible à votre compte, ou n'existe plus.",
   'This project could not be loaded.': "Ce projet n'a pas pu être chargé.",
   'This request conflicts with the current account state. Reload the page before trying again.':
     "Cette demande entre en conflit avec l'état du compte. Rechargez la page avant de réessayer.",
@@ -1309,6 +1321,8 @@ export const FR: Readonly<Record<string, string>> = {
     'Sans protection, les développeurs peuvent déployer ici, définir des secrets et ouvrir des sessions dans les conteneurs.',
   'Workflow automation.': 'Automatisation de workflows.',
   'Working…': 'En cours…',
+  'You are not a member of any organization yet.':
+    "Vous n'êtes membre d'aucune organisation pour l'instant.",
   'Your API token has been created.': "Votre jeton d'API a été créé.",
   'Your API tokens': "Vos jetons d'API",
   'Your account will rely on its password alone.':
@@ -1319,6 +1333,7 @@ export const FR: Readonly<Record<string, string>> = {
   'Your name': 'Votre nom',
   'Your old recovery codes will stop working.':
     'Vos anciens codes de récupération ne fonctionneront plus.',
+  'Your organizations': 'Vos organisations',
   'Your password': 'Votre mot de passe',
   'Your password has been updated. Sign in with your new password.':
     'Votre mot de passe a été modifié. Connectez-vous avec le nouveau.',

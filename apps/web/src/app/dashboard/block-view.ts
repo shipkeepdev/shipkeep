@@ -219,7 +219,7 @@ const line = (input: string | CodeLine): CodeLine =>
                 ><sk-icon
                   [name]="done ? 'check' : s.icon"
                   class="text-[15px]"
-                  [style.color]="done ? '#000' : active ? '#EDEDEF' : '#6B6B74'"
+                  [style.color]="done ? '#000' : active ? '#EDEDEF' : '#7E7E87'"
               /></span>
               <div class="min-w-0 flex-1">
                 <div class="text-[14px]" [style.color]="done ? '#8B8B93' : '#EDEDEF'">
@@ -287,7 +287,7 @@ const line = (input: string | CodeLine): CodeLine =>
         <span
           class="flex min-w-0 items-center gap-[7px] truncate"
           [class.font-mono]="x.mono"
-          [style.color]="x.fg || (x.dim ? '#6B6B74' : '#C8C8CF')"
+          [style.color]="x.fg || (x.dim ? '#7E7E87' : '#C8C8CF')"
         >
           @if (x.dot) {
             <span class="dot" [style.background]="x.dot"></span>

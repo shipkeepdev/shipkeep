@@ -1,4 +1,5 @@
-<section class="relative flex min-h-dvh flex-col overflow-hidden bg-black font-geist text-paper">
+<a class="skip-link" href="#main-content" (click)="skip($event)">{{ 'Skip to content' | t }}</a>
+<div class="relative flex min-h-dvh flex-col overflow-hidden bg-black font-geist text-paper">
   <header
     class="relative z-[2] flex items-center justify-between border-b border-white/8 px-[22px] py-3.5"
   >
@@ -25,7 +26,11 @@
     </div>
   </header>
 
-  <main id="main-content" class="relative z-[2] flex flex-1 items-center justify-center px-5 py-14">
+  <main
+    id="main-content"
+    tabindex="-1"
+    class="relative z-[2] flex flex-1 items-center justify-center px-5 py-14"
+  >
     <div class="auth-in relative w-full max-w-[420px]">
       <div
         class="absolute top-[-1px] right-[12%] left-[12%] h-px bg-[linear-gradient(90deg,rgba(255,80,80,0),#FF5C5C,rgba(255,80,80,0))] shadow-[0_0_18px_3px_rgba(255,60,60,0.55)]"
@@ -308,7 +313,7 @@
       </div>
     </div>
   </main>
-</section>
+</div>
 
 <ng-template
   #field

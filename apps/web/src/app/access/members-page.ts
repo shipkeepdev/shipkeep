@@ -372,7 +372,7 @@ export class MembersPage {
           return {
             label: role ?? 'none',
             icon: look?.icon ?? 'minus',
-            color: look?.color ?? '#4C4C55',
+            color: look?.color ?? '#7B7B84',
           };
         }),
       })),

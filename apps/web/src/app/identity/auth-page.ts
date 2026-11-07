@@ -177,6 +177,13 @@ export class AuthPage {
     this.focusHeading();
   }
 
+  protected skip(event: Event): void {
+    event.preventDefault();
+    const main = (event.target as HTMLElement).ownerDocument.getElementById('main-content');
+    main?.focus();
+    main?.scrollIntoView();
+  }
+
   protected sso(provider: string): void {
     this.notice.show(
       'Sign-in with {provider} is coming. Use your email and password for now.',

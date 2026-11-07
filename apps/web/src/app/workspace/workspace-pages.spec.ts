@@ -211,9 +211,9 @@ describe('workspace pages', () => {
       json({ type: 'https://shipkeep.dev/problems/not_found', detail: 'internal detail' }, 404);
     await harness.navigateByUrl(`/orgs/${ORG}/organization`);
     await settle();
-    expect(element().querySelector('[role="alert"]')?.textContent).toContain(
-      'This item is no longer available.',
-    );
+    const alerts = [...element().querySelectorAll('[role="alert"]')].map((a) => a.textContent);
+    expect(alerts.join(' ')).toContain('This item is no longer available.');
+    expect(alerts.join(' ')).toContain('This organization is not available to your account');
     expect(element().textContent).not.toContain('internal detail');
   });
 });

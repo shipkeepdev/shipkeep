@@ -323,8 +323,10 @@ const LIVE_POLL_MS = 15_000;
               </div>
             </div>
           }
-          <div class="card pt-[18px] pb-1.5">
-            <div class="px-5 pb-3 text-[14px] font-medium">{{ 'Deployments' | t }}</div>
+          <section class="card pt-[18px] pb-1.5" aria-labelledby="deployments-title">
+            <h2 id="deployments-title" class="px-5 pb-3 text-[14px] font-medium">
+              {{ 'Deployments' | t }}
+            </h2>
             @for (d of deployments.items(); track d.id) {
               @let st = status(d.state);
               <div
@@ -367,7 +369,7 @@ const LIVE_POLL_MS = 15_000;
                 }}
               </p>
             }
-          </div>
+          </section>
         </div>
 
         <div
@@ -408,7 +410,7 @@ const LIVE_POLL_MS = 15_000;
                         ? 'oklch(0.68 0.17 25)'
                         : l.lvl === 'WRN'
                           ? 'oklch(0.80 0.12 80)'
-                          : '#6B6B74'
+                          : '#7E7E87'
                     "
                     >{{ l.lvl }}</span
                   >
@@ -597,7 +599,7 @@ export class ApplicationPage {
         bar: past ? '#D6D6DC' : now ? color : failedHere ? RED : '#1E1E22',
         dot: past ? '#D6D6DC' : now ? color : 'transparent',
         ring: past ? '#D6D6DC' : now ? color : failedHere ? RED : '#3A3A42',
-        fg: past || now ? '#EDEDEF' : '#6B6B74',
+        fg: past || now ? '#EDEDEF' : '#7E7E87',
       };
     });
   });
