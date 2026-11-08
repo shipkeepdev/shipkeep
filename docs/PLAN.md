@@ -97,7 +97,7 @@ Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/
   - Reconcile loop every 30 s against `desired`; restart crashed managed containers; report `StateReport`; answer `CollectFacts`.
   - [x] **M1.6b1** Bounded managed-container snapshots and stream reporter: sample changes every second, refresh every 30 s, include stopped containers and suppress incomplete inventories. Unit/race tests cover shutdown, transport, missing containers and redaction. Daemon activation waits for the control-plane receiver (M1.6b2), so older gateways keep working.
   - [x] **M1.6b3** Show replicas with their node and observed state, in the API and on the application page.
-  - [x] **M1.6b2** Accept state reports under the node identity and persist audited allocation observations in a separate table (model approved by the owner on 2026-11-07), without changing scheduler reservations; activate the daemon reporter.
+  - [x] **M1.6b2** Accept state reports under the node identity and persist audited allocation observations in a separate table, without changing scheduler reservations; activate the daemon reporter.
   - Acceptance: with control plane stopped, a killed container is restarted and routing keeps serving.
 
 ## M2. Control plane core
@@ -279,7 +279,7 @@ Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/
 - [ ] **M3.5 Rollback and release history** (C + W). Depends: M3.4
   - [x] **M3.5a** One-click rollback: a new release copying an earlier one's pinned image and configuration, without replaying its release command; the replaced deployment becomes `rolled_back`.
   - [x] **M3.5b** Release history with a configuration diff, and removal of replaced and failed containers.
-  - [ ] **M3.5c** Image retention (`deploy.keep_images`). Needs an image-removal agent action, so the owner's approval of an action-list change.
+  - [ ] **M3.5c** Image retention (`deploy.keep_images`). Needs an image-removal agent action, so an action-list change (ADR or SPEC update and security review).
   - Keep N images; one-click rollback; release diff view (image, config).
   - Acceptance: rollback under load with zero failed requests.
 - [ ] **M3.6 Domains and TLS** (A + C + W). Depends: M1.5
@@ -359,7 +359,7 @@ Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/
   - [x] **M8.2a** Foundation: `login`, `logout`, `init`, `status`, `secrets`, reached with an API token.
   - [x] **M8.2b** `deploy`, `rollback`, `server remove`, and a run of the real binary against the real API (`cli.integration.spec.ts`).
   - [ ] **M8.2c** `logs`, `env`, `db`, `backup`, `preview`, `server add`, as their bearer routes appear.
-  - [ ] **M8.2d** Release tooling below (needs the owner's tap, bucket and Actions).
+  - [ ] **M8.2d** Release tooling below (needs a Homebrew tap and a release bucket).
   - Go CLI commands from ARCHITECTURE; `.goreleaser.yaml` for agent and CLI; Homebrew tap and Scoop bucket; first `release.yml` dry run via workflow_dispatch.
 - [ ] **M8.3 Installer and control plane upgrades** (X). Depends: M5.4
   - `get.shipkeep.dev` installer (CA fingerprint pinning, `shipkeep-build` user, cgroup v2 delegation, AppArmor profile on Ubuntu 24.04), signature checks, conflict detection.
@@ -395,5 +395,5 @@ Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/
 - Control plane high availability (stateless API, PostgreSQL primary and replica).
 - Continuous volume replication between nodes.
 - Corrosion-based routing replication (ADR 0006).
-- SAML, white label, LTS channel (Enterprise).
-- External security audit, then public release under Apache-2.0.
+- SAML, white label, LTS channel.
+- External security audit.

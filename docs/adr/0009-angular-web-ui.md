@@ -12,5 +12,5 @@
 
 ## Consequences
 
-- One framework the founder masters, strong typing end to end with the NestJS API.
+- One framework the maintainers know well, strong typing end to end with the NestJS API.
 - No server-side rendering; the UI is behind authentication, so SEO does not matter.

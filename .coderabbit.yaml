@@ -1,5 +1,5 @@
 # yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
-# CodeRabbit review settings (ADR 0018). Advice for humans: it never replaces the local gate or CI.
+# CodeRabbit review settings (ADR 0018). Advice for humans: it never replaces local checks or CI.
 language: en-US
 reviews:
   profile: assertive
@@ -24,7 +24,7 @@ reviews:
   path_instructions:
     - path: 'agent/**'
       instructions: >-
-        The agent runs with Docker access on customer servers. Flag any host command execution, shell
+        The agent runs with Docker access on users' servers. Flag any host command execution, shell
         string, unvalidated action input or missing malicious-input test. Agents must keep workloads
         and routing running through a control plane outage. Operations are journaled before they run.
     - path: 'proto/**'
@@ -47,7 +47,7 @@ reviews:
         tenant-database-role.ts.
     - path: 'deploy/**'
       instructions: >-
-        The installer runs as root on customer servers. Flag unverified downloads, secrets in argv or
+        The installer runs as root on users' servers. Flag unverified downloads, secrets in argv or
         shell history, unquoted values and unpinned signing keys.
     - path: 'apps/web/**'
       instructions: >-

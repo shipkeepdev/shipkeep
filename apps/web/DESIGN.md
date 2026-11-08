@@ -1,6 +1,6 @@
 ---
 name: Shipkeep identity
-description: Black workspace with a red accent, ported from the owner's Claude Design mockups (dashboard and sign-in).
+description: Black workspace with a red accent, built from the dashboard and sign-in mockups.
 colors:
   black: '#000000'
   paper: '#f2f2f3'
@@ -35,7 +35,7 @@ rounded:
 
 # Shipkeep web design system
 
-The web UI follows the owner's Claude Design mockups, screen by screen. This file says how the port is built, so new screens stay consistent with it.
+The web UI follows the dashboard and sign-in mockups, screen by screen. This file says how the port is built, so new screens stay consistent with it.
 
 ## Sources
 

@@ -442,7 +442,7 @@ The shared tenant policy is default-deny for unknown permissions, roles and inva
 
 `TenantAccess` resolves the current active/verified membership, project ancestry, environment protection and role bindings inside the caller's tenant transaction before evaluating that policy. Every resource query includes its organization, and environment queries include their parent project. Caller-supplied role or protection fields are ignored. Changed roles, protection and account status take effect on the next decision; no permission cache is used. Missing resources and denied permissions use the same resource-not-found response. The read-side module is independent of identity commands; session/bearer route wiring follows in M2.3d, with role mutations serialized against identity locks in M2.3c4.
 
-An explicit environment role replaces the member's project role for that environment instead of adding to it, so a narrower environment binding can restrict access. Only an actor with project-level member management may create or remove an environment override for a member who administers the project, so an environment-only administrator cannot restrict a project administrator (decided 2026-11-05).
+An explicit environment role replaces the member's project role for that environment instead of adding to it, so a narrower environment binding can restrict access. Only an actor with project-level member management may create or remove an environment override for a member who administers the project, so an environment-only administrator cannot restrict a project administrator.
 
 Organization admins may manage non-owner memberships, but only owners may grant or remove ownership. Removing or demoting the last owner is forbidden. Commands must lock the organization before reading the owner count and changing membership; the pure policy alone provides no concurrency guarantee. Project/environment administrators may only manage bindings within their authorized scope, never organization membership or ownership. Destructive-action authorization remains separate from the single-use confirmation required by M2.5.
 
@@ -668,7 +668,6 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - Private registries: credentials for private images, and an explicit allow-list for registries on private networks (the resolver refuses non-public addresses by default, SSRF).
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).
 - Wildcard certificates: which DNS providers to support first for DNS-01 (proposal: Cloudflare, Route 53, Hetzner DNS, OVH).
-- Exact Shipkeep Cloud pricing.
 
 ## Appendix A: proto skeleton
 

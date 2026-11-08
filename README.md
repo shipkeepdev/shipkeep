@@ -38,7 +38,7 @@ Shipkeep is a self-hosted platform to deploy applications, databases and service
 <p align="center">
   <img src="docs/assets/dashboard-mockup.jpg" alt="Mockup of the Shipkeep dashboard: applications, servers, requests served, deployments and alerts." width="100%">
   <br>
-  <sub>Design mockup with fictional data. The web UI in this repository is simpler today.</sub>
+  <sub>Design mockup with fictional data.</sub>
 </p>
 
 ## How it works
