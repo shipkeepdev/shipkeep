@@ -13,9 +13,6 @@ permissions:
 jobs:
   codeql:
     name: CodeQL
-    # Code scanning on private repositories needs a paid GitHub Code Security license.
-    # Set the repository variable ENABLE_CODEQL=true to run it. Semgrep and gosec run either way.
-    if: ${{ vars.ENABLE_CODEQL == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
