@@ -38,7 +38,7 @@ Shipkeep is a self-hosted platform to deploy applications, databases and service
 <p align="center">
   <img src="docs/assets/dashboard-mockup.jpg" alt="Mockup of the Shipkeep dashboard: applications, servers, requests served, deployments and alerts." width="100%">
   <br>
-  <sub>Design mockup with fictional data. The web UI in this repository is simpler today.</sub>
+  <sub>Design mockup with fictional data.</sub>
 </p>
 
 ## How it works
@@ -103,9 +103,8 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [`good first issue`](https
 - [Architecture decision records](docs/adr/)
 - [Contributing guide](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md)
 - [Route and role matrix](docs/generated/route-role-matrix.md) (generated)
-- [Rules and conventions for Claude Code](CLAUDE.md)
-- [GitHub setup](docs/GITHUB_SETUP.md)
-- [Kickoff prompts for Claude Code](docs/CLAUDE_CODE_KICKOFF.md)
+- [Rules for AI coding assistants](CLAUDE.md)
+- [Maintaining the repository](docs/MAINTAINING.md)
 
 ## Development
 

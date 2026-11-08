@@ -5,7 +5,7 @@
 @import 'tailwindcss' source('./app');
 
 /*
- * Design tokens from the Shipkeep dashboard and sign-in mockups (docs/design). Names describe the
+ * Design tokens from the Shipkeep dashboard and sign-in mockups. Names describe the
  * role of a value, from the brightest text (fg) to the faintest (dim3). The three dim grays are
  * lighter than in the mockups (#6b6b74, #5e5e67, #4c4c55): those fail WCAG AA contrast (4.5:1) as
  * text on black, and the accessibility gate requires AA on every screen.
