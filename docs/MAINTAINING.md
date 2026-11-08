@@ -9,8 +9,6 @@ REPO=shipkeep
 
 ## Branch protection on `main`
 
-Rulesets need GitHub Team on a private repository; they are free on a public one.
-
 ```bash
 gh api -X POST "repos/$OWNER/$REPO/rulesets" --input - <<'JSON'
 {
@@ -40,7 +38,9 @@ gh api -X POST "repos/$OWNER/$REPO/rulesets" --input - <<'JSON'
           { "context": "gosec" },
           { "context": "Secret scanning" },
           { "context": "Trivy filesystem scan" },
-          { "context": "actionlint" }
+          { "context": "actionlint" },
+          { "context": "CodeQL (javascript-typescript)" },
+          { "context": "CodeQL (go)" }
         ] } }
   ]
 }
@@ -48,8 +48,6 @@ JSON
 ```
 
 Zero required approvals: with one maintainer, GitHub does not let an author approve their own pull request. When a second maintainer joins, raise the count to 1 and enable code owner review.
-
-CodeQL needs a public repository: set the repository variable `ENABLE_CODEQL` to `true` (`gh variable set ENABLE_CODEQL --body true --repo "$OWNER/$REPO"`) and add the two `CodeQL` checks to the required list.
 
 ## Apps and repository settings
 
