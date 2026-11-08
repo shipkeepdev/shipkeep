@@ -17,7 +17,7 @@ Shipkeep deploys software on servers that its users own, so security rules come 
 Follow [Run Shipkeep locally](README.md#run-shipkeep-locally). To contribute, you also need:
 
 - [gitleaks](https://github.com/gitleaks/gitleaks#installing) for the commit hook;
-- Go 1.26 or newer and [golangci-lint](https://golangci-lint.run/) for changes to `agent/`, `cli/` or `lib/`.
+- Go 1.26 or newer to run `pnpm gen`, and with [golangci-lint](https://golangci-lint.run/) for changes to `agent/`, `cli/` or `lib/`.
 
 Unit tests need neither Docker nor mail settings: `pnpm install`, then `pnpm test`.
 
@@ -93,7 +93,7 @@ The web UI works without an agent. To connect one to your local control plane, i
 
 1. In the web UI, open **Servers** and create a join token. Copy the token and the CA fingerprint.
 2. Save the token in a private file outside the repository, for example `~/shipkeep-agent/join-token`, and run `chmod 600` on it.
-3. Copy `deploy/agent/agent.example.yaml` to `~/shipkeep-agent/agent.yaml`. Set `control_plane.address` to `localhost:7443`, `control_plane.ca_fingerprint` to the fingerprint, `control_plane.join_token_file` to the token file, and `paths.state_dir` and `paths.run_dir` to folders you can write to.
+3. Copy `deploy/agent/agent.example.yaml` to `~/shipkeep-agent/agent.yaml`. Set `control_plane.address` to `localhost:7443`, `control_plane.ca_fingerprint` to the fingerprint, `control_plane.join_token_file` to the token file, and `paths.state_dir` and `paths.run_dir` to folders you can write to. Every path must be absolute: `~` is not expanded.
 4. Start the agent with an absolute path to the file:
 
    ```bash

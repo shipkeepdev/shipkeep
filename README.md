@@ -93,7 +93,7 @@ Continuous integration runs on every pull request: lint, unit, integration and b
 
 You need:
 
-- [Node.js 22](https://nodejs.org/) (`.nvmrc`) and pnpm 11. Corepack, included with Node.js, installs the right pnpm version.
+- [Node.js 22](https://nodejs.org/), version 22.22.3 or newer (`.nvmrc`), and pnpm 11. Corepack, included with Node.js, installs the right pnpm version.
 - [Docker](https://docs.docker.com/get-docker/) with Compose v2, for PostgreSQL and the other local services.
 - An SMTP account, because creating an account sends a verification email. Any provider with implicit TLS (usually port 465) works, including a Gmail app password.
 
@@ -154,7 +154,8 @@ If something goes wrong:
 
 - **`The datasource.url property is required`:** the `.env` file is missing (step 3).
 - **`Service Unavailable` when signing up:** the mail settings are missing (step 4). Restart `pnpm dev` after changing `.env`.
-- **A port is already taken:** set the matching `SHIPKEEP_DEV_*_PORT` in `.env`. For PostgreSQL, also change the port in both database URLs.
+- **A Docker service port is already taken:** set the matching `SHIPKEEP_DEV_*_PORT` in `.env`. For PostgreSQL, also change the port in both database URLs.
+- **Port 3000 or 4200 is already taken:** stop the program using it. The web UI and its proxy to the API expect these two ports.
 - **`Cannot connect to the Docker daemon`:** start Docker, then run `pnpm dev` again.
 
 To connect an agent, see [Run an agent](CONTRIBUTING.md#run-an-agent).
