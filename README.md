@@ -13,6 +13,7 @@
 <p align="center">
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-E0282E"></a>
   <img alt="Status: in development" src="https://img.shields.io/badge/status-in%20development-F5A524">
+  <a href="https://github.com/shipkeepdev/shipkeep/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/shipkeepdev/shipkeep/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Written in TypeScript and Go" src="https://img.shields.io/badge/built%20with-TypeScript%20%2B%20Go-2A2A2E">
 </p>
 
@@ -23,7 +24,7 @@
 Shipkeep is a self-hosted platform to deploy applications, databases and services on servers you own: git push to deploy, automatic HTTPS, managed databases with backups, preview environments, logs, metrics and alerts, without Kubernetes.
 
 > [!NOTE]
-> **Shipkeep is in development and cannot be installed yet.** This page describes the first release being built, and [what works today](#what-works-today) says where it stands. The repository is private for now and will open before the first release ([ADR 0016](docs/adr/0016-license-now-publication-later.md)), under [Apache-2.0](LICENSE).
+> **Shipkeep is in development and cannot be installed yet.** This page describes the first release being built, and [what works today](#what-works-today) says where it stands. It is built in the open under [Apache-2.0](LICENSE), and [contributions are welcome](CONTRIBUTING.md).
 
 ## Why Shipkeep
 
@@ -86,7 +87,7 @@ shipkeep status --org <id> --project <id> --env <id>
 | Compose applications                                                                                       | Validator built, not connected yet                                                               |
 | Git providers, builds, WireGuard network, failover, managed databases, backups, logs and metrics, previews | Planned, see the [roadmap](docs/PLAN.md)                                                         |
 
-Continuous integration is paused (GitHub Actions billing): pull requests are merged after the local checks listed in [CONTRIBUTING.md](CONTRIBUTING.md), and a full CI run on `main` is tracked in issue #137.
+Continuous integration runs on every pull request: lint, unit, integration and browser tests, plus security scanners.
 
 ## Contributing
 

@@ -34,7 +34,7 @@ CodeQL and gosec have **not** run on that code. The browser suite ran on 2026-11
    - an image-removal agent action (M3.5c);
    - a GitHub App for Git providers (M3.1, then M3.2, M3.3, M7.1);
    - a Cloudflare account for DNS-01 (M3.6b).
-3. **Billing:** CI-1, which also runs CodeQL, gosec, PostgreSQL 17 and the Lighthouse check the local run could not do (M2.6).
+3. **CI:** GitHub Actions runs again on every pull request (#137). CodeQL starts once the repository is public; the Lighthouse check of M2.6 is still to run.
 4. **Open to pick up without any of these:** the node public address of M3.6b, Go fuzz targets for the agent validators (M10.2), then M6 (logs, metrics, alerts).
 
 **Before going public** (the maintainer changes the visibility; ADR 0016):
@@ -42,7 +42,7 @@ CodeQL and gosec have **not** run on that code. The browser suite ran on 2026-11
 - CI-1 green on `main` (#137), and branch protection with required checks (GITHUB_SETUP section 5).
 - Full-history gitleaks scan clean. Rotate any credential that was ever committed, even if it was later deleted.
 - Enable GitHub private vulnerability reporting and update `SECURITY.md` accordingly.
-- Enforce DCO sign-off on pull requests (for example with the DCO GitHub app).
+- DCO sign-off is enforced on pull requests by the `DCO sign-off` check (`tools/ci/check-dco.sh`).
 - Review the internal assistant documents (`CLAUDE.md`, `docs/CLAUDE_CODE_KICKOFF.md`, `docs/GITHUB_SETUP.md`) for anything that should not be public.
 - Set the repository topics and website, and check the README status line.
 
@@ -59,7 +59,7 @@ CodeQL and gosec have **not** run on that code. The browser suite ran on 2026-11
 
 **Decisions taken (2026-11-05):**
 
-- **CI.** GitHub Actions stays unavailable for now and development continues. Every PR is merged after the local gate, and its description says which checks did not run. CI-1 runs as soon as Actions is back.
+- **CI.** GitHub Actions was unavailable until 2026-11-07, when it came back; PRs merged before that passed the local gate only.
 - **In-place restores.** `RestoreVolume` and `RestoreDatabase` over an existing target require a confirmation token. Restores into new targets do not (ADR 0013, #112).
 - **`argparse`.** It is approved as a per-package license exception (PSF-2.0, ADR 0014).
 - **M2.3 role defaults.** The conservative defaults are confirmed and moved from the SPEC 16 open questions into SPEC 7: an environment role replaces the project role, and only owners grant ownership.
