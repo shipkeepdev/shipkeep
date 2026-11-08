@@ -17,6 +17,7 @@ import { Brand } from '../ui/brand';
 import { I18n, T } from '../ui/i18n';
 import { Notice } from '../ui/notice';
 import { type Environment, WorkspaceApi } from '../workspace/workspace-api';
+import { PreviewPill } from './screen-view';
 
 interface Item {
   readonly name: string;
@@ -144,13 +145,16 @@ const SERVICES: readonly Item[] = (
 /** 08 New resource: what can be deployed into an environment. */
 @Component({
   selector: 'sk-new-resource-page',
-  imports: [Brand, Icon, RouterLink, T],
+  imports: [Brand, Icon, PreviewPill, RouterLink, T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-[18px]">
       <div class="page-head">
         <div>
-          <h1 class="page-title">{{ 'New resource' | t }}</h1>
+          <div class="flex flex-wrap items-center gap-3">
+            <h1 class="page-title">{{ 'New resource' | t }}</h1>
+            <sk-preview-pill />
+          </div>
           <div class="mt-1.5 flex flex-wrap items-center gap-2 text-[13px] text-mute2">
             <label for="target" class="sr-only">{{ 'Environment' | t }}</label>
             <select

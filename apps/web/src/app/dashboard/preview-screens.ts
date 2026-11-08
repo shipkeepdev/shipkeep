@@ -67,7 +67,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
             name: 'Marketing site',
             sub: 'production · staging',
             icon: 'folder',
-            desc: 'atelier-nord.fr and blog.',
+            desc: 'atelier-nord.example and blog.',
             meta: [
               ['apps', '3 resources'],
               ['server-2', '1 server'],
@@ -478,7 +478,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
             items: [
               {
                 l: 'Stream',
-                v: 'cp.atelier-nord.fr:7443 · mTLS 1.3',
+                v: 'cp.atelier-nord.example:7443 · mTLS 1.3',
               },
               {
                 l: 'Certificate',
@@ -674,7 +674,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
             rows: [
               [
                 {
-                  t: 'factures.lumen.fr',
+                  t: 'factures.lumen.example',
                   mono: true,
                 },
                 "Let's Encrypt",
@@ -686,7 +686,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
               ],
               [
                 {
-                  t: 'lumen.fr',
+                  t: 'lumen.example',
                   mono: true,
                 },
                 "Let's Encrypt",
@@ -698,7 +698,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
               ],
               [
                 {
-                  t: 'boutique.verdi.shop',
+                  t: 'boutique.verdi.example',
                   mono: true,
                 },
                 "Let's Encrypt",
@@ -1548,7 +1548,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                   fg: '#7E7E87',
                 },
                 {
-                  t: 'grafana.atelier-nord.fr',
+                  t: 'grafana.atelier-nord.example',
                   mono: true,
                 },
                 {
@@ -1638,7 +1638,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
             rows: [
               [
                 {
-                  t: 'grafana.atelier-nord.fr',
+                  t: 'grafana.atelier-nord.example',
                   mono: true,
                 },
                 'grafana:3000',
@@ -1668,7 +1668,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                   mono: true,
                 },
                 {
-                  t: 'https://grafana.atelier-nord.fr',
+                  t: 'https://grafana.atelier-nord.example',
                   mono: true,
                   fg: '#7E7E87',
                 },
@@ -1866,7 +1866,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
           },
           {
             p: '10:13:06 ',
-            t: 'health 3/3 · UpsertRoute factures.lumen.fr',
+            t: 'health 3/3 · UpsertRoute factures.lumen.example',
             c: 'oklch(0.78 0.13 155)',
           },
           {
@@ -1915,7 +1915,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
               {
                 name: 'Forgejo · internal',
                 logo: 'forgejo',
-                sub: 'git.atelier-nord.fr · 9 repositories',
+                sub: 'git.atelier-nord.example · 9 repositories',
                 badge: 'token expires in 12 d',
                 bc: 'oklch(0.80 0.12 80)',
               },
@@ -2288,7 +2288,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                   mono: true,
                 },
                 {
-                  t: 'https://factures.lumen.fr',
+                  t: 'https://factures.lumen.example',
                   mono: true,
                   fg: '#7E7E87',
                 },
@@ -2300,7 +2300,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                   mono: true,
                 },
                 {
-                  t: 'https://staging.factures.lumen.fr',
+                  t: 'https://staging.factures.lumen.example',
                   mono: true,
                   fg: '#7E7E87',
                 },
@@ -2312,7 +2312,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                   mono: true,
                 },
                 {
-                  t: 'https://pr-{n}.factures.lumen.fr',
+                  t: 'https://pr-{n}.factures.lumen.example',
                   mono: true,
                   fg: '#7E7E87',
                 },
@@ -2566,7 +2566,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
               },
               {
                 l: 'Recipients',
-                v: 'ops@atelier-nord.fr',
+                v: 'ops@atelier-nord.example',
               },
               {
                 l: 'Sending',
@@ -2681,7 +2681,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
               },
               {
                 l: 'URL',
-                v: 'https://ops.atelier-nord.fr/hooks/shipkeep',
+                v: 'https://ops.atelier-nord.example/hooks/shipkeep',
               },
               {
                 l: 'Signature',
@@ -2781,9 +2781,9 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
             heads: ['Name', 'Email', 'Role', '2FA'],
             rows: [
               [
-                'Samuel M.',
+                'Alex M.',
                 {
-                  t: 'samuel@atelier-nord.fr',
+                  t: 'alex@atelier-nord.example',
                   mono: true,
                   fg: '#7E7E87',
                 },
@@ -2801,7 +2801,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
               [
                 'Inès L.',
                 {
-                  t: 'ines@atelier-nord.fr',
+                  t: 'ines@atelier-nord.example',
                   mono: true,
                   fg: '#7E7E87',
                 },
@@ -2815,7 +2815,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
               [
                 'Marc D.',
                 {
-                  t: 'marc@atelier-nord.fr',
+                  t: 'marc@atelier-nord.example',
                   mono: true,
                   fg: '#7E7E87',
                 },
@@ -2829,7 +2829,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
               [
                 'Yuki T.',
                 {
-                  t: 'yuki@atelier-nord.fr',
+                  t: 'yuki@atelier-nord.example',
                   mono: true,
                   fg: '#7E7E87',
                 },
@@ -2843,7 +2843,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
               [
                 'Claire (Lumen)',
                 {
-                  t: 'claire@lumen.fr',
+                  t: 'claire@lumen.example',
                   mono: true,
                   fg: '#7E7E87',
                 },
@@ -2874,7 +2874,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
             rows: [
               [
                 {
-                  t: 'paul@verdi.shop',
+                  t: 'paul@verdi.example',
                   mono: true,
                 },
                 'client',
@@ -2882,7 +2882,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
               ],
               [
                 {
-                  t: 'lea@atelier-nord.fr',
+                  t: 'lea@atelier-nord.example',
                   mono: true,
                 },
                 'member',
@@ -2922,7 +2922,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
   settings: {
     label: '21 Settings',
     title: 'Instance settings',
-    sub: 'cp.atelier-nord.fr · Shipkeep v0.1.0-rc.2 · control plane on srv-cp-1',
+    sub: 'cp.atelier-nord.example · Shipkeep v0.1.0-rc.2 · control plane on srv-cp-1',
     crumbs: ['Instance', 'Settings'],
     sections: [
       {
@@ -2935,7 +2935,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
             items: [
               {
                 l: 'Control plane URL',
-                v: 'https://cp.atelier-nord.fr',
+                v: 'https://cp.atelier-nord.example',
               },
               {
                 l: 'Instance name',
@@ -3040,7 +3040,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
               },
               {
                 l: 'Sender',
-                v: 'Shipkeep <no-reply@atelier-nord.fr>',
+                v: 'Shipkeep <no-reply@atelier-nord.example>',
               },
             ],
           },
@@ -3140,8 +3140,8 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
   },
   profile: {
     label: '22 Profile',
-    title: 'Samuel M.',
-    sub: 'samuel@atelier-nord.fr · owner of Atelier Nord',
+    title: 'Alex M.',
+    sub: 'alex@atelier-nord.example · owner of Atelier Nord',
     crumbs: ['Profile'],
     sections: [
       {
@@ -3154,12 +3154,12 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
             items: [
               {
                 l: 'Name',
-                v: 'Samuel Mbabhazi',
+                v: 'Alex Martin',
                 mono: false,
               },
               {
                 l: 'Email',
-                v: 'samuel@atelier-nord.fr',
+                v: 'alex@atelier-nord.example',
               },
               {
                 l: 'Language',
@@ -3401,7 +3401,7 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
             c: '#EDEDEF',
           },
           {
-            t: '--join cp.atelier-nord.fr:7443 \\',
+            t: '--join cp.atelier-nord.example:7443 \\',
             c: '#EDEDEF',
           },
           {

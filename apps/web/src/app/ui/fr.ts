@@ -353,8 +353,8 @@ export const FR: Readonly<Record<string, string>> = {
   'Cloudflare Tunnel': 'Tunnel Cloudflare',
   'Code expires in 14:52': 'Le code expire dans 14:52',
   'Code received': 'Code reçu',
-  'Code sent to samuel@atelier-nord.fr. It expires in 15 minutes.':
-    'Code envoyé à samuel@atelier-nord.fr. Il expire dans 15 minutes.',
+  'Code sent to alex@atelier-nord.example. It expires in 15 minutes.':
+    'Code envoyé à alex@atelier-nord.example. Il expire dans 15 minutes.',
   'Code sent to {email} if it has an account. It expires in 30 minutes.':
     'Code envoyé à {email} si un compte existe. Il expire dans 30 minutes.',
   'Code type': 'Type de code',
@@ -505,8 +505,8 @@ export const FR: Readonly<Record<string, string>> = {
   'Enter maintenance': 'Mettre en maintenance',
   'Enter one complete 32-character recovery code.':
     'Entrez un code de récupération complet de 32 caractères.',
-  'Enter the 6-digit code sent to samuel@atelier-nord.fr.':
-    'Entrez le code à 6 chiffres envoyé à samuel@atelier-nord.fr.',
+  'Enter the 6-digit code sent to alex@atelier-nord.example.':
+    'Entrez le code à 6 chiffres envoyé à alex@atelier-nord.example.',
   'Enter the code': 'Saisir le code',
   'Enter the code from your authenticator app.':
     "Entrez le code de votre application d'authentification.",
@@ -1082,7 +1082,7 @@ export const FR: Readonly<Record<string, string>> = {
   'Settings saved.': 'Réglages enregistrés.',
   Severity: 'Gravité',
   'Shared variables': 'Variables partagées',
-  'Shipkeep <no-reply@atelier-nord.fr>': 'Shipkeep <ne-pas-repondre@atelier-nord.fr>',
+  'Shipkeep <no-reply@atelier-nord.example>': 'Shipkeep <ne-pas-repondre@atelier-nord.example>',
   'Shipkeep CLI': 'CLI shipkeep',
   'Shipkeep agent': 'Agent shipkeep',
   'Shipkeep home': 'Accueil Shipkeep',
@@ -1353,7 +1353,7 @@ export const FR: Readonly<Record<string, string>> = {
   'api-facturation · production · “Adds PDF export” · triggered by Inès L. via push to main':
     "api-facturation · production · « Ajoute l'export PDF » · déclenché par Inès L. via push sur main",
   'as reported by the agents': 'selon les agents',
-  'atelier-nord.fr and blog.': 'atelier-nord.fr et blog.',
+  'atelier-nord.example and blog.': 'atelier-nord.example et blog.',
   'auto deploy on develop': 'déploiement auto sur develop',
   'automatic placement': 'placement automatique',
   available: 'disponible',
@@ -1374,8 +1374,8 @@ export const FR: Readonly<Record<string, string>> = {
   'cloud-init scripts': 'Scripts cloud-init',
   connected: 'connectés',
   'continuously renewed': 'renouvelé en continu',
-  'cp.atelier-nord.fr · Shipkeep v0.1.0-rc.2 · control plane on srv-cp-1':
-    'cp.atelier-nord.fr · Shipkeep v0.1.0-rc.2 · plan de contrôle sur srv-cp-1',
+  'cp.atelier-nord.example · Shipkeep v0.1.0-rc.2 · control plane on srv-cp-1':
+    'cp.atelier-nord.example · Shipkeep v0.1.0-rc.2 · plan de contrôle sur srv-cp-1',
   critical: 'critique',
   current: 'actuelle',
   day: 'jour',
@@ -1418,7 +1418,7 @@ export const FR: Readonly<Record<string, string>> = {
   'from project': 'via le projet',
   'front-lumen pr-207 · TTL reached': 'front-lumen pr-207 · TTL atteint',
   generated: 'générée',
-  'git.atelier-nord.fr · 9 repositories': 'git.atelier-nord.fr · 9 dépôts',
+  'git.atelier-nord.example · 9 repositories': 'git.atelier-nord.example · 9 dépôts',
   'health check': 'health check',
   healthy: 'sain',
   high: 'élevée',
@@ -1455,7 +1455,7 @@ export const FR: Readonly<Record<string, string>> = {
   'modified 3 months ago': 'modifié il y a 3 mois',
   'modified by Inès L. · 28/10': 'modifié par Inès L. · 28/10',
   'modified by Marc D. · 12/10': 'modifié par Marc D. · 12/10',
-  'modified by Samuel M. · 07/11': 'modifié par Samuel M. · 07/11',
+  'modified by Alex M. · 07/11': 'modifié par Alex M. · 07/11',
   never: 'jamais',
   'never deployed': 'jamais déployée',
   'never used': 'jamais utilisé',
@@ -1522,8 +1522,8 @@ export const FR: Readonly<Record<string, string>> = {
   'rule “p95 > 800 ms” triggered · Slack #ops': 'règle « p95 > 800 ms » déclenchée · Slack #ops',
   running: 'en marche',
   'runs the release command': 'exécute la commande de release',
-  'samuel@atelier-nord.fr · owner of Atelier Nord':
-    "samuel@atelier-nord.fr · propriétaire d'Atelier Nord",
+  'alex@atelier-nord.example · owner of Atelier Nord':
+    "alex@atelier-nord.example · propriétaire d'Atelier Nord",
   'saved · 00:42': 'enregistrée · 00:42',
   scheduling: 'placement',
   'service token': 'jeton de service',
