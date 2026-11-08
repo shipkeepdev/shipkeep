@@ -195,7 +195,7 @@ export const APP_SAMPLES: Readonly<
           },
           {
             l: 'Approvers',
-            v: 'Inès L., Samuel M.',
+            v: 'Inès L., Alex M.',
             mono: false,
           },
           {
@@ -227,7 +227,7 @@ export const APP_SAMPLES: Readonly<
           {
             l: 'Deployment URL',
             h: 'HMAC-signed POST',
-            v: 'https://cp.atelier-nord.fr/hooks/d/••••',
+            v: 'https://cp.atelier-nord.example/hooks/d/••••',
             mono: true,
           },
           {
