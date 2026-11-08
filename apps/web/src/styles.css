@@ -34,6 +34,7 @@
   --color-chip: #0e0e10;
   --color-rose: #ff8a8a;
   --color-coral: #ff5c5c;
+  --color-silver: #d0d0d4;
   --color-red: oklch(0.68 0.17 25);
   --color-amber: oklch(0.8 0.12 80);
   --color-green: oklch(0.78 0.13 155);
@@ -194,7 +195,7 @@
     box-shadow: 0 0 0 3px rgb(177 177 181 / 18%);
   }
   .auth-neutral :focus-visible {
-    outline-color: #d0d0d4;
+    outline-color: var(--color-silver);
   }
   .auth-neutral ::selection {
     background: rgb(152 152 156 / 45%);

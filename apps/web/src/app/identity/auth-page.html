@@ -60,7 +60,7 @@
 
         @if (store.success(); as success) {
           <div #feedback class="alert alert-ok" role="status" tabindex="-1">
-            <sk-icon name="mail-check" class="text-[22px] text-[#d0d0d4]" />
+            <sk-icon name="mail-check" class="text-[22px] text-silver" />
             <span>{{ success | t }}</span>
           </div>
           @if (store.mode() === 'register') {
@@ -98,7 +98,7 @@
           }
           @if (screen() === 'reset-password' && store.sentTo()) {
             <div class="flex items-center gap-3 rounded-xl border border-ctl bg-black p-3.5">
-              <sk-icon name="mail-check" class="text-[22px] text-[#d0d0d4]" />
+              <sk-icon name="mail-check" class="text-[22px] text-silver" />
               <div class="text-[13px] leading-normal text-[#C9C9CC]">
                 {{
                   'Code sent to {email} if it has an account. It expires in 30 minutes.'
@@ -332,7 +332,7 @@
     <span class="flex justify-between text-[12.5px] text-[#C9C9CC]">
       <label [for]="id">{{ label | t }}</label>
       @if (link) {
-        <a routerLink="/auth/forgot-password" class="text-[12px] text-[#d0d0d4] hover:underline">{{
+        <a routerLink="/auth/forgot-password" class="text-[12px] text-silver hover:underline">{{
           link | t
         }}</a>
       }

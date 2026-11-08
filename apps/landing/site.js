@@ -316,7 +316,7 @@
 (() => {
   const cv = document.querySelector('[data-terrain] canvas');
   if (!cv) return;
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
   let W = 0;
   let H = 0;
   let c = null;
@@ -447,17 +447,22 @@
     size();
     draw(performance.now() - t0);
   }).observe(cv);
-  if (reduce) return;
   window.addEventListener('mousemove', (e) => {
     mx = (e.clientX / window.innerWidth) * 2 - 1;
     my = (e.clientY / window.innerHeight) * 2 - 1;
   });
-  new IntersectionObserver((entries) => {
-    const visible = entries[0].isIntersecting;
-    if (visible && !raf) raf = requestAnimationFrame(loop);
-    if (!visible && raf) {
+  let visible = false;
+  const sync = () => {
+    const run = visible && !reduce.matches;
+    if (run && !raf) raf = requestAnimationFrame(loop);
+    if (!run && raf) {
       cancelAnimationFrame(raf);
       raf = 0;
     }
+  };
+  reduce.addEventListener('change', sync);
+  new IntersectionObserver((entries) => {
+    visible = entries[0].isIntersecting;
+    sync();
   }).observe(cv);
 })();

@@ -87,3 +87,5 @@ section{padding-left:16px!important;padding-right:16px!important}
 [data-dc-tpl="281"]~div a{color:#C9C9CC}
 footer div{flex-wrap:wrap}
 a:focus-visible,button:focus-visible,[role="button"]:focus-visible{outline:2px solid #D7D7DB;outline-offset:2px}
+/* The language switch clips outlines and has a light active item: draw the ring inside, in a gray visible on both. */
+a[hreflang]:focus-visible { outline: 2px solid #7e7e87; outline-offset: -2px; }
