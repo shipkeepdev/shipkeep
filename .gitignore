@@ -94,3 +94,6 @@ out-tsc/
 
 # Local state of `shipkeep-agent --dev`
 .shipkeep-dev/
+
+# Local Go workspace checksums; each module go.sum is the committed source of truth.
+go.work.sum

@@ -10,7 +10,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 
 import { applyMigrations } from '../../testing/apply-migrations';
 import { fleetDatabase, type FleetDatabase } from '../../testing/fleet-database';
-import { startGoAgent } from '../../testing/go-agent';
+import { buildGoAgent, startGoAgent } from '../../testing/go-agent';
 import { POSTGRES_TEST_IMAGE } from '../../testing/postgres-image';
 import { resetDatabase } from '../../testing/reset-database';
 import { IssueJoinToken } from './application/issue-join-token';
@@ -26,6 +26,8 @@ it('enrolls the real Go daemon, reconnects after API restart and rejects reuse/r
   const abort = new AbortController();
   let child: Promise<void> | undefined;
   try {
+    const agentBinary = join(dir, 'agent.test');
+    await buildGoAgent(agentBinary);
     if (!previousUrl) container = await new PostgreSqlContainer(POSTGRES_TEST_IMAGE).start();
     const adminUrl = container?.getConnectionUri() ?? previousUrl ?? '';
     await resetDatabase(adminUrl);
@@ -60,7 +62,7 @@ it('enrolls the real Go daemon, reconnects after API restart and rejects reuse/r
       }),
       { mode: 0o600 },
     );
-    const goDone = startGoAgent(fixture, abort.signal);
+    const goDone = startGoAgent(agentBinary, fixture, abort.signal);
     child = goDone;
     // Observe failures immediately, including while waiting for lifecycle markers.
     void child.catch(() => undefined);
@@ -103,4 +105,4 @@ it('enrolls the real Go daemon, reconnects after API restart and rejects reuse/r
     else process.env['DATABASE_URL'] = previousUrl;
     await rm(dir, { recursive: true, force: true });
   }
-});
+}, 300_000); // Includes compiling the agent with the race detector on a cold cache.
