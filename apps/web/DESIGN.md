@@ -1,6 +1,6 @@
 ---
 name: Shipkeep identity
-description: Black workspace with a red accent, built from the dashboard and sign-in mockups.
+description: Black workspace built from the dashboard and sign-in mockups, with a red accent in the dashboard and a neutral gray one on the sign-in pages.
 colors:
   black: '#000000'
   paper: '#f2f2f3'
@@ -43,6 +43,10 @@ The web UI follows the dashboard and sign-in mockups, screen by screen. This fil
 - Fonts: Outfit (dashboard), Geist (sign-in) and Geist Mono (code, identifiers), self-hosted through `@fontsource-variable` because the Content-Security-Policy only allows fonts from `'self'` (ADR 0014).
 - Icons: Tabler outline icons as path data in `src/app/shell/icons.ts` (`<sk-icon>`), stroke 2. Brand marks: Simple Icons path data in `src/app/shell/brands.ts` (`<sk-brand>`), drawn in the current text color.
 - No inline `style` attributes (CSP `style-src-attr 'none'`). Dynamic values use `[style.x]` bindings, which go through CSSOM.
+
+## Accent colors
+
+The dashboard uses the red accent (`rose`, `coral`). The sign-in pages and the landing page use a neutral gray one (`#bebec2`, `#d0d0d4`). On sign-in pages, field errors stay red.
 
 ## Deliberate differences from the mockups
 

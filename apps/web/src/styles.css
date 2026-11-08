@@ -188,6 +188,20 @@
   .input[aria-invalid='true'] {
     border-color: rgb(255 92 92 / 70%);
   }
+  /* The sign-in pages use a neutral accent; the dashboard keeps the red one. */
+  .auth-neutral .input:focus:not([aria-invalid='true']) {
+    border-color: rgb(190 190 194 / 70%);
+    box-shadow: 0 0 0 3px rgb(177 177 181 / 18%);
+  }
+  .auth-neutral :focus-visible {
+    outline-color: #d0d0d4;
+  }
+  .auth-neutral ::selection {
+    background: rgb(152 152 156 / 45%);
+  }
+  html:has(.auth-neutral) ::-webkit-scrollbar-thumb:hover {
+    background: #98989c;
+  }
   .seg {
     @apply flex gap-0.5 rounded-[9px] border border-line bg-black p-[3px];
   }
