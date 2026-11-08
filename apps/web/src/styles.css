@@ -197,6 +197,11 @@
   .auth-neutral :focus-visible {
     outline-color: var(--color-silver);
   }
+  /* The language switch clips outlines and has a light active item. */
+  .auth-neutral header button:focus-visible {
+    outline-color: #7e7e87;
+    outline-offset: -2px;
+  }
   .auth-neutral ::selection {
     background: rgb(152 152 156 / 45%);
   }
