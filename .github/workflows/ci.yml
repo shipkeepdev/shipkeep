@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: read
+  actions: read # nx-set-shas reads earlier workflow runs to find the last green commit on main.
 
 concurrency:
   group: ci-${{ github.ref }}

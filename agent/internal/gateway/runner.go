@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"math/big"
 	"sync"
@@ -23,6 +24,9 @@ var errIdentity = errors.New("gateway rejected the node identity or epoch; opera
 // renewalTimeout bounds the renewal exchange plus persistence, which must finish even when
 // shutdown is signalled: once the control plane commits a renewal, the old certificate is revoked.
 const renewalTimeout = 30 * time.Second
+
+// streamEndTimeout bounds the wait for a stream's final status after a send found it closed.
+const streamEndTimeout = 5 * time.Second
 
 // ActionHandler executes control-plane actions. Handle runs on the agent's lifetime, not the
 // stream's: a dropped connection never interrupts an action, only its progress updates.
@@ -151,6 +155,12 @@ func (r *Runner) persist(ctx context.Context, renewed nodecredentials.Bundle) er
 	}
 }
 
+// received is one result of reading the agent stream.
+type received struct {
+	message *agentv1.ConnectResponse
+	err     error
+}
+
 func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayServiceClient, bundle nodecredentials.Bundle, renewAt time.Time) error {
 	streamCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -159,11 +169,13 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 		return fmt.Errorf("connect agent stream: %w", err)
 	}
 	if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_Hello{Hello: &agentv1.Hello{NodeId: bundle.NodeID, LeaseEpoch: bundle.LeaseEpoch, AgentVersion: r.Version, Facts: r.Facts}}}); err != nil {
+		if errors.Is(err, io.EOF) {
+			// The gateway ended the stream first, for example to refuse these credentials.
+			if _, reason := stream.Recv(); reason != nil {
+				return fmt.Errorf("receive agent welcome: %w", reason)
+			}
+		}
 		return fmt.Errorf("send agent hello: %w", err)
-	}
-	type received struct {
-		message *agentv1.ConnectResponse
-		err     error
 	}
 	incoming := make(chan received, 1)
 	stopped := make(chan struct{})
@@ -241,15 +253,15 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 			return nil
 		case <-heartbeat.C:
 			if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_Heartbeat{Heartbeat: &agentv1.Heartbeat{SentAt: timestamppb.Now(), LeaseEpoch: bundle.LeaseEpoch}}}); err != nil {
-				return fmt.Errorf("send heartbeat: %w", err)
+				return sendFailure(streamCtx, "send heartbeat", err, incoming)
 			}
 		case update := <-updates:
 			if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_ActionUpdate{ActionUpdate: update}}); err != nil {
-				return fmt.Errorf("send action update: %w", err)
+				return sendFailure(streamCtx, "send action update", err, incoming)
 			}
 		case report := <-reports:
 			if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_StateReport{StateReport: report}}); err != nil {
-				return fmt.Errorf("send state report: %w", err)
+				return sendFailure(streamCtx, "send state report", err, incoming)
 			}
 		case frame := <-incoming:
 			if frame.err != nil {
@@ -257,6 +269,29 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 			}
 			if err := r.dispatch(ctx, frame.message, send); err != nil {
 				return err
+			}
+		}
+	}
+}
+
+// sendFailure names why a send failed. gRPC's Send only reports io.EOF once the stream has ended;
+// the status, which decides whether to retry, comes from the receive side.
+func sendFailure(ctx context.Context, action string, err error, incoming <-chan received) error {
+	if !errors.Is(err, io.EOF) {
+		return fmt.Errorf("%s: %w", action, err)
+	}
+	timeout := time.NewTimer(streamEndTimeout)
+	defer timeout.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("%s: %w", action, err)
+		case <-timeout.C:
+			return fmt.Errorf("%s: %w", action, err)
+		case frame := <-incoming:
+			// Frames still queued are dropped: unacknowledged actions are redelivered.
+			if frame.err != nil {
+				return fmt.Errorf("receive agent frame: %w", frame.err)
 			}
 		}
 	}
