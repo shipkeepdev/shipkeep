@@ -54,6 +54,7 @@ Zero required approvals: with one maintainer, GitHub does not let an author appr
 - Renovate opens dependency updates (`renovate.json`).
 - Private vulnerability reporting is enabled in the repository's security settings.
 - CodeRabbit reviews pull requests (ADR 0018, `.coderabbit.yaml`).
+- GitHub Discussions takes questions and ideas. The forms are in `.github/DISCUSSION_TEMPLATE/`, named after each category's slug; categories are managed in the web UI.
 - Pull requests are squash-merged and their branches deleted.
 
 ## CI secrets

@@ -1,0 +1,34 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check the [roadmap](https://github.com/shipkeepdev/shipkeep/blob/main/docs/PLAN.md) first: your idea may already be planned.
+
+        Shipkeep never adds host shell access, SSH keys on the control plane or shell commands built from strings. See the [rules every change must respect](https://github.com/shipkeepdev/shipkeep/blob/main/CONTRIBUTING.md#rules-that-every-change-must-respect).
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What is hard or impossible today? Describe your situation rather than a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Your proposal
+      description: What should Shipkeep do? A `shipkeep.yml` or CLI example helps.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives
+      description: Other ways to solve it, and how you handle it today.
+  - type: dropdown
+    id: contribution
+    attributes:
+      label: Would you like to build it?
+      options:
+        - 'Yes'
+        - 'Maybe, with some guidance'
+        - 'No'
