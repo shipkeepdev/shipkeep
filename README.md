@@ -90,9 +90,121 @@ shipkeep status --org <id> --project <id> --env <id>
 
 Continuous integration runs on every pull request: lint, unit, integration and browser tests, plus security scanners.
 
-## Contributing
+## Run Shipkeep locally
 
-Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [`good first issue`](https://github.com/shipkeepdev/shipkeep/labels/good%20first%20issue) label. Remaining work is tracked in [docs/PLAN.md](docs/PLAN.md) and the GitHub milestones.
+You need:
+
+- [Node.js 22](https://nodejs.org/), version 22.22.3 or newer (`.nvmrc`), and pnpm 11. Corepack, included with Node.js, installs the right pnpm version.
+- [Docker](https://docs.docker.com/get-docker/) with Compose v2, for PostgreSQL and the other local services.
+- An SMTP account, because creating an account sends a verification email. Any provider with implicit TLS (usually port 465) works, including a Gmail app password.
+
+Then follow these steps:
+
+1. **Get the code.**
+
+   ```bash
+   git clone https://github.com/shipkeepdev/shipkeep.git
+   cd shipkeep
+   ```
+
+2. **Install the dependencies.**
+
+   ```bash
+   corepack enable
+   pnpm install
+   ```
+
+3. **Create your configuration file.** It is required, and the values in it work as they are for local development.
+
+   ```bash
+   cp .env.example .env
+   ```
+
+4. **Add your mail settings.** In `.env`, uncomment these lines and fill them in:
+
+   ```bash
+   SMTP_HOST=smtp.example.com
+   SMTP_PORT=465
+   SMTP_FROM=you@example.com
+   SMTP_USER=your-smtp-user
+   SMTP_PASSWORD=your-smtp-password
+   ```
+
+5. **Start Shipkeep,** and leave this terminal open. The first run downloads the Docker images and takes a few minutes.
+
+   ```bash
+   pnpm dev
+   ```
+
+   This starts the local services in Docker, applies the database migrations, then starts the API and the web UI with hot reload.
+
+6. **Create your account.** Open <http://localhost:4200/auth/register>, and sign up. Open the link in the verification email, paste its code and enter your password.
+
+7. **Create your first organization** when the web UI asks for one. You can then add projects, applications and servers.
+
+To stop, press `Ctrl+C`, then run `pnpm dev:infra:down`. Your data is kept. `pnpm dev:infra:reset` also deletes it.
+
+| Service     | Address                               |
+| ----------- | ------------------------------------- |
+| Web UI      | <http://localhost:4200>               |
+| API health  | <http://localhost:3000/api/v1/health> |
+| API docs    | <http://localhost:3000/api/v1/docs>   |
+| Agent (TLS) | port 7443                             |
+
+If something goes wrong:
+
+- **`The datasource.url property is required`:** the `.env` file is missing (step 3).
+- **`Service Unavailable` when signing up:** the mail settings are missing (step 4). Restart `pnpm dev` after changing `.env`.
+- **A Docker service port is already taken:** set the matching `SHIPKEEP_DEV_*_PORT` in `.env`. For PostgreSQL, also change the port in both database URLs.
+- **Port 3000 or 4200 is already taken:** stop the program using it. The web UI and its proxy to the API expect these two ports.
+- **`Cannot connect to the Docker daemon`:** start Docker, then run `pnpm dev` again.
+
+To connect an agent, see [Run an agent](CONTRIBUTING.md#run-an-agent).
+
+## Contribute
+
+1. **Pick an issue.** The [`good first issue`](https://github.com/shipkeepdev/shipkeep/labels/good%20first%20issue) label is the best place to start. Comment on the issue to say you are working on it.
+2. **Fork the repository** on GitHub, then clone your fork and add this repository as `upstream`:
+
+   ```bash
+   git clone https://github.com/<your-username>/shipkeep.git
+   cd shipkeep
+   git remote add upstream https://github.com/shipkeepdev/shipkeep.git
+   ```
+
+3. **Set up the project.** Run `corepack enable` and `pnpm install`, then [install gitleaks](https://github.com/gitleaks/gitleaks#installing), which the commit hook needs. To run the application, also follow steps 3 to 7 above. Unit tests need neither Docker nor mail settings.
+4. **Create a branch** from the latest `main`:
+
+   ```bash
+   git fetch upstream
+   git switch -c fix/123-short-name upstream/main
+   ```
+
+5. **Make your change** and add tests. Read the [rules every change must respect](CONTRIBUTING.md#rules-that-every-change-must-respect) first.
+6. **Run the checks:**
+
+   ```bash
+   pnpm lint
+   pnpm test
+   ```
+
+   If you changed Go code, also run `go test ./agent/... ./cli/... ./lib/...` and `golangci-lint run ./agent/... ./cli/... ./lib/...`.
+
+7. **Commit with a sign-off.** The `-s` flag is required, and the message follows [Conventional Commits](https://www.conventionalcommits.org/):
+
+   ```bash
+   git commit -s -m "fix(web): describe your change"
+   ```
+
+8. **Push and open a pull request** against `main`. Fill in the template and add `Closes #123`.
+
+   ```bash
+   git push -u origin fix/123-short-name
+   ```
+
+9. **Wait for the checks and a review.** Once both pass, a maintainer squash-merges your pull request.
+
+[CONTRIBUTING.md](CONTRIBUTING.md) has the full rules, all the commands and the test setup.
 
 ## Documentation
 
@@ -106,56 +218,3 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [`good first issue`](https
 - [Route and role matrix](docs/generated/route-role-matrix.md) (generated)
 - [Rules for AI coding assistants](CLAUDE.md)
 - [Maintaining the repository](docs/MAINTAINING.md)
-
-## Development
-
-Prerequisites: Node.js 22 (`.nvmrc`), pnpm 11 (`corepack enable` picks the pinned version), Go 1.26+, Docker with Compose v2, and [gitleaks](https://github.com/gitleaks/gitleaks#installing) for the pre-commit hook.
-
-Two commands start everything:
-
-```bash
-pnpm install   # dependencies and git hooks
-pnpm dev       # PostgreSQL, VictoriaLogs, VictoriaMetrics and a registry in Docker, then the API and the web UI with hot reload
-```
-
-The API listens on http://localhost:3000/api/v1/health (OpenAPI document at `/api/v1/openapi.json`, interactive docs at `/api/v1/docs`), the web UI on http://localhost:4200 (it proxies `/api` to the API). Copy `.env.example` to `.env` to change ports or credentials.
-
-For browser development, set `API_PUBLIC_URL=http://localhost:4200` in `.env` (also update older copies of the example). It must match the browser origin exactly; the proxy does not relax Origin or CSRF validation. Configure SMTP to exercise signup and email recovery; unconfigured mail requests fail before creating an account.
-
-Production builds use `pnpm nx run-many -t build -p api web`. Start `node apps/api/dist/main.js` from the repository root with `NODE_ENV=production`, the database/KEK settings and an HTTPS `API_PUBLIC_URL` matching the public reverse proxy. The API serves the browser build from `dist/apps/web/browser`; set `WEB_DIST_DIR` for another packaged layout. Missing/invalid web builds fail startup. HTML uses fresh per-response CSP nonces and must not be cached by a proxy; hashed bundles may be cached immutably. API requests remain under `/api/v1`.
-
-The agent gateway listens on TLS port 7443 (`AGENT_GATEWAY_ADDR`). Set `AGENT_GATEWAY_SERVER_NAME` to the DNS name or IP agents use; it defaults to `localhost`. The installation CA signs a separate server certificate, and agents must pin that CA before sending a join token. Enrollment, certificate renewal and the agent stream are available. Organization administrators issue join tokens with `POST /api/v1/organizations/{organizationId}/join-tokens`, list nodes and remove them with a confirmation token; the installer remains M8.3.
-
-For an agent with an issued join token, copy `deploy/agent/agent.example.yaml`, set its gateway address and CA fingerprint, and set `control_plane.join_token_file` to a private 0600 file containing the token. Run `go run ./agent/cmd/shipkeep-agent --config /absolute/path/agent.yaml`. The agent consumes that file after saving its identity, reconnects after control-plane outages and renews its certificate automatically. `--dev` without a token keeps the unenrolled development process idle; production requires enrollment. The stream currently handles identity and heartbeats; workload execution arrives in later milestones.
-
-Other useful commands:
-
-```bash
-pnpm dev:infra         # only the Docker services
-pnpm dev:infra:down    # stop them, keep the data
-pnpm dev:infra:reset   # stop them and delete the data volumes
-pnpm lint              # ESLint + TypeScript typecheck
-pnpm test              # TypeScript unit tests (vitest)
-pnpm test:integration  # API/PostgreSQL + real Go daemon TLS/restart/revocation tests
-pnpm exec playwright install --with-deps chromium  # one-time browser/system setup
-pnpm test:browser      # production web build + HTTPS, disposable Postgres and local TLS SMTP
-go test ./agent/... ./cli/... ./lib/...
-pnpm gen               # regenerate code from proto/ and shipkeep.schema.json
-```
-
-Service ports on the host: PostgreSQL 5432, VictoriaLogs 9428, VictoriaMetrics 8428, registry 5000. If one is already taken, set the matching `SHIPKEEP_DEV_*_PORT` in `.env` (see `.env.example`) and adjust both PostgreSQL URLs. Data lives in named Docker volumes. `pnpm dev` provisions a restricted API login after migrations; existing `.env` files need separate runtime and migration URLs as described in [database roles](docs/DATABASE_ROLES.md).
-
-Browser acceptance always creates a fresh PostgreSQL container, even when `DATABASE_URL` is set.
-Without Docker, set `SHIPKEEP_DISPOSABLE_DATABASE_URL` to a database that is safe to wipe. Chromium uses the production Angular assets against a loopback HTTPS API
-and a local TLS SMTP fixture; no external email is sent. Self-signed certificate acceptance is
-limited to that browser context. The suite checks public forms, signup, email verification,
-login/logout, cookie/CSRF/Origin boundaries, CSP, automated WCAG rules and horizontal overflow
-at widths from 320 to 1440 pixels. Security scenarios cover password reset and code reuse,
-session/token invalidation, TOTP and recovery-code login, token creation/revocation, lost-response
-retries, concurrent-write prevention and temporary-grant cleanup. Fault injection drops an actual
-committed response and throttles its retry; real services and authorization remain enabled.
-Browser time advances only for display-expiry checks. The suite records no traces, HAR files or
-screenshots. Keyboard scenarios verify the skip link preserves the current form, validation
-returns focus to the error summary, and narrow token tables expose their actions after resizing.
-The web design system is documented in [apps/web/DESIGN.md](apps/web/DESIGN.md); implementation
-and acceptance progress is tracked in [docs/PLAN.md](docs/PLAN.md).
