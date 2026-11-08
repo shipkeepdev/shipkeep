@@ -1,6 +1,6 @@
 # Shipkeep Technical Specification
 
-Status: draft for MVP (v0.1). This document is the contract Claude Code implements. When code and spec disagree, fix one of them in the same PR.
+Status: draft for MVP (v0.1). This document is the contract the code implements. When code and spec disagree, fix one of them in the same PR.
 
 ## 1. Glossary
 

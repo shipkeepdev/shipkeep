@@ -2,49 +2,15 @@
 
 ## How to use this plan
 
-- One task = one branch = one PR. Branch name `feat/<task-id>-<slug>` (for example `feat/m1.3-operation-journal`). PR title starts with `[<task-id>]`.
-- Do tasks in dependency order. Tasks in different tracks with satisfied dependencies can run in parallel.
-- A task is done when every acceptance criterion is met and the definition of done in `CLAUDE.md` passes. Tick the box in this file in the same PR.
-- If a task is too big for one PR (over ~500 changed lines excluding generated code), split it into `<task-id>a`, `<task-id>b` and note the split here.
-- Create one GitHub issue per task at the start of each milestone (see `docs/GITHUB_SETUP.md`, section 4 "Milestones and issues").
-- Branch protection (GITHUB_SETUP section 5) is applied right after M0.2 is merged. M0.1 and M0.2 are merged by the maintainer without required checks.
+- One task = one branch = one pull request. Branch `feat/<task-id>-<slug>`; the title starts with `[<task-id>]`.
+- A task is done when its acceptance criteria are met and the definition of done in `CLAUDE.md` passes. Tick the box in this file in the same pull request.
+- A task too large for one pull request (over about 500 changed lines excluding generated code) is split into `<task-id>a`, `<task-id>b`.
 
 Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), **X** cross-cutting.
 
-## Status (2026-11-05)
+## Status
 
-**Done:**
-
-- M0, M1.1, M1.2 (except fleet administration endpoints, moved to M2.7), M1.3, M2.1 and M2.2.
-- M2.3 up to M2.3d4a.
-
-**Verification gap.** GitHub Actions has been blocked by the account spending limit since PR #87. PRs #30 to #39 and #87 to #110 were merged after a local gate instead of CI:
-
-- nx lint, typecheck, unit tests and build;
-- `go vet`, `go test -race` and golangci-lint;
-- generation drift, Semgrep and Prettier.
-
-CodeQL and gosec have **not** run on that code. The browser suite ran on 2026-11-07 in Chromium, also against that local PostgreSQL, and passes. The integration suite ran once on 2026-11-07, against a disposable local PostgreSQL 18.4 rather than the pinned 17 and without Docker: everything passed except three tests expecting `23503` for `ON DELETE RESTRICT`, which PostgreSQL 18 reports as `23001`. Nothing has run against a real Docker daemon or server. The first task once Actions is available again is **CI-1**: run the full `ci` and `security` workflows on `main`, then fix every failure in its own `fix/...` PR before any new feature merges.
-
-**Next tasks.** Web administration, audit, confirmation, browser acceptance (M2.3f, M2.4b, M2.5b) and the CLI's core (M8.2a, M8.2b) are done. What remains depends on someone else first:
-
-1. **A test VM:** the installer (#171, M8.3a), and real-infrastructure acceptance of M1.4, M1.5, M1.6, M3.4 and M10.1.
-2. **Owner decisions:**
-   - the source of a Compose file before Git exists: upload through the API, or wait for M3.1 (M3.8b);
-   - an image-removal agent action (M3.5c);
-   - a GitHub App for Git providers (M3.1, then M3.2, M3.3, M7.1);
-   - a Cloudflare account for DNS-01 (M3.6b).
-3. **CI:** GitHub Actions runs again on every pull request (#137). CodeQL starts once the repository is public; the Lighthouse check of M2.6 is still to run.
-4. **Open to pick up without any of these:** the node public address of M3.6b, Go fuzz targets for the agent validators (M10.2), then M6 (logs, metrics, alerts).
-
-**Before going public** (the maintainer changes the visibility; ADR 0016):
-
-- CI-1 green on `main` (#137), and branch protection with required checks (GITHUB_SETUP section 5).
-- Full-history gitleaks scan clean. Rotate any credential that was ever committed, even if it was later deleted.
-- Enable GitHub private vulnerability reporting and update `SECURITY.md` accordingly.
-- DCO sign-off is enforced on pull requests by the `DCO sign-off` check (`tools/ci/check-dco.sh`).
-- Review the internal assistant documents (`CLAUDE.md`, `docs/CLAUDE_CODE_KICKOFF.md`, `docs/GITHUB_SETUP.md`) for anything that should not be public.
-- Set the repository topics and website, and check the README status line.
+Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/issues), each with a `priority:P0` to `priority:P3` label. The [README](../README.md#what-works-today) says what works today. Real-server acceptance (M1.4, M1.5, M1.6, M3.4, M8.3a, M10.1) waits for a dedicated test machine.
 
 **Work that no task owned yet, now assigned:**
 
@@ -56,13 +22,6 @@ CodeQL and gosec have **not** run on that code. The browser suite ran on 2026-11
 | `UpgradeAgent`                                                             | M8.3   |
 | Retry-safe certificate renewal (SPEC 16)                                   | M4.5   |
 | The web token scope picker                                                 | M2.3f1 |
-
-**Decisions taken (2026-11-05):**
-
-- **CI.** GitHub Actions was unavailable until 2026-11-07, when it came back; PRs merged before that passed the local gate only.
-- **In-place restores.** `RestoreVolume` and `RestoreDatabase` over an existing target require a confirmation token. Restores into new targets do not (ADR 0013, #112).
-- **`argparse`.** It is approved as a per-package license exception (PSF-2.0, ADR 0014).
-- **M2.3 role defaults.** The conservative defaults are confirmed and moved from the SPEC 16 open questions into SPEC 7: an environment role replaces the project role, and only owners grant ownership.
 
 ---
 
@@ -77,7 +36,7 @@ CodeQL and gosec have **not** run on that code. The browser suite ran on 2026-11
 - [x] **M0.2 CI and security workflows** (X). Depends: M0.1
   - Harden the existing workflows in `.github/workflows/`: pin every third-party action to a full commit SHA (with the version in a comment) and every tool image to a digest (`semgrep/semgrep`, `gitleaks/gitleaks`); replace `securego/gosec@master` with a pinned release; pin the golangci-lint version so it matches `.golangci.yml`.
   - `release.yml` is only checked with actionlint here; its first dry run happens in M8.2.
-  - Acceptance: all checks listed in GITHUB_SETUP section 5 are green on the PR; actionlint passes; no action referenced by a mutable tag.
+  - Acceptance: all required checks listed in `docs/MAINTAINING.md` are green on the PR; actionlint passes; no action referenced by a mutable tag.
 - [x] **M0.3 Proto and codegen pipeline** (X). Depends: M0.1
   - `buf.yaml` (lint `STANDARD`, breaking `FILE`), `buf.gen.yaml`; `proto/shipkeep/agent/v1/` with the skeleton from SPEC Appendix A and all action messages with fields from SPEC 3.3, 3.6 and the `ExecStream` frames from SPEC 3.1.
   - Generated Go code in `lib/gen`, TS code in `packages/proto-ts`. `pnpm gen` regenerates; CI fails on drift.

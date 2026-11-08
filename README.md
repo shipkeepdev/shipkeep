@@ -103,9 +103,8 @@ Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the [`good first issue`](https
 - [Architecture decision records](docs/adr/)
 - [Contributing guide](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md)
 - [Route and role matrix](docs/generated/route-role-matrix.md) (generated)
-- [Rules and conventions for Claude Code](CLAUDE.md)
-- [GitHub setup](docs/GITHUB_SETUP.md)
-- [Kickoff prompts for Claude Code](docs/CLAUDE_CODE_KICKOFF.md)
+- [Rules for AI coding assistants](CLAUDE.md)
+- [Maintaining the repository](docs/MAINTAINING.md)
 
 ## Development
 
