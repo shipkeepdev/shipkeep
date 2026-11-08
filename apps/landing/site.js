@@ -25,7 +25,7 @@
       answer.style.display = open ? '' : 'none';
       question.style.color = open ? '#FFFFFF' : '#D6D6DA';
       icon.className = open ? 'ti ti-minus' : 'ti ti-plus';
-      icon.style.color = open ? '#FF6B6B' : '#5A5A5E';
+      icon.style.color = open ? '#C4C4C8' : '#5A5A5E';
       row.setAttribute('aria-expanded', String(open));
     });
   };
@@ -85,10 +85,10 @@
   const ln = (a, b) =>
     'M' + a[0].toFixed(1) + ' ' + a[1].toFixed(1) + 'L' + b[0].toFixed(1) + ' ' + b[1].toFixed(1);
   const TONES = {
-    base: ['#1E1A1A', '#141111', '#0E0C0C', '#2E2828'],
-    mid: ['#2A2424', '#1C1818', '#151212', '#3A3232'],
-    hi: ['#3A3030', '#2A2222', '#1F1919', '#4A3E3E'],
-    red: ['#C8262C', '#8A1418', '#5E0C10', '#FF6B6B'],
+    base: ['#1E1A1A', '#141111', '#0E0C0C', '#2C2C2F'],
+    mid: ['#28282B', '#1C1818', '#151212', '#37373A'],
+    hi: ['#363639', '#27272A', '#1D1D20', '#454548'],
+    red: ['#88888C', '#5C5C60', '#3E3E42', '#C4C4C8'],
   };
   const element = (name, attributes) => {
     const node = document.createElementNS(NS, name);
@@ -100,8 +100,8 @@
   const defs = element('defs', {});
   const beam = element('linearGradient', { id: 'anB', x1: 0, y1: 1, x2: 0, y2: 0 });
   beam.append(
-    element('stop', { offset: 0, 'stop-color': '#FF5C5C', 'stop-opacity': 1 }),
-    element('stop', { offset: 1, 'stop-color': '#FF5C5C', 'stop-opacity': 0 }),
+    element('stop', { offset: 0, 'stop-color': '#BEBEC2', 'stop-opacity': 1 }),
+    element('stop', { offset: 1, 'stop-color': '#BEBEC2', 'stop-opacity': 0 }),
   );
   defs.append(beam);
   const group = element('g', {});
@@ -113,7 +113,7 @@
     const out = [];
     const box = (x, y, z, w, d, height, tone, lit) => {
       const t = TONES[tone];
-      const stroke = lit ? '#FF6B6B' : t[3];
+      const stroke = lit ? '#C4C4C8' : t[3];
       const face = (points, fill) =>
         out.push(
           element('path', {
@@ -177,10 +177,10 @@
     let z = 3;
     box(0, 0, z, W, D, 14, 'base', active === 0);
     for (let i = 0; i < 16; i++)
-      line(iso(8 + i * 4, D, z + 4), iso(8 + i * 4, D, z + 10), '#3A3232', 0.9);
+      line(iso(8 + i * 4, D, z + 4), iso(8 + i * 4, D, z + 10), '#37373A', 0.9);
     for (let i = 0; i < 4; i++) dot(iso(W, 10 + i * 6, z + 7), 1.1, '#0A0808');
     dot(iso(86, D, z + 7), 1.2, '#3DD68C');
-    dot(iso(92, D, z + 7), 1.2, '#3A3232');
+    dot(iso(92, D, z + 7), 1.2, '#37373A');
     z += 14 + gap;
     box(0, 0, z, W, D, 6, 'mid', active === 1);
     for (let i = 0; i < 3; i++)
@@ -199,17 +199,17 @@
     box(0, 0, z, W, D, 7, 'mid', active === 2);
     box(W - 30, 18, z + 7, 18, 18, 5, 'hi', active === 2);
     for (let i = 0; i < 10; i++)
-      line(iso(10 + i * 5, D, z + 2), iso(10 + i * 5, D, z + 5), '#4A3E3E', 0.8);
+      line(iso(10 + i * 5, D, z + 2), iso(10 + i * 5, D, z + 5), '#454548', 0.8);
     z += 12 + gap;
     box(0, 0, z, W, D, 4, 'mid', active === 3);
     for (let i = 0; i < 6; i++)
       for (let j = 0; j < 4; j++)
-        dot(iso(12 + i * 18, 12 + j * 18, z + 4), 1.3, active === 3 ? '#FF9C9C' : '#5A4A4A');
+        dot(iso(12 + i * 18, 12 + j * 18, z + 4), 1.3, active === 3 ? '#D7D7DB' : '#545457');
     for (let i = 0; i < 5; i++)
       line(
         iso(12 + i * 18, 12, z + 4),
         iso(30 + i * 18, 66, z + 4),
-        active === 3 ? 'rgba(255,120,120,0.6)' : 'rgba(255,255,255,0.12)',
+        active === 3 ? 'rgba(201,201,205,0.6)' : 'rgba(255,255,255,0.12)',
         0.5,
       );
     z += 4 + gap;
@@ -220,11 +220,11 @@
       [W - 4, D - 4],
       [4, D - 4],
     ].forEach(([a, b]) => {
-      dot(iso(a, b, z + 10), 0.9, '#6E5E5E');
+      dot(iso(a, b, z + 10), 0.9, '#68686B');
     });
     for (let i = 0; i < 3; i++)
-      line(iso(14, 20 + i * 6, z + 10), iso(60, 20 + i * 6, z + 10), '#6E5E5E', 0.6);
-    dot(iso(100, D, z + 5), 1.6, '#FF5C5C');
+      line(iso(14, 20 + i * 6, z + 10), iso(60, 20 + i * 6, z + 10), '#68686B', 0.6);
+    dot(iso(100, D, z + 5), 1.6, '#BEBEC2');
     const top = iso(W / 2, D / 2, z + 10);
     const sky = iso(W / 2, D / 2, z + 80);
     out.push(
@@ -235,7 +235,7 @@
         'stroke-linecap': 'round',
       }),
     );
-    dot(top, 2.2, '#FF5C5C');
+    dot(top, 2.2, '#BEBEC2');
     svg.setAttribute(
       'viewBox',
       [-W * 0.95, -(z + 90), W * 1.9 + 10, z + 90 + (W + D) * 0.5 + 16]
@@ -255,8 +255,8 @@
       const on = layer === index;
       const icon = row.querySelector('i');
       const [name, bar, description] = row.querySelector(':scope > div').children;
-      icon.style.color = on ? '#FF5C5C' : '#6E6E74';
-      icon.style.filter = on ? 'drop-shadow(0 0 8px #FF5C5C)' : 'none';
+      icon.style.color = on ? '#BEBEC2' : '#6E6E74';
+      icon.style.filter = on ? 'drop-shadow(0 0 8px #BEBEC2)' : 'none';
       name.style.color = on ? '#FFFFFF' : '#C9C9CC';
       bar.style.transition = `transform ${on ? 2200 : 0}ms linear`;
       bar.style.transform = `scaleX(${on ? 1 : 0})`;
@@ -310,4 +310,159 @@
     });
   });
   paintRows();
+})();
+
+// Hero background: a perspective field of thin lines, redrawn at most 25 times per second.
+(() => {
+  const cv = document.querySelector('[data-terrain] canvas');
+  if (!cv) return;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  let W = 0;
+  let H = 0;
+  let c = null;
+  let mx = 0;
+  let my = 0;
+  let tx = 0;
+  let ty = 0;
+  let raf = 0;
+  let last = 0;
+  let HZF = 0.37;
+  const t0 = performance.now();
+  const size = () => {
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = cv.clientWidth;
+    H = cv.clientHeight;
+    if (!W || !H) return;
+    const btn = cv.closest('section').querySelector('a[data-dc-tpl="75"]');
+    if (btn) {
+      const br = btn.getBoundingClientRect();
+      const cr = cv.getBoundingClientRect();
+      HZF = Math.max(0.3, Math.min(0.7, (br.bottom - cr.top + (W < 760 ? 30 : 60)) / H));
+    }
+    cv.width = W * dpr;
+    cv.height = H * dpr;
+    c = cv.getContext('2d');
+    c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  };
+  const prof = (x, z) => {
+    const ax = Math.abs(x);
+    let y = ax > 0.5 ? 2.2 * Math.pow(ax - 0.5, 2.2) * (0.2 + 2.4 / Math.pow(z, 1.25)) : 0;
+    if (x > 0)
+      y +=
+        0.14 * Math.exp(-Math.pow((x - 1.25) / 0.28, 2)) * Math.exp(-Math.pow((z - 3.8) / 1.0, 2));
+    return y * (1 + 0.06 * Math.sin(z * 0.9 + ax));
+  };
+  const ZS = [];
+  for (let k = 0; k <= 110; k++) ZS.push(0.35 * Math.pow(40 / 0.35, k / 110));
+  const draw = (time) => {
+    if (!c) return;
+    c.clearRect(0, 0, W, H);
+    const cx = W / 2 + tx * W * 0.012;
+    const hz = H * HZF + ty * H * 0.008;
+    const F = H * 0.55;
+    const KX = Math.max((W / H) * 0.85, W < 760 ? 0.72 : 0);
+    const cam = 0.32;
+    const ph = time * 0.0004;
+    const P = (x, y, z) => [cx + (x * F * KX) / z, hz + ((cam - y) * F) / z];
+    const glow = c.createRadialGradient(cx, hz, 0, cx, hz, W * 0.42);
+    glow.addColorStop(0, 'rgba(255,255,255,0.13)');
+    glow.addColorStop(0.35, 'rgba(255,255,255,0.035)');
+    glow.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = glow;
+    c.fillRect(0, 0, W, H);
+    c.lineWidth = 0.5;
+    const N = 640;
+    for (let i = 0; i <= N; i++) {
+      const u0 = (i / N) * 2 - 1;
+      const x =
+        Math.sign(u0) * (0.5 * Math.pow(Math.abs(u0), 0.6) + 2.2 * Math.pow(Math.abs(u0), 2.2));
+      const ax = Math.abs(x);
+      const slope = ax > 0.5 ? 5.8 * Math.pow(ax - 0.5, 0.8) : 0;
+      const lit =
+        ax <= 0.5
+          ? 0.05 + 0.1 * (1 - ax / 0.5)
+          : 0.06 +
+            0.75 * Math.exp(-Math.pow((slope - 1.1) / 0.8, 2)) +
+            0.3 * Math.exp(-Math.pow((slope - 4.2) / 1.8, 2));
+      const al = Math.min(0.85, lit * (0.82 + 0.18 * Math.sin(x * 9 - ph * 5)));
+      if (al < 0.012) continue;
+      c.beginPath();
+      let st = false;
+      for (const z of ZS) {
+        const p = P(x, prof(x, z), z);
+        if (p[1] < -H || p[0] < -W || p[0] > 2 * W) {
+          if (st) break;
+          continue;
+        }
+        if (st) c.lineTo(p[0], p[1]);
+        else c.moveTo(p[0], p[1]);
+        st = true;
+      }
+      c.strokeStyle = 'rgba(236,236,241,' + al.toFixed(3) + ')';
+      c.stroke();
+    }
+    c.globalCompositeOperation = 'destination-out';
+    const fog = c.createRadialGradient(cx, hz, 0, cx, hz, W * 0.09);
+    fog.addColorStop(0, 'rgba(0,0,0,0.35)');
+    fog.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = fog;
+    c.fillRect(0, 0, W, H);
+    const top = c.createRadialGradient(cx, hz * 0.5, 0, cx, hz * 0.5, Math.min(W * 0.4, H * 0.42));
+    top.addColorStop(0, 'rgba(0,0,0,0.95)');
+    top.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = top;
+    c.fillRect(0, 0, W, H);
+    c.globalCompositeOperation = 'source-over';
+    for (let i = -10; i <= 10; i++) {
+      const x = cx + i * 2.4;
+      const al2 = 0.22 * Math.pow(1 - Math.abs(i) / 11, 2);
+      const yb = hz - H * 0.16;
+      const g = c.createLinearGradient(0, yb, 0, hz);
+      g.addColorStop(0, 'rgba(255,255,255,0)');
+      g.addColorStop(1, 'rgba(255,255,255,' + al2.toFixed(3) + ')');
+      c.strokeStyle = g;
+      c.lineWidth = 0.5;
+      c.beginPath();
+      c.moveTo(x, yb);
+      c.lineTo(x, hz);
+      c.stroke();
+    }
+    const vg = c.createRadialGradient(cx, hz, Math.min(W, H) * 0.4, cx, hz, Math.max(W, H) * 0.9);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, 'rgba(0,0,0,0.5)');
+    c.fillStyle = vg;
+    c.fillRect(0, 0, W, H);
+  };
+  const loop = (now) => {
+    raf = requestAnimationFrame(loop);
+    if (now - last < 40) return;
+    last = now;
+    tx += (mx - tx) * 0.07;
+    ty += (my - ty) * 0.07;
+    draw(now - t0);
+  };
+  size();
+  draw(0);
+  new ResizeObserver(() => {
+    size();
+    draw(performance.now() - t0);
+  }).observe(cv);
+  window.addEventListener('mousemove', (e) => {
+    mx = (e.clientX / window.innerWidth) * 2 - 1;
+    my = (e.clientY / window.innerHeight) * 2 - 1;
+  });
+  let visible = false;
+  const sync = () => {
+    const run = visible && !reduce.matches;
+    if (run && !raf) raf = requestAnimationFrame(loop);
+    if (!run && raf) {
+      cancelAnimationFrame(raf);
+      raf = 0;
+    }
+  };
+  reduce.addEventListener('change', sync);
+  new IntersectionObserver((entries) => {
+    visible = entries[0].isIntersecting;
+    sync();
+  }).observe(cv);
 })();

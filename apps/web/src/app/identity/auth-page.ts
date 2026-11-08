@@ -140,7 +140,7 @@ export class AuthPage {
     [0, 1, 2, 3].map((i) => {
       const score = this.score();
       if (i >= score) return 'rgba(255,255,255,0.1)';
-      return score <= 1 ? '#FF5C5C' : score <= 2 ? '#F5A524' : '#F2F2F3';
+      return score <= 1 ? '#bebec2' : score <= 2 ? '#bbbbbf' : '#F2F2F3';
     }),
   );
   protected readonly meterLabel = computed(() => METER[this.score()] ?? '');

@@ -1,5 +1,7 @@
 <a class="skip-link" href="#main-content" (click)="skip($event)">{{ 'Skip to content' | t }}</a>
-<div class="relative flex min-h-dvh flex-col overflow-hidden bg-black font-geist text-paper">
+<div
+  class="auth-neutral relative flex min-h-dvh flex-col overflow-hidden bg-black font-geist text-paper"
+>
   <header
     class="relative z-[2] flex items-center justify-between border-b border-white/8 px-[22px] py-3.5"
   >
@@ -33,7 +35,7 @@
   >
     <div class="auth-in relative w-full max-w-[420px]">
       <div
-        class="absolute top-[-1px] right-[12%] left-[12%] h-px bg-[linear-gradient(90deg,rgba(255,80,80,0),#FF5C5C,rgba(255,80,80,0))] shadow-[0_0_18px_3px_rgba(255,60,60,0.55)]"
+        class="absolute top-[-1px] right-[12%] left-[12%] h-px bg-[linear-gradient(90deg,rgba(185,185,189,0),#bebec2,rgba(185,185,189,0))] shadow-[0_0_18px_3px_rgba(177,177,181,0.55)]"
       ></div>
       <div
         class="flex flex-col gap-5 rounded-[20px] border border-line bg-black px-[30px] pt-[34px] pb-7 max-sm:px-5"
@@ -58,7 +60,7 @@
 
         @if (store.success(); as success) {
           <div #feedback class="alert alert-ok" role="status" tabindex="-1">
-            <sk-icon name="mail-check" class="text-[22px] text-rose" />
+            <sk-icon name="mail-check" class="text-[22px] text-silver" />
             <span>{{ success | t }}</span>
           </div>
           @if (store.mode() === 'register') {
@@ -96,7 +98,7 @@
           }
           @if (screen() === 'reset-password' && store.sentTo()) {
             <div class="flex items-center gap-3 rounded-xl border border-ctl bg-black p-3.5">
-              <sk-icon name="mail-check" class="text-[22px] text-rose" />
+              <sk-icon name="mail-check" class="text-[22px] text-silver" />
               <div class="text-[13px] leading-normal text-[#C9C9CC]">
                 {{
                   'Code sent to {email} if it has an account. It expires in 30 minutes.'
@@ -213,8 +215,8 @@
                       @for (d of digits(); track $index) {
                         <span
                           class="grid h-[54px] place-items-center rounded-[10px] border bg-black font-mono text-[22px]"
-                          [style.border-color]="d.next ? 'rgba(255,92,92,0.8)' : '#262628'"
-                          [style.box-shadow]="d.next ? '0 0 0 3px rgba(255,60,60,0.18)' : 'none'"
+                          [style.border-color]="d.next ? 'rgba(190,190,194,0.8)' : '#262628'"
+                          [style.box-shadow]="d.next ? '0 0 0 3px rgba(177,177,181,0.18)' : 'none'"
                           >{{ d.char }}</span
                         >
                       }
@@ -330,7 +332,7 @@
     <span class="flex justify-between text-[12.5px] text-[#C9C9CC]">
       <label [for]="id">{{ label | t }}</label>
       @if (link) {
-        <a routerLink="/auth/forgot-password" class="text-[12px] text-rose hover:underline">{{
+        <a routerLink="/auth/forgot-password" class="text-[12px] text-silver hover:underline">{{
           link | t
         }}</a>
       }
