@@ -131,25 +131,43 @@ describe('development mail server', () => {
 
   it('drops a connection that sends an oversized message and keeps running', async () => {
     const line = 'x'.repeat(1024);
-    await send(['DATA', ...Array.from({ length: 2048 }, () => line)]);
+    await send(['DATA', ...Array.from({ length: 2048 }, () => line), '.', 'QUIT']);
 
-    expect(printed.join('')).not.toContain(line);
+    expect(printed).toEqual([]);
     await send(['DATA', 'To: next@example.com', '', 'still alive', '.', 'QUIT']);
     expect(printed.join('\n')).toContain('still alive');
   });
 
+  it('counts empty lines toward the message limit', async () => {
+    await send(['DATA', ...Array.from({ length: 300000 }, () => ''), '.', 'QUIT']);
+
+    expect(printed).toEqual([]);
+  });
+
+  it('counts bytes, not characters, toward the message limit', async () => {
+    const line = '\u20ac'.repeat(341);
+    await send(['DATA', ...Array.from({ length: 600 }, () => line), '.', 'QUIT']);
+
+    expect(printed).toEqual([]);
+  });
+
   it('loads without the polyfills the test runner provides', async () => {
     const exitCode = await new Promise<number>((done, fail) => {
-      new Worker(modulePath).once('error', fail).once('exit', done);
+      // Imported, not run as the main script, so it can never start a server here.
+      new Worker(`import(${JSON.stringify(moduleUrl)})`, { eval: true })
+        .once('error', fail)
+        .once('exit', done);
     });
 
     expect(exitCode).toBe(0);
   });
 
   it('only runs for a loopback development configuration', () => {
-    const env = { SMTP_HOST: 'localhost', SMTP_PORT: '1465', SMTP_CA_FILE: 'ca.crt' };
+    const devCaFile = './deploy/dev/secrets/mail-ca.crt';
+    const env = { SMTP_HOST: 'localhost', SMTP_PORT: '1465', SMTP_CA_FILE: devCaFile };
 
-    expect(mail.devMailSettings(env)).toEqual({ port: 1465, caFile: 'ca.crt' });
+    expect(mail.devMailSettings(env)).toEqual({ port: 1465, caFile: devCaFile });
+    expect(mail.devMailSettings({ ...env, SMTP_CA_FILE: '/etc/ssl/relay-ca.crt' })).toBeUndefined();
     expect(mail.devMailSettings({ ...env, SMTP_HOST: 'smtp.example.com' })).toBeUndefined();
     expect(mail.devMailSettings({ ...env, SMTP_HOST: undefined })).toBeUndefined();
     expect(mail.devMailSettings({ ...env, SMTP_CA_FILE: undefined })).toBeUndefined();

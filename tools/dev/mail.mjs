@@ -15,12 +15,15 @@ import * as x509 from '@peculiar/x509';
 const MAX_LINE_BUFFER = 64 * 1024;
 const MAX_MESSAGE = 512 * 1024;
 const ONE_YEAR = 365 * 24 * 60 * 60 * 1000;
+const DEV_CA_FILE = 'deploy/dev/secrets/mail-ca.crt';
 
 /** The server's settings, or undefined when `.env` points at a real mail provider. */
 export function devMailSettings(env) {
   if (env.NODE_ENV === 'production')
     throw new Error('The development mail server cannot run in production.');
+  // Only this file is ours to overwrite: any other CA bundle belongs to a real local relay.
   if (env.SMTP_HOST !== 'localhost' || !env.SMTP_CA_FILE) return undefined;
+  if (resolve(env.SMTP_CA_FILE) !== resolve(DEV_CA_FILE)) return undefined;
   return { port: Number(env.SMTP_PORT ?? 465), caFile: env.SMTP_CA_FILE };
 }
 
@@ -123,7 +126,7 @@ export async function startDevMailServer({ port, caFile, print }) {
     let size = 0;
     socket.on('data', (chunk) => {
       pending += chunk;
-      if (pending.length > MAX_LINE_BUFFER) {
+      if (Buffer.byteLength(pending) > MAX_LINE_BUFFER) {
         socket.destroy();
         return;
       }
@@ -142,7 +145,7 @@ export async function startDevMailServer({ port, caFile, print }) {
           message = undefined;
           socket.write('250 accepted\r\n');
         } else {
-          size += line.length;
+          size += Buffer.byteLength(line) + 2;
           if (size > MAX_MESSAGE) {
             socket.destroy();
             return;
@@ -183,7 +186,9 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
         `Development mail server on localhost:${port}. Emails are printed here, never sent.`,
       );
     } else {
-      console.log('Development mail server not started: SMTP_HOST in .env is not localhost.');
+      console.log(
+        'Development mail server not started: .env does not use the local mail settings.',
+      );
     }
   } catch (error) {
     console.error(
