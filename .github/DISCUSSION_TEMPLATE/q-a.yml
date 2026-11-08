@@ -1,0 +1,31 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Shipkeep is in development and cannot be installed yet. To run it locally, follow the [README](https://github.com/shipkeepdev/shipkeep#run-shipkeep-locally).
+
+        **Never post tokens, passwords, `.env` contents or join tokens.** To report a vulnerability, follow [SECURITY.md](https://github.com/shipkeepdev/shipkeep/blob/main/SECURITY.md).
+  - type: textarea
+    id: question
+    attributes:
+      label: Your question
+      description: What are you trying to do, and what do you need to know?
+    validations:
+      required: true
+  - type: textarea
+    id: tried
+    attributes:
+      label: What you tried
+      description: Commands you ran, and the output or error. Remove any secret first.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: Commit or version
+      description: Output of `git rev-parse --short HEAD` if you run from source.
+      placeholder: e98abe3
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: Ubuntu 24.04, Node.js 22.22.3, Docker 29

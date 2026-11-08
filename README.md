@@ -7,7 +7,8 @@
   <a href="docs/PRODUCT.md"><strong>Product brief</strong></a> ·
   <a href="docs/ARCHITECTURE.md"><strong>Architecture</strong></a> ·
   <a href="docs/PLAN.md"><strong>Roadmap</strong></a> ·
-  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a>
+  <a href="CONTRIBUTING.md"><strong>Contributing</strong></a> ·
+  <a href="https://github.com/shipkeepdev/shipkeep/discussions"><strong>Discussions</strong></a>
 </p>
 
 <p align="center">
