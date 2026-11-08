@@ -59,6 +59,17 @@ describe('production identity in Chromium', () => {
           ).toBe(true);
         }
       }
+      // The brand mark, not the scaffold's: SVG first, with ICO and touch fallbacks.
+      for (const [path, type] of [
+        ['/favicon.svg', 'image/svg+xml'],
+        ['/favicon.ico', 'image/x-icon'],
+        ['/apple-touch-icon.png', 'image/png'],
+      ] as const) {
+        const icon = await fixture.context.request.get(path);
+        expect(icon.status()).toBe(200);
+        expect(icon.headers()['content-type']).toContain(type);
+      }
+      expect(await page.locator('link[rel="icon"][type="image/svg+xml"]').count()).toBe(1);
       await page.goto('/auth/login');
       await page.getByRole('button', { name: 'Sign in', exact: true }).click();
       await page.getByRole('alert').waitFor();
