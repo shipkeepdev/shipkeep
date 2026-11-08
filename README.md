@@ -96,7 +96,6 @@ You need:
 
 - [Node.js 22](https://nodejs.org/), version 22.22.3 or newer (`.nvmrc`), and pnpm 11. Corepack, included with Node.js, installs the right pnpm version.
 - [Docker](https://docs.docker.com/get-docker/) with Compose v2, for PostgreSQL and the other local services.
-- An SMTP account, because creating an account sends a verification email. Any provider with implicit TLS (usually port 465) works, including a Gmail app password.
 
 Then follow these steps:
 
@@ -120,27 +119,17 @@ Then follow these steps:
    cp .env.example .env
    ```
 
-4. **Add your mail settings.** In `.env`, uncomment these lines and fill them in:
-
-   ```bash
-   SMTP_HOST=smtp.example.com
-   SMTP_PORT=465
-   SMTP_FROM=you@example.com
-   SMTP_USER=your-smtp-user
-   SMTP_PASSWORD=your-smtp-password
-   ```
-
-5. **Start Shipkeep,** and leave this terminal open. The first run downloads the Docker images and takes a few minutes.
+4. **Start Shipkeep,** and leave this terminal open. The first run downloads the Docker images and takes a few minutes.
 
    ```bash
    pnpm dev
    ```
 
-   This starts the local services in Docker, applies the database migrations, then starts the API and the web UI with hot reload.
+   This starts the local services in Docker, applies the database migrations, then starts the API, the web UI with hot reload and a local mail server.
 
-6. **Create your account.** Open <http://localhost:4200/auth/register>, and sign up. Open the link in the verification email, paste its code and enter your password.
+5. **Create your account.** Open <http://localhost:4200/auth/register> and sign up. The verification email appears in the terminal running `pnpm dev`; nothing is really sent. Open its link, paste the code and enter your password.
 
-7. **Create your first organization** when the web UI asks for one. You can then add projects, applications and servers.
+6. **Create your first organization** when the web UI asks for one. You can then add projects, applications and servers.
 
 To stop, press `Ctrl+C`, then run `pnpm dev:infra:down`. Your data is kept. `pnpm dev:infra:reset` also deletes it.
 
@@ -154,12 +143,14 @@ To stop, press `Ctrl+C`, then run `pnpm dev:infra:down`. Your data is kept. `pnp
 If something goes wrong:
 
 - **`The datasource.url property is required`:** the `.env` file is missing (step 3).
-- **`Service Unavailable` when signing up:** the mail settings are missing (step 4). Restart `pnpm dev` after changing `.env`.
+- **`decryption failed` at startup:** `deploy/dev/secrets/kek` no longer matches the database. Run `pnpm dev:infra:reset`, which deletes your local data, then `pnpm dev`.
+- **`Service Unavailable` when signing up, or no email in the terminal:** check that `.env` has the `SMTP_*` lines from `.env.example`, then restart `pnpm dev`.
 - **A Docker service port is already taken:** set the matching `SHIPKEEP_DEV_*_PORT` in `.env`. For PostgreSQL, also change the port in both database URLs.
 - **Port 3000 or 4200 is already taken:** stop the program using it. The web UI and its proxy to the API expect these two ports.
+- **Port 1465 is already taken:** change `SMTP_PORT` in `.env`.
 - **`Cannot connect to the Docker daemon`:** start Docker, then run `pnpm dev` again.
 
-To connect an agent, see [Run an agent](CONTRIBUTING.md#run-an-agent).
+To send real emails instead, change the `SMTP_*` lines in `.env`. To connect an agent, see [Run an agent](CONTRIBUTING.md#run-an-agent).
 
 ## Contribute
 
@@ -172,7 +163,7 @@ To connect an agent, see [Run an agent](CONTRIBUTING.md#run-an-agent).
    git remote add upstream https://github.com/shipkeepdev/shipkeep.git
    ```
 
-3. **Set up the project.** Run `corepack enable` and `pnpm install`, then [install gitleaks](https://github.com/gitleaks/gitleaks#installing), which the commit hook needs. To run the application, also follow steps 3 to 7 above. Unit tests need neither Docker nor mail settings.
+3. **Set up the project.** Run `corepack enable` and `pnpm install`, then [install gitleaks](https://github.com/gitleaks/gitleaks#installing), which the commit hook needs. To run the application, also follow steps 3 to 6 above. Unit tests don't need Docker.
 4. **Create a branch** from the latest `main`:
 
    ```bash
