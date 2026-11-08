@@ -45,6 +45,10 @@ overrides:
   'vite@>=8.3.0 <8.3.3': 8.3.5
   # uuid < 11.1.1 (via sockjs in webpack-dev-server); uuid 11 keeps the CommonJS v4 export it uses.
   'sockjs>uuid': 11.1.1
+  # minimatch 7 to 11.0.0, GHSA-g3hv-75wg-m249, ReDoS-style amplification (via nx, eslint and others).
+  'minimatch@>=7.0.0 <11.0.1': 11.0.3
+  # glob 9 to 14.0.1, GHSA-3g3m-2fjr-6pw4, AbortSignal bypass (via nx and jest tooling).
+  'glob@>=9.0.0 <14.0.2': 14.0.3
 
 patchedDependencies:
   # Type declarations only: preserve readonly arrays/tuples until upstream fixes #2615.
