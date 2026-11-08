@@ -19,7 +19,7 @@ Follow [Run Shipkeep locally](README.md#run-shipkeep-locally). To contribute, yo
 - [gitleaks](https://github.com/gitleaks/gitleaks#installing) for the commit hook;
 - Go 1.26 or newer to run `pnpm gen`, and with [golangci-lint](https://golangci-lint.run/) for changes to `agent/`, `cli/` or `lib/`.
 
-Unit tests need neither Docker nor mail settings: `pnpm install`, then `pnpm test`.
+Unit tests don't need Docker: `pnpm install`, then `pnpm test`.
 
 Checks to run before opening a pull request:
 

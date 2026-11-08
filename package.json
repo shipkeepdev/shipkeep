@@ -7,7 +7,7 @@
     "test": "nx run-many -t test",
     "build": "nx run-many -t build",
     "gen": "pnpm gen:proto && pnpm gen:config && pnpm gen:prisma && pnpm gen:openapi && pnpm gen:api-client",
-    "dev": "pnpm dev:infra && pnpm dev:kek && pnpm prisma migrate deploy && pnpm dev:database-role && nx run-many -t serve -p api web --parallel=2",
+    "dev": "pnpm dev:infra && pnpm dev:kek && pnpm prisma migrate deploy && pnpm dev:database-role && nx run-many -t serve dev-mail -p api web --parallel=3",
     "test:integration": "nx run-many -t test:integration",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
