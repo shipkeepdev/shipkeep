@@ -42,7 +42,7 @@ Generated code (protobuf, JSON Schema types, `apps/api/openapi.json`, the API cl
 
 ## License and sign-off
 
-Shipkeep is licensed under [Apache-2.0](LICENSE). By contributing, you agree that your contribution is licensed under the same terms. Every commit must certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/) with a `Signed-off-by:` line: commit with `git commit -s`. There is no contributor license agreement.
+Shipkeep is licensed under [Apache-2.0](LICENSE). By contributing, you agree that your contribution is licensed under the same terms. Every commit must certify the [Developer Certificate of Origin 1.1](https://developercertificate.org/) with a `Signed-off-by:` line: commit with `git commit -s`. A check on every pull request verifies it; `git rebase --signoff origin/main` fixes commits already made. There is no contributor license agreement.
 
 ## Workflow
 

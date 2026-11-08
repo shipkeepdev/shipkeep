@@ -92,6 +92,7 @@ gh api -X POST "repos/$OWNER/$REPO/rulesets" --input - <<'JSON'
     { "type": "required_status_checks", "parameters": {
         "strict_required_status_checks_policy": true,
         "required_status_checks": [
+          { "context": "DCO sign-off" },
           { "context": "TypeScript (lint, test, build)" },
           { "context": "Go (lint, test)" },
           { "context": "Generated code is up to date" },
