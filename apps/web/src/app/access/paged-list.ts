@@ -50,6 +50,39 @@ export class PagedList<T> {
     }
   }
 
+  /**
+   * Reloads the newest page and keeps the older pages already opened: fresh items replace their
+   * old copies by key. When the newest page no longer reaches what is shown, so items in between
+   * would be missing, it falls back to a full refresh.
+   */
+  async refreshFirst(key: (item: T) => string): Promise<void> {
+    const shown = this.loaded();
+    if (this.status() !== 'ready' || !shown.length) {
+      await this.refresh();
+      return;
+    }
+    const revision = ++this.revision;
+    this.extending.set(false);
+    let gap = false;
+    try {
+      const page = await this.load();
+      if (revision !== this.revision) return;
+      const fresh = new Set(page.items.map(key));
+      gap = page.nextCursor !== null && !shown.some((item) => fresh.has(key(item)));
+      if (page.nextCursor === null) {
+        // The newest page is now the whole list.
+        this.loaded.set(page.items);
+        this.cursor.set(null);
+      } else if (!gap) {
+        this.loaded.set([...page.items, ...shown.filter((item) => !fresh.has(key(item)))]);
+      }
+      this.failure.set(null);
+    } catch (error: unknown) {
+      if (revision === this.revision) this.failure.set(message(error));
+    }
+    if (gap) await this.refresh();
+  }
+
   async more(): Promise<void> {
     const cursor = this.cursor();
     if (cursor === null || this.extending()) return;
