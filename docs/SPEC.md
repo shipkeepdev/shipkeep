@@ -289,6 +289,14 @@ Fleet operations follow ADR 0015. The agent gateway checks certificates and rene
 
 Organization administrators (`node.manage`) manage the fleet over session-only routes. `POST /organizations/{organizationId}/join-tokens` (201) requires Origin/CSRF, the password and the configured second factor. It returns the single-use token, its expiry and the installation CA fingerprint once, and it has no encrypted retry: a lost response is answered with a new token. `GET /organizations/{organizationId}/nodes` returns the organization's nodes (status, labels, sanitized facts, lease epoch, last heartbeat) with `cursor`/`limit`. `POST /organizations/{organizationId}/nodes/{nodeId}/remove` (204) removes a node. It needs `node.manage` (a session, or a scoped token) and a `confirmation` token for `node.remove` on exactly that node, issued to the same account. The token is spent in the same tenant transaction that marks the node `removed`, revokes all its certificates and audits `fleet.node.removed` with the confirmation id. The node's gateway stream closes at its next credential check. Removing it again answers 404.
 
+`POST /organizations/{organizationId}/nodes/{nodeId}/public-addresses` (200, `node.manage`, a session or a scoped token) replaces the public addresses an administrator declares for a node and returns the node (PLAN M3.6b1). The domain check compares DNS answers with them.
+
+- The body is `{publicAddresses}`: at most 8 values; an empty list clears them.
+- Each value must be a bare IPv4 or IPv6 address that the control plane's SSRF list considers globally routable. Hostnames, zone ids, ports, prefixes, surrounding whitespace and IPv4 written inside IPv6 (`::ffff:a.b.c.d`) are refused with 400 and the position of the first bad value, never its text: `node_public_address_invalid`, `node_public_address_not_public`, `node_public_address_ipv4_embedded` or `node_public_addresses_too_many`.
+- Values are stored canonical (RFC 5952 for IPv6) and deduplicated, in the given order. The database bounds the list too.
+- A change is audited as `fleet.node.public_addresses_changed` with the new and previous lists; saving the same list records nothing. A removed node answers 404.
+- Addresses are declared, not observed: the gateway's view of an agent connection can be a NAT, proxy or private address (see section 16).
+
 Audit events are under forced row security too. In a tenant transaction the runtime role reads only that organization's events. It never reads account or system events (`organization_id` null). Appends stay allowed from every command transaction, but a tenant context can only append events of its own organization or of none. No UPDATE or DELETE policy exists. Audit inserts do not read the row back. Reading system events requires an installation-administrator capability that does not exist yet (see section 16).
 
 Organization owners and admins (`audit.read`) read their audit log with `GET /organizations/{organizationId}/audit-events`. It is newest first, with a `cursor` and `limit` (1–100), and optional exact `action`, `targetType`, `targetId` and `actorId` filters plus a `from` (inclusive) and `to` (exclusive) period. `GET .../audit-events/export` returns the same filters as JSON Lines, at most 10,000 events, with `X-Shipkeep-Truncated: true` when older matches remain. Both routes accept a session or a scoped API token with `audit.read`. Reads run in the organization's row security context and are not themselves audited.
@@ -313,7 +321,7 @@ Membership writes serialize on the organization through a no-op row update, prod
 | `RoleBinding`           | membership_id, project_id, environment_id (nullable), role                                                   | role in {admin, developer, viewer}                                                       |
 | `Project`               | name, slug, git_write_mode (commit, pull_request)                                                            | slug unique per org                                                                      |
 | `Environment`           | project_id, name, kind (standard, preview), failover_policy, protected                                       | protected envs require Admin for deploy and exec                                         |
-| `Node`                  | name, status, labels, facts, wireguard_ip, wireguard_public_key, lease_epoch, last_heartbeat_at              | name unique per org                                                                      |
+| `Node`                  | name, status, labels, facts, wireguard_ip, wireguard_public_key, lease_epoch, last_heartbeat_at              | name unique per org; public_addresses: at most 8, declared by an administrator           |
 | `ConfirmationToken`     | organization_id, user_id, action, target, issued_at, expires_at, used_at                                     | single use; the signed token is never stored (SPEC 3.6)                                  |
 | `NodeCertificate`       | organization_id, node_id, serial, not_after, revoked_at                                                      | one active cert per node; `(organization_id, node_id)` references its node (ADR 0015)    |
 | `JoinToken`             | organization_id, token_hash, expires_at, used_at                                                             | single use                                                                               |
@@ -668,6 +676,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - Private registries: credentials for private images, and an explicit allow-list for registries on private networks (the resolver refuses non-public addresses by default, SSRF).
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).
 - Wildcard certificates: which DNS providers to support first for DNS-01 (proposal: Cloudflare, Route 53, Hetzner DNS, OVH).
+- Node public addresses (PLAN M3.6b1) are declared by an administrator only. The gateway sees the source address of each agent connection, but behind NAT, a proxy or a private link that is not the address visitors reach, so it is not used. A later step could show the observed address as a suggestion that an administrator confirms, never as a stored value.
 
 ## Appendix A: proto skeleton
 
