@@ -116,6 +116,21 @@ export class MemoryNodeStore implements NodeStore {
     if (index >= 0 && node) this.nodes[index] = { ...node, facts };
     return Promise.resolve();
   }
+  setPublicAddresses(
+    organizationId: string,
+    id: string,
+    addresses: readonly string[],
+  ): Promise<NodeRecord | undefined> {
+    const index = this.nodes.findIndex(
+      (node) =>
+        node.organizationId === organizationId && node.id === id && node.status !== 'removed',
+    );
+    const node = this.nodes.at(index);
+    if (index < 0 || !node) return Promise.resolve(undefined);
+    const updated = { ...node, publicAddresses: [...addresses] };
+    this.nodes[index] = updated;
+    return Promise.resolve(updated);
+  }
   insertCertificate(certificate: NodeCertificateRecord): Promise<void> {
     this.certificates.push(certificate);
     return Promise.resolve();
