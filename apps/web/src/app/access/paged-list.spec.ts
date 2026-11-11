@@ -102,4 +102,26 @@ describe('PagedList.refreshFirst', () => {
     expect(paged.state()).toBe('failed');
     expect(paged.denied()).toBe(true);
   });
+
+  it('keeps the list cleared when an older page answers after access was lost', async () => {
+    let older: (page: Page) => void = () => undefined;
+    let newest: (error: unknown) => void = () => undefined;
+    const answers: (() => Promise<Page>)[] = [
+      () => Promise.resolve({ items: [item('b')], nextCursor: 'b' }),
+      () => new Promise<Page>((_, reject) => (newest = reject)),
+      () => new Promise<Page>((resolve) => (older = resolve)),
+    ];
+    const paged = new PagedList<Item>(() => answers.shift()?.() ?? Promise.reject(new Error()));
+    await paged.refresh();
+    const reload = paged.refreshFirst(key);
+    const more = paged.more();
+    newest(new IdentityRequestError(403));
+    await reload;
+    older({ items: [item('a')], nextCursor: null });
+    await more;
+    expect(ids(paged)).toBe('');
+    expect(paged.hasMore()).toBe(false);
+    expect(paged.loadingMore()).toBe(false);
+    expect(paged.state()).toBe('failed');
+  });
 });

@@ -90,8 +90,12 @@ export class PagedList<T> {
       this.failure.set(null);
     } catch (error: unknown) {
       if (!current()) return;
-      if (isDenied(error)) this.fail(error);
-      else this.failure.set(message(error));
+      if (isDenied(error)) {
+        // Older pages still loading must not bring rows back.
+        this.revision++;
+        this.extending.set(false);
+        this.fail(error);
+      } else this.failure.set(message(error));
     }
   }
 
