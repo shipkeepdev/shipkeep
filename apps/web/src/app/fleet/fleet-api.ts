@@ -5,7 +5,10 @@ import { type Schema, WorkspaceApi } from '../workspace/workspace-api';
 export type FleetNode = Schema<'NodeDto'>;
 export type JoinToken = Schema<'JoinTokenIssuedDto'>;
 
-/** Servers of an organization: listing, enrollment tokens and confirmed removal (SPEC 3.2, 3.6). */
+/**
+ * Servers of an organization: listing, enrollment tokens, declared public addresses and confirmed
+ * removal (SPEC 3.2, 3.6).
+ */
 @Injectable({ providedIn: 'root' })
 export class FleetApi extends WorkspaceApi {
   async nodes(organizationId: string): Promise<readonly FleetNode[]> {
@@ -40,6 +43,19 @@ export class FleetApi extends WorkspaceApi {
     await this.execute(() =>
       this.client.POST('/api/v1/organizations/{organizationId}/nodes/{nodeId}/remove', {
         body: { confirmation },
+        params: { path: { organizationId, nodeId }, header: this.browser() },
+      }),
+    );
+  }
+  /** Replaces the addresses the domain check compares DNS answers with (PLAN M3.6b1). */
+  setPublicAddresses(
+    organizationId: string,
+    nodeId: string,
+    publicAddresses: readonly string[],
+  ): Promise<FleetNode> {
+    return this.required(() =>
+      this.client.POST('/api/v1/organizations/{organizationId}/nodes/{nodeId}/public-addresses', {
+        body: { publicAddresses: [...publicAddresses] },
         params: { path: { organizationId, nodeId }, header: this.browser() },
       }),
     );
