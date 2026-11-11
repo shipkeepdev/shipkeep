@@ -63,7 +63,7 @@ const COLUMNS =
                   stamp(row.at)
                 }}</time></span
               >
-              <span role="cell" class="order-1 truncate font-mono text-fg sm:order-none">{{
+              <span role="cell" class="order-1 min-w-0 break-all font-mono text-fg sm:order-none">{{
                 row.action
               }}</span>
               <span role="cell" class="order-3 truncate font-mono text-fg3 sm:order-none"
@@ -79,8 +79,8 @@ const COLUMNS =
                 role="cell"
                 class="order-4 flex min-w-0 items-center justify-end gap-[7px] sm:order-none sm:justify-start"
                 [style.color]="row.result.color"
-                ><span class="dot" [style.background]="row.result.color"></span
-                ><span class="truncate"
+                ><span class="dot shrink-0" [style.background]="row.result.color"></span
+                ><span class="min-w-0 break-words"
                   >{{ row.result.label | t: row.values }}
                   @if (row.reason) {
                     · {{ row.reason | t }}
@@ -96,13 +96,22 @@ const COLUMNS =
           }
         </div>
         <ng-template #link let-deployment>
-          <a
-            class="font-mono text-[11.5px] text-mute underline-offset-2 hover:text-fg hover:underline"
-            [routerLink]="[]"
-            [queryParams]="{ tab: 'deployments', deployment: deployment }"
-            [attr.aria-label]="'Deployment {id}' | t: { id: label(deployment) }"
-            >{{ label(deployment) }}</a
-          >
+          <!-- Only deployments the page has loaded can be opened; older ones show their id. -->
+          @if (deploymentLabels().has(deployment)) {
+            <a
+              class="font-mono text-[11.5px] text-mute underline-offset-2 hover:text-fg hover:underline"
+              [routerLink]="[]"
+              [queryParams]="{ tab: 'deployments', deployment: deployment }"
+              [attr.aria-label]="'Deployment {id}' | t: { id: label(deployment) }"
+              >{{ label(deployment) }}</a
+            >
+          } @else {
+            <span
+              class="font-mono text-[11.5px] text-mute2"
+              [attr.aria-label]="'Deployment {id}' | t: { id: label(deployment) }"
+              >{{ label(deployment) }}</span
+            >
+          }
         </ng-template>
         @if (!rows().length) {
           @if (actions.state() === 'loading') {
@@ -163,9 +172,10 @@ export class AgentActionsPanel {
       const { organizationId, projectId, environmentId } = this.environment();
       const key = [organizationId, projectId, environmentId, this.applicationId()].join('/');
       this.revision();
-      // On the same application, older pages the user opened stay: a reload would drop them.
+      // On the same application, older pages the user opened stay: only the newest is reloaded.
       const opened = untracked(() => this.actions.items().length) > AGENT_ACTION_PAGE;
       if (key !== this.shown || !opened) void this.actions.refresh();
+      else void this.actions.refreshFirst((action) => action.id);
       this.shown = key;
     });
   }
