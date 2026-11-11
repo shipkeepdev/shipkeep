@@ -134,7 +134,7 @@ export class PublicAddressesEditor implements AfterViewInit, OnDestroy {
     }
     const outcome = await this.runner.run(
       { node: this.node().id, addresses: input.addresses },
-      async () => {
+      async (_key, isCurrent) => {
         try {
           return await this.api.setPublicAddresses(
             this.organizationId(),
@@ -142,7 +142,8 @@ export class PublicAddressesEditor implements AfterViewInit, OnDestroy {
             input.addresses,
           );
         } catch (error: unknown) {
-          if (error instanceof IdentityRequestError)
+          // Another server selected meanwhile: this refusal is not about the field shown now.
+          if (error instanceof IdentityRequestError && isCurrent())
             this.message.set(addressProblem(error.problem) ?? null);
           throw error;
         }

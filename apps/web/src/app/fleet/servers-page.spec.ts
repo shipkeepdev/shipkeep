@@ -21,6 +21,7 @@ const node = {
   createdAt: '2026-11-06T09:00:00Z',
   lastHeartbeatAt: '2026-11-06T09:00:00Z',
 };
+const other = { ...node, id: '0190f5a8-7b1c-7e2d-8f3a-0000000000cc', name: 'edge-2' };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -28,11 +29,14 @@ describe('servers page', () => {
   let harness: RouterTestingHarness;
   let requests: { method: string; path: string; body: unknown }[];
   let nodes: unknown[];
+  /** While set, address saves wait for it, as a slow network would. */
+  let held: Promise<void> | undefined;
 
   beforeEach(async () => {
     requests = [];
-    nodes = [node];
-    const routes: Partial<Record<string, () => Response>> = {
+    nodes = [node, other];
+    held = undefined;
+    const routes: Partial<Record<string, () => Response | Promise<Response>>> = {
       [`GET ${BASE}/nodes`]: () => json({ items: nodes, nextCursor: null }),
       [`POST ${BASE}/join-tokens`]: () =>
         json(
@@ -47,8 +51,9 @@ describe('servers page', () => {
         ),
       [`POST ${BASE}/confirmations`]: () =>
         json({ id: 'c1', token: 'confirmation-fixture', expiresAt: '2026-11-06T09:05:00Z' }, 201),
-      [`POST ${BASE}/nodes/${NODE}/public-addresses`]: () => {
+      [`POST ${BASE}/nodes/${NODE}/public-addresses`]: async () => {
         const sent = (requests.at(-1)?.body as { publicAddresses: string[] }).publicAddresses;
+        await held;
         if (sent.includes('10.0.0.5'))
           return json(
             {
@@ -208,5 +213,33 @@ describe('servers page', () => {
     expect(field()).toBeNull();
     expect(table()).toContain('8.8.8.8');
     expect(table()).toContain('+1 more');
+  });
+
+  it('ignores a refusal that arrives after another server was selected', async () => {
+    const open = (name: string) => {
+      element()
+        .querySelector<HTMLButtonElement>(
+          `button[aria-label="Edit the public addresses of ${name}"]`,
+        )
+        ?.click();
+      harness.fixture.detectChanges();
+    };
+    let release: (() => void) | undefined;
+    held = new Promise((resolve) => {
+      release = resolve;
+    });
+    open('edge-1');
+    fill('public-addresses', '10.0.0.5');
+    element()
+      .querySelector('#public-addresses')
+      ?.closest('form')
+      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    open('edge-2');
+    release?.();
+    await settle();
+    expect(element().querySelector('#addresses-title')?.textContent).toContain('edge-2');
+    expect(element().querySelector('#addresses-error')?.textContent.trim()).toBe('');
+    expect(element().querySelector('#public-addresses')?.getAttribute('aria-invalid')).toBeNull();
   });
 });
