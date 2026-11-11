@@ -309,6 +309,8 @@ model Node {
   status          String            @db.VarChar(16)
   labels          Json
   facts           Json
+  /// Canonical public IP addresses declared by an administrator (PLAN M3.6b1), at most 8.
+  publicAddresses String[]          @default([]) @map("public_addresses") @db.VarChar(45)
   leaseEpoch      Int               @map("lease_epoch")
   createdAt       DateTime          @map("created_at") @db.Timestamptz(6)
   lastHeartbeatAt DateTime?         @map("last_heartbeat_at") @db.Timestamptz(6)

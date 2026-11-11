@@ -420,6 +420,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}/public-addresses": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["setNodePublicAddresses"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}/remove": {
         readonly parameters: {
             readonly query?: never;
@@ -1374,6 +1390,8 @@ export type components = {
             readonly lastHeartbeatAt: string | null;
             readonly leaseEpoch: number;
             readonly name: string;
+            /** @description Public addresses declared by an administrator, canonical; empty until set. */
+            readonly publicAddresses: readonly string[];
             /** @enum {string} */
             readonly status: "enrolling" | "ready" | "suspect" | "down" | "draining" | "removed";
         };
@@ -1570,6 +1588,10 @@ export type components = {
             readonly expiresAt: string;
             /** Format: uuid */
             readonly userId: string;
+        };
+        readonly SetNodePublicAddressesDto: {
+            /** @description The public IPv4 and IPv6 addresses of the node, replacing the current list. Each must be a bare, globally routable address; duplicates are merged and values stored canonical. An empty list clears them. */
+            readonly publicAddresses: readonly string[];
         };
         readonly SetSecretDto: {
             readonly name: string;
@@ -2370,6 +2392,37 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["NodePageDto"];
+                };
+            };
+        };
+    };
+    readonly setNodePublicAddresses: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Required for session requests. */
+                readonly Origin?: string;
+                /** @description Required for session requests. */
+                readonly "X-Shipkeep-CSRF"?: string;
+            };
+            readonly path: {
+                readonly nodeId: string;
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SetNodePublicAddressesDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["NodeDto"];
                 };
             };
         };

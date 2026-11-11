@@ -29,6 +29,7 @@ function setup() {
     status: 'ready',
     labels: {},
     facts: { hostname: 'edge-1' },
+    publicAddresses: [],
     leaseEpoch: 1,
     createdAt: new Date(0),
     lastHeartbeatAt: null,

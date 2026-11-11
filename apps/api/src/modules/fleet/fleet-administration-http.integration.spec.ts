@@ -2,11 +2,13 @@ import * as x509 from '@peculiar/x509';
 import { Client } from 'pg';
 import { Secret } from '@shipkeep/domain';
 
+import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { auditLog } from '../../testing/audit-log';
 import { tenantHttpFixture } from '../../testing/tenant-http';
 
 import { EnrollNode } from './application/enroll-node';
 import { NodeLiveness } from './application/node-liveness';
+import { NODE_STORE, type NodeStore } from './application/ports';
 import {
   generateEd25519KeyPair,
   importPrivateKey,
@@ -176,5 +178,128 @@ describe('fleet administration over HTTP', () => {
       where: { action: 'fleet.node.removed', targetId: target.nodeId },
     });
     expect(events.map((event) => event.actorId)).toEqual([fixture.actors.admin.id]);
+  });
+
+  it('sets the declared public addresses of a node, to administrators only, audited', async () => {
+    await resetLimits();
+    const issued = await fixture
+      .post(`${fixture.root}/join-tokens`, 'owner', { password: fixture.password.expose() })
+      .expect(201);
+    const enrolled = await fixture.app.get(EnrollNode).execute({
+      joinToken: new Secret((issued.body as { token: string }).token),
+      csrPem: await agentCsr(),
+      facts: { hostname: 'edge-public.example.com' },
+      agentVersion: '0.1.0',
+    });
+    const path = `${fixture.root}/nodes/${enrolled.nodeId}/public-addresses`;
+    const set = (publicAddresses: unknown, actor: 'admin' | 'owner' | 'member' = 'admin') =>
+      fixture.post(path, actor, { publicAddresses });
+    const audited = () =>
+      auditLog().findMany({
+        where: { action: 'fleet.node.public_addresses_changed', targetId: enrolled.nodeId },
+        orderBy: { createdAt: 'asc' },
+      });
+
+    const saved = await set(['8.8.8.8', '2606:4700:4700:0:0:0:0:1111', '8.8.8.8']).expect(200);
+    expect(saved.body).toMatchObject({
+      id: enrolled.nodeId,
+      publicAddresses: ['8.8.8.8', '2606:4700:4700::1111'],
+    });
+    const listed = await fixture.get(`${fixture.root}/nodes`, 'admin').expect(200);
+    expect(
+      (listed.body as { items: { id: string; publicAddresses: string[] }[] }).items.find(
+        (node) => node.id === enrolled.nodeId,
+      )?.publicAddresses,
+    ).toEqual(['8.8.8.8', '2606:4700:4700::1111']);
+    // The same list, in another notation, changes nothing and records nothing more.
+    await set(['8.8.8.8', '2606:4700:4700::1111']).expect(200);
+    expect((await audited()).map((event) => [event.actorId, event.metadata])).toEqual([
+      [
+        fixture.actors.admin.id,
+        {
+          name: 'edge-public',
+          addresses: ['8.8.8.8', '2606:4700:4700::1111'],
+          previous: [],
+        },
+      ],
+    ]);
+
+    for (const [value, code] of [
+      [['edge-public.example.com'], 'node_public_address_invalid'],
+      [['10.0.0.5'], 'node_public_address_not_public'],
+      [['169.254.169.254'], 'node_public_address_not_public'],
+      [['::ffff:8.8.8.8'], 'node_public_address_ipv4_embedded'],
+      [[' 8.8.8.8'], 'node_public_address_invalid'],
+      [['fe80::1%eth0'], 'node_public_address_invalid'],
+      // Length is the domain's check too, so an oversized value keeps its position.
+      [['x'.repeat(46)], 'node_public_address_invalid'],
+    ] as const) {
+      await resetLimits();
+      await set(value)
+        .expect(400)
+        .expect((response) => {
+          expect(response.body).toMatchObject({ code, details: { index: 0 } });
+        });
+    }
+    for (const value of [
+      Array.from({ length: 9 }, (_, i) => `8.8.8.${String(i + 1)}`),
+      [8],
+      '8.8.8.8',
+      null,
+    ]) {
+      await resetLimits();
+      await set(value).expect(400);
+    }
+    await resetLimits();
+    await set(['1.1.1.1'], 'member').expect(404);
+    await fixture
+      .post(`${fixture.root}/nodes/${enrolled.nodeId}/public-addresses`, 'projectAdmin', {
+        publicAddresses: ['1.1.1.1'],
+      })
+      .expect(404);
+    // A node of another organization is not found from this one, even by its owner.
+    await fixture
+      .post(
+        `/api/v1/organizations/${fixture.foreignId}/nodes/${enrolled.nodeId}/public-addresses`,
+        'owner',
+        { publicAddresses: ['1.1.1.1'] },
+      )
+      .expect(404);
+
+    // The write is a compare-and-swap on the list the command read: a stale one changes nothing.
+    const stale = await fixture.app
+      .get(PrismaUnitOfWork)
+      .runTenant(fixture.organizationId, () =>
+        fixture.app
+          .get<NodeStore>(NODE_STORE)
+          .setPublicAddresses(fixture.organizationId, enrolled.nodeId, [], ['1.1.1.1']),
+      );
+    expect(stale).toBeUndefined();
+
+    const cleared = await set([], 'owner').expect(200);
+    expect((cleared.body as { publicAddresses: string[] }).publicAddresses).toEqual([]);
+    expect((await audited()).map((event) => event.actorId)).toEqual([
+      fixture.actors.admin.id,
+      fixture.actors.owner.id,
+    ]);
+
+    const admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+    try {
+      // The database bounds the list for any other writer.
+      await expect(
+        admin.query('UPDATE nodes SET public_addresses=$1 WHERE id=$2', [
+          Array.from({ length: 9 }, () => '8.8.8.8'),
+          enrolled.nodeId,
+        ]),
+      ).rejects.toMatchObject({ code: '23514' });
+      await expect(
+        admin.query('UPDATE nodes SET public_addresses=ARRAY[NULL]::varchar[] WHERE id=$1', [
+          enrolled.nodeId,
+        ]),
+      ).rejects.toMatchObject({ code: '23514' });
+    } finally {
+      await admin.end();
+    }
   });
 });

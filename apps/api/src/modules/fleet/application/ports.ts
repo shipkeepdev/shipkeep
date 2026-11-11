@@ -59,6 +59,17 @@ export interface NodeStore {
   ): Promise<boolean>;
   /** Run under `runTenant(organizationId)`: replaces the facts of a node that is not removed. */
   updateFacts(organizationId: string, id: string, facts: NodeFacts): Promise<void>;
+  /**
+   * Run under `runTenant(organizationId)`: compare-and-swap of the declared public addresses of a
+   * node that is not removed. Returns the updated node, or undefined when the node is gone or its
+   * addresses are no longer `expected`, so concurrent edits never audit a stale previous list.
+   */
+  setPublicAddresses(
+    organizationId: string,
+    id: string,
+    expected: readonly string[],
+    addresses: readonly string[],
+  ): Promise<NodeRecord | undefined>;
   /** Run under `runTenant(organizationId)`: at most 100 nodes, newest first, exclusive cursor. */
   list(organizationId: string, beforeId?: string): Promise<NodeRecord[]>;
 }
