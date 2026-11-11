@@ -215,7 +215,7 @@ describe('servers page', () => {
     expect(table()).toContain('+1 more');
   });
 
-  it('ignores a refusal that arrives after another server was selected', async () => {
+  it('holds row actions while a save is pending, then edits another server cleanly', async () => {
     const open = (name: string) => {
       element()
         .querySelector<HTMLButtonElement>(
@@ -235,8 +235,21 @@ describe('servers page', () => {
       ?.closest('form')
       ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await new Promise((resolve) => setTimeout(resolve, 0));
-    open('edge-2');
+    harness.fixture.detectChanges();
+    expect(requests.filter((r) => r.method === 'POST').map((r) => r.body)).toEqual([
+      { publicAddresses: ['10.0.0.5'] },
+    ]);
+    // Row actions wait for the save: neither another server nor a removal can start meanwhile.
+    const button = (label: string) =>
+      element().querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    expect(button('Edit the public addresses of edge-2')?.disabled).toBe(true);
+    expect(button('Remove edge-1')?.disabled).toBe(true);
     release?.();
+    await settle();
+    expect(element().querySelector('#addresses-error')?.textContent.trim()).toBe(
+      'Address 1 is private or reserved. Enter the address visitors reach.',
+    );
+    open('edge-2');
     await settle();
     expect(element().querySelector('#addresses-title')?.textContent).toContain('edge-2');
     expect(element().querySelector('#addresses-error')?.textContent.trim()).toBe('');

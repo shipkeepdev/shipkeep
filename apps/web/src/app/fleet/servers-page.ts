@@ -152,7 +152,7 @@ const COLUMNS =
                     <button
                       type="button"
                       class="btn btn-xs"
-                      [disabled]="runner.busy()"
+                      [disabled]="busy()"
                       [attr.aria-label]="
                         'Edit the public addresses of {name}' | t: { name: n.node.name }
                       "
@@ -168,6 +168,7 @@ const COLUMNS =
                   <button
                     type="button"
                     class="btn btn-sm justify-self-end px-3 py-1.5"
+                    [disabled]="busy()"
                     [attr.aria-label]="'Remove {name}' | t: { name: n.node.name }"
                     (click)="startRemoval(n.node)"
                   >
@@ -208,6 +209,7 @@ const COLUMNS =
           [node]="node"
           (saved)="saved()"
           (cancelled)="editing.set(null)"
+          (saving)="saving.set($event)"
         />
       }
 
@@ -351,6 +353,9 @@ export class ServersPage {
   });
   protected readonly removing = signal<FleetNode | null>(null);
   protected readonly editing = signal<FleetNode | null>(null);
+  /** The address editor's save in flight; with the page's own runner, it holds row actions. */
+  protected readonly saving = signal(false);
+  protected readonly busy = computed(() => this.runner.busy() || this.saving());
   protected readonly join = new FormGroup({
     password: new FormControl('', { nonNullable: true, validators: [required] }),
     totp: new FormControl('', { nonNullable: true }),
@@ -427,18 +432,20 @@ export class ServersPage {
 
   /** One panel at a time: editing addresses and removing a server never overlap. */
   protected edit(node: FleetNode): void {
-    // A removal in flight keeps the page's runner until it finishes and refreshes the list.
-    if (this.runner.busy()) return;
+    // A removal or a save in flight keeps its runner until it finishes and refreshes the list.
+    if (this.busy()) return;
     this.keep();
     this.editing.set(node);
   }
 
   protected startRemoval(node: FleetNode): void {
+    if (this.busy()) return;
     this.editing.set(null);
     this.removing.set(node);
   }
 
   protected async saved(): Promise<void> {
+    this.saving.set(false);
     this.editing.set(null);
     await this.nodes.refresh();
   }

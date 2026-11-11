@@ -100,6 +100,8 @@ export class PublicAddressesEditor implements AfterViewInit, OnDestroy {
   readonly node = input.required<FleetNode>();
   readonly saved = output<FleetNode>();
   readonly cancelled = output();
+  /** True while a save is in flight, so the page holds other server actions until it settles. */
+  readonly saving = output<boolean>();
   protected readonly text = new FormControl('', { nonNullable: true });
   protected readonly message = signal<AddressMessage | null>(null);
 
@@ -107,6 +109,9 @@ export class PublicAddressesEditor implements AfterViewInit, OnDestroy {
     recoverOnEdit(this.text, this.runner);
     this.text.valueChanges.pipe(takeUntilDestroyed()).subscribe(() => {
       this.message.set(null);
+    });
+    effect(() => {
+      this.saving.emit(this.runner.busy());
     });
     // Another server selected while this is open starts over from its saved addresses.
     effect(() => {
