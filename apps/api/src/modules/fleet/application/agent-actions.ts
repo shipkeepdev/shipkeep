@@ -73,6 +73,8 @@ export class AgentActions {
       action: ActionRequest['action'];
       deadline: Date;
       actor: Actor;
+      /** The deployment that needs the action, listed in its application's history. */
+      origin?: { applicationId: string; deploymentId: string };
     },
     now = new Date(),
   ): Promise<{ id: string; created: boolean }> {
@@ -83,6 +85,8 @@ export class AgentActions {
       !ACTION_KINDS.includes(kind) ||
       !IDEMPOTENCY_KEY.test(input.idempotencyKey) ||
       !isTenantId(input.nodeId) ||
+      (input.origin &&
+        !(isTenantId(input.origin.applicationId) && isTenantId(input.origin.deploymentId))) ||
       !(lifetime > 0 && lifetime <= MAX_ACTION_LIFETIME_MS)
     )
       throw new InvalidInputError('invalid_agent_action', 'Invalid agent action request.');
@@ -113,6 +117,8 @@ export class AgentActions {
         result: null,
         error: null,
         requestedBy: input.actor.id ?? null,
+        applicationId: input.origin?.applicationId ?? null,
+        deploymentId: input.origin?.deploymentId ?? null,
         createdAt: now,
         updatedAt: now,
         completedAt: null,

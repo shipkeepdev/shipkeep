@@ -1,6 +1,6 @@
 import { create } from '@bufbuild/protobuf';
-import type { DomainEvent } from '@shipkeep/domain';
-import { ActionUpdateSchema, OperationState } from '@shipkeep/proto-ts';
+import { type DomainEvent, InvalidInputError } from '@shipkeep/domain';
+import { ActionUpdateSchema, CollectFactsSchema, OperationState } from '@shipkeep/proto-ts';
 
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import type { AgentActionChange, AgentActionRecord } from '../domain/agent-action';
@@ -13,6 +13,8 @@ import type { AgentActionStore, FleetTransaction } from './ports';
 const ORG = '0190f5a8-7b1c-7e2d-8f3a-0123456789ab';
 const NODE = '0190f5a8-7b1c-7e2d-8f3a-0123456789ac';
 const ACTION = '0190f5a8-7b1c-7e2d-8f3a-0123456789ad';
+const APP = '0190f5a8-7b1c-7e2d-8f3a-0123456789ae';
+const DEPLOYMENT = '0190f5a8-7b1c-7e2d-8f3a-0123456789af';
 
 function setup() {
   const nodes = new MemoryNodeStore();
@@ -29,9 +31,15 @@ function setup() {
   };
   nodes.nodes.push(node);
   const record = { id: ACTION, organizationId: ORG, nodeId: NODE, kind: 'collect_facts' };
+  const inserted: AgentActionRecord[] = [];
   const store = {
     apply: (_org: string, _node: string, _id: string, change: AgentActionChange) =>
       Promise.resolve({ ...record, ...change } as unknown as AgentActionRecord),
+    findByKey: () => Promise.resolve(undefined),
+    insert: (row: AgentActionRecord) => {
+      inserted.push(row);
+      return Promise.resolve(true);
+    },
   } as unknown as AgentActionStore;
   const transaction = {
     runTenant: <T>(_organizationId: string, work: () => Promise<T>) => work(),
@@ -39,7 +47,11 @@ function setup() {
   const events = {
     publish: (_events: DomainEvent[]) => Promise.resolve(),
   } as unknown as DomainEventBus;
-  return { nodes, actions: new AgentActions(store, nodes, transaction, events) };
+  return {
+    nodes,
+    inserted,
+    actions: new AgentActions(store, nodes, transaction, events),
+  };
 }
 
 describe('AgentActions.record', () => {
@@ -84,5 +96,43 @@ describe('AgentActions.record', () => {
       }),
     );
     expect(nodes.nodes[0]?.facts).toEqual({ hostname: 'edge-1' });
+  });
+});
+
+describe('AgentActions.enqueue', () => {
+  const NOW = new Date('2026-11-11T10:00:00Z');
+  const input = {
+    organizationId: ORG,
+    nodeId: NODE,
+    idempotencyKey: `d:${DEPLOYMENT}:pull`,
+    action: { case: 'collectFacts' as const, value: create(CollectFactsSchema, {}) },
+    deadline: new Date(NOW.getTime() + 60_000),
+    actor: { kind: 'system' as const },
+  };
+
+  it('records the deployment that requested the action', async () => {
+    const { inserted, actions } = setup();
+    await actions.enqueue(
+      { ...input, origin: { applicationId: APP, deploymentId: DEPLOYMENT } },
+      NOW,
+    );
+    expect(inserted[0]).toMatchObject({ applicationId: APP, deploymentId: DEPLOYMENT });
+  });
+
+  it('leaves the origin empty for actions outside a deployment', async () => {
+    const { inserted, actions } = setup();
+    await actions.enqueue(input, NOW);
+    expect(inserted[0]).toMatchObject({ applicationId: null, deploymentId: null });
+  });
+
+  it('refuses a malformed origin', async () => {
+    const { inserted, actions } = setup();
+    for (const origin of [
+      { applicationId: "x' OR '1'='1", deploymentId: DEPLOYMENT },
+      { applicationId: APP, deploymentId: '../deployments' },
+      { applicationId: APP, deploymentId: 'a'.repeat(4096) },
+    ])
+      await expect(actions.enqueue({ ...input, origin }, NOW)).rejects.toThrow(InvalidInputError);
+    expect(inserted).toHaveLength(0);
   });
 });
