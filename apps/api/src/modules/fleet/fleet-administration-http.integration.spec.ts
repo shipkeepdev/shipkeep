@@ -231,6 +231,8 @@ describe('fleet administration over HTTP', () => {
       [['::ffff:8.8.8.8'], 'node_public_address_ipv4_embedded'],
       [[' 8.8.8.8'], 'node_public_address_invalid'],
       [['fe80::1%eth0'], 'node_public_address_invalid'],
+      // Length is the domain's check too, so an oversized value keeps its position.
+      [['x'.repeat(46)], 'node_public_address_invalid'],
     ] as const) {
       await resetLimits();
       await set(value)
@@ -241,7 +243,6 @@ describe('fleet administration over HTTP', () => {
     }
     for (const value of [
       Array.from({ length: 9 }, (_, i) => `8.8.8.${String(i + 1)}`),
-      ['x'.repeat(46)],
       [8],
       '8.8.8.8',
       null,
