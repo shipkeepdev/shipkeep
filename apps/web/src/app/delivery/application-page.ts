@@ -43,6 +43,7 @@ import {
   SAMPLE_TERMINAL,
   type SectionCopy,
 } from './application-design';
+import { AgentActionsPanel } from './agent-actions-panel';
 import { configSection } from './config-sections';
 import { ConfigurationEditor } from './configuration-editor';
 import { LiveEvents } from './live-events';
@@ -66,7 +67,9 @@ const STEPS: readonly { label: string; states: readonly string[] }[] = [
   { label: 'Health check', states: ['health_checking'] },
   { label: 'Switchover', states: ['switching', 'draining'] },
 ];
-const SAMPLE_SECTIONS = new Set(['tasks', 'approvals', 'webhooks', 'actions']);
+const SAMPLE_SECTIONS = new Set(['tasks', 'approvals', 'webhooks']);
+/** Sections with their own content instead of configuration blocks. */
+const OWN_SECTIONS = new Set(['yml', 'rollback', 'actions']);
 
 const FINISHED = new Set(['succeeded', 'failed', 'cancelled', 'rolled_back']);
 /** While a deployment runs, its state is refreshed this often. */
@@ -78,6 +81,7 @@ const LIVE_POLL_MS = 15_000;
 @Component({
   selector: 'sk-application-page',
   imports: [
+    AgentActionsPanel,
     BlockView,
     Brand,
     ConfigurationEditor,
@@ -116,10 +120,11 @@ const LIVE_POLL_MS = 15_000;
               >
             }
             @if (image(); as img) {
-              <span class="flex items-center gap-[5px]"
-                ><sk-brand name="docker" class="size-[13px] text-mute" /><span class="font-mono">{{
-                  img
-                }}</span></span
+              <span class="flex min-w-0 items-center gap-[5px]"
+                ><sk-brand name="docker" class="size-[13px] shrink-0 text-mute" /><span
+                  class="font-mono break-all"
+                  >{{ img }}</span
+                ></span
               >
             }
             <span>{{
@@ -218,7 +223,7 @@ const LIVE_POLL_MS = 15_000;
                 </div>
                 <div class="sec-desc max-w-[620px]">{{ copy.desc | t }}</div>
               </div>
-              @if (section() !== 'yml' && !sample() && section() !== 'rollback') {
+              @if (!sample() && !ownSection()) {
                 <a
                   class="btn btn-sm btn-primary"
                   [routerLink]="[]"
@@ -239,6 +244,13 @@ const LIVE_POLL_MS = 15_000;
                   [revision]="deployments.items().length"
                 />
               </div>
+            } @else if (section() === 'actions') {
+              <sk-agent-actions
+                [environment]="environment()"
+                [applicationId]="current.id"
+                [revision]="reloads()"
+                [deploymentLabels]="deploymentLabels()"
+              />
             } @else {
               @for (b of copy.blocks; track $index) {
                 <sk-block [block]="b" [organizationId]="organizationId()" />
@@ -534,6 +546,23 @@ export class ApplicationPage {
     return APP_SECTIONS.some((x) => x.k === wanted) ? (wanted as string) : 'general';
   });
   protected readonly sample = computed(() => SAMPLE_SECTIONS.has(this.section()));
+  protected readonly ownSection = computed(() => OWN_SECTIONS.has(this.section()));
+  /** A deployment opened from another section, such as an agent action. */
+  private readonly wantedDeployment = toSignal(
+    inject(ActivatedRoute).queryParamMap.pipe(map((q) => q.get('deployment'))),
+  );
+  /** Counts deployment reloads, so the Agent actions section reloads with them. */
+  protected readonly reloads = signal(0);
+  /** Deployments named by the release they ran (#3), as the Rollback section lists them. */
+  protected readonly deploymentLabels = computed(() => {
+    const numbers = new Map(this.releases().map((release) => [release.id, release.number]));
+    return new Map(
+      this.deployments.items().flatMap((d) => {
+        const number = numbers.get(d.releaseId);
+        return number === undefined ? [] : [[d.id, `#${String(number)}`] as const];
+      }),
+    );
+  });
   private readonly secrets = signal<readonly SecretMetadata[]>([]);
   private readonly releases = signal<readonly Release[]>([]);
   private readonly environmentInfo = signal<Environment | null>(null);
@@ -550,6 +579,13 @@ export class ApplicationPage {
       return {
         title: 'Rollback',
         desc: 'Previous images stay ready. Rolling back rebuilds nothing.',
+        blocks: [],
+      };
+    if (key === 'actions')
+      return {
+        title: 'Agent actions',
+        ours: 1,
+        desc: 'The closed list of typed actions agents ran for this app. No free-form shell commands.',
         blocks: [],
       };
     if (key in APP_SAMPLES) return APP_SAMPLES[key as keyof typeof APP_SAMPLES];
@@ -580,9 +616,13 @@ export class ApplicationPage {
     const latest = this.deployments.items().at(0);
     return latest ? deploymentStatus(latest.state) : null;
   });
-  /** The deployment the pipeline shows: the one running, otherwise the latest. */
+  /** The deployment the pipeline shows: the one asked for, the one running, or the latest. */
   protected readonly focus = computed(
-    () => this.active() ?? this.deployments.items().at(0) ?? null,
+    () =>
+      this.deployments.items().find((d) => d.id === this.wantedDeployment()) ??
+      this.active() ??
+      this.deployments.items().at(0) ??
+      null,
   );
   protected readonly pipeline = computed(() => {
     const d = this.focus();
@@ -701,14 +741,7 @@ export class ApplicationPage {
         .catch(() => {
           this.secrets.set([]);
         });
-      void this.api
-        .releases(environment, applicationId)
-        .then((items) => {
-          this.releases.set(items);
-        })
-        .catch(() => {
-          this.releases.set([]);
-        });
+      this.loadReleases(environment, applicationId);
       void this.workspace
         .environment(environment.organizationId, environment.projectId, environment.environmentId)
         .then((env) => {
@@ -729,6 +762,17 @@ export class ApplicationPage {
     }
   }
 
+  private loadReleases(environment: EnvironmentRef, applicationId: string): void {
+    void this.api
+      .releases(environment, applicationId)
+      .then((items) => {
+        this.releases.set(items);
+      })
+      .catch(() => {
+        this.releases.set([]);
+      });
+  }
+
   protected actor(deployment: Deployment): string {
     const email = deployment.actorId ? this.shell.emails().get(deployment.actorId) : undefined;
     return email ?? this.i18n.t(deployment.trigger);
@@ -739,6 +783,11 @@ export class ApplicationPage {
     clearTimeout(this.timer);
     void this.replicas.refresh();
     await this.deployments.refresh();
+    // A new deployment comes with a new release: its number names it in the Agent actions section.
+    const latest = this.deployments.items().at(0);
+    if (latest && !this.releases().some((release) => release.id === latest.releaseId))
+      this.loadReleases(this.environment(), this.applicationId());
+    this.reloads.update((n) => n + 1);
     if (this.active())
       this.timer = setTimeout(
         () => {
