@@ -22,6 +22,8 @@ import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import {
   type AgentActionRecord,
   type AgentActionState,
+  type AgentActionView,
+  actionView,
   IDEMPOTENCY_KEY,
   isTerminalAction,
   MAX_ACTION_LIFETIME_MS,
@@ -49,6 +51,8 @@ const STATES: Readonly<Partial<Record<OperationState, AgentActionState>>> = {
   [OperationState.COMPENSATED]: 'compensated',
 };
 const STEP = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
+/** Largest history page; callers may ask for one more row to learn whether another page exists. */
+export const MAX_HISTORY_PAGE = 100;
 
 /**
  * Durable action queue between the control plane and its agents (PLAN M1.4a2). Delivery is at
@@ -73,6 +77,8 @@ export class AgentActions {
       action: ActionRequest['action'];
       deadline: Date;
       actor: Actor;
+      /** The deployment that needs the action, listed in its application's history. */
+      origin?: { applicationId: string; deploymentId: string };
     },
     now = new Date(),
   ): Promise<{ id: string; created: boolean }> {
@@ -83,6 +89,8 @@ export class AgentActions {
       !ACTION_KINDS.includes(kind) ||
       !IDEMPOTENCY_KEY.test(input.idempotencyKey) ||
       !isTenantId(input.nodeId) ||
+      (input.origin &&
+        !(isTenantId(input.origin.applicationId) && isTenantId(input.origin.deploymentId))) ||
       !(lifetime > 0 && lifetime <= MAX_ACTION_LIFETIME_MS)
     )
       throw new InvalidInputError('invalid_agent_action', 'Invalid agent action request.');
@@ -113,6 +121,8 @@ export class AgentActions {
         result: null,
         error: null,
         requestedBy: input.actor.id ?? null,
+        applicationId: input.origin?.applicationId ?? null,
+        deploymentId: input.origin?.deploymentId ?? null,
         createdAt: now,
         updatedAt: now,
         completedAt: null,
@@ -131,6 +141,28 @@ export class AgentActions {
       ]);
       return { id: record.id, created: true };
     });
+  }
+
+  /**
+   * The application's actions, newest first, with a safe summary instead of their raw result and
+   * error. The caller checks read access to the application; this only scopes rows to it.
+   */
+  async history(
+    organizationId: string,
+    applicationId: string,
+    beforeId: string | undefined,
+    limit: number,
+  ): Promise<AgentActionView[]> {
+    if (
+      !isTenantId(applicationId) ||
+      (beforeId !== undefined && !isTenantId(beforeId)) ||
+      !(Number.isInteger(limit) && limit >= 1 && limit <= MAX_HISTORY_PAGE + 1)
+    )
+      throw new InvalidInputError('invalid_agent_action_page', 'Invalid agent action page.');
+    const entries = await this.transaction.runTenant(organizationId, () =>
+      this.store.forApplication(organizationId, applicationId, beforeId, limit),
+    );
+    return entries.map(actionView);
   }
 
   /** Unfinished actions of the node not yet sent on this stream; overdue ones expire first. */

@@ -72,12 +72,9 @@ describe('deployment pipeline with PostgreSQL and pg-boss', () => {
         },
       })
       .expect(201);
+    const applicationId = (application.body as { id: string }).id;
     const queued = await fixture
-      .post(
-        `${fixture.environment}/applications/${(application.body as { id: string }).id}/deployments`,
-        'owner',
-        {},
-      )
+      .post(`${fixture.environment}/applications/${applicationId}/deployments`, 'owner', {})
       .expect(201);
     const deploymentId = (queued.body as { deployment: { id: string } }).deployment.id;
 
@@ -102,12 +99,23 @@ describe('deployment pipeline with PostgreSQL and pg-boss', () => {
         [deploymentId],
       );
       expect(state.rows[0]?.state).toBe('starting');
-      const actions = await admin.query<{ idempotency_key: string; kind: string }>(
-        'SELECT idempotency_key, kind FROM agent_actions WHERE node_id = $1',
+      const actions = await admin.query<{
+        idempotency_key: string;
+        kind: string;
+        application_id: string;
+        deployment_id: string;
+      }>(
+        'SELECT idempotency_key, kind, application_id, deployment_id FROM agent_actions WHERE node_id = $1',
         [nodeId],
       );
       expect(actions.rows).toEqual([
-        { idempotency_key: `d:${deploymentId}:net:${nodeId}`, kind: 'ensureNetwork' },
+        {
+          idempotency_key: `d:${deploymentId}:net:${nodeId}`,
+          kind: 'ensureNetwork',
+          // The action names the deployment that needs it (issue #263).
+          application_id: applicationId,
+          deployment_id: deploymentId,
+        },
       ]);
       const placed = await admin.query('SELECT replica FROM allocations WHERE node_id = $1', [
         nodeId,
@@ -126,5 +134,46 @@ describe('deployment pipeline with PostgreSQL and pg-boss', () => {
       'deployment.placed',
       'deployment.advanced',
     ]);
+  });
+
+  it('links an action only to a deployment of its own application', async () => {
+    const other = await fixture
+      .post(`${fixture.environment}/applications`, 'owner', {
+        config: {
+          version: 1,
+          name: 'other-api',
+          build: { type: 'image', image: `ghcr.io/acme/other@sha256:${'d'.repeat(64)}` },
+          run: { port: 3000 },
+        },
+      })
+      .expect(201);
+    const otherId = (other.body as { id: string }).id;
+    const admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+    try {
+      const { rows } = await admin.query<{ id: string }>(
+        'SELECT id FROM agent_actions WHERE deployment_id IS NOT NULL LIMIT 1',
+      );
+      const id = rows[0]?.id;
+      await expect(
+        admin.query('UPDATE agent_actions SET application_id = $2 WHERE id = $1', [id, otherId]),
+      ).rejects.toThrow(/agent_actions_deployment_fkey/);
+      await expect(
+        admin.query('UPDATE agent_actions SET deployment_id = NULL WHERE id = $1', [id]),
+      ).rejects.toThrow(/agent_actions_origin_check/);
+
+      // Deleting the application keeps the node's history and clears only the link.
+      await admin.query(
+        'DELETE FROM applications WHERE id = (SELECT application_id FROM agent_actions WHERE id = $1)',
+        [id],
+      );
+      const kept = await admin.query(
+        'SELECT node_id, application_id, deployment_id FROM agent_actions WHERE id = $1',
+        [id],
+      );
+      expect(kept.rows).toEqual([{ node_id: nodeId, application_id: null, deployment_id: null }]);
+    } finally {
+      await admin.end();
+    }
   });
 });

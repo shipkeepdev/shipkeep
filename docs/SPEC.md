@@ -134,6 +134,8 @@ Action delivery (M1.4a2):
 - Every stream sends each unfinished action of its node once, at most every second, so a reconnection redelivers everything unfinished. The agent journal replays known idempotency keys.
 - Overdue actions become `expired`.
 - An agent update changes only its own node's non-terminal actions; terminal states never change again.
+- An action the deployment pipeline enqueues records its application and deployment. Both columns are null for other actions. A composite foreign key ties them to a deployment of the same organization and application; deleting the deployment clears them and keeps the action in the node's history.
+- An action's history shows a summary, never its raw report: the agent's fixed error texts become reason codes, and a failure refused before anything ran (malformed request, unknown kind, stale lease epoch, invalid input, conflicting idempotency key) is `refused`. Any other text becomes `unknown`. Results keep only validated fields: container id, image digest, health and release exit code.
 - Audit: queueing (`fleet.action.queued`) and every terminal state (`fleet.action.<state>`, with the node as actor).
 - The agent calls `Connect(stream ConnectRequest) returns (stream ConnectResponse)` and keeps it open. It waits at most 10 seconds for Welcome and uses the advertised heartbeat interval (1–10 seconds supported). Outage retries use exponential backoff with jitter (0.5 seconds initially, capped at 30 seconds); a minute-long healthy session resets the backoff. TLS keepalive detects dead connections. A rejected identity or epoch stops connection attempts and requires operator recovery; it never triggers automatic re-enrollment. Renewal persists the new credential generation before reconnecting.
 - `ConnectRequest` (agent to control plane) carries one of: `Hello`, `Heartbeat`, `ActionUpdate`, `StateReport`.
@@ -565,6 +567,9 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - It is refused with 409 `secrets_missing` (listing the names) while a referenced secret is unset, and with 409 `deployment_in_progress` while another deployment is unfinished.
   - `GET …/replicas` (`environment.read`) lists the placed replicas with their node, container and what the agent last saw (`state`, null until seen; `observedAt`).
   - `GET …/deployments` lists the 50 most recent deployments; `GET …/deployments/{deploymentId}` reads one; `GET …/releases` lists the 50 most recent releases (`environment.read`).
+  - `GET …/agent-actions` (`environment.read`, issue #263) lists the agent actions the application's deployments requested, newest first, with `cursor`/`limit` (1–100, default 50); `nextCursor` is null on the last page.
+    - Each item has the typed kind, the node (id and name), state, step, attempts, deployment id, times and the summary of SPEC 3.1: `outcome` (`in_progress`, `succeeded`, `refused`, `failed`, `expired`, `cancelled`, `compensated`), `reason` and `result`.
+    - The encrypted payload (secret values, registry credentials, confirmation tokens) is never read for this list, and idempotency keys, output tails and agent error texts are never returned.
   - `POST …/deployments/{deploymentId}/cancel` (`deploy.run`) cancels an unfinished deployment through the aggregate. The pipeline (M3.4c) acts on the reported routing outcome.
   - `POST …/deployments/{deploymentId}/rollback` (201, `deploy.run`) deploys a new release copying the pinned image and configuration of the release that deployment ran.
     - The target must have succeeded (or been rolled back) and must not be the release serving now; otherwise 409 `rollback_target_invalid` or `release_already_serving`. A release that never resolved its image answers 409 `release_not_deployable`.
@@ -675,6 +680,8 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - Installation-level audit access: system and account events (`organization_id` null, for example `fleet.installation_key.created`) are not readable by the runtime role. Proposal for M2.4a: an installation-administrator capability, held by the first owner and audited, with its own read context.
 
 - Retry-safe certificate renewal after a response is lost: a recovery protocol must preserve the one-active-certificate invariant without accepting a revoked identity.
+
+- Agent action history (issue #263): actions queued before the migration that links actions to deployments stay unlinked, because no released version has such actions to backfill. The agent sends the same `action deadline exceeded` text when it refuses an overdue request and when an action times out while running, so both are reported as `failed`; a distinct refusal text in the agent would let the history show the first as `refused`.
 
 - Private registries: credentials for private images, and an explicit allow-list for registries on private networks (the resolver refuses non-public addresses by default, SSRF).
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).
