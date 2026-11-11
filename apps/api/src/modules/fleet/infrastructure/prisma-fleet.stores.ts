@@ -119,10 +119,16 @@ export class PrismaNodeStore implements NodeStore {
   async setPublicAddresses(
     organizationId: string,
     id: string,
+    expected: readonly string[],
     addresses: readonly string[],
   ): Promise<NodeRecord | undefined> {
     const result = await this.database.client.node.updateMany({
-      where: { organizationId, id, status: { not: 'removed' } },
+      where: {
+        organizationId,
+        id,
+        status: { not: 'removed' },
+        publicAddresses: { equals: [...expected] },
+      },
       data: { publicAddresses: [...addresses] },
     });
     return result.count === 1 ? this.findById(organizationId, id) : undefined;
