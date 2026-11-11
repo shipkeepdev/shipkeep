@@ -1,4 +1,8 @@
-import type { AgentActionChange, AgentActionRecord } from '../domain/agent-action';
+import type {
+  AgentActionChange,
+  AgentActionEntry,
+  AgentActionRecord,
+} from '../domain/agent-action';
 import type { JoinTokenRecord } from '../domain/join-token';
 import type { NodeCertificateRecord, NodeFacts, NodeRecord, NodeStatus } from '../domain/node';
 import type { NodeCredential, NodeIdentity } from '../domain/node-identity';
@@ -111,6 +115,13 @@ export interface AgentActionStore {
     id: string,
     change: AgentActionChange,
   ): Promise<AgentActionRecord | undefined>;
+  /** The application's actions, newest first, ids below `beforeId` when given. */
+  forApplication(
+    organizationId: string,
+    applicationId: string,
+    beforeId: string | undefined,
+    limit: number,
+  ): Promise<AgentActionEntry[]>;
 }
 export const AGENT_ACTION_STORE = Symbol('AgentActionStore');
 

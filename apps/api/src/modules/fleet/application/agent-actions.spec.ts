@@ -3,7 +3,11 @@ import { type DomainEvent, InvalidInputError } from '@shipkeep/domain';
 import { ActionUpdateSchema, CollectFactsSchema, OperationState } from '@shipkeep/proto-ts';
 
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
-import type { AgentActionChange, AgentActionRecord } from '../domain/agent-action';
+import type {
+  AgentActionChange,
+  AgentActionEntry,
+  AgentActionRecord,
+} from '../domain/agent-action';
 import type { NodeRecord } from '../domain/node';
 
 import { AgentActions } from './agent-actions';
@@ -32,6 +36,8 @@ function setup() {
   nodes.nodes.push(node);
   const record = { id: ACTION, organizationId: ORG, nodeId: NODE, kind: 'collect_facts' };
   const inserted: AgentActionRecord[] = [];
+  const history: AgentActionEntry[] = [];
+  const pages: unknown[][] = [];
   const store = {
     apply: (_org: string, _node: string, _id: string, change: AgentActionChange) =>
       Promise.resolve({ ...record, ...change } as unknown as AgentActionRecord),
@@ -39,6 +45,10 @@ function setup() {
     insert: (row: AgentActionRecord) => {
       inserted.push(row);
       return Promise.resolve(true);
+    },
+    forApplication: (...args: unknown[]) => {
+      pages.push(args);
+      return Promise.resolve(history);
     },
   } as unknown as AgentActionStore;
   const transaction = {
@@ -50,6 +60,8 @@ function setup() {
   return {
     nodes,
     inserted,
+    history,
+    pages,
     actions: new AgentActions(store, nodes, transaction, events),
   };
 }
@@ -134,5 +146,51 @@ describe('AgentActions.enqueue', () => {
     ])
       await expect(actions.enqueue({ ...input, origin }, NOW)).rejects.toThrow(InvalidInputError);
     expect(inserted).toHaveLength(0);
+  });
+});
+
+describe('AgentActions.history', () => {
+  const entry: AgentActionEntry = {
+    id: ACTION,
+    nodeId: NODE,
+    nodeName: 'edge-1',
+    kind: 'pullImage',
+    state: 'failed',
+    step: '',
+    attempts: 0,
+    result: { releaseTask: { outputTail: 'DATABASE_URL=postgres://u:p@db' } },
+    error: 'stale lease epoch',
+    applicationId: APP,
+    deploymentId: DEPLOYMENT,
+    createdAt: new Date(0),
+    updatedAt: new Date(1),
+    completedAt: new Date(1),
+  };
+
+  it('replaces the raw result and error with their summary', async () => {
+    const { history, pages, actions } = setup();
+    history.push(entry);
+    const views = await actions.history(ORG, APP, undefined, 51);
+    const view = views[0];
+    expect(pages).toEqual([[ORG, APP, undefined, 51]]);
+    expect(view.summary).toEqual({
+      outcome: 'refused',
+      reason: 'stale_lease_epoch',
+      result: null,
+    });
+    expect(view).not.toHaveProperty('result');
+    expect(view).not.toHaveProperty('error');
+    expect(JSON.stringify(view)).not.toContain('postgres://');
+  });
+
+  it('refuses malformed pages before reading', async () => {
+    const { pages, actions } = setup();
+    await expect(actions.history(ORG, 'not-a-uuid', undefined, 10)).rejects.toThrow(
+      InvalidInputError,
+    );
+    await expect(actions.history(ORG, APP, "' OR 1=1 --", 10)).rejects.toThrow(InvalidInputError);
+    await expect(actions.history(ORG, APP, undefined, 0)).rejects.toThrow(InvalidInputError);
+    await expect(actions.history(ORG, APP, undefined, 102)).rejects.toThrow(InvalidInputError);
+    expect(pages).toHaveLength(0);
   });
 });
