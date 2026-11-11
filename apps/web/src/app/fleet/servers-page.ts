@@ -152,6 +152,7 @@ const COLUMNS =
                     <button
                       type="button"
                       class="btn btn-xs"
+                      [disabled]="runner.busy()"
                       [attr.aria-label]="
                         'Edit the public addresses of {name}' | t: { name: n.node.name }
                       "
@@ -426,6 +427,8 @@ export class ServersPage {
 
   /** One panel at a time: editing addresses and removing a server never overlap. */
   protected edit(node: FleetNode): void {
+    // A removal in flight keeps the page's runner until it finishes and refreshes the list.
+    if (this.runner.busy()) return;
     this.keep();
     this.editing.set(node);
   }
