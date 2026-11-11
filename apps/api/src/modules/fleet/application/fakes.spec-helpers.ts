@@ -119,11 +119,15 @@ export class MemoryNodeStore implements NodeStore {
   setPublicAddresses(
     organizationId: string,
     id: string,
+    expected: readonly string[],
     addresses: readonly string[],
   ): Promise<NodeRecord | undefined> {
     const index = this.nodes.findIndex(
       (node) =>
-        node.organizationId === organizationId && node.id === id && node.status !== 'removed',
+        node.organizationId === organizationId &&
+        node.id === id &&
+        node.status !== 'removed' &&
+        node.publicAddresses.join() === expected.join(),
     );
     const node = this.nodes.at(index);
     if (index < 0 || !node) return Promise.resolve(undefined);
