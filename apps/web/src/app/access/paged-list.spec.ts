@@ -1,3 +1,5 @@
+import { IdentityRequestError } from '../identity/identity-api';
+
 import { PagedList } from './paged-list';
 
 interface Item {
@@ -69,5 +71,35 @@ describe('PagedList.refreshFirst', () => {
     expect(ids(paged)).toBe('b1 a1');
     expect(paged.state()).toBe('ready');
     expect(paged.problem()).toBe('This list could not be loaded.');
+  });
+
+  it('keeps an older page appended while the newest page was loading', async () => {
+    let release: (page: Page) => void = () => undefined;
+    const answers: (() => Promise<Page>)[] = [
+      () => Promise.resolve({ items: [item('d'), item('c')], nextCursor: 'c' }),
+      () => new Promise<Page>((resolve) => (release = resolve)),
+      () => Promise.resolve({ items: [item('b'), item('a')], nextCursor: 'a' }),
+    ];
+    const paged = new PagedList<Item>(() => answers.shift()?.() ?? Promise.reject(new Error()));
+    await paged.refresh();
+    const newest = paged.refreshFirst(key);
+    await paged.more();
+    release({ items: [item('e'), item('d', 2)], nextCursor: 'd' });
+    await newest;
+    expect(ids(paged)).toBe('e1 d2 c1 b1 a1');
+    expect(paged.hasMore()).toBe(true);
+  });
+
+  it('clears the list when access to it is lost, as a full refresh does', async () => {
+    const answers: (() => Promise<Page>)[] = [
+      () => Promise.resolve({ items: [item('b'), item('a')], nextCursor: 'a' }),
+      () => Promise.reject(new IdentityRequestError(404)),
+    ];
+    const paged = new PagedList<Item>(() => answers.shift()?.() ?? Promise.reject(new Error()));
+    await paged.refresh();
+    await paged.refreshFirst(key);
+    expect(ids(paged)).toBe('');
+    expect(paged.state()).toBe('failed');
+    expect(paged.denied()).toBe(true);
   });
 });
