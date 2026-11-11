@@ -20,6 +20,7 @@ function setup(status: NodeStatus) {
     status,
     labels: {},
     facts: {},
+    publicAddresses: [],
     leaseEpoch: 1,
     createdAt: new Date(0),
     lastHeartbeatAt: null,

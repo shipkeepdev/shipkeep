@@ -1388,6 +1388,82 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/nodes/{nodeId}/public-addresses": {
+      "post": {
+        "operationId": "setNodePublicAddresses",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "description": "Required for session requests.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Required for session requests.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetNodePublicAddressesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/nodes": {
       "get": {
         "operationId": "listNodes",
@@ -5036,6 +5112,22 @@
           "confirmation"
         ]
       },
+      "SetNodePublicAddressesDto": {
+        "type": "object",
+        "properties": {
+          "publicAddresses": {
+            "maxItems": 8,
+            "description": "The public IPv4 and IPv6 addresses of the node, replacing the current list. Each must be a bare, globally routable address; duplicates are merged and values stored canonical. An empty list clears them.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "publicAddresses"
+        ]
+      },
       "NodeDto": {
         "type": "object",
         "properties": {
@@ -5068,6 +5160,13 @@
             "additionalProperties": true,
             "description": "Sanitized host facts."
           },
+          "publicAddresses": {
+            "description": "Public addresses declared by an administrator, canonical; empty until set.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "leaseEpoch": {
             "type": "integer"
           },
@@ -5089,6 +5188,7 @@
           "status",
           "labels",
           "facts",
+          "publicAddresses",
           "leaseEpoch",
           "createdAt",
           "lastHeartbeatAt"

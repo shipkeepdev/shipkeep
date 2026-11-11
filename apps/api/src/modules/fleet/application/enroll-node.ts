@@ -124,6 +124,7 @@ export class EnrollNode {
       status: 'enrolling',
       labels: {},
       facts: { ...facts, agent_version: command.agentVersion.slice(0, 64) },
+      publicAddresses: [],
       leaseEpoch: INITIAL_LEASE_EPOCH,
       createdAt: now,
       lastHeartbeatAt: null,

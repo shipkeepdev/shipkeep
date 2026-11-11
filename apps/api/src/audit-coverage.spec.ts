@@ -32,6 +32,9 @@ const AUDITED: Readonly<Record<string, readonly string[]>> = {
   'POST /organizations/:organizationId/members/:membershipId/remove': ['membership.removed'],
   'POST /organizations/:organizationId/members/:membershipId/role': ['membership.role_changed'],
   'POST /organizations/:organizationId/nodes/:nodeId/remove': ['fleet.node.removed'],
+  'POST /organizations/:organizationId/nodes/:nodeId/public-addresses': [
+    'fleet.node.public_addresses_changed',
+  ],
   'POST /organizations/:organizationId/projects': ['project.created'],
   'POST /organizations/:organizationId/projects/:projectId/api-tokens/:id/revoke': [
     'identity.api_token_revoked',
