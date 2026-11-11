@@ -556,6 +556,9 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - It is refused with 409 `secrets_missing` (listing the names) while a referenced secret is unset, and with 409 `deployment_in_progress` while another deployment is unfinished.
   - `GET …/replicas` (`environment.read`) lists the placed replicas with their node, container and what the agent last saw (`state`, null until seen; `observedAt`).
   - `GET …/deployments` lists the 50 most recent deployments; `GET …/deployments/{deploymentId}` reads one; `GET …/releases` lists the 50 most recent releases (`environment.read`).
+  - `GET …/agent-actions` (`environment.read`, issue #263) lists the agent actions the application's deployments requested, newest first, with `cursor`/`limit` (1–100, default 50); `nextCursor` is null on the last page.
+    - Each item has the typed kind, the node (id and name), state, step, attempts, deployment id, times and the summary of SPEC 3.1: `outcome` (`in_progress`, `succeeded`, `refused`, `failed`, `expired`, `cancelled`, `compensated`), `reason` and `result`.
+    - The encrypted payload (secret values, registry credentials, confirmation tokens) is never read for this list, and idempotency keys, output tails and agent error texts are never returned.
   - `POST …/deployments/{deploymentId}/cancel` (`deploy.run`) cancels an unfinished deployment through the aggregate. The pipeline (M3.4c) acts on the reported routing outcome.
   - `POST …/deployments/{deploymentId}/rollback` (201, `deploy.run`) deploys a new release copying the pinned image and configuration of the release that deployment ran.
     - The target must have succeeded (or been rolled back) and must not be the release serving now; otherwise 409 `rollback_target_invalid` or `release_already_serving`. A release that never resolved its image answers 409 `release_not_deployable`.
