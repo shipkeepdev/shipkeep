@@ -62,7 +62,7 @@ describe('agent action rows', () => {
       reason: 'stale_lease_epoch',
     });
     expect(row.result).toEqual({ label: 'refused', color: AMBER });
-    expect(row.reason).toBe('lease expired');
+    expect(row.reason).toBe('lease superseded');
   });
 
   it('gives every failure reason a fixed text, and none for a plain failure', () => {

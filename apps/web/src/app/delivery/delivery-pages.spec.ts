@@ -471,7 +471,7 @@ describe('delivery screens', () => {
     expect(rows().map((cells) => cells.slice(1))).toEqual([
       // Phones show the deployment after the server, and hide its column (CSS, not in jsdom).
       ['UpsertRoute', 'srv-par-1 · #4', 'ok', '#4'],
-      ['StopContainer', 'srv-fra-4 · #4', 'refused · lease expired', '#4'],
+      ['StopContainer', 'srv-fra-4 · #4', 'refused · lease superseded', '#4'],
     ]);
     // Real data: the sample rows and the Preview label are gone from this section.
     expect(element().querySelector('#panel-config sk-preview-pill')).toBeNull();

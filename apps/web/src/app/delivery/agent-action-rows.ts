@@ -20,7 +20,7 @@ export interface AgentActionRow {
 const REASONS: Readonly<Record<NonNullable<AgentAction['reason']>, string | null>> = {
   malformed_request: 'malformed request',
   unsupported_action: 'not supported by this agent',
-  stale_lease_epoch: 'lease expired',
+  stale_lease_epoch: 'lease superseded',
   invalid_input: 'invalid input',
   idempotency_conflict: 'conflicting retry',
   deadline_exceeded: 'deadline exceeded',
