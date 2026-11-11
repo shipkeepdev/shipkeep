@@ -13,6 +13,7 @@ import { AllocationObservations } from './application/allocation-observations';
 import { DeploymentCommands } from './application/deployment-commands';
 import { DeploymentPipeline } from './application/deployment-pipeline';
 import {
+  ACTION_HISTORY,
   ACTION_QUEUE,
   DEPLOYMENT_STORE,
   DEPLOYMENT_TRANSACTION,
@@ -40,6 +41,7 @@ import { DeploymentController } from './interface/deployment.controller';
     { provide: IMAGE_RESOLVER, useFactory: () => new RegistryResolver() },
     { provide: PIPELINE_STORE, useClass: PrismaPipelineStore },
     { provide: ACTION_QUEUE, useExisting: AgentActions },
+    { provide: ACTION_HISTORY, useExisting: AgentActions },
     DeploymentQueue,
     { provide: DEPLOYMENT_WAKER, useExisting: DeploymentQueue },
     DeploymentPipeline,

@@ -6,6 +6,7 @@ import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { AgentActionStore } from '../application/ports';
 import type {
   AgentActionChange,
+  AgentActionEntry,
   AgentActionRecord,
   AgentActionState,
 } from '../domain/agent-action';
@@ -103,6 +104,42 @@ export class PrismaAgentActionStore implements AgentActionStore {
       where: { id, organizationId, nodeId },
     });
     return row ? this.record(row) : undefined;
+  }
+
+  async forApplication(
+    organizationId: string,
+    applicationId: string,
+    beforeId: string | undefined,
+    limit: number,
+  ): Promise<AgentActionEntry[]> {
+    // The encrypted payload is never selected, let alone decrypted, for a history read.
+    const rows = await this.database.client.agentAction.findMany({
+      where: { organizationId, applicationId, ...(beforeId ? { id: { lt: beforeId } } : {}) },
+      orderBy: { id: 'desc' },
+      take: limit,
+      select: {
+        id: true,
+        nodeId: true,
+        kind: true,
+        state: true,
+        step: true,
+        attempts: true,
+        result: true,
+        error: true,
+        applicationId: true,
+        deploymentId: true,
+        createdAt: true,
+        updatedAt: true,
+        completedAt: true,
+        node: { select: { name: true } },
+      },
+    });
+    return rows.map(({ node, ...row }) => ({
+      ...row,
+      nodeName: node.name,
+      state: row.state as AgentActionState,
+      result: row.result ?? null,
+    }));
   }
 
   private async record(row: AgentAction): Promise<AgentActionRecord> {
