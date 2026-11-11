@@ -2,11 +2,13 @@ import * as x509 from '@peculiar/x509';
 import { Client } from 'pg';
 import { Secret } from '@shipkeep/domain';
 
+import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { auditLog } from '../../testing/audit-log';
 import { tenantHttpFixture } from '../../testing/tenant-http';
 
 import { EnrollNode } from './application/enroll-node';
 import { NodeLiveness } from './application/node-liveness';
+import { NODE_STORE, type NodeStore } from './application/ports';
 import {
   generateEd25519KeyPair,
   importPrivateKey,
@@ -229,6 +231,8 @@ describe('fleet administration over HTTP', () => {
       [['::ffff:8.8.8.8'], 'node_public_address_ipv4_embedded'],
       [[' 8.8.8.8'], 'node_public_address_invalid'],
       [['fe80::1%eth0'], 'node_public_address_invalid'],
+      // Length is the domain's check too, so an oversized value keeps its position.
+      [['x'.repeat(46)], 'node_public_address_invalid'],
     ] as const) {
       await resetLimits();
       await set(value)
@@ -239,7 +243,6 @@ describe('fleet administration over HTTP', () => {
     }
     for (const value of [
       Array.from({ length: 9 }, (_, i) => `8.8.8.${String(i + 1)}`),
-      ['x'.repeat(46)],
       [8],
       '8.8.8.8',
       null,
@@ -262,6 +265,16 @@ describe('fleet administration over HTTP', () => {
         { publicAddresses: ['1.1.1.1'] },
       )
       .expect(404);
+
+    // The write is a compare-and-swap on the list the command read: a stale one changes nothing.
+    const stale = await fixture.app
+      .get(PrismaUnitOfWork)
+      .runTenant(fixture.organizationId, () =>
+        fixture.app
+          .get<NodeStore>(NODE_STORE)
+          .setPublicAddresses(fixture.organizationId, enrolled.nodeId, [], ['1.1.1.1']),
+      );
+    expect(stale).toBeUndefined();
 
     const cleared = await set([], 'owner').expect(200);
     expect((cleared.body as { publicAddresses: string[] }).publicAddresses).toEqual([]);

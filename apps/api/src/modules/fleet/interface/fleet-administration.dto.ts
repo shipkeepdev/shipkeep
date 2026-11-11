@@ -8,7 +8,6 @@ import {
   Length,
   Matches,
   Max,
-  MaxLength,
   Min,
   ValidateIf,
 } from 'class-validator';
@@ -45,8 +44,8 @@ export class SetNodePublicAddressesDto {
   })
   @IsArray()
   @ArrayMaxSize(MAX_NODE_PUBLIC_ADDRESSES)
+  // Lengths are the domain's check, so an oversized value is reported at its position.
   @IsString({ each: true })
-  @MaxLength(45, { each: true })
   publicAddresses!: string[];
 }
 export class NodePageQueryDto {

@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { NotFoundError, type Secret } from '@shipkeep/domain';
+import { ConflictError, NotFoundError, type Secret } from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { isPublicAddress } from '../../../platform/net/public-address';
@@ -81,6 +81,8 @@ export class FleetAdministration {
   /**
    * Replaces the public addresses an administrator declares for a node (PLAN M3.6b1): needs
    * `node.manage`. Values are validated before any lookup; saving the same list records nothing.
+   * The write is a compare-and-swap on the list just read: a concurrent edit answers 409 instead of
+   * auditing a stale `previous` list.
    */
   setPublicAddresses(
     context: SecurityContext,
@@ -98,8 +100,20 @@ export class FleetAdministration {
           const node = await this.nodes.findById(organizationId, nodeId);
           if (!node || node.status === 'removed') throw new NotFoundError('resource');
           if (samePublicAddresses(node.publicAddresses, addresses)) return node;
-          const updated = await this.nodes.setPublicAddresses(organizationId, nodeId, addresses);
-          if (!updated) throw new NotFoundError('resource');
+          const updated = await this.nodes.setPublicAddresses(
+            organizationId,
+            nodeId,
+            node.publicAddresses,
+            addresses,
+          );
+          if (!updated) {
+            const current = await this.nodes.findById(organizationId, nodeId);
+            if (!current || current.status === 'removed') throw new NotFoundError('resource');
+            throw new ConflictError(
+              'node_public_addresses_changed',
+              'The public addresses changed meanwhile; reload them and retry.',
+            );
+          }
           await this.events.publish([
             nodePublicAddressesChanged({
               organizationId,
