@@ -596,6 +596,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/agent-actions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listAgentActions"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/config": {
         readonly parameters: {
             readonly query?: never;
@@ -884,6 +900,58 @@ export type components = {
             /** @enum {string} */
             readonly role: "owner" | "admin" | "member";
             readonly totp?: string;
+        };
+        readonly AgentActionDto: {
+            readonly attempts: number;
+            /** Format: date-time */
+            readonly completedAt: string | null;
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** Format: uuid */
+            readonly deploymentId: string | null;
+            /** Format: uuid */
+            readonly id: string;
+            /**
+             * @description The typed action (SPEC 3.3).
+             * @enum {string}
+             */
+            readonly kind: "ensureNetwork" | "pullImage" | "buildImage" | "createContainer" | "startContainer" | "stopContainer" | "removeContainer" | "ensureVolume" | "removeVolume" | "healthCheck" | "upsertRoute" | "removeRoute" | "runReleaseTask" | "execSession" | "backupVolume" | "restoreVolume" | "dumpDatabase" | "restoreDatabase" | "configurePeers" | "collectFacts" | "upgradeAgent" | "stopStatefulWorkloads" | "upgradeControlPlane";
+            /** Format: uuid */
+            readonly nodeId: string;
+            readonly nodeName: string;
+            /**
+             * @description `refused`: the agent rejected the request before running anything.
+             * @enum {string}
+             */
+            readonly outcome: "in_progress" | "succeeded" | "refused" | "failed" | "expired" | "cancelled" | "compensated";
+            /** @enum {string|null} */
+            readonly reason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "unknown" | null;
+            readonly result: components["schemas"]["AgentActionResultDto"] | null;
+            /** @enum {string} */
+            readonly state: "queued" | "pending" | "running" | "succeeded" | "failed" | "cancelled" | "compensating" | "compensated" | "expired";
+            /** @description Last step the agent reported; empty before it starts. */
+            readonly step: string;
+            /** Format: date-time */
+            readonly updatedAt: string;
+        };
+        readonly AgentActionPageDto: {
+            /** @description Newest first. */
+            readonly items: readonly components["schemas"]["AgentActionDto"][];
+            /**
+             * Format: uuid
+             * @description Null on the last page.
+             */
+            readonly nextCursor: string | null;
+        };
+        readonly AgentActionResultDto: {
+            /** @description Docker container id. */
+            readonly containerId: string | null;
+            /** @description Release task exit code. */
+            readonly exitCode: number | null;
+            readonly healthy: boolean | null;
+            readonly imageDigest: string | null;
+            /** @enum {string} */
+            readonly type: "container" | "image" | "health_check" | "release_task" | "transfer" | "facts";
         };
         readonly ApiScopeDto: {
             /** Format: uuid */
@@ -2711,6 +2779,34 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ApplicationDto"];
+                };
+            };
+        };
+    };
+    readonly listAgentActions: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Exclusive: the last id of the previous page. */
+                readonly cursor?: string;
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AgentActionPageDto"];
                 };
             };
         };
