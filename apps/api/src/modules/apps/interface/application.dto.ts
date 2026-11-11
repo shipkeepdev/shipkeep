@@ -52,6 +52,16 @@ export class DomainDto {
   })
   status!: string;
   @ApiProperty({ type: [String], description: 'Public addresses only.' }) addresses!: string[];
+  @ApiProperty({
+    enum: ['serving', 'partial', 'elsewhere', 'not_running', 'unknown'],
+    description:
+      'Whether the answers reach a server running the application, compared with the public ' +
+      'addresses administrators declared for its nodes. serving: every answer is such a server. ' +
+      'partial: only some answers are. elsewhere: none is, or there is no record. not_running: ' +
+      'no reachable server runs the application. unknown: the lookup failed, or a server running ' +
+      'it has no declared address.',
+  })
+  match!: string;
 }
 export class DomainListDto {
   @ApiProperty({ type: [DomainDto] }) items!: DomainDto[];

@@ -4,9 +4,17 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { ApplicationStore } from '../application/ports';
-import type { Application, ApplicationConfig, ApplicationTarget } from '../domain/application';
+import type {
+  Application,
+  ApplicationConfig,
+  ApplicationHost,
+  ApplicationTarget,
+} from '../domain/application';
+import type { NodeStatus } from '../../fleet/domain/node';
 
 const MAX_LISTED = 500;
+/** Placement spreads replicas over at most this many nodes long before the bound matters. */
+const MAX_HOSTS = 200;
 
 @Injectable()
 export class PrismaApplicationStore implements ApplicationStore {
@@ -101,6 +109,27 @@ export class PrismaApplicationStore implements ApplicationStore {
       where: { ...target, id: applicationId },
     });
     return row ? application(row) : undefined;
+  }
+
+  async hosts(application: Pick<Application, 'id' | 'organizationId'>): Promise<ApplicationHost[]> {
+    const rows = await this.database.client.node.findMany({
+      where: {
+        organizationId: application.organizationId,
+        status: { not: 'removed' },
+        allocations: {
+          some: {
+            organizationId: application.organizationId,
+            applicationId: application.id,
+            state: 'placed',
+            observation: { is: { state: 'running' } },
+          },
+        },
+      },
+      select: { status: true, lastHeartbeatAt: true, publicAddresses: true },
+      orderBy: { id: 'asc' },
+      take: MAX_HOSTS,
+    });
+    return rows.map((row) => ({ ...row, status: row.status as NodeStatus }));
   }
 
   async list(target: ApplicationTarget): Promise<Application[]> {
