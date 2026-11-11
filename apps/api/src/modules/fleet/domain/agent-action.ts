@@ -53,6 +53,34 @@ export interface AgentActionRecord {
   readonly completedAt: Date | null;
 }
 
+/** An action as its history shows it: never the payload, which can carry secret values. */
+export interface AgentActionEntry {
+  readonly id: string;
+  readonly nodeId: string;
+  readonly nodeName: string;
+  readonly kind: string;
+  readonly state: AgentActionState;
+  readonly step: string;
+  readonly attempts: number;
+  readonly result: unknown;
+  readonly error: string | null;
+  readonly applicationId: string | null;
+  readonly deploymentId: string | null;
+  readonly createdAt: Date;
+  readonly updatedAt: Date;
+  readonly completedAt: Date | null;
+}
+
+/** What may leave the fleet: the raw result and error are replaced by their summary. */
+export interface AgentActionView extends Omit<AgentActionEntry, 'result' | 'error'> {
+  readonly summary: AgentActionSummary;
+}
+
+export function actionView(entry: AgentActionEntry): AgentActionView {
+  const { result, error, ...rest } = entry;
+  return { ...rest, summary: summarizeAction({ state: entry.state, error, result }) };
+}
+
 export interface AgentActionChange {
   readonly state: AgentActionState;
   readonly step: string;

@@ -22,6 +22,8 @@ import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import {
   type AgentActionRecord,
   type AgentActionState,
+  type AgentActionView,
+  actionView,
   IDEMPOTENCY_KEY,
   isTerminalAction,
   MAX_ACTION_LIFETIME_MS,
@@ -49,6 +51,8 @@ const STATES: Readonly<Partial<Record<OperationState, AgentActionState>>> = {
   [OperationState.COMPENSATED]: 'compensated',
 };
 const STEP = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
+/** Largest history page; callers may ask for one more row to learn whether another page exists. */
+export const MAX_HISTORY_PAGE = 100;
 
 /**
  * Durable action queue between the control plane and its agents (PLAN M1.4a2). Delivery is at
@@ -137,6 +141,28 @@ export class AgentActions {
       ]);
       return { id: record.id, created: true };
     });
+  }
+
+  /**
+   * The application's actions, newest first, with a safe summary instead of their raw result and
+   * error. The caller checks read access to the application; this only scopes rows to it.
+   */
+  async history(
+    organizationId: string,
+    applicationId: string,
+    beforeId: string | undefined,
+    limit: number,
+  ): Promise<AgentActionView[]> {
+    if (
+      !isTenantId(applicationId) ||
+      (beforeId !== undefined && !isTenantId(beforeId)) ||
+      !(Number.isInteger(limit) && limit >= 1 && limit <= MAX_HISTORY_PAGE + 1)
+    )
+      throw new InvalidInputError('invalid_agent_action_page', 'Invalid agent action page.');
+    const entries = await this.transaction.runTenant(organizationId, () =>
+      this.store.forApplication(organizationId, applicationId, beforeId, limit),
+    );
+    return entries.map(actionView);
   }
 
   /** Unfinished actions of the node not yet sent on this stream; overdue ones expire first. */
