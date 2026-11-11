@@ -134,6 +134,8 @@ Action delivery (M1.4a2):
 - Every stream sends each unfinished action of its node once, at most every second, so a reconnection redelivers everything unfinished. The agent journal replays known idempotency keys.
 - Overdue actions become `expired`.
 - An agent update changes only its own node's non-terminal actions; terminal states never change again.
+- An action the deployment pipeline enqueues records its application and deployment. Both columns are null for other actions. A composite foreign key ties them to a deployment of the same organization and application; deleting the deployment clears them and keeps the action in the node's history.
+- An action's history shows a summary, never its raw report: the agent's fixed error texts become reason codes, and a failure refused before anything ran (malformed request, unknown kind, stale lease epoch, invalid input, conflicting idempotency key) is `refused`. Any other text becomes `unknown`. Results keep only validated fields: container id, image digest, health and release exit code.
 - Audit: queueing (`fleet.action.queued`) and every terminal state (`fleet.action.<state>`, with the node as actor).
 - The agent calls `Connect(stream ConnectRequest) returns (stream ConnectResponse)` and keeps it open. It waits at most 10 seconds for Welcome and uses the advertised heartbeat interval (1–10 seconds supported). Outage retries use exponential backoff with jitter (0.5 seconds initially, capped at 30 seconds); a minute-long healthy session resets the backoff. TLS keepalive detects dead connections. A rejected identity or epoch stops connection attempts and requires operator recovery; it never triggers automatic re-enrollment. Renewal persists the new credential generation before reconnecting.
 - `ConnectRequest` (agent to control plane) carries one of: `Hello`, `Heartbeat`, `ActionUpdate`, `StateReport`.
@@ -664,6 +666,8 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - Installation-level audit access: system and account events (`organization_id` null, for example `fleet.installation_key.created`) are not readable by the runtime role. Proposal for M2.4a: an installation-administrator capability, held by the first owner and audited, with its own read context.
 
 - Retry-safe certificate renewal after a response is lost: a recovery protocol must preserve the one-active-certificate invariant without accepting a revoked identity.
+
+- Agent action history (issue #263): actions queued before the migration that links actions to deployments stay unlinked, because no released version has such actions to backfill. The agent sends the same `action deadline exceeded` text when it refuses an overdue request and when an action times out while running, so both are reported as `failed`; a distinct refusal text in the agent would let the history show the first as `refused`.
 
 - Private registries: credentials for private images, and an explicit allow-list for registries on private networks (the resolver refuses non-public addresses by default, SSRF).
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).

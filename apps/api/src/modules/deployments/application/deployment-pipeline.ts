@@ -259,6 +259,10 @@ export class DeploymentPipeline {
         action,
         deadline: new Date(now.getTime() + ACTION_LIFETIME_MS),
         actor: SYSTEM_ACTOR,
+        origin: {
+          applicationId: loaded.application.id,
+          deploymentId: loaded.context.deployment.id,
+        },
       });
     }
     return undefined;
