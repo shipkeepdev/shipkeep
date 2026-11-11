@@ -554,7 +554,10 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - a duplicate name in the environment is 409 `application_name_taken`;
     - a hostname belongs to one application per organization: saving a configuration syncs its `domains`, and a host another application claims is 409 `domain_taken` (a rollback checks this too);
     - wildcard domains are refused with 400 `wildcard_domain_unsupported` until DNS-01 exists.
-  - `GET …/{applicationId}/domains` (`environment.read`) looks up each domain live: `public` with its addresses, `private` (only non-public answers, never revealed, so the control plane's resolver cannot be used to map internal names), `none` or `unknown`. It does not connect to the answers. Comparing them with the node's public address is left to the operator until nodes report one.
+  - `GET …/{applicationId}/domains` (`environment.read`) looks up each domain live: `public` with its addresses, `private` (only non-public answers, never revealed, so the control plane's resolver cannot be used to map internal names), `none` or `unknown`. It does not connect to the answers. `status` and its values are unchanged.
+    - Each domain also has a `match` (PLAN M3.6b1). Every answer, private ones included, is compared with the public addresses declared for the organization's nodes that run the application: not removed, lease not expired, with a placed replica that its agent last saw `running`.
+    - `serving`: every answer is such an address. `partial`: only some are. `elsewhere`: none is, or there is no record. `not_running`: no such node runs the application. `unknown`: the lookup failed, or a running node has no declared address, so an unmatched answer could still be its address.
+    - The response lists only the DNS answers already shown, never node addresses, so a reader with `environment.read` learns no address that `node.manage` protects.
   - `application.created` and `application.updated` audit events carry the name, source and configuration hashes, not the configuration.
 - Deployments (PLAN M3.4b2), under `…/applications/{applicationId}`:
   - `POST …/deployments` (201, `deploy.run`) snapshots the configuration as the next release (numbered per application) and queues a deployment.
