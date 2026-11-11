@@ -497,6 +497,56 @@ describe('delivery screens', () => {
     expect(deploymentsText()).not.toContain('Deployment 0190f5a');
   });
 
+  it('reloads only the newest agent actions once per live update, keeping older pages', async () => {
+    const id = (n: number) => `0190f5a8-7b1c-7e2d-8f3a-${String(n).padStart(12, '0')}`;
+    const action = (n: number) => ({
+      id: id(n),
+      kind: 'startContainer',
+      nodeId: id(900),
+      nodeName: 'srv-par-1',
+      state: 'succeeded',
+      step: 'started',
+      attempts: 1,
+      outcome: 'succeeded',
+      reason: null,
+      result: null,
+      deploymentId: null,
+      createdAt: '2026-11-11T10:12:58Z',
+      updatedAt: '2026-11-11T10:12:58Z',
+      completedAt: '2026-11-11T10:12:58Z',
+    });
+    // Newest first: 21 to 2 on the first page, 1 on the older one; 22 arrives later.
+    let newest = 21;
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () =>
+        json({ items: [deployment('succeeded')] }),
+      [`GET ${BASE}/applications/${APP}/agent-actions`]: () =>
+        query.get('cursor')
+          ? json({ items: [action(1)], nextCursor: null })
+          : json({
+              items: Array.from({ length: 20 }, (_, i) => action(newest - i)),
+              nextCursor: id(newest - 19),
+            }),
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}?section=actions`,
+    );
+    await settle();
+    await click('Load older actions');
+    const shown = () => element().querySelectorAll('[role="table"] [role="row"]').length - 1;
+    const loads = () => requests.filter((r) => r.path.endsWith('/agent-actions')).length;
+    expect(shown()).toBe(21);
+    const before = loads();
+    newest = 22;
+    sources[0]?.emit({ applicationId: APP });
+    await settle();
+    await settle();
+    // One newest-page request per update: the merge must not trigger another load.
+    expect(loads() - before).toBe(1);
+    expect(shown()).toBe(22);
+  });
+
   it('says when an application has no agent action yet', async () => {
     routes = {
       [`GET ${BASE}/applications/${APP}`]: () => json(application),

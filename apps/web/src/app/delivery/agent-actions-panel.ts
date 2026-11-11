@@ -66,12 +66,15 @@ const COLUMNS =
               <span role="cell" class="order-1 min-w-0 break-all font-mono text-fg sm:order-none">{{
                 row.action
               }}</span>
-              <span role="cell" class="order-3 truncate font-mono text-fg3 sm:order-none"
-                >{{ row.server }}
+              <span
+                role="cell"
+                class="order-3 flex min-w-0 items-baseline font-mono text-fg3 sm:order-none"
+                ><span class="truncate">{{ row.server }}</span>
                 <!-- On phones the deployment follows the server; its own column is hidden. -->
                 @if (row.deploymentId; as deployment) {
-                  <span class="sm:hidden"
-                    >· <ng-container *ngTemplateOutlet="link; context: { $implicit: deployment }"
+                  <span class="shrink-0 sm:hidden"
+                    >&nbsp;·
+                    <ng-container *ngTemplateOutlet="link; context: { $implicit: deployment }"
                   /></span>
                 }
               </span>
@@ -133,7 +136,12 @@ const COLUMNS =
         }
       </div>
       @if (actions.problem() && actions.state() === 'ready') {
-        <div class="alert" role="alert">{{ actions.problem() | t }}</div>
+        <div class="alert flex flex-wrap items-center justify-between gap-3" role="alert">
+          <span>{{ actions.problem() | t }}</span>
+          <button class="btn btn-sm" type="button" (click)="retryNewest()">
+            {{ 'Retry' | t }}
+          </button>
+        </div>
       }
       @if (actions.hasMore()) {
         <div>
@@ -174,10 +182,19 @@ export class AgentActionsPanel {
       this.revision();
       // On the same application, older pages the user opened stay: only the newest is reloaded.
       const opened = untracked(() => this.actions.items().length) > AGENT_ACTION_PAGE;
-      if (key !== this.shown || !opened) void this.actions.refresh();
-      else void this.actions.refreshFirst((action) => action.id);
+      const reload = key !== this.shown || !opened;
       this.shown = key;
+      // The loads read the list's own signals: tracking them would reload after every answer.
+      untracked(() => {
+        if (reload) void this.actions.refresh();
+        else void this.retryNewest();
+      });
     });
+  }
+
+  /** Reloads the newest page, keeping the older pages already opened. */
+  protected retryNewest(): Promise<void> {
+    return this.actions.refreshFirst((action) => action.id);
   }
 
   protected label(deploymentId: string): string {
