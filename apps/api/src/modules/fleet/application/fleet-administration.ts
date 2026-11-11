@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { NotFoundError, type Secret } from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
+import { isPublicAddress } from '../../../platform/net/public-address';
 import { ConfirmationVerifier } from '../../confirmations/application/confirmation-verifier';
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
 import type { MfaProofInput } from '../../identity/application/mfa-crypto';
@@ -10,14 +11,15 @@ import {
   type ResourceSecurityContext as SecurityContext,
 } from '../../identity/application/resource-security-context';
 import { TenantAccess } from '../../organizations/application/tenant-access';
-import { nodeRemoved } from '../domain/events';
+import { nodePublicAddressesChanged, nodeRemoved } from '../domain/events';
 import type { NodeRecord } from '../domain/node';
+import { nodePublicAddresses, samePublicAddresses } from '../domain/node-address';
 
 import { IssueJoinToken, type IssueJoinTokenResult } from './issue-join-token';
 import { FLEET_TRANSACTION, type FleetTransaction, NODE_STORE, type NodeStore } from './ports';
 
 /**
- * Organization administration of the fleet over HTTP (PLAN M2.7a). Both operations require live
+ * Organization administration of the fleet over HTTP (PLAN M2.7a). Every operation requires live
  * `node.manage` on the organization; issuing an enrollment credential also requires the caller's
  * password and configured second factor.
  */
@@ -70,6 +72,45 @@ export class FleetAdministration {
               actor: resourceActor(context),
             }),
           ]);
+        });
+      },
+      { permission: 'node.manage', target },
+    );
+  }
+
+  /**
+   * Replaces the public addresses an administrator declares for a node (PLAN M3.6b1): needs
+   * `node.manage`. Values are validated before any lookup; saving the same list records nothing.
+   */
+  setPublicAddresses(
+    context: SecurityContext,
+    organizationId: string,
+    nodeId: string,
+    input: readonly unknown[],
+  ): Promise<NodeRecord> {
+    const addresses = nodePublicAddresses(input, isPublicAddress);
+    const target = { organizationId };
+    return this.accounts.run(
+      context,
+      async () => {
+        await this.access.require(context.userId, 'node.manage', target);
+        return this.transaction.runTenant(organizationId, async () => {
+          const node = await this.nodes.findById(organizationId, nodeId);
+          if (!node || node.status === 'removed') throw new NotFoundError('resource');
+          if (samePublicAddresses(node.publicAddresses, addresses)) return node;
+          const updated = await this.nodes.setPublicAddresses(organizationId, nodeId, addresses);
+          if (!updated) throw new NotFoundError('resource');
+          await this.events.publish([
+            nodePublicAddressesChanged({
+              organizationId,
+              nodeId,
+              name: node.name,
+              addresses,
+              previous: node.publicAddresses,
+              actor: resourceActor(context),
+            }),
+          ]);
+          return updated;
         });
       },
       { permission: 'node.manage', target },

@@ -25,8 +25,10 @@ import {
   nodeDto,
   NodePageDto,
   NodePageQueryDto,
+  NodeDto,
   NodePathDto,
   RemoveNodeDto,
+  SetNodePublicAddressesDto,
 } from './fleet-administration.dto';
 
 /**
@@ -90,6 +92,35 @@ export class FleetAdministrationController {
       path.organizationId,
       path.nodeId,
       new Secret(body.confirmation),
+    );
+  }
+
+  /** Replaces the node's declared public addresses, compared by the domain check (M3.6b1). */
+  @Post(':organizationId/nodes/:nodeId/public-addresses')
+  @HttpCode(200)
+  @RequireTenant('node.manage', 'organization')
+  @AllowApiToken('node.manage')
+  @IdentityAttemptLimit('api')
+  @ApiBearerAuth('apiToken')
+  @ApiHeader({ name: 'Origin', required: false, description: 'Required for session requests.' })
+  @ApiHeader({
+    name: 'X-Shipkeep-CSRF',
+    required: false,
+    description: 'Required for session requests.',
+  })
+  @ApiOkResponse({ type: NodeDto })
+  async setNodePublicAddresses(
+    @Req() request: IdentityRequest,
+    @Param() path: NodePathDto,
+    @Body() body: SetNodePublicAddressesDto,
+  ): Promise<NodeDto> {
+    return nodeDto(
+      await this.fleet.setPublicAddresses(
+        resourceContext(request),
+        path.organizationId,
+        path.nodeId,
+        body.publicAddresses,
+      ),
     );
   }
 

@@ -68,6 +68,25 @@ export function nodeRemoved(input: {
   });
 }
 
+/** An administrator replaced a node's declared public addresses (PLAN M3.6b1). */
+export function nodePublicAddressesChanged(input: {
+  organizationId: string;
+  nodeId: string;
+  name: string;
+  addresses: readonly string[];
+  previous: readonly string[];
+  actor: Actor;
+}): DomainEvent {
+  return createEvent({
+    type: 'fleet.node.public_addresses_changed',
+    organizationId: input.organizationId,
+    actor: input.actor,
+    target: { type: 'node', id: input.nodeId },
+    // Public addresses are not secret: the audit log keeps both lists to explain a changed check.
+    payload: { name: input.name, addresses: [...input.addresses], previous: [...input.previous] },
+  });
+}
+
 /** A connected agent made its node ready again (SPEC 5.2); recorded on transitions only. */
 export function nodeReady(input: {
   organizationId: string;

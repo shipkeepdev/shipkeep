@@ -1,9 +1,21 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsString, Length, Matches, Max, Min, ValidateIf } from 'class-validator';
+import {
+  ArrayMaxSize,
+  IsArray,
+  IsInt,
+  IsString,
+  Length,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 
 import type { IssueJoinTokenResult } from '../application/issue-join-token';
 import { type NodeRecord, observedStatus } from '../domain/node';
+import { MAX_NODE_PUBLIC_ADDRESSES } from '../domain/node-address';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
@@ -21,6 +33,21 @@ export class RemoveNodeDto {
   @IsString()
   @Length(1, 2048)
   confirmation!: string;
+}
+export class SetNodePublicAddressesDto {
+  @ApiProperty({
+    type: [String],
+    maxItems: MAX_NODE_PUBLIC_ADDRESSES,
+    description:
+      'The public IPv4 and IPv6 addresses of the node, replacing the current list. Each must be ' +
+      'a bare, globally routable address; duplicates are merged and values stored canonical. An ' +
+      'empty list clears them.',
+  })
+  @IsArray()
+  @ArrayMaxSize(MAX_NODE_PUBLIC_ADDRESSES)
+  @IsString({ each: true })
+  @MaxLength(45, { each: true })
+  publicAddresses!: string[];
 }
 export class NodePageQueryDto {
   @ApiPropertyOptional({ format: 'uuid' })
@@ -66,6 +93,11 @@ export class NodeDto {
   labels!: Record<string, string>;
   @ApiProperty({ type: 'object', additionalProperties: true, description: 'Sanitized host facts.' })
   facts!: Record<string, unknown>;
+  @ApiProperty({
+    type: [String],
+    description: 'Public addresses declared by an administrator, canonical; empty until set.',
+  })
+  publicAddresses!: string[];
   @ApiProperty({ type: 'integer' }) leaseEpoch!: number;
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
@@ -96,6 +128,7 @@ export function nodeDto(node: NodeRecord, now = new Date()): NodeDto {
     status: observedStatus(node, now),
     labels: { ...node.labels },
     facts: { ...node.facts },
+    publicAddresses: [...node.publicAddresses],
     leaseEpoch: node.leaseEpoch,
     createdAt: node.createdAt.toISOString(),
     lastHeartbeatAt: node.lastHeartbeatAt?.toISOString() ?? null,
