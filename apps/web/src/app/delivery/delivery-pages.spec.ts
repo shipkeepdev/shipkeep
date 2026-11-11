@@ -307,16 +307,25 @@ describe('delivery screens', () => {
     expect((rollbacks()[0] as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('shows where each domain points', async () => {
+  it('shows where each domain points, and whether a server running the app answers', async () => {
+    const domain = (hostname: string, status: string, match: string, addresses: string[] = []) => ({
+      hostname,
+      status,
+      addresses,
+      match,
+    });
     routes = {
       [`GET ${BASE}/applications/${APP}`]: () => json(application),
       [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: [] }),
       [`GET ${BASE}/applications/${APP}/domains`]: () =>
         json({
           items: [
-            { hostname: 'a.example.com', status: 'public', addresses: ['203.0.113.4'] },
-            { hostname: 'b.example.com', status: 'private', addresses: [] },
-            { hostname: 'c.example.com', status: 'none', addresses: [] },
+            domain('a.example.com', 'public', 'serving', ['203.0.113.4']),
+            domain('b.example.com', 'private', 'elsewhere'),
+            domain('c.example.com', 'none', 'not_running'),
+            domain('d.example.com', 'public', 'partial', ['203.0.113.4', '198.51.100.7']),
+            domain('e.example.com', 'public', 'unknown', ['198.51.100.7']),
+            domain('f.example.com', 'unknown', 'unknown'),
           ],
         }),
     };
@@ -329,6 +338,14 @@ describe('delivery screens', () => {
     expect(list).toContain('203.0.113.4');
     expect(list).toContain('private address');
     expect(list).toContain('no record');
+    const rows = Array.from(element().querySelectorAll('.grid-table'), (row) => row.textContent);
+    const rowOf = (hostname: string) => rows.find((row) => row.includes(hostname)) ?? '';
+    expect(rowOf('a.example.com')).toContain('a server running it');
+    expect(rowOf('b.example.com')).toContain('no server running it');
+    expect(rowOf('c.example.com')).toContain('no server runs it yet');
+    expect(rowOf('d.example.com')).toContain('partly a server running it');
+    expect(rowOf('e.example.com')).toContain('cannot tell: address not set');
+    expect(rowOf('f.example.com')).toContain('cannot tell yet');
   });
 
   it('reloads deployments when a live event names this application, and closes on leaving', async () => {
