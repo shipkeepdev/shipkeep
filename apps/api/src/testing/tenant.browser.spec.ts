@@ -78,6 +78,7 @@ describe('organizations and roles in Chromium', () => {
   let organizationId: string;
   let projectId: string;
   let environmentId: string;
+  let applicationId: string;
   const outsiderEmail = 'tenant-outsider@example.com';
 
   beforeAll(async () => {
@@ -225,6 +226,7 @@ describe('organizations and roles in Chromium', () => {
     await owner.getByRole('alert').first().waitFor();
     await config.fill(APPLICATION);
     const id = await created(owner, 'Create application', collection);
+    applicationId = id;
     await owner.getByRole('link', { name: 'storefront', exact: true }).click();
     await owner.getByRole('heading', { name: 'storefront', exact: true, level: 1 }).waitFor();
     await owner.getByRole('tab', { name: 'Deployments' }).click();
@@ -408,5 +410,24 @@ describe('organizations and roles in Chromium', () => {
     await owner.getByRole('button', { name: 'Save settings', exact: true }).click();
     await owner.getByRole('status').getByText('Settings saved.').waitFor();
     await owner.getByRole('heading', { name: 'Acme Corp', exact: true, level: 1 }).waitFor();
+  });
+
+  // Last: the screens before it share the per-account API quota (300 requests a minute).
+  it('lists the agent actions of an application from the API (issue #263)', async () => {
+    // No server is enrolled here, so the deployment cannot place a replica and queues no action.
+    await owner.setViewportSize({ width: 1440, height: 1000 });
+    await owner.goto(
+      `/orgs/${organizationId}/projects/${projectId}/environments/${environmentId}/applications/${applicationId}?section=actions`,
+    );
+    await owner
+      .getByText('No agent action yet. They appear here once a deployment runs.')
+      .waitFor();
+    expect(await owner.locator('#panel-config sk-preview-pill').count()).toBe(0);
+    for (const width of [390, 1440]) {
+      await owner.setViewportSize({ width, height: 1000 });
+      // A string: this Node project has no DOM types.
+      expect(await owner.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
+    }
+    await accessible(owner);
   });
 });

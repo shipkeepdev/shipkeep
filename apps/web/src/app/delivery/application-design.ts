@@ -2,8 +2,8 @@ import { type Block, type Section } from '../dashboard/screen-model';
 
 /**
  * The application screen of the design: its configuration menu, and sample content for the parts
- * the control plane does not serve yet (scheduled tasks, approvals, webhooks, agent actions, logs,
- * terminal and metrics). Pages built from these samples carry the "Preview" label.
+ * the control plane does not serve yet (scheduled tasks, approvals, webhooks, logs, terminal and
+ * metrics). Pages built from these samples carry the "Preview" label.
  */
 export type AppSection = Omit<Section, 'blocks'>;
 
@@ -106,7 +106,7 @@ export interface SectionCopy {
 }
 
 export const APP_SAMPLES: Readonly<
-  Record<'tasks' | 'approvals' | 'webhooks' | 'actions' | 'danger', SectionCopy>
+  Record<'tasks' | 'approvals' | 'webhooks' | 'danger', SectionCopy>
 > = {
   tasks: {
     title: 'Scheduled tasks',
@@ -240,146 +240,6 @@ export const APP_SAMPLES: Readonly<
             v: 'Slack #prod · e-mail',
             mono: false,
           },
-        ],
-      },
-    ],
-  },
-  actions: {
-    title: 'Agent actions',
-    desc: 'The closed list of typed actions agents ran for this app. No free-form shell commands.',
-    ours: 1,
-    blocks: [
-      {
-        type: 'table',
-        cols: 'minmax(0,0.7fr) minmax(0,1.3fr) minmax(0,0.9fr) minmax(0,0.8fr)',
-        heads: ['Time', 'Action', 'Server', 'Result'],
-        rows: [
-          [
-            {
-              t: '10:13:06',
-              mono: true,
-              fg: '#8B8B93',
-            },
-            {
-              t: 'UpsertRoute',
-              mono: true,
-              fg: '#EDEDEF',
-            },
-            {
-              t: 'srv-par-1',
-              mono: true,
-            },
-            {
-              t: 'ok',
-              fg: 'oklch(0.78 0.13 155)',
-              dot: 'oklch(0.78 0.13 155)',
-            },
-          ],
-          [
-            {
-              t: '10:12:58',
-              mono: true,
-              fg: '#8B8B93',
-            },
-            {
-              t: 'StartContainer',
-              mono: true,
-              fg: '#EDEDEF',
-            },
-            {
-              t: 'srv-ams-3',
-              mono: true,
-            },
-            {
-              t: 'ok',
-              fg: 'oklch(0.78 0.13 155)',
-              dot: 'oklch(0.78 0.13 155)',
-            },
-          ],
-          [
-            {
-              t: '10:12:57',
-              mono: true,
-              fg: '#8B8B93',
-            },
-            {
-              t: 'StartContainer',
-              mono: true,
-              fg: '#EDEDEF',
-            },
-            {
-              t: 'srv-fra-2',
-              mono: true,
-            },
-            {
-              t: 'ok',
-              fg: 'oklch(0.78 0.13 155)',
-              dot: 'oklch(0.78 0.13 155)',
-            },
-          ],
-          [
-            {
-              t: '10:12:51',
-              mono: true,
-              fg: '#8B8B93',
-            },
-            {
-              t: 'RunReleaseTask',
-              mono: true,
-              fg: '#EDEDEF',
-            },
-            {
-              t: 'srv-par-1',
-              mono: true,
-            },
-            {
-              t: 'ok',
-              fg: 'oklch(0.78 0.13 155)',
-              dot: 'oklch(0.78 0.13 155)',
-            },
-          ],
-          [
-            {
-              t: '10:12:04',
-              mono: true,
-              fg: '#8B8B93',
-            },
-            {
-              t: 'BuildImage',
-              mono: true,
-              fg: '#EDEDEF',
-            },
-            {
-              t: 'srv-ams-6',
-              mono: true,
-            },
-            {
-              t: 'ok',
-              fg: 'oklch(0.78 0.13 155)',
-              dot: 'oklch(0.78 0.13 155)',
-            },
-          ],
-          [
-            {
-              t: '09:58:40',
-              mono: true,
-              fg: '#8B8B93',
-            },
-            {
-              t: 'StopContainer',
-              mono: true,
-              fg: '#EDEDEF',
-            },
-            {
-              t: 'srv-fra-4',
-              mono: true,
-            },
-            {
-              t: 'refused · lease expired',
-              fg: 'oklch(0.80 0.12 80)',
-              dot: 'oklch(0.80 0.12 80)',
-            },
-          ],
         ],
       },
     ],
