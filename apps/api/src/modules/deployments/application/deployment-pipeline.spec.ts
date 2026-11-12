@@ -17,6 +17,8 @@ import type {
   StoredAllocation,
 } from './ports';
 
+type ActionOrigin = Parameters<ActionQueue['enqueue']>[0]['origin'];
+
 const ORG = '0190f5a8-7b1c-7e2d-8f3a-0000000000aa';
 const APP = '0190f5a8-7b1c-7e2d-8f3a-0123456789ab';
 const NODE = '0190f5a8-7b1c-7e2d-8f3a-00000000000a';
@@ -66,7 +68,10 @@ function world(
     createdAt: NOW,
   };
   let allocations: (StoredAllocation & { stopped: boolean })[] = [];
-  const queued = new Map<string, { nodeId: string; kind: string | undefined }>();
+  const queued = new Map<
+    string,
+    { nodeId: string; kind: string | undefined; origin: ActionOrigin }
+  >();
   const outcomes = new Map<string, StepOutcome>();
   const events: DomainEvent[] = [];
   const nodes = options.nodes ?? [
@@ -144,7 +149,11 @@ function world(
   };
   const actions: ActionQueue = {
     enqueue: (input) => {
-      queued.set(input.idempotencyKey, { nodeId: input.nodeId, kind: input.action.case });
+      queued.set(input.idempotencyKey, {
+        nodeId: input.nodeId,
+        kind: input.action.case,
+        origin: input.origin,
+      });
       return Promise.resolve({ id: input.idempotencyKey, created: true });
     },
   };
@@ -221,6 +230,12 @@ describe('DeploymentPipeline', () => {
       'healthCheck',
       'upsertRoute',
     ]);
+    // Every action names its deployment, for the application's action history (#263).
+    expect(
+      [...w.queued.values()].every(
+        (a) => a.origin.applicationId === APP && a.origin.deploymentId === w.deployment.id,
+      ),
+    ).toBe(true);
     expect(w.events.map((e) => [e.type, e.payload['to'] ?? ''])).toEqual([
       ['release.image_resolved', ''],
       ['deployment.advanced', 'scheduling'],
