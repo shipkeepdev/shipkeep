@@ -142,3 +142,48 @@ describe('EnvironmentEvents.run', () => {
     expect(aborted).toBe(true);
   });
 });
+
+describe('EnvironmentEvents.poll', () => {
+  const target = { organizationId: 'o', projectId: 'p', environmentId: 'e' };
+  const context = { userId: 'u', securityVersion: 1, ip: '203.0.113.9', userAgent: 'test' };
+
+  function service(sessionLive: () => Promise<void>) {
+    const calls: string[] = [];
+    const accounts = {
+      assertSessionLive: async () => {
+        calls.push('session');
+        await sessionLive();
+      },
+      run: (_context: unknown, operation: () => Promise<unknown>) => {
+        calls.push('account');
+        return operation();
+      },
+    };
+    const access = {
+      require: () => {
+        calls.push('permission');
+        return Promise.resolve();
+      },
+    };
+    const reader = {
+      afterInEnvironment: () => {
+        calls.push('read');
+        return Promise.resolve([record('e1')]);
+      },
+    };
+    const events = new EnvironmentEvents(reader as never, accounts as never, access as never);
+    return { events, calls };
+  }
+
+  it('checks the session, then the account and the permission, before reading', async () => {
+    const { events, calls } = service(() => Promise.resolve());
+    await expect(events.poll(context, target, 'start')).resolves.toHaveLength(1);
+    expect(calls).toEqual(['session', 'account', 'permission', 'read']);
+  });
+
+  it('reads nothing once the session that opened the stream is gone', async () => {
+    const { events, calls } = service(() => Promise.reject(new Error('signed out')));
+    await expect(events.poll(context, target, 'start')).rejects.toThrow('signed out');
+    expect(calls).toEqual(['session']);
+  });
+});
