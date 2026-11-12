@@ -321,4 +321,21 @@ describe('identity HTTP guards', () => {
     });
     expect(response.body).toMatchObject({ status: 429, code: 'too_many_requests' });
   });
+
+  // Last on purpose: it leaves this test client's network held back for the rest of its window.
+  it('refuses a network that keeps sending unknown session cookies before any lookup', async () => {
+    const unknown = `__Host-shipkeep_session=${'Z'.repeat(43)}`;
+    let refused = 0;
+    for (let attempt = 0; attempt < 40 && refused === 0; attempt++) {
+      const response = await http().get('/fixture/private').set('Cookie', unknown);
+      if (response.status === 429) refused = attempt;
+      else expect(response.status).toBe(401);
+    }
+    expect(refused).toBeGreaterThan(0);
+    const lookups = authenticate.mock.calls.length;
+    const held = await http().get('/fixture/private').set('Cookie', unknown).expect(429);
+    expect(held.headers['retry-after']).toBeDefined();
+    // Turned away before the session lookup.
+    expect(authenticate.mock.calls.length).toBe(lookups);
+  });
 });
