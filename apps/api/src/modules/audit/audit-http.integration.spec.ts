@@ -104,11 +104,15 @@ describe('audit events over HTTP', () => {
 
   // Last on purpose: it signs the environment viewer out.
   it('ends an open stream once its session is signed out, and sends nothing afterwards', async () => {
+    let opened: () => void = () => undefined;
+    const open = new Promise<void>((resolve) => (opened = resolve));
     const stream = fixture
       .get(`${fixture.environment}/events`, 'environmentViewer')
       .set('Accept', 'text/event-stream')
       .buffer(true)
       .parse((response, done) => {
+        // Called when the response headers arrive: the server has accepted the stream.
+        opened();
         let text = '';
         response.setEncoding('utf8');
         response.on('data', (chunk: string) => (text += chunk));
@@ -117,8 +121,8 @@ describe('audit events over HTTP', () => {
         });
       });
     const ended = stream.then((response) => response);
-    // The stream is open under the viewer's session; sign that session out before the first poll.
-    await new Promise((resolve) => setTimeout(resolve, 300));
+    // The stream is open under the viewer's session; only then sign that session out.
+    await open;
     await fixture.post('/api/v1/auth/logout', 'environmentViewer', {}).expect(204);
     await fixture
       .post(`${fixture.environment}/secrets`, 'owner', { name: 'AFTER_LOGOUT', value: 'x' })
