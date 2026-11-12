@@ -231,6 +231,10 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 	switch {
 	case response.StatusCode == http.StatusNotFound:
 		return ErrNotFound
+	case response.StatusCode == http.StatusBadRequest && method == http.MethodGet:
+		// Caddy answers a read below a missing parent ("invalid traversal path") with 400, not 404.
+		// A read sends no body, so nothing else about it can be malformed.
+		return ErrNotFound
 	case response.StatusCode/100 != 2:
 		// Caddy error text can contain configuration: report the status only.
 		return fmt.Errorf("caddy %s: status %d", method, response.StatusCode)
