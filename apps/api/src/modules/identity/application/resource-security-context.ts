@@ -5,6 +5,8 @@ import type { SecurityContext } from './mfa-commands';
 /** Constructed by authenticated transports, never from a request body. */
 export interface ResourceSecurityContext extends SecurityContext {
   readonly apiCredential?: { readonly id: string; readonly value: Secret };
+  /** The browser session that authenticated the request, for work that outlives it (a stream). */
+  readonly session?: { readonly token: Secret };
 }
 
 /** Chosen by the command itself; the transport cannot substitute a weaker permission. */

@@ -94,13 +94,21 @@ export class EnvironmentEvents implements OnApplicationShutdown {
     private readonly access: TenantAccess,
   ) {}
 
-  /** The live session and permission are checked on every call: revocation ends the stream. */
-  poll(context: SecurityContext, target: EnvironmentTarget, after: string): Promise<AuditRecord[]> {
+  /**
+   * The session, the account and the permission are checked on every call: signing out, a revoked
+   * or expired session, or lost access ends the stream.
+   */
+  async poll(
+    context: SecurityContext,
+    target: EnvironmentTarget,
+    after: string,
+  ): Promise<AuditRecord[]> {
     const scope = {
       organizationId: target.organizationId,
       projectId: target.projectId,
       environmentId: target.environmentId,
     };
+    await this.accounts.assertSessionLive(context);
     return this.accounts.run(
       context,
       async () => {

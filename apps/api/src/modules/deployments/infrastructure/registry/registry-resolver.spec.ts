@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 import type { RegistryRequest, RegistryResponse, RegistryTransport } from './guarded-https';
-import { RegistryAccessError } from './guarded-https';
+import { publicRegistryHost, RegistryAccessError } from './guarded-https';
 import { bearerChallenge, RegistryResolver } from './registry-resolver';
 
 const DIGEST = `sha256:${'b'.repeat(64)}`;
@@ -36,11 +36,47 @@ const challenge =
   'Bearer realm="https://auth.docker.io/token",service="registry.docker.io",scope="repository:library/nginx:pull"';
 
 describe('RegistryResolver', () => {
-  it('keeps digest-pinned references without any network call', async () => {
+  it('keeps digest-pinned references without any registry request', async () => {
     const { fake, calls } = transport(() => reply(500));
-    await expect(
-      new RegistryResolver(fake).resolve(`ghcr.io/acme/app:1.0@${DIGEST}`),
-    ).resolves.toBe(`ghcr.io/acme/app@${DIGEST}`);
+    const hosts: string[] = [];
+    const resolver = new RegistryResolver(fake, (host) => {
+      hosts.push(host);
+      return Promise.resolve();
+    });
+    await expect(resolver.resolve(`ghcr.io/acme/app:1.0@${DIGEST}`)).resolves.toBe(
+      `ghcr.io/acme/app@${DIGEST}`,
+    );
+    expect(calls).toEqual([]);
+    // The registry still goes through the address policy.
+    expect(hosts).toEqual(['ghcr.io']);
+  });
+
+  it('refuses a digest-pinned reference on a registry that is not public', async () => {
+    const { fake, calls } = transport(() => reply(200));
+    // Names resolve to whatever the test says; literals never reach the resolver.
+    const check = publicRegistryHost((hostname, _options, callback) => {
+      const internal: Record<string, string> = {
+        'internal.example.com': '10.0.0.5',
+        localhost: '127.0.0.1',
+      };
+      callback(null, [{ address: internal[hostname] ?? '8.8.8.8', family: 4 }]);
+    });
+    const resolver = new RegistryResolver(fake, check);
+    for (const registry of [
+      '127.0.0.1:5000',
+      '10.0.0.1:5000',
+      '169.254.169.254',
+      'localhost:5000',
+      'internal.example.com',
+    ]) {
+      const refusal: unknown = await resolver
+        .resolve(`${registry}/team/app@${DIGEST}`)
+        .catch((error: unknown) => error);
+      expect(refusal, registry).toMatchObject({ code: 'image_resolution_failed' });
+    }
+    await expect(resolver.resolve(`registry.example.com/team/app@${DIGEST}`)).resolves.toBe(
+      `registry.example.com/team/app@${DIGEST}`,
+    );
     expect(calls).toEqual([]);
   });
 

@@ -9,6 +9,7 @@ import { TenantAccess } from '../../organizations/application/tenant-access';
 import { ApiTokenAuthentication } from '../application/api-token-authentication';
 import { IDENTITY_THROTTLE, type IdentityThrottle } from '../application/identity-throttle';
 import { SessionCommands } from '../application/session-commands';
+import { FAILED_SESSION_LIMIT, FailedSessions } from '../domain/failed-sessions';
 import { AuthenticationError } from '../domain/identity-policy';
 
 import {
@@ -29,6 +30,8 @@ const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 /** Undeclared routes deny access, including otherwise valid credentials. */
 @Injectable()
 export class IdentityGuard implements CanActivate {
+  private readonly failedSessions = new FailedSessions();
+
   constructor(
     private readonly reflector: Reflector,
     private readonly config: AppConfig,
@@ -62,7 +65,23 @@ export class IdentityGuard implements CanActivate {
     const policy = cookiePolicy(this.config.get('API_PUBLIC_URL'));
     const token = readCredential(request.headers.cookie, policy.name);
     const csrf = unsafe ? headerCredential(request.headers['x-shipkeep-csrf']) : undefined;
-    const { user, session } = await this.sessions.authenticate(token, csrf);
+    // Unknown cookies cost a lookup each: a network that keeps sending them is refused before it.
+    const ip = clientIp(request);
+    const until = this.failedSessions.blockedUntil(ip, Date.now());
+    if (until !== undefined)
+      enforceThrottle(context.switchToHttp().getResponse<Response>(), {
+        allowed: false,
+        limit: FAILED_SESSION_LIMIT,
+        remaining: 0,
+        resetAt: new Date(until),
+        retryAfterSeconds: Math.max(1, Math.ceil((until - Date.now()) / 1000)),
+      });
+    const { user, session } = await this.sessions
+      .authenticate(token, csrf)
+      .catch((error: unknown) => {
+        if (error instanceof AuthenticationError) this.failedSessions.record(ip, Date.now());
+        throw error;
+      });
     if (access.kind === 'tenant') await this.tenants.require(user.id, access.permission, target);
     request.identity = {
       kind: 'session',

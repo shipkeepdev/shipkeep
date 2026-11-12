@@ -72,6 +72,14 @@ export class AccountMutationAuthority {
     });
   }
 
+  /**
+   * `run` revalidates the account, and an API token when there is one. A browser session is only
+   * checked when the request arrives; work that continues afterwards calls this before each step.
+   */
+  async assertSessionLive(context: SecurityContext, now = new Date()): Promise<void> {
+    if (context.session) await this.sessions.assertLive(context.userId, context.session.token, now);
+  }
+
   async reauthenticated<T>(
     context: SecurityContext,
     password: Secret,

@@ -112,6 +112,6 @@ export function resourceContext(request: IdentityRequest): ResourceSecurityConte
     userAgent: request.headers['user-agent'] ?? '',
     ...(actor.kind === 'api_token'
       ? { apiCredential: { id: actor.tokenId, value: actor.token } }
-      : {}),
+      : { session: { token: actor.token } }),
   };
 }
