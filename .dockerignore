@@ -18,3 +18,4 @@ deploy/dev/secrets
 **/*.key
 **/kek
 go.work.sum
+apps/web/public/install

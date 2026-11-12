@@ -6,8 +6,9 @@ output=apps/web/public/install
 mkdir -p "$output"
 work=$(mktemp -d)
 trap 'rm -rf -- "$work"' EXIT
-version=$(git describe --tags --always --dirty 2>/dev/null || printf dev)
-commit=$(git rev-parse HEAD 2>/dev/null || printf unknown)
+# An image build has no git history: it passes both values in.
+version=${SHIPKEEP_VERSION:-$(git describe --tags --always --dirty 2>/dev/null || printf dev)}
+commit=${SHIPKEEP_COMMIT:-$(git rev-parse HEAD 2>/dev/null || printf unknown)}
 buildinfo=github.com/shipkeepdev/shipkeep/lib/buildinfo
 for arch in amd64 arm64; do
   CGO_ENABLED=0 GOOS=linux GOARCH=$arch go build -trimpath -buildvcs=false -ldflags="-s -w -X $buildinfo.Version=$version -X $buildinfo.Commit=$commit" -o "$work/$arch" ./agent/cmd/shipkeep-agent
