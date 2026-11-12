@@ -259,6 +259,11 @@ const COLUMNS =
                   }}
                 </div>
                 <pre class="code-box" [attr.aria-label]="'Install command' | t">{{ install }}</pre>
+                <div>
+                  <button class="btn btn-sm" type="button" (click)="clipboard.copy(install)">
+                    {{ 'Copy the command' | t }}
+                  </button>
+                </div>
                 <div class="text-[12px] leading-[1.55] text-mute">
                   {{
                     'The command checks the installer and agent checksums. The agent checks the fingerprint, enrolls, then deletes the token.'

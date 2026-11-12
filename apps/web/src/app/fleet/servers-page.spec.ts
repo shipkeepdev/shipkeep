@@ -6,6 +6,7 @@ import { InstallCommand, installCommand } from './install-command';
 
 import { appRoutes } from '../app.routes';
 import { IDENTITY_FETCH } from '../identity/identity-api';
+import { PRIVATE_CLIPBOARD } from '../identity/private-clipboard';
 
 const ORG = '0190f5a8-7b1c-7e2d-8f3a-0000000000aa';
 const NODE = '0190f5a8-7b1c-7e2d-8f3a-0000000000bb';
@@ -73,8 +74,16 @@ describe('servers page', () => {
         return new Response(null, { status: 204 });
       },
     };
+    copied = [];
     TestBed.configureTestingModule({
       providers: [
+        {
+          provide: PRIVATE_CLIPBOARD,
+          useValue: (value: string) => {
+            copied.push(value);
+            return Promise.resolve();
+          },
+        },
         provideRouter(
           appRoutes,
           withComponentInputBinding(),
@@ -114,6 +123,7 @@ describe('servers page', () => {
     await settle();
   });
 
+  let copied: string[] = [];
   function element(): HTMLElement {
     const element = harness.routeNativeElement;
     if (!element) throw new Error('missing route');
@@ -164,6 +174,13 @@ describe('servers page', () => {
     // The token stays out of the configuration and of command lines.
     expect(config).not.toContain(TOKEN);
     expect(element().textContent).not.toContain('correct horse');
+    // The command is long and scrolls sideways: one button copies all of it, and only it.
+    const copy = [...element().querySelectorAll('button')].find(
+      (button) => button.textContent.trim() === 'Copy the command',
+    );
+    copy?.click();
+    await settle();
+    expect(copied).toEqual([config]);
   });
 
   it('falls back to the manual setup when the installer is unavailable, without the token', async () => {
