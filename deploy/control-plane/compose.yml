@@ -1,0 +1,113 @@
+# Control plane on one server (task M8.3b2). See docs/INSTALL.md.
+#
+#   cp .env.example .env    # then fill it in
+#   docker compose up -d
+#
+# Start order: PostgreSQL, then three one-shot steps (key-encryption key, migrations, restricted
+# database login), then the control plane and its HTTPS front. The one-shot steps run again at
+# every `up`, and change nothing when there is nothing to do.
+# Images are pinned to digests (THREAT_MODEL, supply chain); Renovate keeps them current.
+name: shipkeep
+
+x-shipkeep: &shipkeep
+  image: ghcr.io/shipkeepdev/shipkeep:${SHIPKEEP_VERSION:?set SHIPKEEP_VERSION in .env}
+
+x-admin-url: &admin-url postgresql://shipkeep_admin:${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD in .env}@postgres:5432/shipkeep
+x-app-url: &app-url postgresql://shipkeep_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env}@postgres:5432/shipkeep
+
+services:
+  postgres:
+    image: postgres:17@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1
+    environment:
+      POSTGRES_USER: shipkeep_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD in .env}
+      POSTGRES_DB: shipkeep
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U shipkeep_admin -d shipkeep']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  kek:
+    <<: *shipkeep
+    command: ['node', 'setup/ensure-kek.mjs']
+    environment:
+      SHIPKEEP_KEK_FILE: /var/lib/shipkeep/kek
+    volumes:
+      - keys:/var/lib/shipkeep
+    restart: 'no'
+
+  migrate:
+    <<: *shipkeep
+    command: ['node_modules/.bin/prisma', 'migrate', 'deploy', '--config', 'prisma.config.ts']
+    environment:
+      MIGRATION_DATABASE_URL: *admin-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  database-role:
+    <<: *shipkeep
+    command: ['node', 'postgres/provision-runtime.mjs']
+    environment:
+      MIGRATION_DATABASE_URL: *admin-url
+      DATABASE_URL: *app-url
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: 'no'
+
+  control-plane:
+    <<: *shipkeep
+    environment:
+      API_PUBLIC_URL: https://${SHIPKEEP_DOMAIN:?set SHIPKEEP_DOMAIN in .env}
+      # Only Caddy, on loopback in the same network namespace, reaches the API port.
+      TRUST_PROXY: loopback
+      DATABASE_URL: *app-url
+      SHIPKEEP_KEK_FILE: /var/lib/shipkeep/kek
+      AGENT_GATEWAY_ADDR: 0.0.0.0:7443
+      AGENT_GATEWAY_SERVER_NAME: ${SHIPKEEP_DOMAIN:?set SHIPKEEP_DOMAIN in .env}
+      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in .env}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM in .env}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+    volumes:
+      - keys:/var/lib/shipkeep:ro
+    ports:
+      # 80 and 443 belong to Caddy below, which shares this network namespace.
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+      # Agent gateway: gRPC over mutual TLS, terminated by the control plane itself.
+      - '7443:7443'
+    depends_on:
+      kek:
+        condition: service_completed_successfully
+      database-role:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.11.9-alpine@sha256:0bbb055bda6793c999bde78b1b5ce3e89f829fb031af2cf50056ea1246559fee
+    network_mode: service:control-plane
+    environment:
+      SHIPKEEP_DOMAIN: ${SHIPKEEP_DOMAIN:?set SHIPKEEP_DOMAIN in .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  keys:
+  caddy-data:
+  caddy-config:

@@ -92,9 +92,13 @@ export const configSchema = z
 export type RawConfig = z.input<typeof configSchema>;
 export type ParsedConfig = z.output<typeof configSchema>;
 
-/** Parses and validates raw environment variables. Throws a readable error listing every problem. */
+/**
+ * Parses and validates raw environment variables. Throws a readable error listing every problem.
+ * An empty value counts as unset: a compose file cannot omit a variable, it can only leave it empty.
+ */
 export function parseConfig(env: Record<string, string | undefined>): ParsedConfig {
-  const result = configSchema.safeParse(env);
+  const set = Object.fromEntries(Object.entries(env).filter(([, value]) => value !== ''));
+  const result = configSchema.safeParse(set);
   if (!result.success) {
     const problems = result.error.issues.map(
       (issue) => `${issue.path.map(String).join('.') || '(root)'}: ${issue.message}`,

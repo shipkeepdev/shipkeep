@@ -22,6 +22,25 @@ describe('parseConfig', () => {
     expect(cfg.DATABASE_URL.expose()).toBe(minimal.DATABASE_URL);
   });
 
+  it('treats an empty value as unset', () => {
+    const cfg = parseConfig({ ...minimal, API_PORT: '', SMTP_USER: '', SMTP_PASSWORD: '' });
+    expect(cfg.API_PORT).toBe(3000);
+    expect(cfg.SMTP_USER).toBeUndefined();
+    expect(cfg.SMTP_PASSWORD).toBeUndefined();
+    // A required value left empty is still missing.
+    expect(() => parseConfig({ ...minimal, DATABASE_URL: '' })).toThrow(/DATABASE_URL/);
+    // One half of the SMTP credentials is still refused.
+    expect(() =>
+      parseConfig({
+        ...minimal,
+        SMTP_HOST: 'smtp.example.com',
+        SMTP_FROM: 'a@example.com',
+        SMTP_USER: 'u',
+        SMTP_PASSWORD: '',
+      }),
+    ).toThrow(/SMTP_PASSWORD/);
+  });
+
   it('coerces and bounds numbers', () => {
     expect(parseConfig({ ...minimal, API_PORT: '8080' }).API_PORT).toBe(8080);
     expect(() => parseConfig({ ...minimal, API_PORT: '70000' })).toThrow(/API_PORT/);
