@@ -4,6 +4,8 @@
 #
 #   docker build -f deploy/control-plane.Dockerfile -t shipkeep .
 #
+# Needs BuildKit (the `docker buildx` component): the legacy builder does not know BUILDPLATFORM.
+#
 # Commands, all without a shell:
 #   node main.js                                              the control plane (default)
 #   node_modules/.bin/prisma migrate deploy --config prisma.config.ts   apply migrations

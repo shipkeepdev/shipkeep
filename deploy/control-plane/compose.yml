@@ -65,11 +65,29 @@ services:
         condition: service_completed_successfully
     restart: 'no'
 
+  # Holds the network namespace that the control plane and Caddy share, and the published ports.
+  # It does nothing else, so it does not restart: either of the two can restart or crash without
+  # cutting the other off. (A container that joins another one's namespace loses it when that
+  # one restarts.)
+  net:
+    <<: *shipkeep
+    command: ['node', '-e', 'setInterval(() => {}, 2147483647)']
+    healthcheck:
+      disable: true
+    ports:
+      # 80 and 443 are served by Caddy.
+      - '80:80'
+      - '443:443'
+      - '443:443/udp'
+      # Agent gateway: gRPC over mutual TLS, terminated by the control plane itself.
+      - '7443:7443'
+    restart: unless-stopped
+
   control-plane:
     <<: *shipkeep
     environment:
       API_PUBLIC_URL: https://${SHIPKEEP_DOMAIN:?set SHIPKEEP_DOMAIN in .env}
-      # Only Caddy, on loopback in the same network namespace, reaches the API port.
+      # Only Caddy, on loopback in the shared network namespace, reaches the API port.
       TRUST_PROXY: loopback
       DATABASE_URL: *app-url
       SHIPKEEP_KEK_FILE: /var/lib/shipkeep/kek
@@ -82,14 +100,10 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
     volumes:
       - keys:/var/lib/shipkeep:ro
-    ports:
-      # 80 and 443 belong to Caddy below, which shares this network namespace.
-      - '80:80'
-      - '443:443'
-      - '443:443/udp'
-      # Agent gateway: gRPC over mutual TLS, terminated by the control plane itself.
-      - '7443:7443'
+    network_mode: service:net
     depends_on:
+      net:
+        condition: service_started
       kek:
         condition: service_completed_successfully
       database-role:
@@ -98,7 +112,7 @@ services:
 
   caddy:
     image: caddy:2.11.9-alpine@sha256:0bbb055bda6793c999bde78b1b5ce3e89f829fb031af2cf50056ea1246559fee
-    network_mode: service:control-plane
+    network_mode: service:net
     environment:
       SHIPKEEP_DOMAIN: ${SHIPKEEP_DOMAIN:?set SHIPKEEP_DOMAIN in .env}
     volumes:
