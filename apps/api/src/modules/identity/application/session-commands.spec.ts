@@ -33,7 +33,13 @@ function commands(overrides: { session?: object; user?: object; found?: boolean 
       return Promise.resolve(true);
     },
   };
-  const secrets = { hash: (purpose: string) => `${purpose}-hash` };
+  const hashed: { purpose: string; token: Secret }[] = [];
+  const secrets = {
+    hash: (purpose: string, token: Secret) => {
+      hashed.push({ purpose, token });
+      return `${purpose}-hash`;
+    },
+  };
   const service = new SessionCommands(
     store as never,
     {} as never,
@@ -41,13 +47,17 @@ function commands(overrides: { session?: object; user?: object; found?: boolean 
     {} as never,
     {} as never,
   );
-  return { service, lookups, touched: () => touched };
+  return { service, lookups, hashed, touched: () => touched };
 }
 
 describe('SessionCommands.assertLive', () => {
   it('accepts a live session of the same user without counting as activity', async () => {
-    const { service, lookups, touched } = commands();
+    const { service, lookups, hashed, touched } = commands();
     await expect(service.assertLive('u1', TOKEN, NOW)).resolves.toBeUndefined();
+    // The session looked up is the one of the token given, hashed as a session token.
+    expect(hashed).toHaveLength(1);
+    expect(hashed[0]?.purpose).toBe('session');
+    expect(hashed[0]?.token).toBe(TOKEN);
     expect(lookups).toEqual(['session-hash']);
     // A stream left open must not keep an idle session alive.
     expect(touched()).toBe(0);
