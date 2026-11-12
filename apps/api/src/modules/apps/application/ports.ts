@@ -1,4 +1,9 @@
-import type { Application, ApplicationConfig, ApplicationTarget } from '../domain/application';
+import type {
+  Application,
+  ApplicationConfig,
+  ApplicationHost,
+  ApplicationTarget,
+} from '../domain/application';
 
 export const APPLICATION_STORE = Symbol('ApplicationStore');
 /** Every method runs inside `runTenant` for the target's organization. */
@@ -30,6 +35,11 @@ export interface ApplicationStore {
     now: Date,
   ): Promise<string | undefined>;
   list(target: ApplicationTarget): Promise<Application[]>;
+  /**
+   * The organization's nodes, not removed, with a placed replica of the application that their
+   * agent last saw running. Node addresses never leave the domain check.
+   */
+  hosts(application: Pick<Application, 'id' | 'organizationId'>): Promise<ApplicationHost[]>;
 }
 
 export const DOMAIN_RESOLVER = Symbol('DomainResolver');

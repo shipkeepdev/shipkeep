@@ -43,8 +43,10 @@ type TenantHttpFixture = Awaited<ReturnType<typeof integrationApp>> & {
 };
 
 /** Restricted integration database and real credentials for HTTP role acceptance. */
-export async function tenantHttpFixture(): Promise<TenantHttpFixture> {
-  const fixture = await integrationApp([], { restrictedDatabase: true });
+export async function tenantHttpFixture(
+  overrides: Parameters<typeof integrationApp>[0] = [],
+): Promise<TenantHttpFixture> {
+  const fixture = await integrationApp(overrides, { restrictedDatabase: true });
   try {
     const { app } = fixture;
     const prisma = app.get(PrismaService);

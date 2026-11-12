@@ -4,7 +4,9 @@ import {
   applicationConfig,
   assertSameName,
   canonicalJson,
+  type ApplicationHost,
   domainDns,
+  domainMatch,
   MAX_APPLICATION_CONFIG_BYTES,
 } from './application';
 
@@ -106,17 +108,93 @@ describe('domains', () => {
 
   it('never reveals non-public addresses', () => {
     const isPublic = (address: string) => !address.startsWith('10.');
-    expect(domainDns('a.example.com', ['203.0.113.4', '10.0.0.5'], isPublic)).toEqual({
+    const check = (hostname: string, answers: readonly string[] | undefined) =>
+      domainDns(hostname, answers, isPublic, [], now);
+    expect(check('a.example.com', ['203.0.113.4', '10.0.0.5'])).toEqual({
       hostname: 'a.example.com',
       status: 'public',
       addresses: ['203.0.113.4'],
+      match: 'not_running',
     });
-    expect(domainDns('internal.example.com', ['10.0.0.5'], isPublic)).toEqual({
+    expect(check('internal.example.com', ['10.0.0.5'])).toEqual({
       hostname: 'internal.example.com',
       status: 'private',
       addresses: [],
+      match: 'not_running',
     });
-    expect(domainDns('a.example.com', [], isPublic).status).toBe('none');
-    expect(domainDns('a.example.com', undefined, isPublic).status).toBe('unknown');
+    expect(check('a.example.com', []).status).toBe('none');
+    expect(check('a.example.com', undefined).status).toBe('unknown');
+  });
+
+  it('says whether the answers reach a node running the application', () => {
+    const isPublic = (address: string) => !address.startsWith('10.');
+    const host = nodeAt(['8.8.8.8']);
+    expect(domainDns('a.example.com', ['8.8.8.8'], isPublic, [host], now)).toEqual({
+      hostname: 'a.example.com',
+      status: 'public',
+      addresses: ['8.8.8.8'],
+      match: 'serving',
+    });
+    // A private answer is never shown, but it still counts as not reaching a declared address.
+    expect(domainDns('a.example.com', ['8.8.8.8', '10.0.0.5'], isPublic, [host], now)).toEqual({
+      hostname: 'a.example.com',
+      status: 'public',
+      addresses: ['8.8.8.8'],
+      match: 'partial',
+    });
+  });
+});
+
+const now = new Date('2026-11-11T12:00:00Z');
+function nodeAt(
+  publicAddresses: readonly string[],
+  overrides: Partial<ApplicationHost> = {},
+): ApplicationHost {
+  return { status: 'ready', lastHeartbeatAt: now, publicAddresses, ...overrides };
+}
+
+describe('domainMatch', () => {
+  const web1 = nodeAt(['8.8.8.8', '2606:4700:4700::1111']);
+  const web2 = nodeAt(['1.1.1.1']);
+
+  it('is serving when every answer is a declared address of a running node', () => {
+    expect(domainMatch(['8.8.8.8'], [web1, web2], now)).toBe('serving');
+    expect(domainMatch(['8.8.8.8', '1.1.1.1'], [web1, web2], now)).toBe('serving');
+    // DNS answers are compared in canonical form.
+    expect(domainMatch(['2606:4700:4700:0:0:0:0:1111'], [web1], now)).toBe('serving');
+    expect(domainMatch(['2606:4700:4700::1111', '8.8.8.8'], [web1], now)).toBe('serving');
+  });
+
+  it('is partial when only some answers reach a running node', () => {
+    expect(domainMatch(['8.8.8.8', '9.9.9.9'], [web1], now)).toBe('partial');
+  });
+
+  it('is elsewhere when no answer reaches a running node, or there is no record', () => {
+    expect(domainMatch(['9.9.9.9'], [web1, web2], now)).toBe('elsewhere');
+    expect(domainMatch(['10.0.0.5'], [web1], now)).toBe('elsewhere');
+    expect(domainMatch([], [web1], now)).toBe('elsewhere');
+    expect(domainMatch(['not an address', '::ffff:8.8.8.8'], [web1], now)).toBe('elsewhere');
+  });
+
+  it('cannot tell when the lookup failed or a running node has no declared address', () => {
+    expect(domainMatch(undefined, [web1], now)).toBe('unknown');
+    const undeclared = nodeAt([]);
+    expect(domainMatch(['9.9.9.9'], [web1, undeclared], now)).toBe('unknown');
+    expect(domainMatch(['8.8.8.8', '9.9.9.9'], [web1, undeclared], now)).toBe('unknown');
+    expect(domainMatch(['9.9.9.9'], [undeclared], now)).toBe('unknown');
+    // Still decided when every answer matches, or when there is no record at all.
+    expect(domainMatch(['8.8.8.8'], [web1, undeclared], now)).toBe('serving');
+    expect(domainMatch([], [undeclared], now)).toBe('elsewhere');
+  });
+
+  it('is not_running when no reachable node runs the application', () => {
+    expect(domainMatch(['8.8.8.8'], [], now)).toBe('not_running');
+    expect(domainMatch(undefined, [], now)).toBe('not_running');
+    const silent = nodeAt(['8.8.8.8'], { lastHeartbeatAt: new Date(now.getTime() - 61_000) });
+    const removed = nodeAt(['8.8.8.8'], { status: 'removed' });
+    expect(domainMatch(['8.8.8.8'], [silent, removed], now)).toBe('not_running');
+    // A suspect node still serves until its lease expires.
+    const suspect = nodeAt(['8.8.8.8'], { lastHeartbeatAt: new Date(now.getTime() - 20_000) });
+    expect(domainMatch(['8.8.8.8'], [suspect], now)).toBe('serving');
   });
 });

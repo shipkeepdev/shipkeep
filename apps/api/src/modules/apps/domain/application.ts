@@ -1,6 +1,9 @@
 import { type ShipkeepConfig, validateShipkeepConfig } from '@shipkeep/config-schema';
 import { InvalidInputError } from '@shipkeep/domain';
 
+import { type NodeStatus, observedStatus } from '../../fleet/domain/node';
+import { canonicalIpAddress } from '../../fleet/domain/node-address';
+
 /** Sources the control plane can deploy today; `git` and `compose` arrive with M3.1 and M3.8. */
 export const APPLICATION_SOURCES = ['image'] as const;
 export type ApplicationSource = (typeof APPLICATION_SOURCES)[number];
@@ -98,11 +101,31 @@ function sortKeys(value: unknown): unknown {
 /** Where a domain points, as far as the control plane may say (SPEC 8, PLAN M3.6a). */
 export type DomainDnsStatus = 'public' | 'private' | 'none' | 'unknown';
 
+/**
+ * Whether a domain's answers reach a node running the application (PLAN M3.6b1):
+ * - `serving`: every answer is a declared public address of such a node;
+ * - `partial`: some answers are, others are not;
+ * - `elsewhere`: no answer is, or there is no record;
+ * - `not_running`: no reachable node runs the application, so no answer can reach it;
+ * - `unknown`: the lookup failed, or a running node has no declared address to compare with.
+ */
+export type DomainMatch = 'serving' | 'partial' | 'elsewhere' | 'not_running' | 'unknown';
+
+/** A node with a placed replica of the application that its agent last saw running. */
+export interface ApplicationHost {
+  readonly status: NodeStatus;
+  readonly lastHeartbeatAt: Date | null;
+  /** Canonical addresses declared by an administrator; empty when none is. */
+  readonly publicAddresses: readonly string[];
+}
+
 export interface DomainDns {
   readonly hostname: string;
   readonly status: DomainDnsStatus;
   /** Public addresses only: answers about internal names must not reach tenants. */
   readonly addresses: readonly string[];
+  /** Says whether the domain reaches the application, never which node addresses were compared. */
+  readonly match: DomainMatch;
 }
 
 /** `addresses` undefined means the lookup itself failed, which says nothing about the record. */
@@ -110,9 +133,40 @@ export function domainDns(
   hostname: string,
   addresses: readonly string[] | undefined,
   isPublic: (address: string) => boolean,
+  hosts: readonly ApplicationHost[],
+  now: Date,
 ): DomainDns {
-  if (!addresses) return { hostname, status: 'unknown', addresses: [] };
-  if (!addresses.length) return { hostname, status: 'none', addresses: [] };
+  const match = domainMatch(addresses, hosts, now);
+  if (!addresses) return { hostname, status: 'unknown', addresses: [], match };
+  if (!addresses.length) return { hostname, status: 'none', addresses: [], match };
   const visible = addresses.filter(isPublic);
-  return { hostname, status: visible.length ? 'public' : 'private', addresses: visible };
+  return { hostname, status: visible.length ? 'public' : 'private', addresses: visible, match };
+}
+
+/**
+ * Compares every answer, private ones included (they can never equal a declared public address),
+ * with the addresses of the nodes running the application. A node whose lease expired or that was
+ * removed no longer counts, even if its last report said the replica was running.
+ */
+export function domainMatch(
+  answers: readonly string[] | undefined,
+  hosts: readonly ApplicationHost[],
+  now: Date,
+): DomainMatch {
+  const serving = hosts.filter((host) => {
+    const status = observedStatus(host, now);
+    return status !== 'down' && status !== 'removed';
+  });
+  if (!serving.length) return 'not_running';
+  if (!answers) return 'unknown';
+  if (!answers.length) return 'elsewhere';
+  const declared = new Set(serving.flatMap((host) => host.publicAddresses));
+  const matched = answers.filter((answer) => {
+    const canonical = canonicalIpAddress(answer);
+    return canonical !== undefined && declared.has(canonical);
+  }).length;
+  if (matched === answers.length) return 'serving';
+  // An unmatched answer may be the address of a running node nobody declared.
+  if (serving.some((host) => !host.publicAddresses.length)) return 'unknown';
+  return matched ? 'partial' : 'elsewhere';
 }
