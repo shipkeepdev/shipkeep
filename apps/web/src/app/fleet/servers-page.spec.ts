@@ -181,6 +181,11 @@ describe('servers page', () => {
     copy?.click();
     await settle();
     expect(copied).toEqual([config]);
+    // The confirmation names the command and sits next to its button, not under the token.
+    const statuses = [...element().querySelectorAll('[role="status"]')].map((status) =>
+      status.textContent.trim(),
+    );
+    expect(statuses).toEqual(['Command copied.']);
   });
 
   it('falls back to the manual setup when the installer is unavailable, without the token', async () => {

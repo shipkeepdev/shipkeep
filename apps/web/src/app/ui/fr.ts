@@ -93,6 +93,7 @@ export const FR: Readonly<Record<string, string>> = {
     'Sur un serveur Ubuntu 24.04 neuf avec curl et sudo, lancez cette commande, puis collez le jeton quand il est demandé. Docker et Caddy sont installés ; les ports 80 et 443 doivent être libres.',
   'Install command': "Commande d'installation",
   'Copy the command': 'Copier la commande',
+  'Command copied.': 'Commande copiée.',
   'The command checks the installer and agent checksums. The agent checks the fingerprint, enrolls, then deletes the token.':
     "La commande vérifie les sommes de contrôle de l'installeur et de l'agent. L'agent vérifie l'empreinte, s'enrôle, puis supprime le jeton.",
   'The one-command installer needs HTTPS and a production build. Set this server up by hand:':

@@ -243,12 +243,12 @@ const COLUMNS =
                 <button
                   type="button"
                   class="btn btn-sm rounded-md px-2.5 py-1"
-                  (click)="clipboard.copy(token.token)"
+                  (click)="copy('token', token.token)"
                 >
                   {{ 'Copy' | t }}
                 </button>
               </div>
-              @if (clipboard.message(); as message) {
+              @if (copied() === 'token' && clipboard.message(); as message) {
                 <p class="text-[12px] text-mute" role="status">{{ message | t }}</p>
               }
               @if (command(); as install) {
@@ -259,10 +259,15 @@ const COLUMNS =
                   }}
                 </div>
                 <pre class="code-box" [attr.aria-label]="'Install command' | t">{{ install }}</pre>
-                <div>
-                  <button class="btn btn-sm" type="button" (click)="clipboard.copy(install)">
+                <div class="flex flex-wrap items-center gap-2.5">
+                  <button class="btn btn-sm" type="button" (click)="copy('command', install)">
                     {{ 'Copy the command' | t }}
                   </button>
+                  @if (copied() === 'command' && clipboard.message(); as message) {
+                    <span class="text-[12px] text-mute" role="status">{{
+                      (message.startsWith('Copied') ? 'Command copied.' : message) | t
+                    }}</span>
+                  }
                 </div>
                 <div class="text-[12px] leading-[1.55] text-mute">
                   {{
@@ -451,6 +456,14 @@ export class ServersPage {
     inject(DestroyRef).onDestroy(() => {
       clearInterval(timer);
     });
+  }
+
+  /** Which of the two copy buttons was used last: its confirmation shows next to it. */
+  protected readonly copied = signal<'token' | 'command' | null>(null);
+
+  protected async copy(target: 'token' | 'command', value: string): Promise<void> {
+    this.copied.set(target);
+    await this.clipboard.copy(value);
   }
 
   protected async issue(): Promise<void> {
