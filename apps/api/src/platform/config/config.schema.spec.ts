@@ -22,13 +22,13 @@ describe('parseConfig', () => {
     expect(cfg.DATABASE_URL.expose()).toBe(minimal.DATABASE_URL);
   });
 
-  it('treats an empty value as unset', () => {
-    const cfg = parseConfig({ ...minimal, API_PORT: '', SMTP_USER: '', SMTP_PASSWORD: '' });
-    expect(cfg.API_PORT).toBe(3000);
+  it('treats empty SMTP credentials as unset, and nothing else', () => {
+    const cfg = parseConfig({ ...minimal, SMTP_USER: '', SMTP_PASSWORD: '' });
     expect(cfg.SMTP_USER).toBeUndefined();
     expect(cfg.SMTP_PASSWORD).toBeUndefined();
-    // A required value left empty is still missing.
+    // Other values left empty are still refused.
     expect(() => parseConfig({ ...minimal, DATABASE_URL: '' })).toThrow(/DATABASE_URL/);
+    expect(() => parseConfig({ ...minimal, SMTP_HOST: '' })).toThrow(/SMTP_HOST/);
     // One half of the SMTP credentials is still refused.
     expect(() =>
       parseConfig({

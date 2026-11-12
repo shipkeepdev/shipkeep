@@ -7,6 +7,12 @@ const port = z.coerce.number().int().min(1).max(65535);
 
 const httpUrl = z.url({ protocol: /^https?$/ });
 
+/**
+ * Optional SMTP credentials: empty counts as unset. A compose file cannot omit a variable, it can
+ * only leave it empty (deploy/control-plane/compose.yml).
+ */
+const emptyAsUnset = (value: unknown): unknown => (value === '' ? undefined : value);
+
 const postgresUrl = z
   .string()
   .regex(/^postgres(ql)?:\/\//, 'must be a postgresql:// URL')
@@ -58,13 +64,16 @@ export const configSchema = z
       .optional(),
     SMTP_PORT: port.default(465),
     SMTP_FROM: z.email().max(254).optional(),
-    SMTP_USER: z.string().min(1).max(254).optional(),
-    SMTP_PASSWORD: z
-      .string()
-      .min(1)
-      .max(4096)
-      .transform((value) => new Secret(value))
-      .optional(),
+    SMTP_USER: z.preprocess(emptyAsUnset, z.string().min(1).max(254).optional()),
+    SMTP_PASSWORD: z.preprocess(
+      emptyAsUnset,
+      z
+        .string()
+        .min(1)
+        .max(4096)
+        .transform((value) => new Secret(value))
+        .optional(),
+    ),
     SMTP_CA_FILE: z.string().min(1).optional(),
   })
   .superRefine((value, context) => {
@@ -92,13 +101,9 @@ export const configSchema = z
 export type RawConfig = z.input<typeof configSchema>;
 export type ParsedConfig = z.output<typeof configSchema>;
 
-/**
- * Parses and validates raw environment variables. Throws a readable error listing every problem.
- * An empty value counts as unset: a compose file cannot omit a variable, it can only leave it empty.
- */
+/** Parses and validates raw environment variables. Throws a readable error listing every problem. */
 export function parseConfig(env: Record<string, string | undefined>): ParsedConfig {
-  const set = Object.fromEntries(Object.entries(env).filter(([, value]) => value !== ''));
-  const result = configSchema.safeParse(set);
+  const result = configSchema.safeParse(env);
   if (!result.success) {
     const problems = result.error.issues.map(
       (issue) => `${issue.path.map(String).join('.') || '(root)'}: ${issue.message}`,
