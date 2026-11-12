@@ -100,11 +100,14 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           reference="${IMAGE}:${VERSION}@${DIGEST}"
-          echo "Control plane image: \`${reference}\`" >> "$GITHUB_STEP_SUMMARY"
+          # Three backticks, written by code so that the script holds no literal fence.
+          fence=$(printf '\140\140\140')
+          block=$(printf '## Control plane image\n\n%s\nSHIPKEEP_IMAGE=%s\n%s' "$fence" "$reference" "$fence")
+          printf '%s\n' "$block" >> "$GITHUB_STEP_SUMMARY"
           if [ "$PUBLISH" = true ]; then
             {
               gh release view "$TAG" --json body --jq .body
-              printf '\n## Control plane image\n\n```\nSHIPKEEP_IMAGE=%s\n```\n' "$reference"
+              printf '\n%s\n' "$block"
             } > "$RUNNER_TEMP/notes.md"
             gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
           fi
