@@ -8,6 +8,7 @@
 #   node main.js                                              the control plane (default)
 #   node_modules/.bin/prisma migrate deploy --config prisma.config.ts   apply migrations
 #   node postgres/provision-runtime.mjs                       create the restricted API login
+#   node setup/ensure-kek.mjs                                 create the key-encryption key once
 #
 # The base image is pinned by digest (THREAT_MODEL, supply chain); Renovate keeps it current.
 ARG NODE_IMAGE=node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
@@ -45,7 +46,10 @@ COPY --from=build /src/dist/apps/web/browser ./web/browser
 COPY apps/api/prisma ./prisma
 COPY apps/api/prisma.config.ts ./
 COPY deploy/postgres/runtime-role.sql deploy/postgres/provision-runtime.mjs ./postgres/
+COPY deploy/control-plane/ensure-kek.mjs ./setup/
 COPY LICENSE NOTICE ./
+# Home of the key-encryption key. A volume mounted here starts owned by the service user.
+RUN mkdir -p /var/lib/shipkeep && chown node:node /var/lib/shipkeep && chmod 700 /var/lib/shipkeep
 USER node
 EXPOSE 3000 7443
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
