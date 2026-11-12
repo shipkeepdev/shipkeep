@@ -42,20 +42,29 @@ describe('parseImageReference', () => {
     expect(parseImageReference('docker.io/traefik/whoami:v1.10.3')).toEqual({
       registry: 'registry-1.docker.io',
       repository: 'traefik/whoami',
-      // What the agent pulls stays as written.
-      name: 'docker.io/traefik/whoami',
+      // Docker records Docker Hub images without the host: the agent pulls and checks this name.
+      name: 'traefik/whoami',
       tag: 'v1.10.3',
       digest: null,
     });
     expect(parseImageReference('docker.io/nginx')).toMatchObject({
       registry: 'registry-1.docker.io',
       repository: 'library/nginx',
-      name: 'docker.io/nginx',
+      name: 'nginx',
     });
     expect(parseImageReference('index.docker.io/library/nginx:1.27')).toMatchObject({
       registry: 'registry-1.docker.io',
       repository: 'library/nginx',
+      name: 'nginx',
     });
+    // Written without a host, an official image under `library/` gets the same short name.
+    expect(parseImageReference('library/nginx')).toMatchObject({
+      repository: 'library/nginx',
+      name: 'nginx',
+    });
+    expect(pinnedReference(parseImageReference('docker.io/library/nginx:1.27'), DIGEST)).toBe(
+      `nginx@${DIGEST}`,
+    );
     // The registry host written out is not an alias: no `library/` is added for it.
     expect(parseImageReference('registry-1.docker.io/nginx')).toMatchObject({
       registry: 'registry-1.docker.io',
@@ -67,6 +76,23 @@ describe('parseImageReference', () => {
       registry: 'docker.io.example.com',
       repository: 'nginx',
     });
+  });
+
+  it('refuses a Docker Hub reference whose short name would name another host', () => {
+    // Emitted without `docker.io/`, these would make the node pull from the host in the path.
+    for (const reference of [
+      `docker.io/127.0.0.1/app@${DIGEST}`,
+      'docker.io/127.0.0.1/app:1',
+      'docker.io/localhost/app',
+      'docker.io/10.0.0.5/team/app',
+      'index.docker.io/internal.example.com/app',
+      `docker.io/169.254.169.254/app@${DIGEST}`,
+    ])
+      expect(() => parseImageReference(reference), reference).toThrow(
+        'The image reference is invalid.',
+      );
+    // A namespace without a dot is a Docker Hub namespace.
+    expect(parseImageReference('docker.io/acme/app').name).toBe('acme/app');
   });
 
   it('rejects malformed and hostile references', () => {
