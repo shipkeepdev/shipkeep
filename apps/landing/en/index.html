@@ -3,22 +3,103 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Shipkeep · Your cloud, on your servers</title>
-<meta name="description" content="Open source PaaS in development. Deploy to your own servers, without ever leaving a root key in a web panel.">
+<title>Shipkeep · Open source self-hosted PaaS for your own servers</title>
+<meta name="description" content="Open source, self-hosted PaaS in development: deploy your applications to your own servers, without Kubernetes and without leaving a root key in a web panel.">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://shipkeep.vercel.app/en">
 <link rel="alternate" hreflang="fr" href="https://shipkeep.vercel.app/">
 <link rel="alternate" hreflang="en" href="https://shipkeep.vercel.app/en">
+<link rel="alternate" hreflang="x-default" href="https://shipkeep.vercel.app/en">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Shipkeep · Your cloud, on your servers">
-<meta property="og:description" content="Open source PaaS in development. Deploy to your own servers, without ever leaving a root key in a web panel.">
+<meta property="og:site_name" content="Shipkeep">
+<meta property="og:locale" content="en_US">
+<meta property="og:locale:alternate" content="fr_FR">
+<meta property="og:title" content="Shipkeep · Open source self-hosted PaaS for your own servers">
+<meta property="og:description" content="Open source, self-hosted PaaS in development: deploy your applications to your own servers, without Kubernetes and without leaving a root key in a web panel.">
 <meta property="og:url" content="https://shipkeep.vercel.app/en">
 <meta property="og:image" content="https://shipkeep.vercel.app/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://shipkeep.vercel.app/og.jpg">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@graph": [
+  {
+   "@type": "SoftwareApplication",
+   "@id": "https://shipkeep.vercel.app/#software",
+   "name": "Shipkeep",
+   "url": "https://shipkeep.vercel.app/en",
+   "description": "Open source, self-hosted PaaS in development: deploy your applications to your own servers, without Kubernetes and without leaving a root key in a web panel.",
+   "applicationCategory": "DeveloperApplication",
+   "applicationSubCategory": "Platform as a service",
+   "operatingSystem": "Linux",
+   "inLanguage": "en",
+   "license": "https://www.apache.org/licenses/LICENSE-2.0",
+   "isAccessibleForFree": true,
+   "creativeWorkStatus": "In development: cannot be installed yet.",
+   "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+   },
+   "image": "https://shipkeep.vercel.app/og.jpg",
+   "sameAs": [
+    "https://github.com/shipkeepdev/shipkeep"
+   ]
+  },
+  {
+   "@type": "FAQPage",
+   "@id": "https://shipkeep.vercel.app/en#faq",
+   "inLanguage": "en",
+   "mainEntity": [
+    {
+     "@type": "Question",
+     "name": "Is Shipkeep really free?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Yes. Apache-2.0, no proprietary edition. A hosted version will come as an option."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Do I need Kubernetes?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "No. Shipkeep places, monitors and fails over your Docker containers across servers."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "What if the control plane goes down?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Your apps keep running. Each agent keeps its routing table and reconnects by itself."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Where do my secrets go?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Encrypted in PostgreSQL and sent only to the agent that needs them. The repo only holds their names."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Which servers are supported?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Any Linux server with systemd. The installer adds Docker, Caddy and WireGuard if needed."
+     }
+    }
+   ]
+  }
+ ]
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
