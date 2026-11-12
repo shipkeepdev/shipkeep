@@ -1209,6 +1209,11 @@ export type components = {
             readonly addresses: readonly string[];
             readonly hostname: string;
             /**
+             * @description Whether the answers reach a server running the application, compared with the public addresses administrators declared for its nodes. serving: every answer is such a server. partial: only some answers are. elsewhere: none is, or there is no record. not_running: no reachable server runs the application. unknown: the lookup failed, or a server running it has no declared address.
+             * @enum {string}
+             */
+            readonly match: "serving" | "partial" | "elsewhere" | "not_running" | "unknown";
+            /**
              * @description public: resolves to public addresses. private: only to non-public ones. none: no record. unknown: the lookup failed.
              * @enum {string}
              */

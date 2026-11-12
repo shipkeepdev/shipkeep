@@ -118,16 +118,30 @@ export class ApplicationCommands {
     return this.scoped(context, 'environment.read', target, () => this.store.list(target));
   }
 
-  /** Where the application's domains point; the lookups run outside any transaction. */
+  /**
+   * Where the application's domains point, and whether they reach a node running it (PLAN
+   * M3.6b1). The application and its hosts are read in one tenant transaction; the lookups run
+   * outside it.
+   */
   async domains(
     context: SecurityContext,
     target: ApplicationTarget,
     applicationId: string,
+    now = new Date(),
   ): Promise<DomainDns[]> {
-    const application = await this.get(context, target, applicationId);
+    const { application, hosts } = await this.scoped(
+      context,
+      'environment.read',
+      target,
+      async () => {
+        const found = await this.store.find(target, applicationId);
+        if (!found) throw new NotFoundError('application');
+        return { application: found, hosts: await this.store.hosts(found) };
+      },
+    );
     return Promise.all(
       (application.config.domains ?? []).map(async (hostname) =>
-        domainDns(hostname, await this.resolver.addresses(hostname), isPublicAddress),
+        domainDns(hostname, await this.resolver.addresses(hostname), isPublicAddress, hosts, now),
       ),
     );
   }
