@@ -1,0 +1,68 @@
+# Release build of the agent and the CLI (task M8.2d). Run by .github/workflows/release.yml:
+# a version tag publishes a GitHub release; a manual run builds a snapshot and publishes nothing.
+# Check locally with `goreleaser check` and `goreleaser release --snapshot --clean --skip=sign`.
+version: 2
+
+project_name: shipkeep
+
+builds:
+  - id: agent
+    main: ./agent/cmd/shipkeep-agent
+    binary: shipkeep-agent
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    ldflags: &ldflags
+      - -s -w
+      - -X github.com/shipkeepdev/shipkeep/lib/buildinfo.Version={{ .Version }}
+      - -X github.com/shipkeepdev/shipkeep/lib/buildinfo.Commit={{ .FullCommit }}
+      - -X github.com/shipkeepdev/shipkeep/lib/buildinfo.Date={{ .CommitDate }}
+    # The agent manages Docker and Caddy on Linux servers only.
+    goos: [linux]
+    goarch: [amd64, arm64]
+  - id: cli
+    main: ./cli/cmd/shipkeep
+    binary: shipkeep
+    env: [CGO_ENABLED=0]
+    flags: [-trimpath]
+    mod_timestamp: '{{ .CommitTimestamp }}'
+    ldflags: *ldflags
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+
+archives:
+  - id: agent
+    ids: [agent]
+    name_template: 'shipkeep-agent_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files: [LICENSE, NOTICE]
+  - id: cli
+    ids: [cli]
+    name_template: 'shipkeep_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    files: [LICENSE, NOTICE]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: checksums.txt
+
+sboms:
+  - artifacts: archive
+
+# Keyless signature of the checksum file (Sigstore), verified with `cosign verify-blob`.
+signs:
+  - cmd: cosign
+    artifacts: checksum
+    signature: '${artifact}.sigstore.json'
+    args: [sign-blob, '--bundle=${signature}', '${artifact}', --yes]
+
+snapshot:
+  version_template: '{{ incpatch .Version }}-snapshot.{{ .ShortCommit }}'
+
+changelog:
+  use: github
+  filters:
+    exclude: ['^docs', '^chore\(deps\)']
+
+release:
+  prerelease: auto
