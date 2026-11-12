@@ -204,6 +204,7 @@ To send real emails instead, change the `SMTP_*` lines in `.env`. To connect an 
 - [Technical specification](docs/SPEC.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Implementation plan](docs/PLAN.md)
+- [Installation procedure](docs/INSTALL.md), written but not yet verified on a real server
 - [Architecture decision records](docs/adr/)
 - [Contributing guide](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md)
 - [Route and role matrix](docs/generated/route-role-matrix.md) (generated)
