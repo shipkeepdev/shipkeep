@@ -182,6 +182,16 @@ describe('runtime login provisioning (deploy/postgres/provision-runtime.mjs)', (
       await expect(provisionRuntime(env)).resolves.toBeUndefined();
     });
 
+    it('refuses an existing login that can grant the runtime group to others', async () => {
+      await admin.query('GRANT shipkeep_runtime TO shipkeep_app WITH ADMIN TRUE');
+      try {
+        await expect(provisionRuntime(env)).rejects.toBeInstanceOf(ProvisioningError);
+      } finally {
+        await admin.query('GRANT shipkeep_runtime TO shipkeep_app WITH ADMIN FALSE');
+      }
+      await expect(provisionRuntime(env)).resolves.toBeUndefined();
+    });
+
     it('refuses an existing login with elevated attributes and leaves it untouched', async () => {
       await admin.query('ALTER ROLE shipkeep_app CREATEDB');
       try {

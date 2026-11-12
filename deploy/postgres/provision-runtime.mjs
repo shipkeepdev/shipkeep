@@ -75,12 +75,12 @@ export async function provisionRuntime(env) {
         `SELECT 1 FROM pg_auth_members m
            JOIN pg_roles member ON member.oid = m.member
            JOIN pg_roles granted ON granted.oid = m.roleid
-          WHERE member.rolname = $1 AND granted.rolname <> $2`,
+          WHERE member.rolname = $1 AND (granted.rolname <> $2 OR m.admin_option)`,
         [RUNTIME_LOGIN, RUNTIME_GROUP],
       );
       if (memberships.rowCount)
         throw new ProvisioningError(
-          `The existing ${RUNTIME_LOGIN} login is a member of a role other than ${RUNTIME_GROUP}.`,
+          `The existing ${RUNTIME_LOGIN} login is a member of another role, or can grant ${RUNTIME_GROUP}.`,
         );
       if (existing.rows.length === 0) {
         const statement = await admin.query(
