@@ -89,7 +89,7 @@ Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest, then run 
 
 ## What has been tested
 
-On one machine with Docker Engine 29 and Compose 2.40, on 12 November 2026, from an image built from this repository at the commit of the first release, starting from nothing each time:
+Everything below was run on one machine with Docker Engine 29 and Compose 2.40, on 12 November 2026, in a single run that started from nothing, with an image built from `main` at commit `8eeef12` (the code of the first prerelease; later commits change documentation only):
 
 - `docker compose up -d`: the three one-shot steps exit 0, the control plane becomes healthy and answers over HTTPS through Caddy (with Caddy's internal certificate authority, since the test name was not public).
 - Restarting the control plane, restarting Caddy, and the control plane process exiting on its own: the site answers again each time without manual action.
