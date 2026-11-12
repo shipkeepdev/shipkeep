@@ -52,7 +52,7 @@ describe('account route presentation', () => {
     await harness.fixture.whenStable();
   }
 
-  it('renders all six forms with linked field labels, help and specific page titles', async () => {
+  it('renders all six forms with linked field labels, help and page titles', async () => {
     for (const path of [
       'login',
       'register',
@@ -71,18 +71,31 @@ describe('account route presentation', () => {
       expect(document.title).toContain('Shipkeep');
     }
   });
-  it('announces invalid fields and expands an invalid second-factor disclosure', async () => {
+  it('announces invalid fields, then offers the second-factor step after a refusal', async () => {
     await harness.navigateByUrl('/auth/login');
-    store().form.patchValue({
-      email: 'person@example.com',
-      password: 'correct horse browser fixture',
-      factor: '123',
-    });
+    store().form.patchValue({ email: 'not an address', password: 'correct horse browser fixture' });
     await submit();
-    expect(element().querySelector('#factor')?.getAttribute('aria-invalid')).toBe('true');
-    expect(element().querySelector('details')?.open).toBe(true);
+    expect(element().querySelector('#email')?.getAttribute('aria-invalid')).toBe('true');
     expect(element().querySelector('[role="alert"]')?.textContent).toContain('marked fields');
     expect(api.login).not.toHaveBeenCalled();
+
+    api.login.mockRejectedValueOnce(new IdentityRequestError(401));
+    store().form.patchValue({ email: 'person@example.com' });
+    await submit();
+    expect(element().querySelector('h1')?.textContent).toContain('Two-factor authentication');
+    expect(element().querySelector('#password')).toBeNull();
+    store().form.controls.factor.setValue('123');
+    await submit();
+    expect(element().querySelector('#factor')?.getAttribute('aria-invalid')).toBe('true');
+    expect(api.login).toHaveBeenCalledTimes(1);
+  });
+  it('keeps the GitHub and GitLab buttons, which say they are not available yet', async () => {
+    await harness.navigateByUrl('/auth/login');
+    const buttons = Array.from(element().querySelectorAll('button')).map((b) =>
+      b.textContent.trim(),
+    );
+    expect(buttons).toContain('GitHub');
+    expect(buttons).toContain('GitLab');
   });
   it('navigates to the organizations after login and clears the departed form', async () => {
     api.login.mockResolvedValue(profile);
@@ -90,8 +103,8 @@ describe('account route presentation', () => {
     const form = store();
     form.form.patchValue({ email: profile.email, password: 'correct horse browser fixture' });
     await submit();
-    expect(TestBed.inject(Router).url).toBe('/orgs');
-    expect(element().textContent).toContain('Organizations');
+    expect(TestBed.inject(Router).url).toBe('/home');
+    expect(element().querySelector('#password')).toBeNull();
     expect(form.form.controls.password.value).toBe('');
   });
   it('honors public email links and submits their codes without changing the URL', async () => {
@@ -110,11 +123,12 @@ describe('account route presentation', () => {
     expect(TestBed.inject(Router).url).toBe('/auth/verify-email');
     expect(element().querySelector('[role="status"]')?.textContent).toContain('verified');
     await harness.navigateByUrl('/reset-password');
-    expect(element().querySelector('#confirmation')).not.toBeNull();
+    expect(element().querySelector('#code')).not.toBeNull();
+    expect(element().querySelector('#password')?.getAttribute('autocomplete')).toBe('new-password');
   });
   it('keeps a failed sign-out visible and returns to sign-in only on confirmation', async () => {
     TestBed.inject(SessionStore).accept(profile);
-    await harness.navigateByUrl('/account/security');
+    await harness.navigateByUrl('/orgs/00000000-0000-4000-8000-000000000000/profile');
     api.logout.mockRejectedValueOnce(new IdentityRequestError(0));
     Array.from(element().querySelectorAll('button'))
       .find((button) => button.textContent.trim() === 'Sign out')

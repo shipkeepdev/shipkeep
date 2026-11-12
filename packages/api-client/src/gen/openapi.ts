@@ -420,6 +420,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}/public-addresses": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["setNodePublicAddresses"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}/remove": {
         readonly parameters: {
             readonly query?: never;
@@ -596,6 +612,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/agent-actions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listAgentActions"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/config": {
         readonly parameters: {
             readonly query?: never;
@@ -676,6 +708,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/domains": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listDomains"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/releases": {
         readonly parameters: {
             readonly query?: never;
@@ -684,6 +732,22 @@ export type paths = {
             readonly cookie?: never;
         };
         readonly get: operations["listReleases"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/replicas": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listReplicas"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -718,6 +782,22 @@ export type paths = {
         readonly get?: never;
         readonly put?: never;
         readonly post: operations["removeEnvironment"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/events": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["environmentEvents"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -836,6 +916,58 @@ export type components = {
             /** @enum {string} */
             readonly role: "owner" | "admin" | "member";
             readonly totp?: string;
+        };
+        readonly AgentActionDto: {
+            readonly attempts: number;
+            /** Format: date-time */
+            readonly completedAt: string | null;
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** Format: uuid */
+            readonly deploymentId: string | null;
+            /** Format: uuid */
+            readonly id: string;
+            /**
+             * @description The typed action (SPEC 3.3).
+             * @enum {string}
+             */
+            readonly kind: "ensureNetwork" | "pullImage" | "buildImage" | "createContainer" | "startContainer" | "stopContainer" | "removeContainer" | "ensureVolume" | "removeVolume" | "healthCheck" | "upsertRoute" | "removeRoute" | "runReleaseTask" | "execSession" | "backupVolume" | "restoreVolume" | "dumpDatabase" | "restoreDatabase" | "configurePeers" | "collectFacts" | "upgradeAgent" | "stopStatefulWorkloads" | "upgradeControlPlane";
+            /** Format: uuid */
+            readonly nodeId: string;
+            readonly nodeName: string;
+            /**
+             * @description `refused`: the agent rejected the request before running anything.
+             * @enum {string}
+             */
+            readonly outcome: "in_progress" | "succeeded" | "refused" | "failed" | "expired" | "cancelled" | "compensated";
+            /** @enum {string|null} */
+            readonly reason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "unknown" | null;
+            readonly result: components["schemas"]["AgentActionResultDto"] | null;
+            /** @enum {string} */
+            readonly state: "queued" | "pending" | "running" | "succeeded" | "failed" | "cancelled" | "compensating" | "compensated" | "expired";
+            /** @description Last step the agent reported; empty before it starts. */
+            readonly step: string;
+            /** Format: date-time */
+            readonly updatedAt: string;
+        };
+        readonly AgentActionPageDto: {
+            /** @description Newest first. */
+            readonly items: readonly components["schemas"]["AgentActionDto"][];
+            /**
+             * Format: uuid
+             * @description Null on the last page.
+             */
+            readonly nextCursor: string | null;
+        };
+        readonly AgentActionResultDto: {
+            /** @description Docker container id. */
+            readonly containerId: string | null;
+            /** @description Release task exit code. */
+            readonly exitCode: number | null;
+            readonly healthy: boolean | null;
+            readonly imageDigest: string | null;
+            /** @enum {string} */
+            readonly type: "container" | "image" | "health_check" | "release_task" | "transfer" | "facts";
         };
         readonly ApiScopeDto: {
             /** Format: uuid */
@@ -1072,6 +1204,24 @@ export type components = {
             /** @description Most recent first, at most 50. */
             readonly items: readonly components["schemas"]["DeploymentDto"][];
         };
+        readonly DomainDto: {
+            /** @description Public addresses only. */
+            readonly addresses: readonly string[];
+            readonly hostname: string;
+            /**
+             * @description Whether the answers reach a server running the application, compared with the public addresses administrators declared for its nodes. serving: every answer is such a server. partial: only some answers are. elsewhere: none is, or there is no record. not_running: no reachable server runs the application. unknown: the lookup failed, or a server running it has no declared address.
+             * @enum {string}
+             */
+            readonly match: "serving" | "partial" | "elsewhere" | "not_running" | "unknown";
+            /**
+             * @description public: resolves to public addresses. private: only to non-public ones. none: no record. unknown: the lookup failed.
+             * @enum {string}
+             */
+            readonly status: "public" | "private" | "none" | "unknown";
+        };
+        readonly DomainListDto: {
+            readonly items: readonly components["schemas"]["DomainDto"][];
+        };
         readonly EmailDto: {
             /**
              * Format: email
@@ -1245,6 +1395,8 @@ export type components = {
             readonly lastHeartbeatAt: string | null;
             readonly leaseEpoch: number;
             readonly name: string;
+            /** @description Public addresses declared by an administrator, canonical; empty until set. */
+            readonly publicAddresses: readonly string[];
             /** @enum {string} */
             readonly status: "enrolling" | "ready" | "suspect" | "down" | "draining" | "removed";
         };
@@ -1388,6 +1540,27 @@ export type components = {
             /** @description Confirmation token for `node.remove` on this node (SPEC 3.6). */
             readonly confirmation: string;
         };
+        readonly ReplicaDto: {
+            readonly container: string;
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly nodeId: string;
+            readonly nodeName: string;
+            /** Format: date-time */
+            readonly observedAt: string | null;
+            /** Format: uuid */
+            readonly releaseId: string;
+            readonly replica: number;
+            /**
+             * @description What the agent last saw; null until it has seen the container.
+             * @enum {string|null}
+             */
+            readonly state: "created" | "running" | "paused" | "restarting" | "exited" | "dead" | "missing" | null;
+        };
+        readonly ReplicaListDto: {
+            readonly items: readonly components["schemas"]["ReplicaDto"][];
+        };
         readonly RequestConfirmationDto: {
             /** @enum {string} */
             readonly action: "node.remove";
@@ -1420,6 +1593,10 @@ export type components = {
             readonly expiresAt: string;
             /** Format: uuid */
             readonly userId: string;
+        };
+        readonly SetNodePublicAddressesDto: {
+            /** @description The public IPv4 and IPv6 addresses of the node, replacing the current list. Each must be a bare, globally routable address; duplicates are merged and values stored canonical. An empty list clears them. */
+            readonly publicAddresses: readonly string[];
         };
         readonly SetSecretDto: {
             readonly name: string;
@@ -2224,6 +2401,37 @@ export interface operations {
             };
         };
     };
+    readonly setNodePublicAddresses: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Required for session requests. */
+                readonly Origin?: string;
+                /** @description Required for session requests. */
+                readonly "X-Shipkeep-CSRF"?: string;
+            };
+            readonly path: {
+                readonly nodeId: string;
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SetNodePublicAddressesDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+        };
+    };
     readonly removeNode: {
         readonly parameters: {
             readonly query?: never;
@@ -2633,6 +2841,34 @@ export interface operations {
             };
         };
     };
+    readonly listAgentActions: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description Exclusive: the last id of the previous page. */
+                readonly cursor?: string;
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AgentActionPageDto"];
+                };
+            };
+        };
+    };
     readonly updateApplicationConfig: {
         readonly parameters: {
             readonly query?: never;
@@ -2784,6 +3020,30 @@ export interface operations {
             };
         };
     };
+    readonly listDomains: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DomainListDto"];
+                };
+            };
+        };
+    };
     readonly listReleases: {
         readonly parameters: {
             readonly query?: never;
@@ -2804,6 +3064,30 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ReleaseListDto"];
+                };
+            };
+        };
+    };
+    readonly listReplicas: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ReplicaListDto"];
                 };
             };
         };
@@ -2900,6 +3184,31 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["BindingMutationDto"];
                 };
+            };
+        };
+    };
+    readonly environmentEvents: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Resume after this event; browsers send it when they reconnect. */
+                readonly "Last-Event-ID"?: string;
+            };
+            readonly path: {
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description One `change` event per committed audit event of the environment. */
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

@@ -13,11 +13,35 @@ export const IDENTITY_FETCH = new InjectionToken<(input: Request) => Promise<Res
 );
 type Result<T> = { data?: T; response: Response };
 
+/**
+ * The stable part of a refusal a form may act on: the problem code and, for list inputs, the
+ * position of the first bad value. Bounded and validated, never server text.
+ */
+export interface RequestProblem {
+  readonly code: string;
+  readonly index?: number;
+}
+
+/** Reads `{ code, details: { index } }` from an RFC 9457 body, or undefined. */
+export function requestProblem(body: unknown): RequestProblem | undefined {
+  if (typeof body !== 'object' || body === null) return undefined;
+  const { code, details } = body as { code?: unknown; details?: unknown };
+  if (typeof code !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(code)) return undefined;
+  const index =
+    typeof details === 'object' && details !== null
+      ? (details as { index?: unknown }).index
+      : undefined;
+  return typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < 1000
+    ? { code, index }
+    : { code };
+}
+
 /** Safe, bounded UI diagnostics. Never forward server details or transport exception strings. */
 export class IdentityRequestError extends Error {
   constructor(
     readonly status: number,
     readonly retryAfterSeconds = 0,
+    readonly problem?: RequestProblem,
   ) {
     super(
       status === 0
@@ -91,6 +115,10 @@ export class IdentityApi {
     fetch: (input: Request) => this.send(browserRequest(input, this.origin, this.document.cookie)),
   });
 
+  /** Public: the control plane version, shown in the dashboard frame. */
+  health(): Promise<IdentitySchema<'HealthDto'>> {
+    return this.required(() => this.client.GET('/api/v1/health'));
+  }
   session(): Promise<SessionProfile> {
     return this.required(() => this.client.GET('/api/v1/auth/session'));
   }

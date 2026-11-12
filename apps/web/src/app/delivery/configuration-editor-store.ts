@@ -4,11 +4,11 @@ import {
   parseShipkeepConfig,
   type ShipkeepConfig,
 } from '@shipkeep/config-schema';
-import { stringify } from 'yaml';
 
 import { IdentityRequestError } from '../identity/identity-api';
 import { MutationRunner } from '../identity/mutation-runner';
 
+import { configDiff, configYaml } from './config-diff';
 import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-api';
 
 /** Component-scoped draft; an optimistic hash protects every save from concurrent edits. */
@@ -27,31 +27,14 @@ export class ConfigurationEditorStore {
     const current = this.current();
     const preview = this.preview();
     if (!current || !preview) return [];
-    const before = stringify(current.config).trimEnd().split('\n');
-    const after = stringify(preview).trimEnd().split('\n');
-    let start = 0;
-    while (start < before.length && start < after.length && before[start] === after[start]) start++;
-    let end = 0;
-    while (
-      end < before.length - start &&
-      end < after.length - start &&
-      before[before.length - end - 1] === after[after.length - end - 1]
-    )
-      end++;
-    if (start === before.length && start === after.length) return [];
-    return [
-      ...before.slice(Math.max(0, start - 3), start).map((line) => `  ${line}`),
-      ...before.slice(start, before.length - end).map((line) => `- ${line}`),
-      ...after.slice(start, after.length - end).map((line) => `+ ${line}`),
-      ...after.slice(after.length - end, after.length - end + 3).map((line) => `  ${line}`),
-    ];
+    return configDiff(current.config, preview);
   });
 
   open(environment: EnvironmentRef, application: Application): void {
     this.runner.reset();
     this.environment = environment;
     this.current.set(application);
-    this.draft.set(stringify(application.config));
+    this.draft.set(configYaml(application.config));
     this.issues.set([]);
     this.preview.set(null);
     this.conflict.set(false);
@@ -109,7 +92,7 @@ export class ConfigurationEditorStore {
     );
     if (!outcome.ok || !outcome.value) return;
     this.current.set(outcome.value);
-    this.draft.set(stringify(outcome.value.config));
+    this.draft.set(configYaml(outcome.value.config));
     this.preview.set(null);
     this.notice.set('Configuration saved. Deploy when you are ready to apply it.');
   }

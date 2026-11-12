@@ -1,10 +1,10 @@
 <section class="border-b border-line py-8" aria-labelledby="mfa-title">
-  <h2 #heading id="mfa-title" tabindex="-1">Two-factor authentication</h2>
+  <h2 #heading id="mfa-title" tabindex="-1">{{ 'Two-factor authentication' | t }}</h2>
   @if (store.state() === 'loading') {
-    <p class="text-muted" role="status">Checking two-factor authentication…</p>
+    <p class="text-muted" role="status">{{ 'Checking two-factor authentication…' | t }}</p>
   } @else if (store.state() === 'unavailable') {
     <p class="mb-4 text-danger" role="alert">
-      Two-factor status is unavailable. Check again before making changes.
+      {{ 'Two-factor status is unavailable. Check again before making changes.' | t }}
     </p>
     <button
       class="button button-secondary"
@@ -12,21 +12,27 @@
       (click)="store.load()"
       [disabled]="store.submission.busy()"
     >
-      Check status again
+      {{ 'Check status again' | t }}
     </button>
   } @else {
     <p class="mb-2 font-semibold" [class.text-success]="store.status()?.enabled">
-      {{ store.status()?.enabled ? 'Enabled' : 'Not enabled' }}
+      {{ (store.status()?.enabled ? 'Enabled' : 'Not enabled') | t }}
     </p>
     @if (store.status()?.enabled) {
       <p class="text-sm text-muted">
-        {{ store.status()?.recoveryCodesRemaining }} recovery codes remaining. Each code can be used
-        once.
+        {{
+          '{n} recovery codes remaining. Each code can be used once.'
+            | t: { n: store.status()?.recoveryCodesRemaining ?? '' }
+        }}
       </p>
     } @else {
-      <p class="text-sm text-muted">Add a code from your authenticator to protect sign-in.</p>
+      <p class="text-sm text-muted">
+        {{ 'Add a code from your authenticator to protect sign-in.' | t }}
+      </p>
       @if (store.status()?.pendingExpiresAt && store.mode() === 'idle') {
-        <p class="hint">A setup was previously started. Starting again replaces that setup key.</p>
+        <p class="hint">
+          {{ 'A setup was previously started. Starting again replaces that setup key.' | t }}
+        </p>
       }
     }
   }
@@ -37,22 +43,24 @@
       tabindex="-1"
       [attr.role]="store.problem() ? 'alert' : 'status'"
     >
-      <p>{{ store.problem() || message }}</p>
+      <p>{{ store.problem() || message | t }}</p>
     </div>
   }
   @if (clipboard.message(); as message) {
-    <p class="hint" role="status">{{ message }}</p>
+    <p class="hint" role="status">{{ message | t }}</p>
   }
 
   @if (store.recoveryCodes().length) {
     <div class="mt-6">
-      <h3 class="font-semibold">Save your recovery codes</h3>
+      <h3 class="font-semibold">{{ 'Save your recovery codes' | t }}</h3>
       <p class="hint mb-4">
-        Keep these somewhere safe outside Shipkeep. They are shown only once and stay here until you
-        confirm you saved them or leave this page.
+        {{
+          'Keep these somewhere safe outside Shipkeep. They are shown only once and stay here until you confirm you saved them or leave this page.'
+            | t
+        }}
       </p>
       <ul
-        aria-label="Recovery codes"
+        [attr.aria-label]="'Recovery codes' | t"
         class="mb-5 grid grid-cols-[repeat(auto-fit,minmax(min(100%,16rem),1fr))] gap-2"
       >
         @for (code of store.recoveryCodes(); track code) {
@@ -65,7 +73,7 @@
           type="button"
           (click)="clipboard.copy(store.recoveryCodes().join('\n'))"
         >
-          Copy recovery codes
+          {{ 'Copy recovery codes' | t }}
         </button>
         <button
           class="button"
@@ -73,14 +81,14 @@
           (click)="dismiss()"
           [disabled]="store.submission.busy()"
         >
-          I have saved these codes
+          {{ 'I have saved these codes' | t }}
         </button>
       </div>
     </div>
   } @else if (store.mode() !== 'idle') {
     <div class="mt-6 max-w-md">
       @if (store.setup(); as setup) {
-        <label for="mfa-key">Authenticator setup key</label>
+        <label for="mfa-key">{{ 'Authenticator setup key' | t }}</label>
         <input
           id="mfa-key"
           class="font-mono"
@@ -91,46 +99,49 @@
           aria-describedby="mfa-key-help"
         />
         <p id="mfa-key-help" class="hint">
-          Add this key to your authenticator as a time-based code: six digits, 30 seconds. It
-          expires at {{ setup.expiresAt | date: 'shortTime' }}.
+          {{
+            'Add this key to your authenticator as a time-based code: six digits, 30 seconds. It expires at {time}.'
+              | t: { time: (setup.expiresAt | date: 'shortTime') ?? '' }
+          }}
         </p>
         <button
           class="button button-secondary mt-3"
           type="button"
           (click)="clipboard.copy(setup.secret)"
         >
-          Copy setup key
+          {{ 'Copy setup key' | t }}
         </button>
       }
       <h3 class="mt-6 font-semibold">
         {{
-          store.mode() === 'setup'
+          (store.mode() === 'setup'
             ? 'Set up your authenticator'
             : store.mode() === 'enable'
               ? 'Confirm your authenticator'
               : store.mode() === 'disable'
                 ? 'Disable two-factor authentication'
                 : 'Replace recovery codes'
+          ) | t
         }}
       </h3>
       <p class="hint mb-5">
         @if (store.mode() === 'setup') {
-          Enter your current password to get a setup key.
+          {{ 'Enter your current password to get a setup key.' | t }}
         } @else {
-          This change signs out other sessions and invalidates existing API tokens.
+          {{ 'This change signs out other sessions and invalidates existing API tokens.' | t }}
           @if (store.mode() === 'recovery') {
-            Your old recovery codes will stop working.
+            {{ 'Your old recovery codes will stop working.' | t }}
           }
           @if (store.mode() === 'disable') {
-            Your account will rely on its password alone.
+            {{ 'Your account will rely on its password alone.' | t }}
           }
         }
       </p>
       <form [formGroup]="store.form" (ngSubmit)="submit()" novalidate [attr.aria-busy]="working()">
         <fieldset class="min-w-0 space-y-5" [disabled]="store.submission.busy()">
-          <legend class="sr-only">Confirm this security change</legend>
+          <legend class="sr-only">{{ 'Confirm this security change' | t }}</legend>
           <div>
-            <label for="mfa-password">Current password</label>
+            <label for="mfa-password">{{ 'Current password' | t }}</label>
             <input
               #password
               id="mfa-password"
@@ -141,23 +152,24 @@
               [attr.aria-invalid]="!!store.errorFor('password')"
               required
             />
-            <p class="field-error" id="mfa-password-error">{{ store.errorFor('password') }}</p>
+            <p class="field-error" id="mfa-password-error">{{ store.errorFor('password') | t }}</p>
           </div>
           @if (store.mode() !== 'setup') {
             @if (store.mode() !== 'enable') {
               <div>
-                <label for="mfa-kind">Code type</label
+                <label for="mfa-kind">{{ 'Code type' | t }}</label
                 ><select id="mfa-kind" formControlName="factorKind">
-                  <option value="totp">Authenticator code</option>
-                  <option value="recovery">Recovery code</option>
+                  <option value="totp">{{ 'Authenticator code' | t }}</option>
+                  <option value="recovery">{{ 'Recovery code' | t }}</option>
                 </select>
               </div>
             }
             <div>
               <label for="mfa-factor">{{
-                store.form.controls.factorKind.value === 'totp'
+                (store.form.controls.factorKind.value === 'totp'
                   ? 'Authenticator code'
                   : 'Recovery code'
+                ) | t
               }}</label>
               <input
                 id="mfa-factor"
@@ -172,7 +184,7 @@
                 [attr.aria-invalid]="!!store.errorFor('factor')"
                 required
               />
-              <p class="field-error" id="mfa-factor-error">{{ store.errorFor('factor') }}</p>
+              <p class="field-error" id="mfa-factor-error">{{ store.errorFor('factor') | t }}</p>
             </div>
           }
           <div class="flex flex-wrap gap-3">
@@ -187,7 +199,7 @@
               "
             >
               {{
-                working()
+                (working()
                   ? 'Working…'
                   : store.mode() === 'setup'
                     ? 'Get setup key'
@@ -196,6 +208,7 @@
                       : store.mode() === 'disable'
                         ? 'Disable two-factor authentication'
                         : 'Replace recovery codes'
+                ) | t
               }}
             </button>
             <button
@@ -204,7 +217,7 @@
               (click)="dismiss()"
               [disabled]="store.submission.busy()"
             >
-              Cancel
+              {{ 'Cancel' | t }}
             </button>
           </div>
         </fieldset>
@@ -219,7 +232,7 @@
           (click)="begin('recovery')"
           [disabled]="store.submission.busy()"
         >
-          Replace recovery codes
+          {{ 'Replace recovery codes' | t }}
         </button>
         <button
           class="button button-secondary"
@@ -227,7 +240,7 @@
           (click)="begin('disable')"
           [disabled]="store.submission.busy()"
         >
-          Disable two-factor authentication
+          {{ 'Disable two-factor authentication' | t }}
         </button>
       } @else {
         <button
@@ -236,7 +249,7 @@
           (click)="begin('setup')"
           [disabled]="store.submission.busy()"
         >
-          Set up two-factor authentication
+          {{ 'Set up two-factor authentication' | t }}
         </button>
       }
     </div>

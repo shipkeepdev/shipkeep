@@ -4,11 +4,18 @@ import {
   afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
+  computed,
   type ElementRef,
   inject,
   viewChild,
 } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { map } from 'rxjs';
+
+import { Icon } from '../shell/icon';
+import { type IconName } from '../shell/icons';
+import { I18n, T } from '../ui/i18n';
 
 import { AccountStore } from './account-store';
 import { MfaPanel } from './mfa-panel';
@@ -17,13 +24,35 @@ import { TokenPanel } from './token-panel';
 
 @Component({
   selector: 'sk-account-page',
-  imports: [RouterLink, MfaPanel, TokenPanel],
+  imports: [Icon, MfaPanel, RouterLink, T, TokenPanel],
   providers: [AccountStore, MutationRunner],
   templateUrl: './account-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class AccountPage {
   protected readonly store = inject(AccountStore);
+  protected readonly i18n = inject(I18n);
+  protected readonly sections: readonly { k: string; label: string; icon: IconName }[] = [
+    { k: 'account', label: 'Account', icon: 'user' },
+    { k: 'security', label: 'Security', icon: 'shield-lock' },
+    { k: 'tokens', label: 'API tokens', icon: 'key' },
+    { k: 'appearance', label: 'Appearance', icon: 'palette' },
+  ];
+  private readonly query = toSignal(
+    inject(ActivatedRoute).queryParamMap.pipe(map((q) => q.get('section'))),
+  );
+  protected readonly section = computed(() =>
+    this.sections.some((s) => s.k === this.query()) ? (this.query() as string) : 'account',
+  );
+  protected readonly current = computed(
+    () =>
+      this.sections.find((s) => s.k === this.section()) ?? {
+        k: 'account',
+        label: 'Account',
+        icon: 'user' as const,
+      },
+  );
+  protected readonly reloadUrl = (): string => globalThis.location.href;
   private readonly router = inject(Router);
   private readonly heading = viewChild<ElementRef<HTMLElement>>('heading');
   private readonly feedback = viewChild<ElementRef<HTMLElement>>('feedback');

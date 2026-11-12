@@ -309,6 +309,8 @@ model Node {
   status          String            @db.VarChar(16)
   labels          Json
   facts           Json
+  /// Canonical public IP addresses declared by an administrator (PLAN M3.6b1), at most 8.
+  publicAddresses String[]          @default([]) @map("public_addresses") @db.VarChar(45)
   leaseEpoch      Int               @map("lease_epoch")
   createdAt       DateTime          @map("created_at") @db.Timestamptz(6)
   lastHeartbeatAt DateTime?         @map("last_heartbeat_at") @db.Timestamptz(6)
@@ -370,6 +372,10 @@ model AgentAction {
   result         Json?
   error          String?   @db.VarChar(256)
   requestedBy    String?   @map("requested_by") @db.VarChar(128)
+  /// The application and deployment that requested the action; both null otherwise. The
+  /// composite foreign key (SET NULL on these two columns only) lives in the migration SQL.
+  applicationId  String?   @map("application_id") @db.Uuid
+  deploymentId   String?   @map("deployment_id") @db.Uuid
   createdAt      DateTime  @map("created_at") @db.Timestamptz(6)
   updatedAt      DateTime  @map("updated_at") @db.Timestamptz(6)
   completedAt    DateTime? @map("completed_at") @db.Timestamptz(6)
@@ -377,6 +383,8 @@ model AgentAction {
 
   @@unique([nodeId, idempotencyKey])
   @@index([organizationId, nodeId, state])
+  @@index([applicationId, id(sort: Desc)])
+  @@index([deploymentId])
   @@map("agent_actions")
 }
 
@@ -415,6 +423,7 @@ model Application {
   releases       Release[]
   deployments    Deployment[]
   allocations    Allocation[]
+  domains        Domain[]
 
   @@unique([environmentId, name])
   @@unique([organizationId, id])
@@ -461,6 +470,7 @@ model Deployment {
   application    Application @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "deployments_application_fkey")
   release        Release     @relation(fields: [organizationId, releaseId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "deployments_release_fkey")
 
+  @@unique([organizationId, applicationId, id])
   @@index([applicationId, startedAt(sort: Desc)])
   @@index([releaseId])
   @@map("deployments")
@@ -505,4 +515,18 @@ model AllocationObservation {
 
   @@unique([organizationId, allocationId])
   @@map("allocation_observations")
+}
+
+/// A hostname claimed by an application, unique per organization; synced from its configuration.
+model Domain {
+  id             String      @id @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+  applicationId  String      @map("application_id") @db.Uuid
+  hostname       String      @db.VarChar(253)
+  createdAt      DateTime    @map("created_at") @db.Timestamptz(6)
+  application    Application @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "domains_application_fkey")
+
+  @@unique([organizationId, hostname])
+  @@index([applicationId])
+  @@map("domains")
 }

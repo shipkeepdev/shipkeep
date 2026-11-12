@@ -13,10 +13,6 @@ permissions:
 jobs:
   codeql:
     name: CodeQL
-    # Code scanning on private repositories needs a paid GitHub Code Security license.
-    # Set the repository variable ENABLE_CODEQL=true when the repository becomes public (v1).
-    # Semgrep and gosec cover the gap until then.
-    if: ${{ vars.ENABLE_CODEQL == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

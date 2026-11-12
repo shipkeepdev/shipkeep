@@ -2,43 +2,15 @@
 
 ## How to use this plan
 
-- One task = one branch = one PR. Branch name `feat/<task-id>-<slug>` (for example `feat/m1.3-operation-journal`). PR title starts with `[<task-id>]`.
-- Do tasks in dependency order. Tasks in different tracks with satisfied dependencies can run in parallel.
-- A task is done when every acceptance criterion is met and the definition of done in `CLAUDE.md` passes. Tick the box in this file in the same PR.
-- If a task is too big for one PR (over ~500 changed lines excluding generated code), split it into `<task-id>a`, `<task-id>b` and note the split here.
-- Create one GitHub issue per task at the start of each milestone (see `docs/GITHUB_SETUP.md`, section 4 "Milestones and issues").
-- Branch protection (GITHUB_SETUP section 5) is applied right after M0.2 is merged. M0.1 and M0.2 are merged by the maintainer without required checks.
+- One task = one branch = one pull request. Branch `feat/<task-id>-<slug>`; the title starts with `[<task-id>]`.
+- A task is done when its acceptance criteria are met and the definition of done in `CLAUDE.md` passes. Tick the box in this file in the same pull request.
+- A task too large for one pull request (over about 500 changed lines excluding generated code) is split into `<task-id>a`, `<task-id>b`.
 
 Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), **X** cross-cutting.
 
-## Status (2026-11-05)
+## Status
 
-**Done:**
-
-- M0, M1.1, M1.2 (except fleet administration endpoints, moved to M2.7), M1.3, M2.1 and M2.2.
-- M2.3 up to M2.3d4a.
-
-**Verification gap.** GitHub Actions has been blocked by the account spending limit since PR #87. PRs #30 to #39 and #87 to #110 were merged after a local gate instead of CI:
-
-- nx lint, typecheck, unit tests and build;
-- `go vet`, `go test -race` and golangci-lint;
-- generation drift, Semgrep and Prettier.
-
-Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **not** run on that code. The first task once Actions is available again is **CI-1**: run the full `ci` and `security` workflows on `main`, then fix every failure in its own `fix/...` PR before any new feature merges.
-
-**Next tasks, in order.** Each is a separate PR and depends on the ones before it unless noted.
-
-1. M2.3f1 and M2.3f2 (administration screens and browser tenant isolation), then M2.4b and M2.5b (audit and confirmation UI) and M2.6.
-2. M3 (deploy pipeline), then `StateReport` delivery for M1.6.
-
-**Before going public** (the maintainer changes the visibility; ADR 0016):
-
-- CI-1 green on `main` (#137), and branch protection with required checks (GITHUB_SETUP section 5).
-- Full-history gitleaks scan clean. Rotate any credential that was ever committed, even if it was later deleted.
-- Enable GitHub private vulnerability reporting and update `SECURITY.md` accordingly.
-- Enforce DCO sign-off on pull requests (for example with the DCO GitHub app).
-- Review the internal assistant documents (`CLAUDE.md`, `docs/CLAUDE_CODE_KICKOFF.md`, `docs/GITHUB_SETUP.md`) for anything that should not be public.
-- Set the repository topics and website, and check the README status line.
+Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/issues), each with a `priority:P0` to `priority:P3` label. The [README](../README.md#what-works-today) says what works today. Real-server acceptance (M1.4, M1.5, M1.6, M3.4, M8.3a, M10.1) waits for a dedicated test machine.
 
 **Work that no task owned yet, now assigned:**
 
@@ -48,16 +20,8 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 | `ExecStream`                                                               | M6.1   |
 | `CollectFacts`                                                             | M1.6   |
 | `UpgradeAgent`                                                             | M8.3   |
-| The SSE `/api/v1/events` endpoint                                          | M2.6   |
 | Retry-safe certificate renewal (SPEC 16)                                   | M4.5   |
 | The web token scope picker                                                 | M2.3f1 |
-
-**Decisions taken (2026-11-05):**
-
-- **CI.** GitHub Actions stays unavailable for now and development continues. Every PR is merged after the local gate, and its description says which checks did not run. CI-1 runs as soon as Actions is back.
-- **In-place restores.** `RestoreVolume` and `RestoreDatabase` over an existing target require a confirmation token. Restores into new targets do not (ADR 0013, #112).
-- **`argparse`.** It is approved as a per-package license exception (PSF-2.0, ADR 0014).
-- **M2.3 role defaults.** The conservative defaults are confirmed and moved from the SPEC 16 open questions into SPEC 7: an environment role replaces the project role, and only owners grant ownership.
 
 ---
 
@@ -72,7 +36,7 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - [x] **M0.2 CI and security workflows** (X). Depends: M0.1
   - Harden the existing workflows in `.github/workflows/`: pin every third-party action to a full commit SHA (with the version in a comment) and every tool image to a digest (`semgrep/semgrep`, `gitleaks/gitleaks`); replace `securego/gosec@master` with a pinned release; pin the golangci-lint version so it matches `.golangci.yml`.
   - `release.yml` is only checked with actionlint here; its first dry run happens in M8.2.
-  - Acceptance: all checks listed in GITHUB_SETUP section 5 are green on the PR; actionlint passes; no action referenced by a mutable tag.
+  - Acceptance: all required checks listed in `docs/MAINTAINING.md` are green on the PR; actionlint passes; no action referenced by a mutable tag.
 - [x] **M0.3 Proto and codegen pipeline** (X). Depends: M0.1
   - `buf.yaml` (lint `STANDARD`, breaking `FILE`), `buf.gen.yaml`; `proto/shipkeep/agent/v1/` with the skeleton from SPEC Appendix A and all action messages with fields from SPEC 3.3, 3.6 and the `ExecStream` frames from SPEC 3.1.
   - Generated Go code in `lib/gen`, TS code in `packages/proto-ts`. `pnpm gen` regenerates; CI fails on drift.
@@ -132,7 +96,8 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - [ ] **M1.6 Agent self-reconciliation** (A). Depends: M1.4, M1.5. Done: the intent journal, the 30 s reconciler restarting stopped managed containers offline, `CollectFacts`, and Caddy `--resume` in the M8.3a installer. Remaining: send `StateReport` to the control plane; the end-to-end acceptance on a VM (including routing persistence).
   - Reconcile loop every 30 s against `desired`; restart crashed managed containers; report `StateReport`; answer `CollectFacts`.
   - [x] **M1.6b1** Bounded managed-container snapshots and stream reporter: sample changes every second, refresh every 30 s, include stopped containers and suppress incomplete inventories. Unit/race tests cover shutdown, transport, missing containers and redaction. Daemon activation waits for the control-plane receiver (M1.6b2), so older gateways keep working.
-  - [x] **M1.6b2** Accept state reports under the node identity and persist audited allocation observations in a separate table (model approved by the owner on 2026-11-07), without changing scheduler reservations; activate the daemon reporter.
+  - [x] **M1.6b3** Show replicas with their node and observed state, in the API and on the application page.
+  - [x] **M1.6b2** Accept state reports under the node identity and persist audited allocation observations in a separate table, without changing scheduler reservations; activate the daemon reporter.
   - Acceptance: with control plane stopped, a killed container is restarted and routing keeps serving.
 
 ## M2. Control plane core
@@ -246,10 +211,13 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
     - [x] **M2.3e1** Project-bound tokens: schema with a composite project key, scopes confined to the project, creator `member.manage` check, per-use project check, cascade on project deletion.
     - [x] **M2.3e2** Project token directory and revocation by project administrators (ordered account locks, audit), plus the web scope picker in M2.3f1.
   - [ ] **M2.3f** Organization/project/environment administration screens and browser/tenant-isolation acceptance.
-    - [ ] **M2.3f1** Organization switcher, project/environment catalog and settings, member and binding screens, API-token scope picker.
+    - [x] **M2.3f1** Organization switcher, project/environment catalog and settings, member and binding screens, API-token scope picker.
       - [x] **M2.3f1a** Workspace navigation: organizations (create with password re-authentication), projects and environments (protected by default), the main navigation, and sign-in landing on organizations.
-      - [ ] **M2.3f1b** Settings, member and binding screens, API-token scope picker.
-    - [ ] **M2.3f2** Real-browser acceptance: two organizations, cross-tenant URLs answer 404, role changes take effect on the next request.
+      - [x] **M2.3f1b** Settings, member and binding screens, API-token scope picker.
+        - [x] **M2.3f1b1** Organization, project and environment settings; forms recover after a refused request.
+        - [x] **M2.3f1b2** Member and binding screens.
+        - [x] **M2.3f1b3** API-token scope picker and the project token directory.
+    - [x] **M2.3f2** Real-browser acceptance: two organizations, cross-tenant URLs answer 404, role changes take effect on the next request (`tenant.browser.spec.ts`).
   - [x] **M2.3g** Row-level security for the remaining tenant-scoped tables (`nodes`, `join_tokens`, `node_certificates`, `audit_events`), with enrollment token lookup and the agent gateway moved to a separate reviewed cross-tenant role (SPEC 4). Must land before any node, join-token or audit read endpoint is exposed (M2.4, M2.7).
     - [x] **M2.3g1** Fleet tables. `node_certificates` has no `organization_id`: add it with a composite foreign key to `nodes`, rather than relying on a join policy. Gateway lookups use the organization of the verified certificate; enrollment uses a context-bound, SELECT-only token lookup instead of a separate role (ADR 0015).
       - [x] **M2.3g1a** `node_certificates.organization_id` with a composite foreign key to its node, backfilled by migration (ADR 0015).
@@ -261,16 +229,16 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - Database permissions deny update and delete on `AuditEvent`; audit UI with filters; export endpoint.
   - [x] **M2.4a** Scoped audit query and JSON Lines export endpoints for organization administrators and `audit.read` tokens. Depends: M2.3g2.
   - [x] **M2.4c** A test that walks every registered mutating route and requires its declared audit events to exist in the code (`apps/api/src/audit-coverage.spec.ts`).
-  - [ ] **M2.4b** Audit UI with filters.
+  - [x] **M2.4b** Audit UI with filters, paging and the JSON Lines export.
   - Acceptance: test asserts every command handler emits at least one audit event.
 - [ ] **M2.5 Confirmation tokens** (C + W). Depends: M2.3
   - [x] **M2.5a** `POST /api/v1/confirmations`: EdDSA JWS from the installation confirmation key (SPEC 3.6), the typed resource name checked, `jti` stored and marked used, audited.
     - [x] **M2.5a1** Token format and catalog, Ed25519 signing in the installation key module, `confirmation_tokens` table under RLS, issuance and single-use consumption services.
     - [x] **M2.5a2** HTTP issuance route and the node target resolver.
-  - [ ] **M2.5b** Confirmation dialog in the web UI. Server removal uses it (M2.7c); a shared dialog for volumes, databases and environments follows with those screens.
+  - [x] **M2.5b** Shared confirmation in the web UI (`ConfirmByName`). Server removal uses it; volume, database and environment deletion will use it when those screens and actions exist.
   - `/confirmations` endpoint, UI confirmation dialog that requires typing the resource name.
   - Acceptance: destructive endpoints reject requests without a valid, unused, matching token.
-- [ ] **M2.6 Web UI shell** (W). Depends: M2.2. Partly done in M2.2e: shell, routing, auth flows, design tokens, Tailwind and CDK. Remaining: org/project/environment navigation (with M2.3f1), empty states, the SSE `/api/v1/events` endpoint and its client, and the Lighthouse check.
+- [ ] **M2.6 Web UI shell** (W). Depends: M2.2. Partly done in M2.2e: shell, routing, auth flows, design tokens, Tailwind and CDK. Remaining: only the Lighthouse score itself, which has not been measured. In `tenant.browser.spec.ts`, axe passes WCAG A and AA on every workspace screen, and every rule including best practices on sign-in and the landing pages. Lists have empty states. Done: navigation (M2.3f1a) and live updates per environment (M2.6b).
   - Angular app shell, routing, auth flows, org/project/environment navigation, design tokens, Tailwind, CDK, empty states, SSE client.
   - Acceptance: Lighthouse accessibility score at least 95 on login and dashboard; core flows keyboard-navigable.
 - [ ] **M2.7 Fleet administration endpoints** (C + W). Depends: M2.3d, M2.3g1. Moved from M1.2b.
@@ -310,10 +278,14 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - [x] **M3.4d Configuration editor** (W). Edit YAML with schema validation, review a diff, and save with `expectedConfigSha`. A 409 keeps the draft and requires reloading the latest version and reviewing again. Saving does not deploy.
 - [ ] **M3.5 Rollback and release history** (C + W). Depends: M3.4
   - [x] **M3.5a** One-click rollback: a new release copying an earlier one's pinned image and configuration, without replaying its release command; the replaced deployment becomes `rolled_back`.
-  - [ ] **M3.5b** Release history with a diff view, removal of replaced containers, and image retention (`deploy.keep_images`, which needs an image-removal agent action).
+  - [x] **M3.5b** Release history with a configuration diff, and removal of replaced and failed containers.
+  - [ ] **M3.5c** Image retention (`deploy.keep_images`). Needs an image-removal agent action, so an action-list change (ADR or SPEC update and security review).
   - Keep N images; one-click rollback; release diff view (image, config).
   - Acceptance: rollback under load with zero failed requests.
 - [ ] **M3.6 Domains and TLS** (A + C + W). Depends: M1.5
+  - [x] **M3.6a** Hostnames unique per organization, wildcards refused, and a live DNS check on the application page. HTTP-01 certificates already work through the routes Caddy serves, unproven until the VM run.
+  - [ ] **M3.6b** Node public addresses for real verification, certificate expiry tracking, DNS-01 for Cloudflare.
+    - [x] **M3.6b1** Administrators declare each node's public addresses; the domain check says whether a domain points at a server running the application.
   - Custom domains, HTTP-01, DNS-01 for Cloudflare first, verification status, certificate expiry tracking.
   - Acceptance: domain added and served over HTTPS in an E2E test.
 - [ ] **M3.7 Secrets** (C + W). Depends: M2.3
@@ -322,6 +294,9 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
   - [x] **M3.7a** Secrets API: write-only, versioned, environment-encrypted, audited, with the protected-environment rule.
   - [x] **M3.7b** Secrets screen in the web UI (with M2.3f1), together with the application screens: create from `shipkeep.yml` (validated in the browser with the same schema), deploy, follow and cancel deployments.
 - [ ] **M3.8 Compose applications** (C). Depends: M3.4
+  - [x] **M3.8a** Pure parser and fail-closed validator (`apps/domain/compose.ts`), with hostile and everyday fixtures. Not reachable from any route yet.
+  - [ ] **M3.8b** Accept `compose:` applications and translate services to container plans.
+  - [ ] **M3.8c** Deploy several services per release in the pipeline.
   - Compose parser and validator (SPEC 2.2), translated to typed `ContainerSpec`s.
   - Acceptance: 15 popular Compose files deploy; 20 malicious Compose files rejected with clear errors.
 
@@ -382,6 +357,10 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - [ ] **M8.1 SSO OIDC** (C + W). Depends: M2.2
   - Org-level OIDC (Google, GitHub, Microsoft Entra, Keycloak tested), JIT provisioning with default role, enforce-SSO option.
 - [ ] **M8.2 CLI** (X). Depends: M3.5
+  - [x] **M8.2a** Foundation: `login`, `logout`, `init`, `status`, `secrets`, reached with an API token.
+  - [x] **M8.2b** `deploy`, `rollback`, `server remove`, and a run of the real binary against the real API (`cli.integration.spec.ts`).
+  - [ ] **M8.2c** `logs`, `env`, `db`, `backup`, `preview`, `server add`, as their bearer routes appear.
+  - [ ] **M8.2d** Release tooling below (needs a Homebrew tap and a release bucket).
   - Go CLI commands from ARCHITECTURE; `.goreleaser.yaml` for agent and CLI; Homebrew tap and Scoop bucket; first `release.yml` dry run via workflow_dispatch.
 - [ ] **M8.3 Installer and control plane upgrades** (X). Depends: M5.4
   - [ ] **M8.3a** Agent/Caddy installer and verified command in Servers (first usable version; independent of control-plane upgrades). Implementation and local checks in this PR; a real VM reaching `ready` remains required. Caddy comes from its signed upstream repository (owner's decision, 2026-11-07) and runs with `--resume`; the M1.6 VM acceptance remains separate.
@@ -418,5 +397,5 @@ Integration tests (Testcontainers), browser acceptance, CodeQL and gosec have **
 - Control plane high availability (stateless API, PostgreSQL primary and replica).
 - Continuous volume replication between nodes.
 - Corrosion-based routing replication (ADR 0006).
-- SAML, white label, LTS channel (Enterprise).
-- External security audit, then public release under Apache-2.0.
+- SAML, white label, LTS channel.
+- External security audit.

@@ -16,3 +16,6 @@ pnpm-lock.yaml
 /apps/api/src/platform/prisma/generated
 /apps/api/openapi.json
 /docs/generated
+/apps/landing/index.html
+/apps/landing/en/index.html
+/apps/landing/site.css

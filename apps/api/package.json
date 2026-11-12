@@ -82,6 +82,14 @@
           "^build"
         ]
       },
+      "dev-mail": {
+        "continuous": true,
+        "executor": "nx:run-commands",
+        "cache": false,
+        "options": {
+          "command": "node tools/dev/mail.mjs"
+        }
+      },
       "test:browser": {
         "executor": "nx:run-commands",
         "cache": false,

@@ -18,6 +18,8 @@ import {
 } from '../../identity/application/resource-security-context';
 import { TenantAccess } from '../../organizations/application/tenant-access';
 import { SECRET_STORE, type SecretStore } from '../../secrets/application/ports';
+import type { AgentActionView } from '../../fleet/domain/agent-action';
+import type { ReplicaStatus } from '../domain/observations';
 import {
   assertRollbackTarget,
   assertSecretsSet,
@@ -29,12 +31,16 @@ import {
 } from '../domain/release';
 
 import {
+  ACTION_HISTORY,
+  type ActionHistory,
   DEPLOYMENT_STORE,
   DEPLOYMENT_TRANSACTION,
   DEPLOYMENT_WAKER,
   type DeploymentStore,
   type DeploymentTransaction,
   type DeploymentWaker,
+  OBSERVATION_STORE,
+  type ObservationStore,
 } from './ports';
 
 const CANCELLED_BY_USER = 'Cancelled by a user.';
@@ -53,6 +59,8 @@ export class DeploymentCommands {
     @Inject(APPLICATION_STORE) private readonly applications: ApplicationStore,
     @Inject(SECRET_STORE) private readonly secrets: SecretStore,
     @Inject(DEPLOYMENT_WAKER) private readonly waker: DeploymentWaker,
+    @Inject(OBSERVATION_STORE) private readonly observations: ObservationStore,
+    @Inject(ACTION_HISTORY) private readonly actionHistory: ActionHistory,
     private readonly accounts: AccountMutationAuthority,
     private readonly access: TenantAccess,
     private readonly events: DomainEventBus,
@@ -116,6 +124,17 @@ export class DeploymentCommands {
       );
       const running = await this.store.active(application.id);
       if (running) throw deploymentInProgress(running.state);
+      // The older configuration may name a domain another application has claimed since. The
+      // current domains stay claimed: the next deployment uses them again.
+      const taken = await this.applications.syncDomains(
+        application,
+        [...new Set([...(application.config.domains ?? []), ...(source.config.domains ?? [])])],
+        now,
+      );
+      if (taken)
+        throw new ConflictError('domain_taken', 'Another application already uses this domain.', {
+          hostname: taken,
+        });
       const release = await this.store.copyRelease(source, context.userId, now);
       if (!release) throw deploymentInProgress();
       const deployment = await this.store.queue(release, draft, 'rollback', context.userId, now);
@@ -198,6 +217,41 @@ export class DeploymentCommands {
     return this.scoped(context, 'environment.read', target, applicationId, (application) =>
       this.store.releases(application.id),
     );
+  }
+
+  replicas(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+  ): Promise<ReplicaStatus[]> {
+    return this.scoped(context, 'environment.read', target, applicationId, (application) =>
+      this.observations.forApplication(application.id),
+    );
+  }
+
+  /**
+   * The agent actions the application's deployments requested, newest first, including the
+   * ones agents refused (issue #263). `nextCursor` is null on the last page.
+   */
+  actions(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<{ items: AgentActionView[]; nextCursor: string | null }> {
+    return this.scoped(context, 'environment.read', target, applicationId, async (application) => {
+      const size = Math.min(Math.max(Math.trunc(limit), 1), 100);
+      // One more row than the page tells whether another page exists.
+      const rows = await this.actionHistory.history(
+        application.organizationId,
+        application.id,
+        cursor,
+        size + 1,
+      );
+      const items = rows.slice(0, size);
+      return { items, nextCursor: rows.length > size ? (items.at(-1)?.id ?? null) : null };
+    });
   }
 
   /** Checks the live permission, then resolves the application inside its environment. */

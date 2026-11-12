@@ -1,0 +1,32 @@
+# Shipkeep
+
+> Shipkeep is an open source (Apache-2.0), self-hosted platform as a service (PaaS) that deploys applications, databases and services to servers you own, without Kubernetes. It is in development and cannot be installed yet.
+
+How it differs from panels that connect to servers over SSH:
+
+- The control plane holds no SSH key. Each server runs an agent that opens an outbound mTLS connection to the control plane, enrolled with a one-time join token.
+- The agent only runs a closed list of typed actions defined in a protobuf file. There is no generic shell or exec on the host, and no shell command is built from strings.
+- Each application is described by a versioned `shipkeep.yml` in its repository. The web UI writes to that file instead of hiding state.
+- The first release targets multiple servers with placement, health-based failover, a private WireGuard network and replicated routing.
+- Upgrades are designed to take a snapshot first, and destructive actions need explicit confirmation.
+
+Stack: Go (agent and CLI), TypeScript with NestJS (API) and Angular (web UI), PostgreSQL, Docker Engine API, Caddy.
+
+## Project
+
+- [Source code on GitHub](https://github.com/shipkeepdev/shipkeep): README, issues and roadmap
+- [Website (English)](https://shipkeep.vercel.app/en): features, comparison with Coolify, Dokploy and Kamal, FAQ
+- [Website (French)](https://shipkeep.vercel.app/)
+
+## Docs
+
+- [Architecture](https://github.com/shipkeepdev/shipkeep/blob/main/docs/ARCHITECTURE.md)
+- [Specification](https://github.com/shipkeepdev/shipkeep/blob/main/docs/SPEC.md)
+- [Threat model](https://github.com/shipkeepdev/shipkeep/blob/main/docs/THREAT_MODEL.md)
+- [Roadmap](https://github.com/shipkeepdev/shipkeep/blob/main/docs/PLAN.md)
+
+## Contributing
+
+- [Contributing guide](https://github.com/shipkeepdev/shipkeep/blob/main/CONTRIBUTING.md)
+- [Good first issues](https://github.com/shipkeepdev/shipkeep/labels/good%20first%20issue)
+- [Call for contributors](https://github.com/shipkeepdev/shipkeep/discussions/285)

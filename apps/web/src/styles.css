@@ -1,39 +1,94 @@
-/* You can add global styles to this file, and also import other style files */
+/* Self-hosted fonts (OFL-1.1, see ADR 0014): the strict CSP allows fonts from 'self' only. */
+@import '@fontsource-variable/outfit/wght.css';
+@import '@fontsource-variable/geist/wght.css';
+@import '@fontsource-variable/geist-mono/wght.css';
 @import 'tailwindcss' source('./app');
 
+/*
+ * Design tokens from the Shipkeep dashboard and sign-in mockups. Names describe the
+ * role of a value, from the brightest text (fg) to the faintest (dim3). The three dim grays are
+ * lighter than in the mockups (#6b6b74, #5e5e67, #4c4c55): those fail WCAG AA contrast (4.5:1) as
+ * text on black, and the accessibility gate requires AA on every screen.
+ */
 @theme {
-  --font-sans: ui-sans-serif, system-ui, sans-serif;
-  --color-ink: #192b3b;
-  --color-muted: #526171;
-  --color-line: #c6d0d9;
-  --color-control: #7a8896;
-  --color-panel: #f2f5f7;
-  --color-accent: #1759ba;
-  --color-danger: #a02127;
-  --color-success: #176145;
+  --font-sans: 'Outfit Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-geist: 'Geist Variable', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'Geist Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-paper: #f2f2f3;
+  --color-fg: #ededef;
+  --color-fg2: #c8c8cf;
+  --color-fg3: #a6a6ae;
+  --color-mute: #8b8b93;
+  --color-mute2: #7c7c85;
+  --color-dim: #7e7e87;
+  --color-dim2: #7b7b84;
+  --color-dim3: #7b7b84;
+  --color-sep: #3a3a42;
+  --color-line: #1c1c1e;
+  --color-line2: #17171b;
+  --color-ctl: #262628;
+  --color-ctl2: #2a2a30;
+  --color-track: #1e1e22;
+  --color-hover: #141417;
+  --color-sel: #111113;
+  --color-chip: #0e0e10;
+  --color-rose: #ff8a8a;
+  --color-coral: #ff5c5c;
+  --color-silver: #d0d0d4;
+  --color-red: oklch(0.68 0.17 25);
+  --color-amber: oklch(0.8 0.12 80);
+  --color-green: oklch(0.78 0.13 155);
+  --color-blue: oklch(0.72 0.13 250);
+  /* Older names, still used by a few panels. */
+  --color-ink: #ededef;
+  --color-muted: #9a9aa2;
+  --color-control: #2e2e33;
+  --color-panel: #0c0c0e;
+  --color-accent: #ff8a8a;
+  --color-danger: #ff6b6b;
+  --color-success: oklch(0.78 0.13 155);
+  --color-warning: oklch(0.8 0.12 80);
 }
 
 @layer base {
   html {
-    color-scheme: light;
+    color-scheme: dark;
+  }
+  /* The design keeps the browser's default line height everywhere. */
+  html {
+    line-height: normal;
   }
   body {
-    @apply m-0 bg-white font-sans text-base text-ink antialiased;
+    @apply m-0 bg-black font-sans text-fg antialiased;
   }
-  h1 {
-    @apply mb-3 text-[1.75rem] leading-tight font-semibold text-balance;
+  router-outlet {
+    display: none;
   }
-  h2 {
-    @apply mb-3 text-xl font-semibold;
-  }
+  h1,
+  h2,
+  h3,
   p {
-    @apply leading-relaxed;
+    margin: 0;
   }
   a {
-    @apply text-accent underline underline-offset-4;
+    color: inherit;
+    text-decoration: none;
   }
-  a:hover {
-    @apply decoration-2;
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+    color: inherit;
+  }
+  button {
+    cursor: pointer;
+    background: none;
+    border: 0;
+    padding: 0;
+  }
+  button:disabled {
+    cursor: not-allowed;
   }
   a,
   button,
@@ -42,94 +97,443 @@
   summary {
     -webkit-tap-highlight-color: transparent;
   }
+  input::placeholder,
+  textarea::placeholder {
+    color: #7b7b84;
+  }
+  [tabindex='-1']:focus {
+    outline: none;
+  }
   :focus-visible {
-    outline: 3px solid var(--color-accent);
-    outline-offset: 3px;
+    outline: 2px solid var(--color-rose);
+    outline-offset: 2px;
   }
   ::selection {
-    color: #192b3b;
-    background: #dceaff;
+    color: #fff;
+    background: rgb(224 40 46 / 45%);
   }
-  input,
-  select {
-    caret-color: var(--color-accent);
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
   }
-  input:not([type='checkbox']),
-  select {
-    @apply block min-h-11 w-full rounded-md border border-control bg-white px-3 py-2 text-base text-ink;
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: #000;
   }
-  input[aria-invalid='true'] {
-    @apply border-danger;
+  ::-webkit-scrollbar-thumb {
+    background: #1e1e21;
+    border-radius: 99px;
+    border: 3px solid #000;
   }
-  input:disabled,
-  select:disabled {
-    @apply bg-panel text-muted;
+  ::-webkit-scrollbar-thumb:hover {
+    background: #e0282e;
   }
-  label {
-    @apply mb-2 block text-sm font-semibold;
-  }
-  button,
-  summary {
-    @apply cursor-pointer;
-  }
-  button:disabled {
-    @apply cursor-not-allowed;
+  @supports not selector(::-webkit-scrollbar) {
+    html,
+    * {
+      scrollbar-color: #2a2a2e transparent;
+      scrollbar-width: thin;
+    }
   }
 }
 
 @layer components {
-  .button {
-    @apply inline-flex min-h-11 items-center justify-center rounded-md bg-accent px-5 py-2.5 text-sm font-semibold text-white no-underline;
-    transition: background-color 160ms ease-out;
+  /* Controls */
+  .btn {
+    @apply inline-flex cursor-pointer items-center justify-center gap-1.5 rounded-xl border border-ctl bg-black px-3.5 py-2 text-[13px] whitespace-nowrap text-fg;
+    transition:
+      background-color 160ms,
+      border-color 160ms;
   }
-  .button:hover {
-    background-color: #124895;
+  .btn:hover {
+    background-color: var(--color-hover);
   }
-  .button:active {
-    background-color: #103c7c;
+  .btn sk-icon {
+    font-size: 15px;
   }
-  .button:disabled {
-    @apply bg-panel text-muted;
+  .btn-primary {
+    @apply border-paper bg-paper px-4 py-[9px] font-medium text-black;
   }
-  .button-secondary {
-    @apply border border-line bg-white text-ink;
+  .btn-primary:hover {
+    background-color: #fff;
   }
-  .button-secondary:hover {
-    @apply bg-panel;
+  .btn-sm {
+    @apply px-[13px] py-[7px] text-[12px] text-fg2;
   }
-  .hint {
-    @apply mt-2 text-sm leading-relaxed text-muted;
+  .btn-sm.btn-primary {
+    @apply text-black;
   }
-  .field-error {
-    @apply mt-2 text-sm text-danger;
+  .btn-sm sk-icon {
+    font-size: 14px;
   }
-  .feedback {
-    @apply my-6 rounded-md border border-line bg-panel p-4 text-sm leading-relaxed;
+  .btn-xs {
+    @apply rounded-xl px-[11px] py-[5px] text-[11.5px] text-fg2;
   }
-  .feedback:focus {
-    outline: 3px solid var(--color-accent);
-    outline-offset: 3px;
+  .btn-danger {
+    @apply border-[rgb(255_92_92/45%)] px-[13px] py-[7px] text-[12px] text-rose;
   }
-  .page-intro {
-    @apply mb-8 max-w-prose text-muted;
+  .btn:disabled,
+  .btn[aria-disabled='true'] {
+    @apply cursor-not-allowed border-[#24242a] bg-[#24242a] text-dim;
   }
-  .form-links {
-    @apply mt-8 flex flex-wrap gap-x-6 gap-y-4 border-t border-line pt-6 text-sm;
+  .input {
+    @apply w-full rounded-[10px] border border-ctl bg-black px-3 py-2.5 text-[13px] text-fg outline-none;
+    transition:
+      border-color 200ms,
+      box-shadow 200ms;
   }
-  .nav-link {
-    @apply flex min-h-11 items-center rounded-md px-3 py-2 text-sm text-ink no-underline;
+  .input:focus {
+    border-color: rgb(255 92 92 / 70%);
+    box-shadow: 0 0 0 3px rgb(255 60 60 / 18%);
   }
-  .nav-link:hover {
-    @apply bg-white;
+  .input[aria-invalid='true'] {
+    border-color: rgb(255 92 92 / 70%);
   }
-  .nav-link[aria-current='page'] {
-    @apply bg-white font-semibold text-accent;
+  /* The sign-in pages use a neutral accent; the dashboard keeps the red one. */
+  .auth-neutral .input:focus:not([aria-invalid='true']) {
+    border-color: rgb(190 190 194 / 70%);
+    box-shadow: 0 0 0 3px rgb(177 177 181 / 18%);
+  }
+  .auth-neutral :focus-visible {
+    outline-color: var(--color-silver);
+  }
+  /* The language switch clips outlines and has a light active item. */
+  .auth-neutral header button:focus-visible {
+    outline-color: #7e7e87;
+    outline-offset: -2px;
+  }
+  .auth-neutral ::selection {
+    background: rgb(152 152 156 / 45%);
+  }
+  html:has(.auth-neutral) ::-webkit-scrollbar-thumb:hover {
+    background: #98989c;
+  }
+  .seg {
+    @apply flex gap-0.5 rounded-[9px] border border-line bg-black p-[3px];
+  }
+  .seg > * {
+    @apply cursor-pointer rounded-md px-2.5 py-[5px] text-[11.5px] text-dim;
+  }
+  .seg > [aria-pressed='true'],
+  .seg > [aria-selected='true'] {
+    @apply bg-[#24242a] text-fg;
+  }
+  .pill {
+    @apply inline-flex items-center gap-1.5 rounded-full border border-ctl2 px-2.5 py-[3px] text-[12px] text-fg3;
+  }
+  .tag-ours {
+    @apply rounded-full border border-[rgb(255_92_92/40%)] px-2 py-0.5 text-[10.5px] text-rose;
+  }
+  .dot {
+    @apply inline-block size-1.5 shrink-0 rounded-full bg-current;
+  }
+  .kbd {
+    @apply rounded border border-ctl2 px-[5px] py-px font-mono text-[10.5px];
+  }
+  .bar {
+    @apply h-1 overflow-hidden rounded-full bg-track;
+  }
+  .bar > span {
+    @apply block h-full;
+  }
+
+  /* Surfaces */
+  .card {
+    @apply min-w-0 rounded-2xl border border-line bg-black;
+  }
+  .card-pad {
+    @apply p-5;
+  }
+  .card-head {
+    @apply flex items-center justify-between gap-3 px-5 pb-3;
+  }
+  .card-title {
+    @apply text-[14px] font-medium;
+  }
+  .card-link {
+    @apply cursor-pointer text-[12px] text-mute hover:text-fg;
+  }
+  .rows > * {
+    @apply border-t border-line2;
+  }
+  .row-hover:hover {
+    background-color: var(--color-hover);
+  }
+  .note {
+    @apply flex gap-2.5 rounded-xl border border-line px-3.5 py-3 text-[12.5px] leading-normal text-fg2;
+  }
+  .note sk-icon {
+    font-size: 16px;
+  }
+  .note-warn {
+    border-color: oklch(0.8 0.12 80 / 0.35);
+  }
+  .note-ours {
+    border-color: rgb(255 92 92 / 35%);
+  }
+  .grid-table {
+    @apply grid items-center gap-3;
+  }
+  .th {
+    @apply text-[11px] tracking-[0.06em] text-dim2 uppercase;
+  }
+
+  /* Page frame */
+  .page {
+    @apply flex flex-col gap-4;
+  }
+  .page-head {
+    @apply flex flex-wrap items-end justify-between gap-4;
+  }
+  .page-title {
+    @apply m-0 text-[26px] font-semibold tracking-[-0.02em];
+  }
+  .page-sub {
+    @apply mt-1.5 text-[13.5px] text-mute;
+  }
+  .sec-title {
+    @apply text-[18px] font-medium;
+  }
+  .sec-desc {
+    @apply mt-1 max-w-[640px] text-[13px] text-pretty text-mute2;
+  }
+  .tabbar {
+    @apply flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line;
+    scrollbar-width: none;
+  }
+  .tabbar::-webkit-scrollbar {
+    display: none;
+  }
+  .tabbar > * {
+    @apply -mb-px flex cursor-pointer items-center gap-[7px] border-b-2 border-transparent px-3.5 py-2.5 text-[13px] whitespace-nowrap text-mute;
+  }
+  .tabbar > [aria-current='page'],
+  .tabbar > [aria-selected='true'] {
+    @apply border-fg text-fg;
+  }
+  .tabbar sk-icon {
+    font-size: 15px;
+  }
+  .sidenav-head {
+    @apply px-2.5 pt-3.5 pb-1.5 text-[10.5px] tracking-[0.08em] text-dim2 uppercase;
+  }
+  .sidenav-item {
+    @apply flex w-full cursor-pointer items-center gap-[9px] rounded-lg px-2.5 py-[7px] text-left text-[13px] text-fg3;
+  }
+  .sidenav-item sk-icon {
+    @apply text-[15px] text-dim;
+  }
+  .sidenav-item:hover {
+    background-color: var(--color-hover);
+  }
+  .sidenav-item[aria-current='true'],
+  .sidenav-item[aria-current='page'] {
+    @apply bg-sel text-fg;
+  }
+  .sidenav-item[aria-current='true'] sk-icon,
+  .sidenav-item[aria-current='page'] sk-icon {
+    @apply text-fg;
+  }
+  .sidenav-item.danger,
+  .sidenav-item.danger sk-icon {
+    @apply text-rose;
+  }
+
+  /* Field rows (settings sections) */
+  .field-row {
+    @apply grid grid-cols-[minmax(0,0.8fr)_minmax(0,1.4fr)] items-center gap-5 py-3.5 max-sm:grid-cols-1 max-sm:gap-2;
+  }
+  .field-row + .field-row {
+    @apply border-t border-line2;
+  }
+  .field-label {
+    @apply text-[13px];
+  }
+  .field-hint {
+    @apply mt-[3px] text-[11.5px] text-dim;
+  }
+  .field-box {
+    @apply flex min-w-0 flex-1 items-center gap-2 rounded-[10px] border border-ctl bg-black px-3 py-[9px] text-[12.5px] text-fg;
+  }
+  .toggle {
+    @apply relative h-[19px] w-[34px] shrink-0 cursor-pointer rounded-full bg-[#26262a];
+    transition: background-color 160ms;
+  }
+  .toggle::after {
+    content: '';
+    @apply absolute top-0.5 left-0.5 size-[15px] rounded-full bg-dim;
+    transition:
+      left 160ms,
+      background-color 160ms;
+  }
+  .toggle[aria-checked='true'] {
+    @apply bg-paper;
+  }
+  .toggle[aria-checked='true']::after {
+    @apply left-[17px] bg-black;
+  }
+
+  .code-box {
+    @apply m-0 overflow-x-auto rounded-lg border border-line bg-black px-3 py-2.5 font-mono text-[11.5px] leading-[1.7] whitespace-pre text-fg2;
+  }
+
+  /* Sign-in screens */
+  .auth-cta {
+    @apply flex w-full cursor-pointer items-center justify-center gap-2.5 rounded-xl border-0 bg-paper px-[18px] py-3 text-[14.5px] font-medium text-black;
+    transition: background-color 160ms;
+  }
+  .auth-cta:hover {
+    background-color: #fff;
+  }
+  .auth-cta:disabled {
+    @apply cursor-not-allowed bg-[#24242a] text-dim;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .auth-in {
+      animation: sk-in 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    }
+  }
+  @keyframes sk-in {
+    from {
+      opacity: 0;
+      transform: translateY(14px);
+      filter: blur(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+      filter: none;
+    }
+  }
+
+  /* Status line under a form or a panel */
+  .alert {
+    @apply flex gap-2.5 rounded-xl border border-[rgb(255_92_92/40%)] px-3.5 py-3 text-[12.5px] leading-normal text-[#e0b8b8];
+  }
+  .alert-ok {
+    @apply border-[oklch(0.78_0.13_155/0.35)] text-fg2;
+  }
+  .alert:focus {
+    outline: 2px solid var(--color-rose);
+    outline-offset: 2px;
   }
   .skip-link {
-    @apply fixed top-3 left-3 z-50 -translate-y-24 rounded-md bg-white px-4 py-3;
+    @apply fixed top-3 left-3 z-50 -translate-y-24 rounded-md bg-fg px-4 py-3 text-black;
   }
   .skip-link:focus {
     @apply translate-y-0;
+  }
+
+  /* Legacy panel styles kept until every panel uses the shared components above. */
+  .button {
+    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-paper px-4 py-2 text-[13px] font-medium text-black;
+  }
+  .button:hover {
+    background-color: #fff;
+  }
+  .button:disabled {
+    @apply cursor-not-allowed bg-[#24242a] text-dim;
+  }
+  .button-secondary {
+    @apply border border-ctl bg-black font-normal text-fg;
+  }
+  .button-secondary:hover {
+    background-color: var(--color-hover);
+  }
+  .button.bg-danger {
+    background-color: oklch(0.68 0.17 25);
+    color: #0b0b0d;
+  }
+  .button.bg-danger:disabled {
+    @apply bg-[#24242a] text-dim;
+  }
+  .hint {
+    @apply mt-2 text-[12.5px] leading-relaxed text-mute;
+  }
+  .field-error {
+    @apply mt-2 text-[12.5px] text-rose;
+  }
+  .field-error:empty {
+    display: none;
+  }
+  .feedback {
+    @apply my-4 rounded-xl border border-line px-3.5 py-3 text-[12.5px] leading-relaxed text-fg2;
+  }
+  .feedback[role='alert'] {
+    border-color: rgb(255 92 92 / 45%);
+  }
+  .page-intro {
+    @apply mb-5 max-w-prose text-[13.5px] text-mute;
+  }
+  .page-header {
+    @apply mb-4 flex flex-wrap items-end justify-between gap-4;
+  }
+  .breadcrumb {
+    @apply hidden;
+  }
+  .card-header {
+    @apply flex items-center justify-between gap-3 px-5 pt-[18px] pb-3;
+  }
+  .data-table {
+    @apply w-full border-collapse text-left text-[13px];
+  }
+  .data-table th {
+    @apply border-b border-line px-5 py-2.5 text-[11.5px] font-normal text-dim2;
+  }
+  .data-table td {
+    @apply border-b border-line2 px-5 py-3 align-top;
+  }
+  .data-table tr:last-child td {
+    @apply border-b-0;
+  }
+  .state {
+    @apply inline-flex items-center gap-1.5 text-[12.5px];
+  }
+  .state::before {
+    content: '';
+    @apply size-1.5 rounded-full bg-current;
+  }
+  .state-good {
+    @apply text-green;
+  }
+  .state-bad {
+    @apply text-red;
+  }
+  .state-busy {
+    @apply text-blue;
+  }
+  .disclosure {
+    @apply rounded-2xl border border-line px-5 py-3.5;
+  }
+  .disclosure summary {
+    @apply cursor-pointer text-[13.5px] font-medium;
+  }
+  .disclosure[open] summary {
+    @apply mb-4;
+  }
+  .tabs {
+    @apply flex gap-1 overflow-x-auto border-b border-line;
+  }
+  .tab {
+    @apply -mb-px border-b-2 border-transparent px-3.5 py-2.5 text-[13px] whitespace-nowrap text-mute;
+  }
+  .tab[aria-selected='true'] {
+    @apply border-fg text-fg;
+  }
+  .legacy-form label {
+    @apply mb-2 block text-[12.5px] text-[#c9c9cc];
+  }
+  .legacy-form input:not([type='checkbox']),
+  .legacy-form select,
+  .legacy-form textarea {
+    @apply block w-full rounded-[10px] border border-ctl bg-black px-3 py-2.5 text-[13px] text-fg outline-none;
+  }
+  .legacy-form textarea {
+    @apply font-mono;
+  }
+  /* WCAG 2.5.8: at least 24 by 24 CSS pixels. */
+  input[type='checkbox'] {
+    @apply size-6 shrink-0 accent-[#f2f2f3];
   }
 }
 
@@ -138,6 +542,7 @@
   *::before,
   *::after {
     transition: none !important;
+    animation: none !important;
     scroll-behavior: auto !important;
   }
 }

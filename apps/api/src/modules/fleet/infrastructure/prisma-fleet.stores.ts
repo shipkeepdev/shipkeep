@@ -62,6 +62,7 @@ export class PrismaNodeStore implements NodeStore {
         status: node.status,
         labels: node.labels,
         facts: node.facts,
+        publicAddresses: [...node.publicAddresses],
         leaseEpoch: node.leaseEpoch,
         createdAt: node.createdAt,
         lastHeartbeatAt: node.lastHeartbeatAt,
@@ -115,6 +116,24 @@ export class PrismaNodeStore implements NodeStore {
     });
   }
 
+  async setPublicAddresses(
+    organizationId: string,
+    id: string,
+    expected: readonly string[],
+    addresses: readonly string[],
+  ): Promise<NodeRecord | undefined> {
+    const result = await this.database.client.node.updateMany({
+      where: {
+        organizationId,
+        id,
+        status: { not: 'removed' },
+        publicAddresses: { equals: [...expected] },
+      },
+      data: { publicAddresses: [...addresses] },
+    });
+    return result.count === 1 ? this.findById(organizationId, id) : undefined;
+  }
+
   async list(organizationId: string, beforeId?: string): Promise<NodeRecord[]> {
     const rows = await this.database.client.node.findMany({
       where: { organizationId, ...(beforeId ? { id: { lt: beforeId } } : {}) },
@@ -137,6 +156,7 @@ function nodeRecord(row: Node): NodeRecord {
     status: row.status as NodeStatus,
     labels: row.labels as Record<string, string>,
     facts: row.facts as NodeFacts,
+    publicAddresses: row.publicAddresses,
     leaseEpoch: row.leaseEpoch,
     createdAt: row.createdAt,
     lastHeartbeatAt: row.lastHeartbeatAt,

@@ -1,4 +1,4 @@
-import { Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
+import { Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCookieAuth,
@@ -15,6 +15,7 @@ import { RequireTenant } from '../../identity/interface/route-access';
 import { type IdentityRequest, resourceContext } from '../../identity/interface/session-http';
 import { DeploymentCommands } from '../application/deployment-commands';
 
+import { agentActionDto, AgentActionPageDto, AgentActionPageQueryDto } from './agent-action.dto';
 import {
   DeploymentDto,
   deploymentDto,
@@ -23,6 +24,8 @@ import {
   QueuedDeploymentDto,
   releaseDto,
   ReleaseListDto,
+  replicaDto,
+  ReplicaListDto,
 } from './deployment.dto';
 
 const APPLICATION =
@@ -123,6 +126,42 @@ export class DeploymentController {
       path.deploymentId,
     );
     return { release: releaseDto(queued.release), deployment: deploymentDto(queued.deployment) };
+  }
+
+  @Get(`${APPLICATION}/replicas`)
+  @RequireTenant('environment.read', 'environment')
+  @AllowApiToken('environment.read')
+  @ApiOkResponse({ type: ReplicaListDto })
+  async listReplicas(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+  ): Promise<ReplicaListDto> {
+    const items = await this.deployments.replicas(
+      resourceContext(request),
+      target(path),
+      path.applicationId,
+    );
+    return { items: items.map(replicaDto) };
+  }
+
+  /** Agent actions requested by the application's deployments, refusals included (#263). */
+  @Get(`${APPLICATION}/agent-actions`)
+  @RequireTenant('environment.read', 'environment')
+  @AllowApiToken('environment.read')
+  @ApiOkResponse({ type: AgentActionPageDto })
+  async listAgentActions(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+    @Query() query: AgentActionPageQueryDto,
+  ): Promise<AgentActionPageDto> {
+    const page = await this.deployments.actions(
+      resourceContext(request),
+      target(path),
+      path.applicationId,
+      query.cursor,
+      query.limit,
+    );
+    return { items: page.items.map(agentActionDto), nextCursor: page.nextCursor };
   }
 
   @Get(`${APPLICATION}/releases`)

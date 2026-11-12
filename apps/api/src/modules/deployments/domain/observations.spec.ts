@@ -9,6 +9,7 @@ const ago = (ms: number) => new Date(NOW.getTime() - ms);
 const allocation = (observation: ObservedAllocation['observation']): ObservedAllocation => ({
   id: 'a1',
   applicationId: 'app',
+  environmentId: 'env',
   container: 'sk-web-1',
   observation,
 });
@@ -24,6 +25,7 @@ describe('observationChanges', () => {
       {
         allocationId: 'a1',
         applicationId: 'app',
+        environmentId: 'env',
         container: 'sk-web-1',
         containerId: running.containerId,
         state: 'running',

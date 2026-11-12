@@ -1,181 +1,138 @@
 # CLAUDE.md
 
-Guidance for Claude Code working in the Shipkeep repository. Read this file fully before any task.
+Conventions for AI coding assistants working on Shipkeep. Human contributors should start with [CONTRIBUTING.md](CONTRIBUTING.md); the rules are the same.
 
 ## What Shipkeep is
 
-Shipkeep is a self-hosted PaaS: a Coolify-class platform that deploys apps, databases and services to servers the user owns. It differs from Coolify on four points that every change must protect:
+Shipkeep is a self-hosted platform that deploys applications, databases and services to servers the user owns. Every change must protect four properties:
 
-1. **Secure by design.** No control-plane-held SSH root key. No shell command is ever built from strings. Agents open an outbound mTLS connection and execute a closed list of typed actions.
-2. **Config in the repo.** Each app is described by a versioned `shipkeep.yml`. The UI writes to that file (commit or PR) instead of hiding state.
-3. **Real multi-node.** Placement, health-based failover, private WireGuard network and replicated routing, without Kubernetes.
+1. **Secure by design.** The control plane holds no SSH key and no shell command is built from strings. Agents open an outbound mTLS connection and execute a closed list of typed actions.
+2. **Configuration in the repository.** Each application is described by a versioned `shipkeep.yml`. The UI writes to that file (commit or pull request) instead of hiding state.
+3. **Real multi-node.** Placement, health-based failover, a private WireGuard network and replicated routing, without Kubernetes.
 4. **Safe upgrades and destructive actions.** Snapshots before upgrades, resumable operations, explicit confirmation for anything destructive.
 
-Read in this order before coding: `docs/PRODUCT.md`, `docs/ARCHITECTURE.md`, `docs/SPEC.md`, `docs/THREAT_MODEL.md`, `docs/PLAN.md`, then the ADRs in `docs/adr/`.
+Read what relates to your change: [product](docs/PRODUCT.md), [architecture](docs/ARCHITECTURE.md), [specification](docs/SPEC.md), [threat model](docs/THREAT_MODEL.md), [roadmap](docs/PLAN.md) and the [decision records](docs/adr/).
 
 ## Language
 
-Everything is in English: code, comments, commit messages, PR descriptions, issues, docs, UI strings, logs, error messages.
+Code, comments, commit messages, pull requests, issues, docs, logs and error messages are in English. UI text is written in English and translated in `apps/web/src/app/ui/fr.ts`.
 
 ## Repository layout
 
 ```text
 apps/
-  api/              Control plane API, NestJS 12 (TypeScript)
-                      src/platform/   cross-cutting: config (zod), logging (pino), http (problem details, validation), prisma, health, openapi, events (DomainEventBus), crypto (KEK, envelope encryption)
-                      src/modules/    bounded contexts, one folder each (see conventions below)
-                      prisma/         schema.prisma and migrations; prisma.config.ts for the CLI
-                      openapi.json    generated contract of the REST API (pnpm gen:openapi)
-  web/              Web UI, Angular (TypeScript)
-agent/              Node agent, Go module github.com/shipkeepdev/shipkeep/agent (single static binary)
-cli/                CLI, Go module github.com/shipkeepdev/shipkeep/cli (single static binary)
-lib/                Shared Go module github.com/shipkeepdev/shipkeep/lib:
-                      lib/gen      generated protobuf and gRPC code
-                      lib/config   shipkeep.yml types (generated), embedded schema copy (generated) and validator, shared by agent, cli and fuzz tests
-                      lib/secret   Secret wrappers that redact in fmt, slog, JSON and YAML (rule 8)
-                      lib/agentproto helpers over the generated agent protocol (action kinds)
-proto/              gRPC + protobuf contract between control plane and agent (single source of truth)
+  api/              Control plane API, NestJS (TypeScript)
+                      src/platform/   cross-cutting: config, logging, http, prisma, health, openapi, events, crypto
+                      src/modules/    bounded contexts, one folder each
+                      prisma/         schema and migrations
+                      openapi.json    generated REST contract
+  web/              Web UI, Angular (design system in apps/web/DESIGN.md)
+  landing/          Static marketing page
+agent/              Node agent (Go, single static binary)
+cli/                CLI (Go, single static binary)
+lib/                Shared Go module: generated protobuf code, shipkeep.yml types and validator, Secret wrappers
+proto/              gRPC and protobuf contract between control plane and agent
 packages/
-  domain/           Pure domain model and rules (TypeScript, no framework imports)
-  config-schema/    JSON Schema for shipkeep.yml (source of truth), generated TS types, TS validator, golden fixtures
-  api-client/       Generated TypeScript client for the public REST API (used by web)
-  proto-ts/         Generated TypeScript code from proto/ (used by api)
-templates/          Service catalog (Compose files + metadata)
+  domain/           Pure domain model and rules
+  config-schema/    JSON Schema for shipkeep.yml, generated types, validator, fixtures
+  api-client/       Generated TypeScript client for the REST API
+  proto-ts/         Generated TypeScript code from proto/
 deploy/             Install script, control plane compose file, systemd units
-docs/               Product, architecture, spec, threat model, plan, ADRs
-e2e/                End-to-end tests against real VMs
-.github/            Workflows, templates, CODEOWNERS
+docs/               Product, architecture, spec, threat model, roadmap, decision records
+tools/              Code generation, git hooks, CI and development scripts
 ```
 
-## Tooling and commands
+## Commands
 
-- Node.js 22 LTS (`.nvmrc`), pnpm 11 (pinned in `package.json` `packageManager`, use Corepack or `pnpm@11`), Nx 24 for the TypeScript workspace.
-- Go 1.26+ for `agent/`, `cli/` and `lib/` (three modules in one Go workspace, `go.work` at repo root, no root module).
-- The repository lives under the `shipkeepdev` organization. If it is ever transferred, update the Go module paths and `docs/GITHUB_SETUP.md` in one PR.
-- `buf` (from the `@bufbuild/buf` npm package, so `pnpm exec buf` always matches CI) for protobuf lint, breaking-change checks and code generation. Plugins run remotely on buf.build with versions pinned in `buf.gen.yaml`.
-- Docker with BuildKit for local integration tests.
+Node.js 22 (`.nvmrc`), pnpm 11, Nx, Go 1.26+ (three modules in one workspace, `go.work`), Docker for integration tests.
 
-| Task                                 | Command                                                                                                      |
-| ------------------------------------ | ------------------------------------------------------------------------------------------------------------ |
-| Install                              | `pnpm install`                                                                                               |
-| Generate code from proto and schema  | `pnpm gen` (proto, shipkeep.yml schema, Prisma client, `apps/api/openapi.json`, `packages/api-client` types) |
-| Lint everything (ESLint + typecheck) | `pnpm lint`                                                                                                  |
-| Format                               | `pnpm format` (check only: `pnpm format:check`)                                                              |
-| Unit tests (TS, affected)            | `pnpm nx affected -t test` (vitest everywhere, including the API)                                            |
-| Go tests                             | `go test ./agent/... ./cli/... ./lib/...`                                                                    |
-| Go lint                              | `golangci-lint run ./agent/... ./cli/... ./lib/...`                                                          |
-| Integration tests                    | `pnpm test:integration` (real PostgreSQL via Testcontainers, or `DATABASE_URL` when set)                     |
-| Prisma CLI                           | `pnpm prisma <command>` (uses `apps/api/prisma.config.ts`)                                                   |
-| Run control plane locally            | `pnpm dev` (API + web + Postgres via `deploy/dev/compose.yml`)                                               |
-| Run an agent locally                 | `go run ./agent/cmd/shipkeep-agent --dev`                                                                    |
-| Proto checks                         | `buf lint && buf breaking --against '.git#branch=main'`                                                      |
-
-If a command in this table does not exist yet, creating it is part of the current task.
+| Task                  | Command                                                               |
+| --------------------- | --------------------------------------------------------------------- |
+| Install               | `pnpm install`                                                        |
+| Generate code         | `pnpm gen` (proto, schema, Prisma client, `openapi.json`, API client) |
+| Lint and typecheck    | `pnpm lint`                                                           |
+| Format                | `pnpm format` (check only: `pnpm format:check`)                       |
+| TypeScript unit tests | `pnpm test`                                                           |
+| Go tests              | `go test ./agent/... ./cli/... ./lib/...`                             |
+| Go lint               | `golangci-lint run ./agent/... ./cli/... ./lib/...`                   |
+| Integration tests     | `pnpm test:integration` (real PostgreSQL through Testcontainers)      |
+| Browser tests         | `pnpm test:browser` (Chromium against the production build)           |
+| Prisma CLI            | `pnpm prisma <command>`                                               |
+| Run the control plane | `pnpm dev` (API, web and PostgreSQL)                                  |
+| Run an agent          | `go run ./agent/cmd/shipkeep-agent --dev`                             |
+| Protobuf checks       | `pnpm proto:lint && pnpm proto:breaking`                              |
 
 ## Architecture rules (never break these)
 
-1. **No shell string building, anywhere.** Never call `sh -c`, `bash -c`, `exec.Command` with user-influenced strings, or Node `child_process` with a shell. The agent talks to Docker through the Docker Engine API (the typed client in `agent/internal/docker`) and to Caddy through its admin API. If something truly needs a process, use an argv array with validated, allow-listed arguments, and add a test.
-2. **The agent action list is closed.** Every action is a message in `proto/shipkeep/agent/v1/actions.proto`. Adding or changing an action requires: an ADR or SPEC update, input validation in the agent, unit tests including malicious inputs, and the `security-review` label on the PR.
+1. **No shell string building, anywhere.** Never call `sh -c`, `bash -c`, `exec.Command` with user-influenced strings, or Node `child_process` with a shell. The agent talks to Docker through the Docker Engine API and to Caddy through its admin API. If something truly needs a process, use an argv array with validated, allow-listed arguments, and add a test.
+2. **The agent action list is closed.** Every action is a message in `proto/shipkeep/agent/v1/actions.proto`. Adding or changing one requires an ADR or SPEC update, input validation in the agent, unit tests including malicious inputs, and the `security-review` label.
 3. **The agent never executes on the host.** Container exec sessions are allowed (typed, audited, RBAC-checked). Host shell access does not exist.
 4. **The control plane never holds SSH keys.** Agents enroll with a one-time join token and get a short-lived mTLS client certificate.
 5. **Domain code is pure.** `packages/domain` and each API module's `domain/` folder import nothing from NestJS, Prisma, HTTP or the file system.
-6. **Every state change is audited.** Commands produce domain events (`createEvent` from `packages/domain`) and publish them on `DomainEventBus` after the change; the `audit` module appends one `AuditEvent` row per event and a store failure fails the command. No write path skips this.
+6. **Every state change is audited.** Commands publish domain events on `DomainEventBus` after the change; the `audit` module appends one `AuditEvent` per event, and a store failure fails the command. No write path skips this.
 7. **Destructive actions require explicit confirmation.** Deleting a volume, a database, a server or an environment needs a confirmation token from the user. No destructive default is ever `true`.
-8. **Secrets never touch logs, `shipkeep.yml`, URLs or error messages.** Use the `Secret` type wrappers (`lib/secret` in Go); they redact on serialization.
-9. **The proto and the JSON Schema are the contract.** Generated code is never edited by hand. Change the source, run `pnpm gen`.
+8. **Secrets never touch logs, `shipkeep.yml`, URLs or error messages.** Use the `Secret` wrappers (`lib/secret` in Go, `packages/domain` in TypeScript); they redact on serialization.
+9. **The proto and the JSON Schema are the contract.** Generated code is never edited by hand. Change the source and run `pnpm gen`.
 10. **Agents must survive a control plane outage.** Running workloads and routing keep working from the agent's local state.
 
 ## Code conventions
 
-### TypeScript (api, web, packages)
+### TypeScript
 
 - Strict TypeScript. No `any` (use `unknown` and narrow). No non-null assertions without a comment.
-- API structure per bounded context: `modules/<context>/{domain,application,infrastructure,interface}`.
-  - `domain`: entities, value objects, domain events, domain services. Pure.
-  - `application`: command and query handlers (CQRS), ports (interfaces).
-  - `infrastructure`: Prisma repositories, gRPC client to agents, external adapters.
-  - `interface`: REST controllers, DTOs, guards.
-- Validation at the edge with `class-validator` DTOs; domain invariants enforced inside entities.
-- Errors: domain errors extend `DomainError` from `packages/domain` (kind + stable `code`); the global `ProblemDetailsFilter` maps them to RFC 9457 problem details (`application/problem+json`, `type` = `https://shipkeep.dev/problems/<code>`). Never throw raw `Error` for expected conditions.
-- Configuration comes from `AppConfig` (zod-validated environment). Values that embed credentials are `Secret` instances from `packages/domain`; call `expose()` only at the point of use.
-- Secret values at rest go through `EnvelopeService.encryptFor(scope, purpose, bytes)` (platform/crypto); never call the primitives or store a DEK yourself.
-- Integration tests apply migrations with `src/testing/apply-migrations.ts` (plain SQL through `pg`), never by spawning the Prisma CLI.
-- Platform code (`src/platform`) is shared infrastructure; bounded contexts live in `src/modules/<context>` and never import each other's `infrastructure/`.
-- Angular: standalone components, signals, OnPush everywhere, feature folders, no business logic in components (use services/stores).
+- API modules follow `modules/<context>/{domain,application,infrastructure,interface}`. Modules never import each other's `infrastructure/`.
+- Validate at the edge with `class-validator` DTOs; domain invariants live inside entities.
+- Domain errors extend `DomainError` (kind and stable `code`) and become RFC 9457 problem details. Never throw a raw `Error` for an expected condition.
+- Configuration comes from `AppConfig`. Values that embed credentials are `Secret` instances; call `expose()` only at the point of use.
+- Secret values at rest go through `EnvelopeService.encryptFor(scope, purpose, bytes)`. Never call the primitives or store a data key yourself.
+- Integration tests apply migrations with `src/testing/apply-migrations.ts`, never by spawning the Prisma CLI.
+- Angular: standalone components, signals, OnPush, feature folders, no business logic in components. Follow `apps/web/DESIGN.md`. The CSP forbids inline styles and runtime code generation. A screen without a real backend shows the Preview label; it never passes sample data off as live.
 
-### Go (agent, cli)
+### Go
 
-- `cmd/` for binaries, `internal/` for everything else. No exported packages unless shared on purpose.
+- `cmd/` for binaries, `internal/` for everything else.
 - Context on every call that can block. No goroutine without a clear owner and shutdown path.
 - Errors wrapped with `%w`; no panics outside `main`.
-- Agent operations are journaled before execution (see SPEC, "Operation journal") so they can resume after a restart.
+- Agent operations are journaled before execution, so they can resume after a restart.
 
 ### Tests
 
-- TDD for domain logic: write the failing test first.
-- Unit tests next to the code (`*.spec.ts`, `*_test.go`).
-- Integration tests use real Postgres and real Docker (Testcontainers), never mocks of those.
-- Every agent action has a test with malicious input (path traversal, injection characters, oversized values).
+- Write the failing test first for domain logic.
+- Unit tests live next to the code (`*.spec.ts`, `*_test.go`).
+- Integration tests use real PostgreSQL and Docker, never mocks of them.
+- Every agent action has a test with malicious input: path traversal, injection characters, oversized values.
 - Coverage targets: domain packages 90%, application layer 80%, agent `internal/actions` 90%.
 
-## Git and GitHub workflow
+## Git workflow
 
-- Never push to `main`. One branch and one PR per task from `docs/PLAN.md`: `feat/<task-id>-short-name`, `fix/...`, `chore/...`.
-- Conventional Commits (`feat(agent): ...`, `fix(api): ...`). Reference the task id in the PR title: `[M1.3] ...`.
-- PR description: what changed, why, how it was tested, security considerations, checklist below.
-- Keep PRs small (aim under 500 changed lines excluding generated code).
-- Never commit anything from the "Never commit" list below. Secret values for CI are set by the human with `gh secret set` (see `docs/GITHUB_SETUP.md`).
-- Do not change branch protection, repository visibility or org settings unless the task says so.
+- Never push to `main`. One branch and one pull request per task: `feat/<task-id>-short-name`, `fix/...`, `chore/...`, `docs/...`.
+- Conventional Commits (`feat(agent): ...`, `fix(api): ...`), each signed off with `git commit -s` (DCO, checked on every pull request).
+- Pull requests say what changed, why, how it was tested and the security considerations, and aim for under 500 changed lines excluding generated code.
+- Never change branch protection, repository visibility or organization settings unless the task says so.
 
 ## Never commit
 
-The repository will be public at v1 and git history is forever. Treat every commit as public from day one.
+Git history is public and permanent: treat anything that reaches a commit as published.
 
-**Secrets and credentials**
+- **Secrets:** `.env` files (only `.env.example` with fake values), private keys and certificates, the KEK file, CA material, join tokens, provider tokens, cloud and tool credential files.
+- **Data:** database files and dumps, backups, logs, crash dumps, HAR files, screenshots that show tokens. Fixtures use obviously fake values (`example.com`, `sk_test_fake_...`), never real user data.
+- **Local state:** `node_modules/`, `dist/`, `coverage/`, `.nx/`, `.angular/`, compiled binaries, personal editor and assistant settings.
 
-- `.env` files of any kind (only `.env.example` with fake values is allowed).
-- Private keys and certificates: `*.pem`, `*.key`, `*.crt`, `*.p12`, `*.pfx`, `*.jks`, SSH keys (`id_*`), WireGuard keys, age or cosign keys.
-- Shipkeep runtime secrets: the KEK file, internal CA material, agent certificates, join tokens, confirmation signing keys.
-- Tokens of any provider: GitHub, GitLab, Hetzner (`HCLOUD_TOKEN`), S3 access keys, SMTP passwords, Slack/Discord/Telegram webhooks, OIDC client secrets.
-- Cloud or tool credential files: `.aws/`, `.docker/config.json`, `kubeconfig`, `.netrc`, `.npmrc` with auth tokens, `*.tfstate`.
+Generated code from `pnpm gen` is committed on purpose (ADR 0001), except the Prisma client, which `pnpm install` regenerates.
 
-**Data**
+`.gitignore` covers these patterns; extend it when a new kind of file appears. The pre-commit hook runs gitleaks, blocks files over 1 MB and formats staged files, and CI scans the full history. If a secret is ever committed, stop and tell the maintainer: rotate it first, then clean the history. Removing it in a later commit is not enough.
 
-- Database files and dumps: `*.sqlite`, `*.db`, `*.dump`, `*.sql` dumps, `*.sql.gz`, backup archives, `deploy/dev/data/`.
-- Real user or customer data of any kind, including in test fixtures. Fixtures use obviously fake values (`example.com`, `sk_test_fake_...`).
-- Logs, crash dumps, HAR files, screenshots that show tokens or private dashboards.
+## Definition of done
 
-**Build output and local state**
-
-- `node_modules/`, `dist/`, `coverage/`, `.nx/` cache, `.angular/`, compiled Go binaries, `tmp/`.
-- E2E run state: VM inventories, generated SSH keys, IP lists.
-- Editor and assistant local files: `.idea/`, personal `.vscode/settings.json`, `.claude/settings.local.json`.
-
-**Private documents**
-
-- Business documents outside `docs/` (pricing negotiations, customer names, contracts, the French planning document). Only the English docs in `docs/` belong in the repository.
-
-**Exception:** generated code from `pnpm gen` (proto, schema, `openapi.json`, api-client types) is committed on purpose (ADR 0001). The Prisma client (`apps/api/src/platform/prisma/generated/`) is the one generated artifact that is not committed: `pnpm install` regenerates it.
-
-**Enforcement**
-
-- `.gitignore` covers the patterns above; extend it when a new kind of file appears.
-- A pre-commit hook (lefthook, installed by `pnpm install`) runs gitleaks on staged files, blocks files over 1 MB unless marked `shipkeep-large-ok` in `.gitattributes`, and formats staged files. A commit-msg hook enforces Conventional Commits. Hook scripts live in `tools/git-hooks/`. `gitleaks` must be installed locally (https://github.com/gitleaks/gitleaks#installing).
-- CI runs gitleaks on the full history (security workflow).
-- If a secret is ever committed: stop, tell the maintainer, rotate the secret first, then clean the history. Removing it in a later commit is not enough.
-
-## Definition of done (every PR)
-
-- [ ] Acceptance criteria of the task in `docs/PLAN.md` are met.
-- [ ] `pnpm lint`, TS tests, Go tests, `buf lint` all pass locally and in CI.
-- [ ] New behavior has tests; malicious-input tests for anything touching the agent or user input.
-- [ ] No new shell invocation; no new secret exposure path.
-- [ ] Audit events emitted for new state changes.
-- [ ] Docs updated (SPEC, ARCHITECTURE or an ADR) if a contract or a decision changed.
-- [ ] Security workflow (CodeQL, Semgrep, gosec, gitleaks) green.
+- [ ] Acceptance criteria of the issue are met.
+- [ ] Lint, tests and `buf lint` pass locally and in CI.
+- [ ] New behavior has tests, with malicious-input tests for anything touching the agent or user input.
+- [ ] No new shell invocation and no new secret exposure path.
+- [ ] Audit events are emitted for new state changes.
+- [ ] SPEC, ARCHITECTURE or an ADR is updated if a contract or a decision changed.
+- [ ] The security workflow is green.
 
 ## When unsure
 
-- If the spec is ambiguous, choose the option that is more secure and more reversible, write the assumption in the PR description, and add it to "Open questions" in `docs/SPEC.md`.
-- If a task requires a decision not covered by an ADR (new dependency with a non-permissive license, new external service, change to the agent action list, change to data model invariants), stop and ask before implementing.
-- Allowed licenses for dependencies: MIT, Apache-2.0, BSD-2/3, ISC, MPL-2.0. Anything else needs approval; approved per-package exceptions are listed in `docs/adr/0014-dependency-license-exceptions.md`.
+- If the spec is ambiguous, choose the more secure and more reversible option, state the assumption in the pull request, and add it to "Open questions" in `docs/SPEC.md`.
+- Stop and ask before anything no ADR covers: a dependency outside the allowed licenses (MIT, Apache-2.0, BSD-2/3, ISC, MPL-2.0; exceptions are in ADR 0014), a new external service, a change to the agent action list or to data model invariants.

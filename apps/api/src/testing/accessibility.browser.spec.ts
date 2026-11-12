@@ -34,8 +34,8 @@ describe('identity keyboard access in Chromium', () => {
     const page = await context.newPage();
     try {
       await page.goto('/auth/forgot-password');
-      await focused(page.getByRole('heading', { name: 'Reset your password', exact: true }));
-      await page.getByLabel('Email address').fill('keyboard@example.com');
+      await focused(page.getByRole('heading', { name: 'Forgot password', exact: true }));
+      await page.getByLabel('Email', { exact: true }).fill('keyboard@example.com');
       const skip = page.getByRole('link', { name: 'Skip to content' });
       for (let step = 0; step < 6; step++) {
         await page.keyboard.press('Shift+Tab');
@@ -45,33 +45,31 @@ describe('identity keyboard access in Chromium', () => {
       await page.keyboard.press('Enter');
       await focused(page.getByRole('main'));
       expect(new URL(page.url()).pathname).toBe('/auth/forgot-password');
-      expect(await page.getByLabel('Email address').inputValue()).toBe('keyboard@example.com');
+      expect(await page.getByLabel('Email', { exact: true }).inputValue()).toBe(
+        'keyboard@example.com',
+      );
 
       await page.goto('/auth/login');
-      await focused(page.getByRole('heading', { name: 'Sign in', exact: true }));
+      await focused(page.getByRole('heading', { name: 'Welcome back', exact: true }));
       let submissions = 0;
       page.on('request', (request) => {
         if (request.method() === 'POST') submissions++;
       });
       await page.keyboard.press('Tab');
-      await focused(page.getByLabel('Email address'));
+      await focused(page.getByLabel('Email', { exact: true }));
+      await page.keyboard.press('Tab');
+      await focused(page.getByRole('link', { name: 'Forgot?' }));
       await page.keyboard.press('Tab');
       await focused(page.getByLabel('Password', { exact: true }));
-      await page.keyboard.press('Tab');
-      await focused(page.locator('summary'));
-      await page.keyboard.press('Enter');
-      await page.keyboard.press('Tab');
-      await focused(page.getByLabel('Code type'));
-      await page.keyboard.press('ArrowDown');
-      await page.keyboard.press('Tab');
-      await focused(page.getByLabel('Recovery code', { exact: true }));
       await page.keyboard.press('Tab');
       await focused(page.getByRole('button', { name: 'Sign in', exact: true }));
       await page.keyboard.press('Enter');
       await focused(page.getByRole('alert'));
       await page.keyboard.press('Tab');
-      await focused(page.getByLabel('Email address'));
-      expect(await page.getByLabel('Email address').getAttribute('aria-invalid')).toBe('true');
+      await focused(page.getByLabel('Email', { exact: true }));
+      expect(await page.getByLabel('Email', { exact: true }).getAttribute('aria-invalid')).toBe(
+        'true',
+      );
       expect(submissions).toBe(0);
       await accessible(page);
     } finally {
@@ -84,6 +82,7 @@ describe('identity keyboard access in Chromium', () => {
     const page: Page = await context.newPage();
     try {
       await createAccount(page, fixture.messages, 'keyboard-tokens@example.com');
+      await page.getByRole('link', { name: 'API tokens', exact: true }).click();
       await page.getByRole('button', { name: 'Create API token', exact: true }).click();
       await page.getByLabel('Token name').fill('Keyboard access');
       await fillPrivate(page.getByLabel('Current password'), FIXTURE_PASSWORD);

@@ -107,6 +107,7 @@ describe('agentAction', () => {
         secrets,
       ),
       agentAction(step('remove_route', { routeId: 'app', drainMs: 30_000 }), secrets),
+      agentAction(step('remove_container', { container: container.name }), secrets),
       agentAction(
         step('stop_container', { container: container.name, timeoutMs: 10_000 }),
         secrets,
@@ -120,6 +121,7 @@ describe('agentAction', () => {
       'healthCheck',
       'upsertRoute',
       'removeRoute',
+      'removeContainer',
       'stopContainer',
     ]);
     const [, , release, , health, route] = actions;

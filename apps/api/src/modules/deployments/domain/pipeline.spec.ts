@@ -109,7 +109,8 @@ function execute(
       step.upstreams.map((u) => u.container),
     );
   if (step.kind === 'remove_route') world.routes.delete(step.nodeId);
-  if (step.kind === 'stop_container') world.stopped.add(step.container);
+  if (step.kind === 'stop_container' || step.kind === 'remove_container')
+    world.stopped.add(step.container);
   world.steps.set(step.key, outcome);
 }
 
@@ -202,6 +203,9 @@ describe('deployment pipeline', () => {
     expect(kinds.filter((kind) => kind === 'run_release_task')).toHaveLength(1);
     expect(kinds.indexOf('upsert_route')).toBeGreaterThan(kinds.lastIndexOf('health_check'));
     expect(kinds.indexOf('stop_container')).toBeGreaterThan(kinds.lastIndexOf('upsert_route'));
+    // Each replaced replica is stopped gracefully before it is removed.
+    expect(kinds.filter((kind) => kind === 'remove_container')).toHaveLength(previous.length);
+    expect(kinds.indexOf('remove_container')).toBeGreaterThan(kinds.indexOf('stop_container'));
   });
 
   it('builds agent-valid keys, names and container plans', () => {
@@ -262,7 +266,11 @@ describe('deployment pipeline', () => {
       );
       expect(world.deployment.state, target.key).toBe('failed');
       expect(world.deployment.error, target.key).toContain('injected failure');
-      if (target.kind === 'stop_container' || target.kind === 'remove_route') {
+      if (
+        target.kind === 'stop_container' ||
+        target.kind === 'remove_container' ||
+        target.kind === 'remove_route'
+      ) {
         // Draining already switched traffic: the new release keeps serving.
         expect(world.routes.get(NODES[0]), target.key).toEqual([containerName(APP, 2, 0)]);
         continue;

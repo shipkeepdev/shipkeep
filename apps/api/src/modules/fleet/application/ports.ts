@@ -1,4 +1,8 @@
-import type { AgentActionChange, AgentActionRecord } from '../domain/agent-action';
+import type {
+  AgentActionChange,
+  AgentActionEntry,
+  AgentActionRecord,
+} from '../domain/agent-action';
 import type { JoinTokenRecord } from '../domain/join-token';
 import type { NodeCertificateRecord, NodeFacts, NodeRecord, NodeStatus } from '../domain/node';
 import type { NodeCredential, NodeIdentity } from '../domain/node-identity';
@@ -55,6 +59,17 @@ export interface NodeStore {
   ): Promise<boolean>;
   /** Run under `runTenant(organizationId)`: replaces the facts of a node that is not removed. */
   updateFacts(organizationId: string, id: string, facts: NodeFacts): Promise<void>;
+  /**
+   * Run under `runTenant(organizationId)`: compare-and-swap of the declared public addresses of a
+   * node that is not removed. Returns the updated node, or undefined when the node is gone or its
+   * addresses are no longer `expected`, so concurrent edits never audit a stale previous list.
+   */
+  setPublicAddresses(
+    organizationId: string,
+    id: string,
+    expected: readonly string[],
+    addresses: readonly string[],
+  ): Promise<NodeRecord | undefined>;
   /** Run under `runTenant(organizationId)`: at most 100 nodes, newest first, exclusive cursor. */
   list(organizationId: string, beforeId?: string): Promise<NodeRecord[]>;
 }
@@ -111,6 +126,13 @@ export interface AgentActionStore {
     id: string,
     change: AgentActionChange,
   ): Promise<AgentActionRecord | undefined>;
+  /** The application's actions, newest first, ids below `beforeId` when given. */
+  forApplication(
+    organizationId: string,
+    applicationId: string,
+    beforeId: string | undefined,
+    limit: number,
+  ): Promise<AgentActionEntry[]>;
 }
 export const AGENT_ACTION_STORE = Symbol('AgentActionStore');
 

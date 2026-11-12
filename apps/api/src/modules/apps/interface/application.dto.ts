@@ -43,6 +43,30 @@ export class ApplicationListDto {
   @ApiProperty({ type: [ApplicationDto] }) items!: ApplicationDto[];
 }
 
+export class DomainDto {
+  @ApiProperty() hostname!: string;
+  @ApiProperty({
+    enum: ['public', 'private', 'none', 'unknown'],
+    description:
+      'public: resolves to public addresses. private: only to non-public ones. none: no record. unknown: the lookup failed.',
+  })
+  status!: string;
+  @ApiProperty({ type: [String], description: 'Public addresses only.' }) addresses!: string[];
+  @ApiProperty({
+    enum: ['serving', 'partial', 'elsewhere', 'not_running', 'unknown'],
+    description:
+      'Whether the answers reach a server running the application, compared with the public ' +
+      'addresses administrators declared for its nodes. serving: every answer is such a server. ' +
+      'partial: only some answers are. elsewhere: none is, or there is no record. not_running: ' +
+      'no reachable server runs the application. unknown: the lookup failed, or a server running ' +
+      'it has no declared address.',
+  })
+  match!: string;
+}
+export class DomainListDto {
+  @ApiProperty({ type: [DomainDto] }) items!: DomainDto[];
+}
+
 export function applicationDto(application: Application): ApplicationDto {
   return {
     id: application.id,

@@ -1,4 +1,8 @@
+import { v7 as uuidv7 } from 'uuid';
+
 import { tenantHttpFixture } from '../../testing/tenant-http';
+
+import { AUDIT_EVENT_READER, type AuditEventReader } from './application/audit-event-reader';
 
 interface AuditItem {
   id: string;
@@ -66,5 +70,35 @@ describe('audit events over HTTP', () => {
       fixture.organizationId,
     ]);
     await fixture.get(`${fixture.root}/audit-events/export`, 'member').expect(404);
+  });
+
+  it("reads an environment's committed events for its stream, and only those", async () => {
+    const reader = fixture.app.get<AuditEventReader>(AUDIT_EVENT_READER);
+    const before = uuidv7();
+    await fixture
+      .post(`${fixture.environment}/secrets`, 'owner', { name: 'STREAMED', value: 'x' })
+      .expect(200);
+    const found = await reader.afterInEnvironment(
+      fixture.organizationId,
+      fixture.environmentId,
+      before,
+      10,
+    );
+    expect(found.map((event) => event.action)).toEqual(['secret.set']);
+    expect(await reader.afterInEnvironment(fixture.organizationId, uuidv7(), before, 10)).toEqual(
+      [],
+    );
+    expect(
+      await reader.afterInEnvironment(
+        fixture.organizationId,
+        fixture.environmentId,
+        found[0]?.id ?? before,
+        10,
+      ),
+    ).toEqual([]);
+
+    const stream = `${fixture.environment}/events`;
+    await fixture.get(stream, 'environmentViewer').expect(406);
+    await fixture.get(stream, 'outsider').expect(404);
   });
 });

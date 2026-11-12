@@ -97,3 +97,6 @@ out-tsc/
 
 # Locally built node installation artifacts
 /apps/web/public/install/
+
+# Local Go workspace checksums; each module go.sum is the committed source of truth.
+go.work.sum

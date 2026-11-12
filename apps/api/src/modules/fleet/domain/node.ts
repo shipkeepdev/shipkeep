@@ -13,6 +13,8 @@ export interface NodeRecord {
   readonly status: NodeStatus;
   readonly labels: Readonly<Record<string, string>>;
   readonly facts: NodeFacts;
+  /** Declared by an administrator, canonical (`nodePublicAddresses`); empty until set. */
+  readonly publicAddresses: readonly string[];
   readonly leaseEpoch: number;
   readonly createdAt: Date;
   readonly lastHeartbeatAt: Date | null;

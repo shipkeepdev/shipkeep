@@ -255,6 +255,65 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/events": {
+      "get": {
+        "operationId": "environmentEvents",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Last-Event-ID",
+            "in": "header",
+            "description": "Resume after this event; browsers send it when they reconnect.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One `change` event per committed audit event of the environment."
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "events"
+        ]
+      }
+    },
     "/api/v1/auth/register": {
       "post": {
         "operationId": "register",
@@ -1329,6 +1388,82 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/nodes/{nodeId}/public-addresses": {
+      "post": {
+        "operationId": "setNodePublicAddresses",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "description": "Required for session requests.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Required for session requests.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetNodePublicAddressesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/nodes": {
       "get": {
         "operationId": "listNodes",
@@ -1821,6 +1956,72 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/domains": {
+      "get": {
+        "operationId": "listDomains",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DomainListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "applications"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/config": {
       "post": {
         "operationId": "updateApplicationConfig",
@@ -2234,6 +2435,159 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/QueuedDeploymentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/replicas": {
+      "get": {
+        "operationId": "listReplicas",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplicaListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/agent-actions": {
+      "get": {
+        "operationId": "listAgentActions",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "Exclusive: the last id of the previous page.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentActionPageDto"
                 }
               }
             }
@@ -4758,6 +5112,22 @@
           "confirmation"
         ]
       },
+      "SetNodePublicAddressesDto": {
+        "type": "object",
+        "properties": {
+          "publicAddresses": {
+            "maxItems": 8,
+            "description": "The public IPv4 and IPv6 addresses of the node, replacing the current list. Each must be a bare, globally routable address; duplicates are merged and values stored canonical. An empty list clears them.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "publicAddresses"
+        ]
+      },
       "NodeDto": {
         "type": "object",
         "properties": {
@@ -4790,6 +5160,13 @@
             "additionalProperties": true,
             "description": "Sanitized host facts."
           },
+          "publicAddresses": {
+            "description": "Public addresses declared by an administrator, canonical; empty until set.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
           "leaseEpoch": {
             "type": "integer"
           },
@@ -4811,6 +5188,7 @@
           "status",
           "labels",
           "facts",
+          "publicAddresses",
           "leaseEpoch",
           "createdAt",
           "lastHeartbeatAt"
@@ -5032,6 +5410,62 @@
           "config"
         ]
       },
+      "DomainDto": {
+        "type": "object",
+        "properties": {
+          "hostname": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "public",
+              "private",
+              "none",
+              "unknown"
+            ],
+            "description": "public: resolves to public addresses. private: only to non-public ones. none: no record. unknown: the lookup failed."
+          },
+          "addresses": {
+            "description": "Public addresses only.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "match": {
+            "type": "string",
+            "enum": [
+              "serving",
+              "partial",
+              "elsewhere",
+              "not_running",
+              "unknown"
+            ],
+            "description": "Whether the answers reach a server running the application, compared with the public addresses administrators declared for its nodes. serving: every answer is such a server. partial: only some answers are. elsewhere: none is, or there is no record. not_running: no reachable server runs the application. unknown: the lookup failed, or a server running it has no declared address."
+          }
+        },
+        "required": [
+          "hostname",
+          "status",
+          "addresses",
+          "match"
+        ]
+      },
+      "DomainListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DomainDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
       "UpdateApplicationConfigDto": {
         "type": "object",
         "properties": {
@@ -5211,6 +5645,298 @@
         },
         "required": [
           "items"
+        ]
+      },
+      "ReplicaDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "releaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "replica": {
+            "type": "integer"
+          },
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nodeName": {
+            "type": "string"
+          },
+          "container": {
+            "type": "string"
+          },
+          "state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "created",
+              "running",
+              "paused",
+              "restarting",
+              "exited",
+              "dead",
+              "missing",
+              null
+            ],
+            "description": "What the agent last saw; null until it has seen the container."
+          },
+          "observedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "releaseId",
+          "replica",
+          "nodeId",
+          "nodeName",
+          "container",
+          "state",
+          "observedAt"
+        ]
+      },
+      "ReplicaListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReplicaDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "AgentActionResultDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "enum": [
+              "container",
+              "image",
+              "health_check",
+              "release_task",
+              "transfer",
+              "facts"
+            ]
+          },
+          "containerId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Docker container id."
+          },
+          "imageDigest": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "healthy": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "exitCode": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Release task exit code."
+          }
+        },
+        "required": [
+          "type",
+          "containerId",
+          "imageDigest",
+          "healthy",
+          "exitCode"
+        ]
+      },
+      "AgentActionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "ensureNetwork",
+              "pullImage",
+              "buildImage",
+              "createContainer",
+              "startContainer",
+              "stopContainer",
+              "removeContainer",
+              "ensureVolume",
+              "removeVolume",
+              "healthCheck",
+              "upsertRoute",
+              "removeRoute",
+              "runReleaseTask",
+              "execSession",
+              "backupVolume",
+              "restoreVolume",
+              "dumpDatabase",
+              "restoreDatabase",
+              "configurePeers",
+              "collectFacts",
+              "upgradeAgent",
+              "stopStatefulWorkloads",
+              "upgradeControlPlane"
+            ],
+            "description": "The typed action (SPEC 3.3)."
+          },
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nodeName": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "pending",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "compensating",
+              "compensated",
+              "expired"
+            ]
+          },
+          "step": {
+            "type": "string",
+            "description": "Last step the agent reported; empty before it starts."
+          },
+          "attempts": {
+            "type": "integer"
+          },
+          "outcome": {
+            "type": "string",
+            "enum": [
+              "in_progress",
+              "succeeded",
+              "refused",
+              "failed",
+              "expired",
+              "cancelled",
+              "compensated"
+            ],
+            "description": "`refused`: the agent rejected the request before running anything."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "malformed_request",
+              "unsupported_action",
+              "stale_lease_epoch",
+              "invalid_input",
+              "idempotency_conflict",
+              "deadline_exceeded",
+              "action_failed",
+              "unknown",
+              null
+            ]
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentActionResultDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "deploymentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "nodeId",
+          "nodeName",
+          "state",
+          "step",
+          "attempts",
+          "outcome",
+          "reason",
+          "result",
+          "deploymentId",
+          "createdAt",
+          "updatedAt",
+          "completedAt"
+        ]
+      },
+      "AgentActionPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "Newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentActionDto"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "Null on the last page."
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
         ]
       },
       "ReleaseListDto": {

@@ -1,6 +1,6 @@
 # Shipkeep Technical Specification
 
-Status: draft for MVP (v0.1). This document is the contract Claude Code implements. When code and spec disagree, fix one of them in the same PR.
+Status: draft for MVP (v0.1). This document is the contract the code implements. When code and spec disagree, fix one of them in the same PR.
 
 ## 1. Glossary
 
@@ -112,7 +112,13 @@ compose:
 - Durations: Go-style (`30s`, `10m`, `72h`). Sizes: Kubernetes-style (`512Mi`, `2Gi`).
 - Domains: valid hostnames, max 50 per app, wildcard only with DNS-01 configured.
 - Volume paths: absolute, no `..`, not under `/proc`, `/sys`, `/dev`, `/etc`, `/var/run`.
-- Compose files are parsed and validated by the control plane. Rejected keys: `privileged`, `pid: host`, `network_mode: host`, `ipc: host`, `cap_add` beyond an allow list (`NET_BIND_SERVICE`, `CHOWN`, `SETUID`, `SETGID`), `devices`, bind mounts outside the app's data directory, `security_opt` disabling seccomp or AppArmor, Docker socket mounts.
+- Compose files are parsed and validated by the control plane, as an allow list that fails closed: a key is translated to what the typed `ContainerSpec` can express, ignored with a warning when it has no effect on safety (`container_name`, `hostname`, `networks`, `logging`), or refused with its reason.
+  - Refused among others: `privileged` (even `false`), `pid`, `ipc`, `uts`, `userns_mode`, every `network_mode`, `cap_add` beyond an allow list (`NET_BIND_SERVICE`, `CHOWN`, `SETUID`, `SETGID`), `cap_drop`, `devices`, `security_opt` other than `no-new-privileges` (which the agent always sets), `entrypoint`, `build`, `env_file`, volume and network drivers or `external`.
+  - All bind mounts are refused, including inside the application's data directory and the Docker socket: `ContainerSpec` mounts only named volumes and tmpfs. Use named volumes declared under `volumes`.
+  - Commands are argv. A string is split only when it holds no shell character, and is otherwise refused.
+  - Ports keep only the container port: nothing is published on the host, and `expose` routes traffic. A publication is reported as a warning.
+  - `${NAME}` is expanded only in `environment`, and names the secrets the service needs. Bare names that would inherit from the host are refused.
+  - Health checks are probed over HTTP or TCP and no command ever runs. A `curl` or `wget` against localhost is read for its URL; any other check is dropped with a warning.
 - Secrets referenced but not set block the deployment with a clear error.
 
 ## 3. Agent protocol
@@ -128,6 +134,8 @@ Action delivery (M1.4a2):
 - Every stream sends each unfinished action of its node once, at most every second, so a reconnection redelivers everything unfinished. The agent journal replays known idempotency keys.
 - Overdue actions become `expired`.
 - An agent update changes only its own node's non-terminal actions; terminal states never change again.
+- An action the deployment pipeline enqueues records its application and deployment. Both columns are null for other actions. A composite foreign key ties them to a deployment of the same organization and application; deleting the deployment clears them and keeps the action in the node's history.
+- An action's history shows a summary, never its raw report: the agent's fixed error texts become reason codes, and a failure refused before anything ran (malformed request, unknown kind, stale lease epoch, invalid input, conflicting idempotency key) is `refused`. Any other text becomes `unknown`. Results keep only validated fields: container id, image digest, health and release exit code.
 - Audit: queueing (`fleet.action.queued`) and every terminal state (`fleet.action.<state>`, with the node as actor).
 - The agent calls `Connect(stream ConnectRequest) returns (stream ConnectResponse)` and keeps it open. It waits at most 10 seconds for Welcome and uses the advertised heartbeat interval (1–10 seconds supported). Outage retries use exponential backoff with jitter (0.5 seconds initially, capped at 30 seconds); a minute-long healthy session resets the backoff. TLS keepalive detects dead connections. A rejected identity or epoch stops connection attempts and requires operator recovery; it never triggers automatic re-enrollment. Renewal persists the new credential generation before reconnecting.
 - `ConnectRequest` (agent to control plane) carries one of: `Hello`, `Heartbeat`, `ActionUpdate`, `StateReport`.
@@ -283,6 +291,14 @@ Fleet operations follow ADR 0015. The agent gateway checks certificates and rene
 
 Organization administrators (`node.manage`) manage the fleet over session-only routes. `POST /organizations/{organizationId}/join-tokens` (201) requires Origin/CSRF, the password and the configured second factor. It returns the single-use token, its expiry and the installation CA fingerprint once, and it has no encrypted retry: a lost response is answered with a new token. `GET /organizations/{organizationId}/nodes` returns the organization's nodes (status, labels, sanitized facts, lease epoch, last heartbeat) with `cursor`/`limit`. `POST /organizations/{organizationId}/nodes/{nodeId}/remove` (204) removes a node. It needs `node.manage` (a session, or a scoped token) and a `confirmation` token for `node.remove` on exactly that node, issued to the same account. The token is spent in the same tenant transaction that marks the node `removed`, revokes all its certificates and audits `fleet.node.removed` with the confirmation id. The node's gateway stream closes at its next credential check. Removing it again answers 404.
 
+`POST /organizations/{organizationId}/nodes/{nodeId}/public-addresses` (200, `node.manage`, a session or a scoped token) replaces the public addresses an administrator declares for a node and returns the node (PLAN M3.6b1). The domain check compares DNS answers with them.
+
+- The body is `{publicAddresses}`: at most 8 values; an empty list clears them.
+- Each value must be a bare IPv4 or IPv6 address that the control plane's SSRF list considers globally routable. Hostnames, zone ids, ports, prefixes, surrounding whitespace and IPv4 written inside IPv6 (`::ffff:a.b.c.d`) are refused with 400 and the position of the first bad value, never its text: `node_public_address_invalid`, `node_public_address_not_public`, `node_public_address_ipv4_embedded` or `node_public_addresses_too_many`.
+- Values are stored canonical (RFC 5952 for IPv6) and deduplicated, in the given order. The database bounds the list too.
+- A change is audited as `fleet.node.public_addresses_changed` with the new and previous lists; saving the same list records nothing. The write is a compare-and-swap on the list just read: a concurrent change answers 409 `node_public_addresses_changed`. A removed node answers 404.
+- Addresses are declared, not observed: the gateway's view of an agent connection can be a NAT, proxy or private address (see section 16).
+
 Audit events are under forced row security too. In a tenant transaction the runtime role reads only that organization's events. It never reads account or system events (`organization_id` null). Appends stay allowed from every command transaction, but a tenant context can only append events of its own organization or of none. No UPDATE or DELETE policy exists. Audit inserts do not read the row back. Reading system events requires an installation-administrator capability that does not exist yet (see section 16).
 
 Organization owners and admins (`audit.read`) read their audit log with `GET /organizations/{organizationId}/audit-events`. It is newest first, with a `cursor` and `limit` (1–100), and optional exact `action`, `targetType`, `targetId` and `actorId` filters plus a `from` (inclusive) and `to` (exclusive) period. `GET .../audit-events/export` returns the same filters as JSON Lines, at most 10,000 events, with `X-Shipkeep-Truncated: true` when older matches remain. Both routes accept a session or a scoped API token with `audit.read`. Reads run in the organization's row security context and are not themselves audited.
@@ -307,13 +323,13 @@ Membership writes serialize on the organization through a no-op row update, prod
 | `RoleBinding`           | membership_id, project_id, environment_id (nullable), role                                                   | role in {admin, developer, viewer}                                                       |
 | `Project`               | name, slug, git_write_mode (commit, pull_request)                                                            | slug unique per org                                                                      |
 | `Environment`           | project_id, name, kind (standard, preview), failover_policy, protected                                       | protected envs require Admin for deploy and exec                                         |
-| `Node`                  | name, status, labels, facts, wireguard_ip, wireguard_public_key, lease_epoch, last_heartbeat_at              | name unique per org                                                                      |
+| `Node`                  | name, status, labels, facts, wireguard_ip, wireguard_public_key, lease_epoch, last_heartbeat_at              | name unique per org; public_addresses: at most 8, declared by an administrator           |
 | `ConfirmationToken`     | organization_id, user_id, action, target, issued_at, expires_at, used_at                                     | single use; the signed token is never stored (SPEC 3.6)                                  |
 | `NodeCertificate`       | organization_id, node_id, serial, not_after, revoked_at                                                      | one active cert per node; `(organization_id, node_id)` references its node (ADR 0015)    |
 | `JoinToken`             | organization_id, token_hash, expires_at, used_at                                                             | single use                                                                               |
 | `GitConnection`         | provider, installation_id or credentials_enc, scope                                                          | per org                                                                                  |
 | `Application`           | environment_id, name, source (git, image, compose), repo, branch, config_path, config (jsonb), config_sha    | name unique per environment                                                              |
-| `Domain`                | application_id, hostname, tls_mode, verification_status                                                      | hostname unique per org                                                                  |
+| `Domain`                | application_id, hostname (TLS mode and certificate status with M3.6b)                                        | hostname unique per org; synced from the configuration                                   |
 | `Secret`                | environment_id, name, value_enc, version                                                                     | value never returned by the API after creation, only masked                              |
 | `Release`               | application_id, number, image, image_digest, config, config_sha (commit_sha with git sources)                | immutable; the image digest is recorded once                                             |
 | `Deployment`            | application_id, release_id, state, plan (build, release), trigger, actor_id, started_at, finished_at, error  | one active deployment per application                                                    |
@@ -356,10 +372,10 @@ succeeded -> rolled_back (when a later rollback targets the previous release)
   - `starting` ensures the network, pulls, creates and starts each replica.
   - `health_checking` probes `run.healthcheck` on each replica (deadline: the start period plus 2 min, at most 30 min).
   - `switching` upserts the application route (id = application id) on each node with that node's replicas as container upstreams (ADR 0017), but only when `domains` is set.
-  - `draining` removes the route from nodes no longer serving, then stops the previous replicas.
+  - `draining` removes the route from nodes no longer serving, then stops the previous replicas and removes their containers, without their volumes.
   - Any action ending in failed, cancelled, expired or compensated fails the deployment, as do a non-zero release exit, an unhealthy replica or a missing container id.
   - `recovery` then:
-    - stops the new replicas that were created;
+    - force-removes the new replicas that were created, which never served traffic;
     - if the switch was interrupted, restores the previous upstreams and removes the route from nodes that only hosted new replicas;
     - does nothing once draining began, because the new release already serves.
   - The worker (`DeploymentPipeline`, run from the pg-boss queue `deployment-run`):
@@ -436,7 +452,7 @@ The shared tenant policy is default-deny for unknown permissions, roles and inva
 
 `TenantAccess` resolves the current active/verified membership, project ancestry, environment protection and role bindings inside the caller's tenant transaction before evaluating that policy. Every resource query includes its organization, and environment queries include their parent project. Caller-supplied role or protection fields are ignored. Changed roles, protection and account status take effect on the next decision; no permission cache is used. Missing resources and denied permissions use the same resource-not-found response. The read-side module is independent of identity commands; session/bearer route wiring follows in M2.3d, with role mutations serialized against identity locks in M2.3c4.
 
-An explicit environment role replaces the member's project role for that environment instead of adding to it, so a narrower environment binding can restrict access. Only an actor with project-level member management may create or remove an environment override for a member who administers the project, so an environment-only administrator cannot restrict a project administrator (decided 2026-11-05).
+An explicit environment role replaces the member's project role for that environment instead of adding to it, so a narrower environment binding can restrict access. Only an actor with project-level member management may create or remove an environment override for a member who administers the project, so an environment-only administrator cannot restrict a project administrator.
 
 Organization admins may manage non-owner memberships, but only owners may grant or remove ownership. Removing or demoting the last owner is forbidden. Commands must lock the organization before reading the owner count and changing membership; the pure policy alone provides no concurrency guarantee. Project/environment administrators may only manage bindings within their authorized scope, never organization membership or ownership. Destructive-action authorization remains separate from the single-use confirmation required by M2.5.
 
@@ -521,7 +537,12 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - `Idempotency-Replayed` distinguishes a cached success from the first execution. Origin checks and rate limits still apply on retries. Anonymous account actions bind the body; logout additionally binds session, CSRF and authorization headers before returning an already committed result. Replayed login verifies that the cached session remains active; logout, password reset, expiry or privilege changes make it return 409 without cookies. Snapshots expire logically after five minutes; physical cleanup happens in bounded batches on successful new commands. A client must use a new key after expiry or a changed request.
 - Rate limits per token and per IP, returned in `RateLimit-*` headers.
 - Resources: `/organizations`, `/projects`, `/environments`, `/nodes`, `/join-tokens`, `/applications`, `/applications/{id}/deployments`, `/deployments/{id}` (+ `/cancel`, `/rollback`), `/releases`, `/domains`, `/secrets` (write and list names only), `/databases`, `/volumes`, `/backups`, `/backup-targets`, `/previews`, `/alert-rules`, `/notification-channels`, `/audit-events`, `/api-tokens`, `/confirmations` (issue confirmation tokens), `/imports/coolify`.
-- Live updates: `GET /api/v1/events` (SSE), filtered by the caller's permissions.
+- Live updates: `GET …/environments/{environmentId}/events` (SSE, `environment.read`, PLAN M2.6b).
+  - Each committed audit event of the environment produces a `change` event with its type, target, application and time, never its metadata: clients reload through the normal API.
+  - It follows `audit_events`, not the in-process bus, which publishes before commit and could announce a rolled-back change.
+  - The session and permission are rechecked on every poll (2 s), so revocation ends the stream. Streams last at most one hour and eight per account; browsers reconnect, resuming with `Last-Event-ID`.
+  - A request without `Accept: text/event-stream` answers 406.
+  - Clients keep a slow fallback poll, because a transaction committing late can carry an older id than the stream's cursor. Organization-wide events are not streamed.
 - Body limits: JSON and form bodies are capped at 16 KiB, except JSON `POST`s to `…/environments/{environmentId}/secrets`, `…/applications` and `…/applications/{applicationId}/config`, capped at 256 KiB because secret values and configurations are larger. The domain limits (64 KiB) still apply.
 - Applications (PLAN M3.4b1), under `…/environments/{environmentId}/applications`:
   - `POST` with `{config}` creates an application from a `shipkeep.yml` document sent as JSON (201). It needs `deploy.run`, so developers may do it only on unprotected environments (SPEC 7), because the configuration takes effect at the next deployment.
@@ -532,13 +553,23 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - documents are validated against the schema, and errors list JSON pointers and schema messages without input values;
     - only `build.type: image` is accepted until git (M3.1) and Compose (M3.8) sources;
     - the canonical JSON (sorted keys) is limited to 64 KiB and hashed with SHA-256 into `configSha`;
-    - a duplicate name in the environment is 409 `application_name_taken`.
+    - a duplicate name in the environment is 409 `application_name_taken`;
+    - a hostname belongs to one application per organization: saving a configuration syncs its `domains`, and a host another application claims is 409 `domain_taken` (a rollback checks this too);
+    - wildcard domains are refused with 400 `wildcard_domain_unsupported` until DNS-01 exists.
+  - `GET …/{applicationId}/domains` (`environment.read`) looks up each domain live: `public` with its addresses, `private` (only non-public answers, never revealed, so the control plane's resolver cannot be used to map internal names), `none` or `unknown`. It does not connect to the answers. `status` and its values are unchanged.
+    - Each domain also has a `match` (PLAN M3.6b1). Every answer, private ones included, is compared with the public addresses declared for the organization's nodes that run the application: not removed, lease not expired, with a placed replica that its agent last saw `running`.
+    - `serving`: every answer is such an address. `partial`: only some are. `elsewhere`: none is, or there is no record. `not_running`: no such node runs the application. `unknown`: the lookup failed, or a running node has no declared address, so an unmatched answer could still be its address.
+    - The response lists only the DNS answers already shown, never node addresses, so a reader with `environment.read` learns no address that `node.manage` protects.
   - `application.created` and `application.updated` audit events carry the name, source and configuration hashes, not the configuration.
 - Deployments (PLAN M3.4b2), under `…/applications/{applicationId}`:
   - `POST …/deployments` (201, `deploy.run`) snapshots the configuration as the next release (numbered per application) and queues a deployment.
     - The plan skips `building` and `built` for image sources, and runs `releasing` only when `release.command` is set.
     - It is refused with 409 `secrets_missing` (listing the names) while a referenced secret is unset, and with 409 `deployment_in_progress` while another deployment is unfinished.
+  - `GET …/replicas` (`environment.read`) lists the placed replicas with their node, container and what the agent last saw (`state`, null until seen; `observedAt`).
   - `GET …/deployments` lists the 50 most recent deployments; `GET …/deployments/{deploymentId}` reads one; `GET …/releases` lists the 50 most recent releases (`environment.read`).
+  - `GET …/agent-actions` (`environment.read`, issue #263) lists the agent actions the application's deployments requested, newest first, with `cursor`/`limit` (1–100, default 50); `nextCursor` is null on the last page.
+    - Each item has the typed kind, the node (id and name), state, step, attempts, deployment id, times and the summary of SPEC 3.1: `outcome` (`in_progress`, `succeeded`, `refused`, `failed`, `expired`, `cancelled`, `compensated`), `reason` and `result`.
+    - The encrypted payload (secret values, registry credentials, confirmation tokens) is never read for this list, and idempotency keys, output tails and agent error texts are never returned.
   - `POST …/deployments/{deploymentId}/cancel` (`deploy.run`) cancels an unfinished deployment through the aggregate. The pipeline (M3.4c) acts on the reported routing outcome.
   - `POST …/deployments/{deploymentId}/rollback` (201, `deploy.run`) deploys a new release copying the pinned image and configuration of the release that deployment ran.
     - The target must have succeeded (or been rolled back) and must not be the release serving now; otherwise 409 `rollback_target_invalid` or `release_already_serving`. A release that never resolved its image answers 409 `release_not_deployable`.
@@ -651,10 +682,12 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 
 - Retry-safe certificate renewal after a response is lost: a recovery protocol must preserve the one-active-certificate invariant without accepting a revoked identity.
 
+- Agent action history (issue #263): actions queued before the migration that links actions to deployments stay unlinked, because no released version has such actions to backfill. The agent sends the same `action deadline exceeded` text when it refuses an overdue request and when an action times out while running, so both are reported as `failed`; a distinct refusal text in the agent would let the history show the first as `refused`.
+
 - Private registries: credentials for private images, and an explicit allow-list for registries on private networks (the resolver refuses non-public addresses by default, SSRF).
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).
 - Wildcard certificates: which DNS providers to support first for DNS-01 (proposal: Cloudflare, Route 53, Hetzner DNS, OVH).
-- Exact Shipkeep Cloud pricing.
+- Node public addresses (PLAN M3.6b1) are declared by an administrator only. The gateway sees the source address of each agent connection, but behind NAT, a proxy or a private link that is not the address visitors reach, so it is not used. A later step could show the observed address as a suggestion that an administrator confirms, never as a stored value.
 
 ## Appendix A: proto skeleton
 

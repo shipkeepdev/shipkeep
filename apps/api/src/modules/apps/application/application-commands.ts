@@ -4,6 +4,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { ConflictError, createEvent, NotFoundError, type Permission } from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
+import { isPublicAddress } from '../../../platform/net/public-address';
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
 import {
   resourceActor,
@@ -15,6 +16,8 @@ import {
   applicationConfig,
   type ApplicationTarget,
   assertSameName,
+  type DomainDns,
+  domainDns,
 } from '../domain/application';
 
 import {
@@ -22,6 +25,8 @@ import {
   APPLICATION_TRANSACTION,
   type ApplicationStore,
   type ApplicationTransaction,
+  DOMAIN_RESOLVER,
+  type DomainResolver,
 } from './ports';
 
 /**
@@ -34,6 +39,7 @@ export class ApplicationCommands {
   constructor(
     @Inject(APPLICATION_STORE) private readonly store: ApplicationStore,
     @Inject(APPLICATION_TRANSACTION) private readonly transaction: ApplicationTransaction,
+    @Inject(DOMAIN_RESOLVER) private readonly resolver: DomainResolver,
     private readonly accounts: AccountMutationAuthority,
     private readonly access: TenantAccess,
     private readonly events: DomainEventBus,
@@ -59,6 +65,7 @@ export class ApplicationCommands {
           'application_name_taken',
           'An application with this name already exists in the environment.',
         );
+      await this.claimDomains(created, now);
       await this.audit('created', context, created, now);
       return created;
     });
@@ -89,6 +96,7 @@ export class ApplicationCommands {
       if (configSha === current.configSha) return current;
       const updated = await this.store.replaceConfig(current, expectedSha, config, configSha, now);
       if (!updated) throw changed();
+      await this.claimDomains(updated, now);
       await this.audit('updated', context, updated, now, current.configSha);
       return updated;
     });
@@ -108,6 +116,43 @@ export class ApplicationCommands {
 
   list(context: SecurityContext, target: ApplicationTarget): Promise<Application[]> {
     return this.scoped(context, 'environment.read', target, () => this.store.list(target));
+  }
+
+  /**
+   * Where the application's domains point, and whether they reach a node running it (PLAN
+   * M3.6b1). The application and its hosts are read in one tenant transaction; the lookups run
+   * outside it.
+   */
+  async domains(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+    now = new Date(),
+  ): Promise<DomainDns[]> {
+    const { application, hosts } = await this.scoped(
+      context,
+      'environment.read',
+      target,
+      async () => {
+        const found = await this.store.find(target, applicationId);
+        if (!found) throw new NotFoundError('application');
+        return { application: found, hosts: await this.store.hosts(found) };
+      },
+    );
+    return Promise.all(
+      (application.config.domains ?? []).map(async (hostname) =>
+        domainDns(hostname, await this.resolver.addresses(hostname), isPublicAddress, hosts, now),
+      ),
+    );
+  }
+
+  /** A hostname belongs to one application per organization (SPEC 4). */
+  private async claimDomains(application: Application, now: Date): Promise<void> {
+    const taken = await this.store.syncDomains(application, application.config.domains ?? [], now);
+    if (taken)
+      throw new ConflictError('domain_taken', 'Another application already uses this domain.', {
+        hostname: taken,
+      });
   }
 
   private scoped<T>(

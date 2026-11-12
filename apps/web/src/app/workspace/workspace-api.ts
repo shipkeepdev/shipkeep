@@ -2,13 +2,18 @@ import { DOCUMENT } from '@angular/common';
 import { inject, Injectable } from '@angular/core';
 import { type components, createShipkeepClient } from '@shipkeep/api-client';
 
-import { browserRequest, IDENTITY_FETCH, IdentityRequestError } from '../identity/identity-api';
+import {
+  browserRequest,
+  IDENTITY_FETCH,
+  IdentityRequestError,
+  requestProblem,
+} from '../identity/identity-api';
 
 export type Schema<T extends keyof components['schemas']> = components['schemas'][T];
 export type Organization = Schema<'OrganizationDto'>;
 export type Project = Schema<'ProjectDto'>;
 export type Environment = Schema<'EnvironmentDto'>;
-type Result<T> = { data?: T; response: Response };
+type Result<T> = { data?: T; error?: unknown; response: Response };
 
 /** Session-cookie client for organizations, projects and environments (same origin only). */
 @Injectable({ providedIn: 'root' })
@@ -39,6 +44,18 @@ export class WorkspaceApi {
       this.client.POST('/api/v1/organizations', { body, params: this.mutation(key) }),
     );
   }
+  updateOrganization(
+    organizationId: string,
+    body: Schema<'OrganizationSettingsDto'>,
+    key: string,
+  ): Promise<Organization> {
+    return this.required(() =>
+      this.client.POST('/api/v1/organizations/{organizationId}/settings', {
+        body,
+        params: { ...this.mutation(key), path: { organizationId } },
+      }),
+    );
+  }
   async projects(organizationId: string): Promise<readonly Project[]> {
     return (
       await this.required(() =>
@@ -64,6 +81,19 @@ export class WorkspaceApi {
       this.client.POST('/api/v1/organizations/{organizationId}/projects', {
         body,
         params: { ...this.mutation(key), path: { organizationId } },
+      }),
+    );
+  }
+  updateProject(
+    organizationId: string,
+    projectId: string,
+    body: Schema<'ProjectSettingsDto'>,
+    key: string,
+  ): Promise<Project> {
+    return this.required(() =>
+      this.client.POST('/api/v1/organizations/{organizationId}/projects/{projectId}/settings', {
+        body,
+        params: { ...this.mutation(key), path: { organizationId, projectId } },
       }),
     );
   }
@@ -105,6 +135,24 @@ export class WorkspaceApi {
     );
   }
 
+  updateEnvironment(
+    organizationId: string,
+    projectId: string,
+    environmentId: string,
+    body: Schema<'EnvironmentSettingsDto'>,
+    key: string,
+  ): Promise<Environment> {
+    return this.required(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/settings',
+        {
+          body,
+          params: { ...this.mutation(key), path: { organizationId, projectId, environmentId } },
+        },
+      ),
+    );
+  }
+
   /** Headers the generated types require; the browser request filter sets the real values. */
   protected mutation(key: string): {
     header: { Origin: string; 'X-Shipkeep-CSRF': string; 'Idempotency-Key': string };
@@ -124,6 +172,7 @@ export class WorkspaceApi {
         throw new IdentityRequestError(
           result.response.status,
           Number.isFinite(seconds) ? Math.max(0, Math.min(3600, Math.ceil(seconds))) : 0,
+          requestProblem(result.error),
         );
       }
       return result.data;

@@ -10,6 +10,7 @@ import {
   HealthCheckSchema,
   PortMapping_Protocol,
   PullImageSchema,
+  RemoveContainerSchema,
   RemoveRouteSchema,
   RestartPolicy_Mode,
   RunReleaseTaskSchema,
@@ -95,6 +96,11 @@ export function agentAction(step: PipelineStep, secrets: SecretValues): ActionRe
           routeId: step.routeId,
           drainTimeout: duration(step.drainMs),
         }),
+      };
+    case 'remove_container':
+      return {
+        case: 'removeContainer',
+        value: create(RemoveContainerSchema, { containerId: step.container }),
       };
     case 'stop_container':
       return {

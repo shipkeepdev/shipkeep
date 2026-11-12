@@ -1,1 +1,11 @@
 blank_issues_enabled: false
+contact_links:
+  - name: Ask a question
+    url: https://github.com/shipkeepdev/shipkeep/discussions/new?category=q-a
+    about: Help with running Shipkeep or understanding how it works.
+  - name: Suggest an idea
+    url: https://github.com/shipkeepdev/shipkeep/discussions/new?category=ideas
+    about: A feature or a change you would like to discuss.
+  - name: Report a security vulnerability
+    url: https://github.com/shipkeepdev/shipkeep/security/advisories/new
+    about: Report it privately. Never open a public issue for a vulnerability.

@@ -103,6 +103,18 @@ describe('allocation observations with PostgreSQL', () => {
     await observations.record(as(nodeId), report(ContainerStatus_State.EXITED));
     await observations.record(as(nodeId), create(StateReportSchema, {}));
 
+    const replicas = await fixture
+      .get(`${fixture.environment}/applications/${applicationId}/replicas`, 'environmentViewer')
+      .expect(200);
+    expect((replicas.body as { items: unknown[] }).items).toEqual([
+      expect.objectContaining({
+        nodeId,
+        nodeName: 'edge-observed',
+        container: CONTAINER,
+        state: 'missing',
+      }),
+    ]);
+
     const admin = new Client({ connectionString: fixture.databaseUrl });
     await admin.connect();
     try {

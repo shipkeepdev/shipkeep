@@ -1,0 +1,224 @@
+@let id = organizationId();
+<div class="page">
+  <div class="page-head">
+    <div>
+      <h1 class="page-title">{{ 'Overview' | t }}</h1>
+      <div class="page-sub">
+        {{ '{projects} projects · {environments} environments · {servers} servers' | t: summary() }}
+      </div>
+    </div>
+    <div class="flex flex-wrap gap-2.5">
+      <a class="btn" [routerLink]="['/orgs', id, 'servers']"
+        ><sk-icon name="server-2" />{{ 'Add a server' | t }}</a
+      >
+      <a class="btn btn-primary" [routerLink]="['/orgs', id, 'new']"
+        ><sk-icon name="plus" />{{ 'New application' | t }}</a
+      >
+    </div>
+  </div>
+
+  <ul
+    class="m-0 grid list-none grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3.5 p-0"
+    [attr.aria-label]="'Summary' | t"
+    [attr.aria-busy]="store.loading()"
+  >
+    @for (k of kpis(); track k.label) {
+      <li class="card flex flex-col gap-3.5 p-[18px]">
+        <div class="flex items-center justify-between gap-2">
+          <span class="flex items-center gap-[9px] text-[13px] text-mute">
+            <span
+              class="grid size-7 place-items-center rounded-lg border border-white/10 bg-[linear-gradient(160deg,#26262B,#0E0E10)]"
+              ><sk-icon [name]="k.icon" class="text-[15px] text-[#e4e4e8]"
+            /></span>
+            {{ k.label | t }}
+          </span>
+          @if (k.delta) {
+            <span class="text-[11.5px]" [style.color]="k.deltaColor">{{
+              k.delta | t: k.deltaValues
+            }}</span>
+          }
+        </div>
+        <div class="flex items-baseline gap-1.5">
+          <span class="text-[34px] leading-none font-medium tracking-[-0.03em]">{{
+            store.loading() ? '…' : k.value
+          }}</span>
+          <span class="text-[13px] text-dim2">{{ k.unit }}</span>
+        </div>
+        <div class="truncate text-[12px] text-dim">{{ k.sub | t: k.subValues }}</div>
+      </li>
+    }
+  </ul>
+
+  <div class="flex flex-wrap gap-3.5">
+    <sk-requests-chart />
+
+    <section
+      class="card flex min-w-0 flex-[1_1_340px] flex-col gap-3.5 p-5"
+      aria-labelledby="servers-title"
+    >
+      <div class="flex items-center justify-between">
+        <h2 id="servers-title" class="card-title">{{ 'Servers' | t }}</h2>
+        <a class="card-link" [routerLink]="['/orgs', id, 'servers']">{{ 'Manage →' | t }}</a>
+      </div>
+      @if (tiles().length) {
+        <div class="grid flex-1 grid-cols-2 gap-2">
+          @for (n of tiles(); track n.node.id) {
+            <div
+              class="flex flex-col gap-[9px] rounded-[10px] border bg-black px-3 py-[11px]"
+              [style.border-color]="
+                n.node.status === 'suspect' ? 'oklch(0.80 0.12 80 / 0.35)' : '#1D1D21'
+              "
+            >
+              <div class="flex items-center justify-between gap-1.5">
+                <span class="truncate font-mono text-[11.5px]">{{ n.node.name }}</span>
+                <span class="flex items-center gap-[5px] text-[11px]" [style.color]="n.status.color"
+                  ><span class="size-[5px] rounded-full" [style.background]="n.status.color"></span
+                  >{{ n.status.label | t }}</span
+                >
+              </div>
+              <div
+                class="grid grid-cols-[30px_minmax(0,1fr)] items-center gap-1.5 text-[10.5px] text-dim"
+              >
+                <span>{{ 'Disk' | t }}</span>
+                <div class="bar"><span class="bg-fg2" [style.width.%]="n.disk ?? 0"></span></div>
+              </div>
+              <div class="truncate text-[10.5px] text-dim">{{ n.spec || '—' }}</div>
+            </div>
+          }
+        </div>
+      } @else if (store.nodes() === null && !store.loading()) {
+        <div class="flex-1 text-[13px] text-mute2">{{ 'Visible to administrators' | t }}</div>
+      } @else {
+        <div
+          class="next-step flex flex-1 flex-col items-start justify-center gap-3 rounded-[10px] border border-dashed border-ctl p-4"
+        >
+          <div class="text-[13px] text-fg3">
+            {{
+              (store.loading()
+                ? 'Loading…'
+                : 'No server connected yet. Deployments cannot run until one is.'
+              ) | t
+            }}
+          </div>
+          <a class="btn btn-sm" [routerLink]="['/orgs', id, 'servers']"
+            ><sk-icon name="server-2" />{{ 'Add a server' | t }}</a
+          >
+        </div>
+      }
+      <div class="border-t border-line pt-3 text-[11.5px] text-dim">
+        {{
+          '{n} agents connected · outbound mTLS, no inbound port' | t: { n: shell.connected() ?? 0 }
+        }}
+      </div>
+    </section>
+  </div>
+
+  <div class="flex flex-wrap gap-3.5">
+    <section
+      class="card min-w-0 flex-[1.6_1_560px] pt-[18px] pb-1.5"
+      aria-labelledby="recent-title"
+    >
+      <div class="card-head">
+        <h2 id="recent-title" class="card-title">{{ 'Recent deployments' | t }}</h2>
+        <a class="card-link" [routerLink]="['/orgs', id, 'applications']">{{ 'View all →' | t }}</a>
+      </div>
+      <div class="overflow-x-auto">
+        <div class="min-w-[560px]">
+          <div
+            class="grid grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.6fr)] gap-3 border-y border-line px-5 py-2 text-[11.5px] text-dim2"
+          >
+            <span>{{ 'Application' | t }}</span
+            ><span>{{ 'Env.' | t }}</span
+            ><span>{{ 'Release' | t }}</span
+            ><span>{{ 'State' | t }}</span
+            ><span class="text-right">{{ 'Duration' | t }}</span>
+          </div>
+          @for (r of store.recent(); track r.deployment.id) {
+            @let s = status(r.deployment.state);
+            <a
+              [routerLink]="r.application.link"
+              [queryParams]="{ tab: 'deployments' }"
+              class="grid grid-cols-[minmax(0,1.5fr)_minmax(0,0.8fr)_minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.6fr)] items-center gap-3 border-b border-line2 px-5 py-[11px] text-[13px] hover:bg-hover"
+            >
+              <div class="min-w-0">
+                <div class="truncate">{{ r.application.name }}</div>
+                <div class="mt-0.5 text-[11px] text-dim">{{ r.application.project }}</div>
+              </div>
+              <span class="text-[12px] text-fg3">{{ r.application.environment }}</span>
+              <div class="min-w-0">
+                <div class="font-mono text-[11.5px] text-fg2">
+                  {{ r.deployment.releaseId.slice(0, 7) }}
+                </div>
+                <div class="mt-0.5 truncate text-[11px] text-dim">
+                  {{ r.deployment.trigger | t }}
+                </div>
+              </div>
+              <span class="flex items-center gap-[7px] text-[12.5px]" [style.color]="s.color"
+                ><span class="dot" [style.background]="s.color"></span>{{ s.label | t }}</span
+              >
+              <span class="text-right font-mono text-[11.5px] text-mute2">{{
+                duration(r.deployment.startedAt, r.deployment.finishedAt)
+              }}</span>
+            </a>
+          } @empty {
+            <div class="px-5 py-6 text-[13px] text-mute2">
+              {{ (store.loading() ? 'Loading…' : 'No deployment yet.') | t }}
+            </div>
+          }
+        </div>
+      </div>
+    </section>
+
+    <div class="flex min-w-0 flex-[1_1_360px] flex-col gap-3.5">
+      <section class="card pt-[18px] pb-1.5" aria-labelledby="alerts-title">
+        <div class="flex items-center justify-between px-[18px] pb-2.5">
+          <h2 id="alerts-title" class="card-title">{{ 'Open alerts' | t }}</h2>
+          <span class="font-mono text-[11px] text-dim">{{ alerts().length }}</span>
+        </div>
+        @for (a of alerts(); track $index) {
+          <div
+            class="grid grid-cols-[8px_minmax(0,1fr)_auto] items-start gap-3 border-t border-line2 px-[18px] py-[11px]"
+          >
+            <span class="mt-[5px] size-[7px] rounded-full" [style.background]="a.color"></span>
+            <div class="min-w-0">
+              <div class="text-[13px]">{{ a.title | t: a.titleValues }}</div>
+              <div class="mt-[3px] text-[11.5px] text-dim">{{ a.sub | t: a.subValues }}</div>
+            </div>
+            <span class="font-mono text-[11px] text-dim">{{ a.at }}</span>
+          </div>
+        } @empty {
+          <div class="border-t border-line2 px-[18px] py-[11px] text-[12.5px] text-dim">
+            {{ 'Nothing needs attention.' | t }}
+          </div>
+        }
+      </section>
+      <section class="card flex-1 pt-[18px] pb-1.5" aria-labelledby="activity-title">
+        <div class="flex items-center justify-between px-[18px] pb-2.5">
+          <h2 id="activity-title" class="card-title">{{ 'Audit log' | t }}</h2>
+          <a class="card-link" [routerLink]="['/orgs', id, 'audit']">{{ 'View all →' | t }}</a>
+        </div>
+        @for (e of (store.events() ?? []).slice(0, 5); track e.id) {
+          <div
+            class="grid grid-cols-[minmax(0,1fr)_auto] gap-3 border-t border-line2 px-[18px] py-[9px]"
+          >
+            <div class="min-w-0 truncate text-[12.5px] text-fg2">
+              <span class="text-fg">{{ actor(e) }}</span> ·
+              <span class="font-mono text-[11.5px] text-fg3">{{ e.action }}</span>
+              {{ e.targetType }}
+            </div>
+            <span class="font-mono text-[11px] text-dim">{{ when(e.createdAt) }}</span>
+          </div>
+        } @empty {
+          <div class="border-t border-line2 px-[18px] py-[9px] text-[12.5px] text-dim">
+            {{
+              (store.events() === null && !store.loading()
+                ? 'Only admins see the audit log.'
+                : 'No event yet.'
+              ) | t
+            }}
+          </div>
+        }
+      </section>
+    </div>
+  </div>
+</div>

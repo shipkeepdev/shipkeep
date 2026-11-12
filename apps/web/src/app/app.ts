@@ -1,17 +1,18 @@
 import { ChangeDetectionStrategy, Component, inject, PendingTasks } from '@angular/core';
-import { RouterModule } from '@angular/router';
+import { RouterOutlet } from '@angular/router';
 
 import { SessionStore } from './identity/session-store';
+import { NoticeHost } from './ui/notice';
 
 @Component({
-  imports: [RouterModule],
+  imports: [RouterOutlet, NoticeHost],
   selector: 'sk-root',
   templateUrl: './app.html',
-  styleUrl: './app.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class App {
-  protected readonly session = inject(SessionStore);
+  private readonly session = inject(SessionStore);
+
   constructor() {
     inject(PendingTasks).run(() => this.session.refresh());
   }

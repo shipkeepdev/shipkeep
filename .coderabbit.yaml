@@ -1,0 +1,61 @@
+# yaml-language-server: $schema=https://storage.googleapis.com/coderabbit_public_assets/schema.v2.json
+# CodeRabbit review settings (ADR 0018). Advice for humans: it never replaces local checks or CI.
+language: en-US
+reviews:
+  profile: assertive
+  request_changes_workflow: false
+  high_level_summary: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - main
+  # Generated code is checked by regenerating it, not by reading it (CLAUDE.md, rule 9).
+  path_filters:
+    - '!lib/gen/**'
+    - '!lib/config/shipkeep.schema.json'
+    - '!packages/proto-ts/src/gen/**'
+    - '!packages/api-client/src/gen/**'
+    - '!packages/config-schema/src/gen/**'
+    - '!apps/api/openapi.json'
+    - '!docs/generated/**'
+    - '!pnpm-lock.yaml'
+  path_instructions:
+    - path: 'agent/**'
+      instructions: >-
+        The agent runs with Docker access on users' servers. Flag any host command execution, shell
+        string, unvalidated action input or missing malicious-input test. Agents must keep workloads
+        and routing running through a control plane outage. Operations are journaled before they run.
+    - path: 'proto/**'
+      instructions: >-
+        The agent action list is closed. Any new or changed action needs an ADR or SPEC update, agent
+        validation, malicious-input tests and the security-review label.
+    - path: 'apps/api/src/modules/**/domain/**'
+      instructions: >-
+        Domain code is pure: flag imports from NestJS, Prisma, HTTP or the file system.
+    - path: 'apps/api/src/modules/**'
+      instructions: >-
+        Every state change must publish a domain event for the audit log. Destructive actions need a
+        confirmation token. Secrets must never reach logs, URLs, error messages or audit metadata.
+        Check authorization on every tenant route, and that modules do not import each other's
+        infrastructure.
+    - path: 'apps/api/prisma/migrations/**'
+      instructions: >-
+        New tenant tables need forced row-level security, composite foreign keys on the organization,
+        a runtime-role grant in deploy/postgres/runtime-role.sql, and an updated table count in
+        tenant-database-role.ts.
+    - path: 'deploy/**'
+      instructions: >-
+        The installer runs as root on users' servers. Flag unverified downloads, secrets in argv or
+        shell history, unquoted values and unpinned signing keys.
+    - path: 'apps/web/**'
+      instructions: >-
+        Standalone components, signals and OnPush, with no business logic in components. Server error
+        details must not reach the UI, and secret values must not stay in component state.
+knowledge_base:
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - CLAUDE.md
+      - docs/THREAT_MODEL.md

@@ -2,7 +2,8 @@ import type { Actor, DeploymentState } from '@shipkeep/domain';
 import type { ActionRequest } from '@shipkeep/proto-ts';
 
 import type { Application } from '../../apps/domain/application';
-import type { ObservationChange, ObservedAllocation } from '../domain/observations';
+import type { AgentActionView } from '../../fleet/domain/agent-action';
+import type { ObservationChange, ObservedAllocation, ReplicaStatus } from '../domain/observations';
 import type { Allocation, StepOutcome } from '../domain/pipeline';
 import type { NodeLoad, NodeView } from '../domain/placement';
 import type { DeploymentRecord, DeploymentTrigger, Release, ReleaseDraft } from '../domain/release';
@@ -90,6 +91,8 @@ export const OBSERVATION_STORE = Symbol('ObservationStore');
 export interface ObservationStore {
   placedOnNode(organizationId: string, nodeId: string): Promise<ObservedAllocation[]>;
   apply(organizationId: string, changes: readonly ObservationChange[], now: Date): Promise<void>;
+  /** Placed replicas of the application, with where they run and their last observation. */
+  forApplication(applicationId: string): Promise<ReplicaStatus[]>;
 }
 
 export const DEPLOYMENT_WAKER = Symbol('DeploymentWaker');
@@ -111,7 +114,21 @@ export interface ActionQueue {
     action: ActionRequest['action'];
     deadline: Date;
     actor: Actor;
+    /** Links the action to its deployment, for the application's action history. */
+    origin: { applicationId: string; deploymentId: string };
   }): Promise<{ id: string; created: boolean }>;
+}
+
+export const ACTION_HISTORY = Symbol('ActionHistory');
+/** The fleet's record of agent actions (AgentActions), read for one application. */
+export interface ActionHistory {
+  /** Newest first, ids below `beforeId`; safe summaries only, never payloads or raw errors. */
+  history(
+    organizationId: string,
+    applicationId: string,
+    beforeId: string | undefined,
+    limit: number,
+  ): Promise<AgentActionView[]>;
 }
 
 export const IMAGE_RESOLVER = Symbol('ImageResolver');

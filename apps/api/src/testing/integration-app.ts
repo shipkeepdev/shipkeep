@@ -13,7 +13,11 @@ import { resetDatabase } from './reset-database';
 import { runtimeDatabase } from './runtime-database';
 import { POSTGRES_TEST_IMAGE } from './postgres-image';
 
-/** Integration files run serially and must only receive a disposable DATABASE_URL. */
+/**
+ * Integration files run serially and must only receive a disposable DATABASE_URL. One app per spec
+ * file: configuration is read once per module graph, so a second app in a file would still look
+ * for the first one's deleted KEK file.
+ */
 export async function integrationApp(
   overrides: { token: InjectionToken; value: unknown }[] = [],
   options: {
@@ -23,8 +27,13 @@ export async function integrationApp(
     beforeInit?: (app: INestApplication) => Promise<void>;
   } = {},
 ): Promise<{ app: INestApplication; databaseUrl: string; close: () => Promise<void> }> {
+  // An isolated database never reuses DATABASE_URL, which may be a developer's. Where Docker is out
+  // of reach, this variable names one that is explicitly safe to wipe.
+  const disposable = options.isolatedDatabase
+    ? process.env['SHIPKEEP_DISPOSABLE_DATABASE_URL']
+    : undefined;
   const container =
-    process.env['DATABASE_URL'] && !options.isolatedDatabase
+    disposable || (process.env['DATABASE_URL'] && !options.isolatedDatabase)
       ? undefined
       : await new PostgreSqlContainer(POSTGRES_TEST_IMAGE).start();
   const directory = await mkdtemp(join(tmpdir(), 'shipkeep-identity-test-'));
@@ -48,7 +57,7 @@ export async function integrationApp(
     await rm(directory, { recursive: true, force: true });
   };
   try {
-    const databaseUrl = container?.getConnectionUri() ?? previous.DATABASE_URL ?? '';
+    const databaseUrl = container?.getConnectionUri() ?? disposable ?? previous.DATABASE_URL ?? '';
     process.env['DATABASE_URL'] = databaseUrl;
     process.env['SHIPKEEP_KEK_FILE'] = join(directory, 'kek');
     process.env['LOG_LEVEL'] = 'error';

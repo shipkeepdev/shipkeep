@@ -1,50 +1,57 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input } from '@angular/core';
 
 import { MutationRunner } from '../identity/mutation-runner';
+import { T } from '../ui/i18n';
 
 import { ConfigurationEditorStore } from './configuration-editor-store';
 import { type Application, type EnvironmentRef } from './delivery-api';
 
 @Component({
   selector: 'sk-configuration-editor',
+  imports: [T],
   providers: [MutationRunner, ConfigurationEditorStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section aria-labelledby="configuration-title" class="border-t border-line pt-6">
-      <h2 id="configuration-title">Configuration</h2>
+      <h2 id="configuration-title">{{ 'Configuration' | t }}</h2>
       <p id="config-hint" class="hint mb-4">
-        Edit <code>shipkeep.yml</code>, then review your changes. Saving does not deploy them.
-        Reference secrets by name; keep their values in the environment's Secrets section.
+        {{ 'Edit' | t }} <code>shipkeep.yml</code
+        >{{
+          ", then review your changes. Saving does not deploy them. Reference secrets by name; keep their values in the environment's Secrets section."
+            | t
+        }}
       </p>
       <p class="mb-4 text-sm text-muted">
-        Version <code>{{ store.current()?.configSha?.slice(0, 12) }}</code>
+        {{ 'Version' | t }} <code>{{ store.current()?.configSha?.slice(0, 12) }}</code>
       </p>
       @if (store.conflict()) {
         <div class="feedback" role="alert">
-          <p>The configuration changed since you opened it. Your draft has been kept.</p>
+          <p>
+            {{ 'The configuration changed since you opened it. Your draft has been kept.' | t }}
+          </p>
           <button
             class="button button-secondary mt-3"
             type="button"
             [disabled]="store.runner.busy() || !!store.runner.cooldown()"
             (click)="store.reload()"
           >
-            {{ store.runner.busy() ? 'Loading…' : 'Load latest version' }}
+            {{ (store.runner.busy() ? 'Loading…' : 'Load latest version') | t }}
           </button>
         </div>
       }
       @if (store.runner.problem(); as problem) {
-        <p class="feedback" role="alert">{{ problem }}</p>
+        <p class="feedback" role="alert">{{ problem | t }}</p>
       }
       @if (store.notice(); as notice) {
-        <p class="feedback" role="status">{{ notice }}</p>
+        <p class="feedback" role="status">{{ notice | t }}</p>
       }
       @if (store.issues().length) {
         <div id="config-errors" class="feedback" role="alert">
-          <p>Fix these configuration errors:</p>
+          <p>{{ 'Fix these configuration errors:' | t }}</p>
           <ul class="list-disc pl-5">
             @for (issue of store.issues(); track $index) {
               <li>
-                <code>{{ issue.path || '/' }}</code> {{ issue.message }}
+                <code>{{ issue.path || '/' }}</code> {{ issue.message | t }}
               </li>
             }
           </ul>
@@ -75,18 +82,18 @@ import { type Application, type EnvironmentRef } from './delivery-api';
             type="submit"
             [disabled]="store.runner.busy() || store.conflict()"
           >
-            Review changes
+            {{ 'Review changes' | t }}
           </button>
         </div>
       </form>
       @if (store.diff().length) {
         <div class="mt-6">
-          <h3 class="mb-2 font-semibold">Changes to save</h3>
-          <p class="hint mb-3">− Current version · + Your draft</p>
+          <h3 class="mb-2 font-semibold">{{ 'Changes to save' | t }}</h3>
+          <p class="hint mb-3">{{ '− Current version · + Your draft' | t }}</p>
           <pre
             class="mb-4 max-h-96 overflow-auto rounded-md bg-panel p-4 text-sm"
             tabindex="0"
-            aria-label="Configuration changes"
+            [attr.aria-label]="'Configuration changes' | t"
           >@for (line of store.diff(); track $index) {<span class="block" [class.text-danger]="line.startsWith('- ')" [class.text-success]="line.startsWith('+ ')">{{ line }}</span>}</pre>
           <button
             class="button"
@@ -99,12 +106,14 @@ import { type Application, type EnvironmentRef } from './delivery-api';
             "
             (click)="store.save()"
           >
-            {{ store.runner.busy() && !store.conflict() ? 'Saving…' : 'Save configuration' }}
+            {{ (store.runner.busy() && !store.conflict() ? 'Saving…' : 'Save configuration') | t }}
           </button>
         </div>
       }
       @if (store.runner.cooldown()) {
-        <p role="status" class="hint">Try again in {{ store.runner.cooldown() }} seconds.</p>
+        <p role="status" class="hint">
+          {{ 'Try again in {s} seconds.' | t: { s: store.runner.cooldown() } }}
+        </p>
       }
     </section>
   `,

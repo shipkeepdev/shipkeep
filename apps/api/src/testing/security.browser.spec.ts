@@ -10,6 +10,7 @@ import {
   fillPrivate,
   FIXTURE_PASSWORD,
   mailCode,
+  openAccountSecurity,
   signIn,
   submit,
 } from './browser-identity';
@@ -42,31 +43,34 @@ describe('account security in Chromium', () => {
     try {
       await signIn(await other.newPage(), email);
       const count = fixture.messages.length;
+      await section('Account');
       await page.getByRole('link', { name: 'Change your password' }).click();
-      await page.getByLabel('Email address').fill(email);
-      await submit(page, 'Send reset email', '/api/v1/auth/reset/request', 202);
+      await page.getByLabel('Email', { exact: true }).fill(email);
+      await submit(page, 'Send code', '/api/v1/auth/reset/request', 202);
       const code = await mailCode(fixture.messages, count + 1);
-      await page.getByRole('link', { name: 'Enter reset code' }).click();
-      await fillPrivate(page.getByLabel('Reset code'), code);
-      await fillPrivate(page.getByLabel('New password', { exact: true }), replacement);
-      await fillPrivate(page.getByLabel('Confirm password'), FIXTURE_PASSWORD);
-      await page.getByRole('button', { name: 'Update password' }).click();
-      await page.getByText('Passwords must match.', { exact: true }).waitFor();
+      // The reset screen follows on its own and recalls where the code went.
+      await page.waitForURL('**/auth/reset-password');
+      await page.getByText(`Code sent to ${email}`, { exact: false }).waitFor();
+      await fillPrivate(page.getByLabel('Code received', { exact: true }), code);
+      await fillPrivate(page.getByLabel('New password', { exact: true }), 'too short');
+      await page.getByRole('button', { name: 'Save', exact: true }).click();
+      await page
+        .getByText('Use 15–128 characters and remove unsupported characters.', { exact: true })
+        .waitFor();
       await accessible(page);
-      await fillPrivate(page.getByLabel('Confirm password'), replacement);
-      await submit(page, 'Update password', '/api/v1/auth/reset', 204);
+      await fillPrivate(page.getByLabel('New password', { exact: true }), replacement);
+      await submit(page, 'Save', '/api/v1/auth/reset', 204);
       await page.getByRole('link', { name: 'Continue to sign in' }).waitFor();
       expect((await other.request.get('/api/v1/auth/session')).status()).toBe(401);
       expect((await context.request.get('/api/v1/auth/session')).status()).toBe(401);
       expect(await page.locator('input[type="password"]').count()).toBe(0);
       await page.goto('/reset-password');
-      await fillPrivate(page.getByLabel('Reset code'), code);
+      await fillPrivate(page.getByLabel('Code received', { exact: true }), code);
       await fillPrivate(page.getByLabel('New password', { exact: true }), replacement);
-      await fillPrivate(page.getByLabel('Confirm password'), replacement);
-      await submit(page, 'Update password', '/api/v1/auth/reset', 401);
+      await submit(page, 'Save', '/api/v1/auth/reset', 401);
       await page.getByRole('alert').waitFor();
       await page.goto('/auth/login');
-      await page.getByLabel('Email address').fill(email);
+      await page.getByLabel('Email', { exact: true }).fill(email);
       await fillPrivate(page.getByLabel('Password', { exact: true }), FIXTURE_PASSWORD);
       await submit(page, 'Sign in', '/api/v1/auth/login', 401);
       await signIn(page, email, replacement);
@@ -138,7 +142,10 @@ describe('account security in Chromium', () => {
     expect(await page.locator('sk-token-panel img').count()).toBe(0);
     await accessible(page);
     expect(await bearerStatus(token)).toBe(200);
+    // Shown once, so no timer may hide it: only an acknowledgement does (WCAG 2.2.1).
     await page.clock.fastForward(600_001);
+    await page.getByRole('heading', { name: 'Save your API token' }).waitFor();
+    await page.getByRole('button', { name: 'I have saved this token' }).click();
     await page.getByRole('heading', { name: 'Save your API token' }).waitFor({ state: 'hidden' });
     expect(await bearerStatus(token)).toBe(200);
     await page.reload();
@@ -176,11 +183,12 @@ describe('account security in Chromium', () => {
       expect(await page.getByRole('button', { name: 'Sign out', exact: true }).isEnabled()).toBe(
         false,
       );
+      await section('Security');
       expect(
         await page.getByRole('button', { name: 'Set up two-factor authentication' }).isEnabled(),
       ).toBe(false);
-      await page.getByRole('link', { name: 'Verify email', exact: true }).click();
-      await page.getByLabel('Verification code').waitFor();
+      await page.getByRole('link', { name: 'Organizations', exact: true }).click();
+      await page.getByRole('heading', { name: 'Organizations', exact: true }).waitFor();
       const delivered = page.waitForResponse(
         (response) =>
           response.request().method() === 'POST' &&
@@ -188,7 +196,8 @@ describe('account security in Chromium', () => {
       );
       release?.();
       await delivered;
-      await page.getByRole('link', { name: 'Account security', exact: true }).click();
+      await page.getByRole('link', { name: 'Account', exact: true }).first().click();
+      await section('API tokens');
       await expect.poll(() => page.getByRole('rowheader').count()).toBe(1);
       expect(await page.locator('#new-token').count()).toBe(0);
       expect(await page.locator('input[type="password"]').count()).toBe(0);
@@ -209,6 +218,7 @@ describe('account security in Chromium', () => {
     const other = await fixture.newContext();
     try {
       await signIn(await other.newPage(), email);
+      await section('Security');
       await page.getByRole('button', { name: 'Set up two-factor authentication' }).click();
       await fillPrivate(page.getByLabel('Current password', { exact: true }), FIXTURE_PASSWORD);
       await submit(page, 'Get setup key', '/api/v1/auth/mfa/setup');
@@ -237,7 +247,9 @@ describe('account security in Chromium', () => {
       }
       expect((await other.request.get('/api/v1/auth/session')).status()).toBe(401);
       expect(await bearerStatus(previousToken)).toBe(401);
+      await section('API tokens');
       await page.getByText('Security settings changed', { exact: true }).waitFor();
+      await section('Security');
       await page.getByRole('button', { name: 'I have saved these codes' }).click();
       await page.getByRole('list', { name: 'Recovery codes' }).waitFor({ state: 'hidden' });
       await submit(page, 'Sign out', '/api/v1/auth/logout', 204);
@@ -266,12 +278,16 @@ describe('account security in Chromium', () => {
       );
       await page.getByText('Revoked', { exact: true }).waitFor();
       expect(await bearerStatus(token)).toBe(401);
+      await section('Security');
       await page.getByRole('button', { name: 'Replace recovery codes', exact: true }).click();
       await proof(codes[2]);
       await submit(page, 'Replace recovery codes', '/api/v1/auth/mfa/recovery');
       const replacement = await recoveryCodes();
       expect(replacement.every((code) => !codes.includes(code))).toBe(true);
+      // Shown once, so no timer may hide them: only an acknowledgement does (WCAG 2.2.1).
       await page.clock.fastForward(600_001);
+      await page.getByRole('list', { name: 'Recovery codes' }).waitFor();
+      await page.getByRole('button', { name: 'I have saved these codes' }).click();
       await page.getByRole('list', { name: 'Recovery codes' }).waitFor({ state: 'hidden' });
       await submit(page, 'Sign out', '/api/v1/auth/logout', 204);
       await loginWithFactor(email, 'recovery', codes[3], 401);
@@ -289,7 +305,15 @@ describe('account security in Chromium', () => {
     }
   });
 
+  /** The profile shows one section at a time; its side menu opens another. */
+  async function section(name: string): Promise<void> {
+    await page
+      .getByRole('navigation', { name: 'Profile' })
+      .getByRole('link', { name, exact: true })
+      .click();
+  }
   async function beginToken(name: string, code?: string): Promise<void> {
+    await section('API tokens');
     await page.getByRole('button', { name: 'Create API token', exact: true }).click();
     await page.getByLabel('Token name').fill(name);
     await fillPrivate(page.getByLabel('Current password', { exact: true }), FIXTURE_PASSWORD);
@@ -314,17 +338,19 @@ describe('account security in Chromium', () => {
     expected = 200,
   ): Promise<void> {
     await page.goto('/auth/login');
-    await page.getByLabel('Email address').fill(email);
+    await page.getByLabel('Email', { exact: true }).fill(email);
     await fillPrivate(page.getByLabel('Password', { exact: true }), FIXTURE_PASSWORD);
-    await page.getByText('Two-factor authentication', { exact: true }).click();
-    await page.getByLabel('Code type').selectOption(kind);
-    await fillPrivate(
-      page.getByLabel(kind === 'totp' ? 'Authenticator code' : 'Recovery code', { exact: true }),
-      code,
-    );
-    await submit(page, 'Sign in', '/api/v1/auth/login', expected);
-    if (expected === 200)
-      await page.getByRole('button', { name: 'Sign out', exact: true }).waitFor();
+    // Without its second factor the password is refused, which opens the code screen.
+    await submit(page, 'Sign in', '/api/v1/auth/login', 401);
+    await page.getByRole('heading', { name: 'Two-factor authentication', exact: true }).waitFor();
+    if (kind === 'recovery') {
+      await page.getByRole('link', { name: 'Use a recovery code', exact: true }).click();
+      await fillPrivate(page.getByLabel('Recovery code', { exact: true }), code);
+    } else {
+      await fillPrivate(page.getByLabel('6-digit TOTP code', { exact: true }), code);
+    }
+    await submit(page, 'Continue', '/api/v1/auth/login', expected);
+    if (expected === 200) await openAccountSecurity(page);
   }
   async function bearerStatus(token: string): Promise<number> {
     return (
