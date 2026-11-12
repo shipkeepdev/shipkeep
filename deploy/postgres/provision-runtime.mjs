@@ -4,6 +4,8 @@
 //
 // MIGRATION_DATABASE_URL is the database administrator; DATABASE_URL is the `shipkeep_app` login
 // the API uses. An existing login keeps its password: the supplied one must already work.
+// The only connection option accepted is `?sslmode=verify-full`, on both URLs or on neither:
+// use it for a database reached over a network that is not private to the installation.
 // Errors never include a connection string, a password or a driver message.
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +13,11 @@ import { fileURLToPath } from 'node:url';
 import { Client } from 'pg';
 
 const RUNTIME_LOGIN = 'shipkeep_app';
+const RUNTIME_GROUP = 'shipkeep_runtime';
 const PROTOCOLS = new Set(['postgres:', 'postgresql:']);
+const VERIFIED_TLS = '?sslmode=verify-full';
+// A database that accepts the connection and then stalls must not hang an unattended install.
+const TIMEOUTS = { connectionTimeoutMillis: 15_000, statement_timeout: 60_000 };
 
 export class ProvisioningError extends Error {}
 
@@ -24,7 +30,8 @@ function parse(value, name) {
   }
   if (!PROTOCOLS.has(url.protocol))
     throw new ProvisioningError(`${name} must be a postgresql:// URL.`);
-  if (url.search || url.hash) throw new ProvisioningError(`${name} must not carry options.`);
+  if ((url.search && url.search !== VERIFIED_TLS) || url.hash)
+    throw new ProvisioningError(`${name} accepts no option except ${VERIFIED_TLS}.`);
   return url;
 }
 
@@ -38,6 +45,8 @@ export function runtimeTargets(env) {
     admin.pathname !== runtime.pathname
   )
     throw new ProvisioningError('Both URLs must target the same server and database.');
+  if (admin.search !== runtime.search)
+    throw new ProvisioningError('Both URLs must use the same sslmode option.');
   if (decodeURIComponent(runtime.username) !== RUNTIME_LOGIN)
     throw new ProvisioningError(`DATABASE_URL must log in as ${RUNTIME_LOGIN}.`);
   if (admin.username === runtime.username)
@@ -49,8 +58,8 @@ export function runtimeTargets(env) {
 export async function provisionRuntime(env) {
   const { admin: adminUrl, runtime: runtimeUrl } = runtimeTargets(env);
   const grants = await readFile(new URL('./runtime-role.sql', import.meta.url), 'utf8');
-  const admin = new Client({ connectionString: adminUrl.toString() });
-  const runtime = new Client({ connectionString: runtimeUrl.toString() });
+  const admin = new Client({ connectionString: adminUrl.toString(), ...TIMEOUTS });
+  const runtime = new Client({ connectionString: runtimeUrl.toString(), ...TIMEOUTS });
   await admin.connect();
   try {
     await admin.query('BEGIN');
@@ -61,6 +70,18 @@ export async function provisionRuntime(env) {
       );
       if (existing.rows.some((row) => Object.values(row).some(Boolean)))
         throw new ProvisioningError(`The existing ${RUNTIME_LOGIN} login has elevated attributes.`);
+      // Attributes are not the only way to hold privileges: a membership grants another role's.
+      const memberships = await admin.query(
+        `SELECT 1 FROM pg_auth_members m
+           JOIN pg_roles member ON member.oid = m.member
+           JOIN pg_roles granted ON granted.oid = m.roleid
+          WHERE member.rolname = $1 AND granted.rolname <> $2`,
+        [RUNTIME_LOGIN, RUNTIME_GROUP],
+      );
+      if (memberships.rowCount)
+        throw new ProvisioningError(
+          `The existing ${RUNTIME_LOGIN} login is a member of a role other than ${RUNTIME_GROUP}.`,
+        );
       if (existing.rows.length === 0) {
         const statement = await admin.query(
           "SELECT format('CREATE ROLE %I LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD %L', $1::text, $2::text) AS sql",
@@ -69,7 +90,7 @@ export async function provisionRuntime(env) {
         await admin.query(statement.rows[0].sql);
       }
       await admin.query(grants);
-      await admin.query(`GRANT shipkeep_runtime TO ${RUNTIME_LOGIN} WITH INHERIT TRUE, SET FALSE`);
+      await admin.query(`GRANT ${RUNTIME_GROUP} TO ${RUNTIME_LOGIN} WITH INHERIT TRUE, SET FALSE`);
       await admin.query('COMMIT');
     } catch (error) {
       await admin.query('ROLLBACK');

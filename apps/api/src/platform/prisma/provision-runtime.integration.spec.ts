@@ -57,8 +57,22 @@ describe('runtime login provisioning (deploy/postgres/provision-runtime.mjs)', (
       { MIGRATION_DATABASE_URL: ADMIN, DATABASE_URL: RUNTIME.replace(':runtime-fixture', '') },
     ],
     [
-      'connection options',
-      { MIGRATION_DATABASE_URL: ADMIN, DATABASE_URL: `${RUNTIME}?sslmode=disable` },
+      'a connection option that weakens TLS',
+      {
+        MIGRATION_DATABASE_URL: `${ADMIN}?sslmode=disable`,
+        DATABASE_URL: `${RUNTIME}?sslmode=disable`,
+      },
+    ],
+    [
+      'an unknown connection option',
+      {
+        MIGRATION_DATABASE_URL: `${ADMIN}?options=-c%20role%3Dpostgres`,
+        DATABASE_URL: `${RUNTIME}?options=-c%20role%3Dpostgres`,
+      },
+    ],
+    [
+      'verified TLS on one URL only',
+      { MIGRATION_DATABASE_URL: ADMIN, DATABASE_URL: `${RUNTIME}?sslmode=verify-full` },
     ],
   ])('refuses %s without echoing a credential', (_, env) => {
     let refusal: unknown;
@@ -76,6 +90,14 @@ describe('runtime login provisioning (deploy/postgres/provision-runtime.mjs)', (
   it('accepts an administrator and a separate shipkeep_app login on the same database', () => {
     const targets = runtimeTargets({ MIGRATION_DATABASE_URL: ADMIN, DATABASE_URL: RUNTIME });
     expect(targets.runtime.username).toBe('shipkeep_app');
+  });
+
+  it('accepts verified TLS when both URLs ask for it', () => {
+    const targets = runtimeTargets({
+      MIGRATION_DATABASE_URL: `${ADMIN}?sslmode=verify-full`,
+      DATABASE_URL: `${RUNTIME}?sslmode=verify-full`,
+    });
+    expect(targets.admin.search).toBe('?sslmode=verify-full');
   });
 
   describe('against PostgreSQL', () => {
@@ -146,6 +168,17 @@ describe('runtime login provisioning (deploy/postgres/provision-runtime.mjs)', (
       expect(failure).toBeInstanceOf(Error);
       expect(failure).not.toBeInstanceOf(ProvisioningError);
       // The first password still works.
+      await expect(provisionRuntime(env)).resolves.toBeUndefined();
+    });
+
+    it('refuses an existing login that is a member of another role', async () => {
+      await admin.query('CREATE ROLE shipkeep_fixture_group NOLOGIN');
+      await admin.query('GRANT shipkeep_fixture_group TO shipkeep_app');
+      try {
+        await expect(provisionRuntime(env)).rejects.toBeInstanceOf(ProvisioningError);
+      } finally {
+        await admin.query('DROP ROLE shipkeep_fixture_group');
+      }
       await expect(provisionRuntime(env)).resolves.toBeUndefined();
     });
 
