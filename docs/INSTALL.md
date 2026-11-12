@@ -1,11 +1,11 @@
 # Installing Shipkeep
 
-> **Status: exercised locally, not yet on a public server.** The whole procedure has run on one machine with Docker (see [What has been tested](#what-has-been-tested)): the control plane, an agent installed by the installer in an Ubuntu 24.04 container, and a first deployment. A real server, a public certificate and a real mail provider have not been tried, and no release has been published. Please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
+> **Status: exercised locally, not yet on a public server.** The whole procedure has run on one machine with Docker (see [What has been tested](#what-has-been-tested)): the control plane, a server installed with the command from the Servers page, deployments and a rollback. A real server, a public certificate and a real mail provider have not been tried. Please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
 
 A Shipkeep installation has two kinds of machines:
 
 - **One control plane**: the web UI, the API and PostgreSQL. Installed with Docker Compose, below.
-- **One or more servers** that run your applications. Each runs the Shipkeep agent, which connects out to the control plane. Their installer is still a draft ([#171](https://github.com/shipkeepdev/shipkeep/pull/171)).
+- **One or more servers** that run your applications. Each runs the Shipkeep agent, which connects out to the control plane. The Servers page gives the command that installs it.
 
 Use a separate machine for the control plane. It listens on ports 80 and 443, which a server running applications also needs for its own Caddy.
 
@@ -56,6 +56,17 @@ Use a separate machine for the control plane. It listens on ports 80 and 443, wh
 
 5. Open `https://shipkeep.example.com`, create your account and confirm it with the code sent by email.
 
+## Add a server
+
+Each server needs a fresh Ubuntu 24.04 (amd64 or arm64) with `curl` and `sudo`, free ports 80 and 443, and outbound access to the control plane on ports 443 and 7443. The control plane never connects to it.
+
+1. In the web UI, open **Servers**, enter your password and choose **Create a join token**. The token is shown once and expires after 15 minutes.
+2. Choose **Copy the command** and run it on the server. It downloads the installer from your control plane, checks its checksum, and runs it with `sudo`. If the checksum does not match, it says so and runs nothing.
+3. When asked, paste the join token. Its input is hidden, and it never appears in the command.
+4. The installer adds Docker (when absent) and Caddy, creates the `shipkeep-agent` and `shipkeep-caddy` services and starts them. Back in **Servers**, the server shows as `ready` within a few seconds.
+
+On failure, `journalctl -u shipkeep-agent` on the server says why. The installer refuses a server that already has Shipkeep or Caddy; [`deploy/README.md`](../deploy/README.md) lists what to remove to start over.
+
 ## Back up the key-encryption key
 
 The `kek` step prints `Back it up: it cannot be recreated.` Every secret stored by Shipkeep is encrypted under that key. Without it, a database backup cannot be read.
@@ -78,17 +89,19 @@ Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest, then run 
 
 ## What has been tested
 
-On one machine with Docker Engine 29 and Compose 2.40, on 12 November 2026, from an image built from this repository:
+On one machine with Docker Engine 29 and Compose 2.40, on 12 November 2026, from an image built from this repository at the commit of the first release, starting from nothing each time:
 
 - `docker compose up -d`: the three one-shot steps exit 0, the control plane becomes healthy and answers over HTTPS through Caddy (with Caddy's internal certificate authority, since the test name was not public).
 - Restarting the control plane, restarting Caddy, and the control plane process exiting on its own: the site answers again each time without manual action.
 - Sign-up with the confirmation email (a local mail server with implicit TLS), sign-in, an organization, a project and an environment.
-- A join token, then `deploy/install.sh` in an Ubuntu 24.04 container running systemd: Docker and Caddy installed, the agent enrolled, the server shown as `ready`, the token file removed.
-- A deployment of a public image: network, pull by digest, container, health check, route, state `succeeded`, and the application answering through the node's Caddy.
+- The install command copied from the Servers page, run in an Ubuntu 24.04 container with systemd: it exits 0, Docker and Caddy are installed, the agent enrolls, the server shows as `ready` and the token file is removed. With a wrong checksum it reports the mismatch, runs nothing and exits 1. On a server already installed it refuses and exits 1.
+- Deployments of public images written as `owner/image`, `docker.io/owner/image`, `index.docker.io/owner/image`, `nginx` and `docker.io/library/nginx`: network, pull by digest, container, health check, route, state `succeeded`, and the application answering through the server's Caddy.
+- A second deployment replacing the first, then a rollback to the first release.
+- On the server: restarting Caddy and killing it with `kill -9` (the route keeps serving and the admin socket keeps mode 0660, with no TCP admin listener), restarting the agent (it reconnects), then a new deployment.
 
 Not tested yet:
 
-- A real server or virtual machine: a reboot, a firewall, and Docker storage as on a normal host.
-- A public DNS name: Caddy obtaining certificates from Let's Encrypt, for the control plane and for an application domain.
+- A real server or virtual machine: a reboot, a firewall, and Docker storage as on a normal host. The server of the test was a privileged container.
+- A public DNS name: Caddy obtaining certificates from Let's Encrypt, for the control plane and for an application domain. Applications were checked over HTTP on the server.
 - A real SMTP provider.
-- Upgrading from one published release to the next, rollback, and removing a server.
+- arm64 at run time, upgrading from one published release to the next, and removing a server.
