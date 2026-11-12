@@ -2,6 +2,8 @@ import { InvalidInputError } from '@shipkeep/domain';
 
 /** Docker Hub serves its registry API from this host. */
 export const DOCKER_HUB_REGISTRY = 'registry-1.docker.io';
+/** Names people write for Docker Hub. None of them serves the registry API. */
+const DOCKER_HUB_ALIASES = new Set(['docker.io', 'index.docker.io']);
 
 const COMPONENT = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
 const HOST =
@@ -24,7 +26,8 @@ export interface ImageReference {
 /**
  * Parses an image reference with Docker's rules: the first path component is a registry only if it
  * contains a dot or a port, or is `localhost`; otherwise the image lives on Docker Hub, under
- * `library/` when it has a single component. A reference without tag or digest means `latest`.
+ * `library/` when it has a single component. `docker.io` and `index.docker.io` also mean Docker Hub.
+ * A reference without tag or digest means `latest`.
  */
 export function parseImageReference(reference: string): ImageReference {
   const invalid = () =>
@@ -57,10 +60,10 @@ export function parseImageReference(reference: string): ImageReference {
       (hostAndPort.length === 2 && !validPort(hostAndPort[1] ?? ''))
     )
       throw invalid();
-    registry = first;
-  } else if (path.length === 1) {
-    repository = `library/${repository}`;
+    // `docker.io/nginx` is Docker Hub written out: same host and `library/` rule as `nginx`.
+    if (!DOCKER_HUB_ALIASES.has(first)) registry = first;
   }
+  if (registry === DOCKER_HUB_REGISTRY && path.length === 1) repository = `library/${repository}`;
   return {
     registry,
     repository,

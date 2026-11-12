@@ -37,6 +37,32 @@ describe('parseImageReference', () => {
     expect(parseImageReference('localhost/app:1')).toMatchObject({ registry: 'localhost' });
   });
 
+  it('reads docker.io and index.docker.io as Docker Hub', () => {
+    // docker.io answers the registry API with a redirect, so resolving against it fails.
+    expect(parseImageReference('docker.io/traefik/whoami:v1.10.3')).toEqual({
+      registry: 'registry-1.docker.io',
+      repository: 'traefik/whoami',
+      // What the agent pulls stays as written.
+      name: 'docker.io/traefik/whoami',
+      tag: 'v1.10.3',
+      digest: null,
+    });
+    expect(parseImageReference('docker.io/nginx')).toMatchObject({
+      registry: 'registry-1.docker.io',
+      repository: 'library/nginx',
+      name: 'docker.io/nginx',
+    });
+    expect(parseImageReference('index.docker.io/library/nginx:1.27')).toMatchObject({
+      registry: 'registry-1.docker.io',
+      repository: 'library/nginx',
+    });
+    // Only the exact names: a look-alike host is a registry of its own.
+    expect(parseImageReference('docker.io.example.com/nginx')).toMatchObject({
+      registry: 'docker.io.example.com',
+      repository: 'nginx',
+    });
+  });
+
   it('rejects malformed and hostile references', () => {
     for (const bad of [
       '',
