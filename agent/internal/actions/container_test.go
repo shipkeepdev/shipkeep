@@ -42,7 +42,7 @@ func TestCreateContainerSendsOnlyConfinedSettings(t *testing.T) {
 	}
 	config := engine.created[0]
 	host := config.HostConfig
-	if host.NetworkMode != "sk-acme-prod" || !slices.Equal(host.SecurityOpt, []string{"no-new-privileges:true"}) ||
+	if host.NetworkMode != "sk-acme-prod" || !slices.Equal(host.SecurityOpt, []string{"no-new-privileges=true"}) ||
 		host.PidsLimit != defaultPids || host.IpcMode != "private" || !slices.Equal(host.CapAdd, []string{"NET_BIND_SERVICE"}) ||
 		host.NanoCPUs != 500_000_000 || host.Memory != 512<<20 || host.RestartPolicy.Name != "unless-stopped" {
 		t.Fatalf("unexpected host config: %+v", host)

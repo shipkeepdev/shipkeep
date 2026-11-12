@@ -366,7 +366,7 @@ Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/
 - [ ] **M8.3 Installer and control plane upgrades** (X). Depends: M5.4
   - `get.shipkeep.dev` installer (CA fingerprint pinning, `shipkeep-build` user, cgroup v2 delegation, AppArmor profile on Ubuntu 24.04), signature checks, conflict detection.
   - [x] **M8.3b1** `deploy/control-plane.Dockerfile`: the API, the web UI, Prisma migrations and `deploy/postgres/provision-runtime.mjs` (restricted API login), built by `release.yml`.
-  - [ ] **M8.3b2** `deploy/control-plane/compose.yml` (PostgreSQL, key-encryption key, migrations, restricted login, control plane, Caddy) and `docs/INSTALL.md`. Written and tested piece by piece; stays open until the whole procedure has run on a fresh machine.
+  - [ ] **M8.3b2** `deploy/control-plane/compose.yml` (PostgreSQL, key-encryption key, migrations, restricted login, control plane, Caddy) and `docs/INSTALL.md`. Run end to end on one machine with Docker (control plane, installer in an Ubuntu 24.04 container, first deployment); stays open until it has run on a real server with a public name.
   - Trivy image scan in `release.yml`, `UpgradeControlPlane` action with snapshot and rollback; `UpgradeAgent` with signature check and rollback to the previous binary.
   - Acceptance: upgrade from previous release to current on a VM, then forced failure triggers automatic rollback.
 
