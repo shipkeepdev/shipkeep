@@ -188,6 +188,41 @@ describe('servers page', () => {
     expect(statuses).toEqual(['Command copied.']);
   });
 
+  it('forgets the token and its command when another organization is shown', async () => {
+    fill('join-password', 'correct horse browser fixture');
+    await submit('#join-password');
+    expect(element().querySelector('#join-token')).not.toBeNull();
+    // Same page instance, another organization: the command would enroll into the first one.
+    await harness.navigateByUrl('/orgs/0190f5a8-7b1c-7e2d-8f3a-0000000000dd/servers');
+    await settle();
+    expect(element().querySelector('#join-token')).toBeNull();
+    expect(element().querySelector('pre[aria-label="Install command"]')).toBeNull();
+    expect(element().textContent).not.toContain(TOKEN);
+  });
+
+  it('drops the copy confirmation of the previous token when a new one is issued', async () => {
+    fill('join-password', 'correct horse browser fixture');
+    await submit('#join-password');
+    const copyToken = () =>
+      [...element().querySelectorAll('button')].find(
+        (button) => button.textContent.trim() === 'Copy',
+      );
+    copyToken()?.click();
+    await settle();
+    const statuses = () =>
+      [...element().querySelectorAll('[role="status"]')].map((status) => status.textContent.trim());
+    expect(statuses()).toEqual(['Copied. Save it in a secure place.']);
+    // Done, then a second token: the clipboard still holds the first one.
+    [...element().querySelectorAll('button')]
+      .find((button) => button.textContent.trim() === 'Done')
+      ?.click();
+    await settle();
+    fill('join-password', 'correct horse browser fixture');
+    await submit('#join-password');
+    expect(element().querySelector('#join-token')).not.toBeNull();
+    expect(statuses()).toEqual([]);
+  });
+
   it('keeps the issued token when the command cannot carry the gateway address', async () => {
     // The manifest loads, but building the command throws: the token already exists and is shown
     // once, so the page must fall back to the manual setup instead of failing the whole request.

@@ -306,7 +306,7 @@ sudo install -m 0600 /dev/stdin /etc/shipkeep/join-token</pre>
                 </ol>
               }
               <div>
-                <button class="btn btn-sm" type="button" (click)="issued.set(null)">
+                <button class="btn btn-sm" type="button" (click)="forgetEnrollment()">
                   {{ 'Done' | t }}
                 </button>
               </div>
@@ -448,6 +448,9 @@ export class ServersPage {
     recoverOnEdit(this.join, this.runner);
     effect(() => {
       this.organizationId();
+      // A token and its command belong to the organization that issued them: shown under
+      // another one, the command would enroll a server into the wrong organization.
+      this.forgetEnrollment();
       void this.nodes.refresh();
     });
     const timer = setInterval(() => {
@@ -456,6 +459,14 @@ export class ServersPage {
     inject(DestroyRef).onDestroy(() => {
       clearInterval(timer);
     });
+  }
+
+  /** Also the Done button: nothing of a token stays once the user is finished with it. */
+  protected forgetEnrollment(): void {
+    this.issued.set(null);
+    this.command.set(null);
+    this.copied.set(null);
+    this.clipboard.reset();
   }
 
   /** Which of the two copy buttons was used last: its confirmation shows next to it. */
@@ -491,6 +502,8 @@ export class ServersPage {
     this.join.reset();
     // A token issued for another organization than the one now shown is not displayed here.
     if (outcome.ok && organizationId === this.organizationId()) {
+      // A confirmation left from the previous token would claim the new one was copied.
+      this.forgetEnrollment();
       this.command.set(outcome.value.command);
       this.issued.set(outcome.value.token);
     }
