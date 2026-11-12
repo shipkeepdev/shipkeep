@@ -469,17 +469,28 @@ export class ServersPage {
   protected async issue(): Promise<void> {
     const { password, totp } = this.join.getRawValue();
     const code = totp.trim();
-    const outcome = await this.runner.run({ joinToken: this.organizationId() }, async () => {
+    // Read once: the page instance survives a change of organization during the awaits below.
+    const organizationId = this.organizationId();
+    const outcome = await this.runner.run({ joinToken: organizationId }, async () => {
       // Without HTTPS or built artifacts (development) the page falls back to the manual setup.
-      const command = await this.installer.load().catch(() => null);
-      const token = await this.api.issueJoinToken(this.organizationId(), {
+      const build = await this.installer.load().catch(() => null);
+      const token = await this.api.issueJoinToken(organizationId, {
         password,
         ...(code ? { totp: code } : {}),
       });
-      return { token, command: command?.(token) ?? null };
+      // The token exists now and is shown once: an address the command cannot carry (an
+      // unbracketed IPv6 literal) falls back to the manual setup instead of losing it.
+      let command: string | null = null;
+      try {
+        command = build?.(token) ?? null;
+      } catch {
+        command = null;
+      }
+      return { token, command };
     });
     this.join.reset();
-    if (outcome.ok) {
+    // A token issued for another organization than the one now shown is not displayed here.
+    if (outcome.ok && organizationId === this.organizationId()) {
       this.command.set(outcome.value.command);
       this.issued.set(outcome.value.token);
     }

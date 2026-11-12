@@ -188,6 +188,29 @@ describe('servers page', () => {
     expect(statuses).toEqual(['Command copied.']);
   });
 
+  it('keeps the issued token when the command cannot carry the gateway address', async () => {
+    // The manifest loads, but building the command throws: the token already exists and is shown
+    // once, so the page must fall back to the manual setup instead of failing the whole request.
+    vi.spyOn(TestBed.inject(InstallCommand), 'load').mockResolvedValue(() => {
+      throw new Error('Verified installer requires HTTPS and valid build artifacts.');
+    });
+    fill('join-password', 'correct horse browser fixture');
+    await submit('#join-password');
+    expect(element().querySelector<HTMLInputElement>('#join-token')?.value).toBe(TOKEN);
+    expect(element().querySelector('pre[aria-label="Install command"]')).toBeNull();
+    expect(element().querySelector('pre[aria-label="agent.yaml"]')?.textContent).toContain(
+      'address: shipkeep.example.com:7443',
+    );
+    // The request is not reported as failed. The only alert left is the shell's, about the
+    // organization this fixture does not stub.
+    const alerts = [...element().querySelectorAll('[role="alert"]')].map((alert) =>
+      alert.textContent.trim(),
+    );
+    expect(alerts.filter((text) => !text.startsWith('This organization is not available'))).toEqual(
+      [],
+    );
+  });
+
   it('falls back to the manual setup when the installer is unavailable, without the token', async () => {
     vi.spyOn(TestBed.inject(InstallCommand), 'load').mockRejectedValue(new Error('no manifest'));
     fill('join-password', 'correct horse browser fixture');
@@ -330,7 +353,12 @@ describe('installer command boundary', () => {
       ...token,
       token: TOKEN,
     } as typeof token);
-    expect(command).toContain('sha256sum --check --status &&');
+    // A mismatch says so and runs nothing; the cleanup keeps the status of the step that failed.
+    expect(command).toContain(
+      "sha256sum --check --status || { echo 'shipkeep: installer checksum mismatch, nothing was run' >&2; false; }; } &&",
+    );
+    expect(command.trimEnd().endsWith('(exit "$shipkeep_install_status"); }')).toBe(true);
+    expect(command.indexOf('rm -rf')).toBeGreaterThan(command.indexOf('sudo bash'));
     expect(command).not.toContain(TOKEN);
   });
 });

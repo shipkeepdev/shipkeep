@@ -19,7 +19,9 @@
         "{workspaceRoot}/agent/**",
         "{workspaceRoot}/lib/**",
         "{workspaceRoot}/cli/go.*",
-        "{workspaceRoot}/go.work"
+        "{workspaceRoot}/go.work",
+        { "env": "SHIPKEEP_VERSION" },
+        { "env": "SHIPKEEP_COMMIT" }
       ],
       "executor": "@angular/build:application",
       "outputs": ["{options.outputPath}"],

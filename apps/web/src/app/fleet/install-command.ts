@@ -27,12 +27,14 @@ export function installCommand(
   )
     throw new Error('Verified installer requires HTTPS and valid build artifacts.');
   const installer = pins['installer'] as string;
+  // The cleanup runs whatever happened, and the command ends with the status of the step that
+  // failed: a download, a checksum mismatch (said in words, nothing is run) or the installer.
   return (
-    `shipkeep_install_dir=$(mktemp -d) &&\n` +
+    `shipkeep_install_dir=$(mktemp -d) && {\n` +
     `curl --fail --show-error --proto '=https' --max-time 60 -o "$shipkeep_install_dir/install.sh" '${origin}/install/install-${installer}.sh' &&\n` +
-    `printf '%s  %s\\n' '${installer}' "$shipkeep_install_dir/install.sh" | sha256sum --check --status &&\n` +
-    `sudo bash "$shipkeep_install_dir/install.sh" --control-plane '${token.gatewayAddress}' --ca-fingerprint '${token.caFingerprint}' --origin '${origin}' --amd64-sha256 '${pins['amd64'] as string}' --arm64-sha256 '${pins['arm64'] as string}';\n` +
-    `rm -rf -- "$shipkeep_install_dir"`
+    `{ printf '%s  %s\\n' '${installer}' "$shipkeep_install_dir/install.sh" | sha256sum --check --status || { echo 'shipkeep: installer checksum mismatch, nothing was run' >&2; false; }; } &&\n` +
+    `sudo bash "$shipkeep_install_dir/install.sh" --control-plane '${token.gatewayAddress}' --ca-fingerprint '${token.caFingerprint}' --origin '${origin}' --amd64-sha256 '${pins['amd64'] as string}' --arm64-sha256 '${pins['arm64'] as string}'\n` +
+    `shipkeep_install_status=$?; rm -rf -- "$shipkeep_install_dir"; (exit "$shipkeep_install_status"); }`
   );
 }
 
