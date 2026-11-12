@@ -56,6 +56,12 @@ describe('parseImageReference', () => {
       registry: 'registry-1.docker.io',
       repository: 'library/nginx',
     });
+    // The registry host written out is not an alias: no `library/` is added for it.
+    expect(parseImageReference('registry-1.docker.io/nginx')).toMatchObject({
+      registry: 'registry-1.docker.io',
+      repository: 'nginx',
+      name: 'registry-1.docker.io/nginx',
+    });
     // Only the exact names: a look-alike host is a registry of its own.
     expect(parseImageReference('docker.io.example.com/nginx')).toMatchObject({
       registry: 'docker.io.example.com',

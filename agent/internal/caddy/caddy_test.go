@@ -141,3 +141,16 @@ func TestClientHidesCaddyErrors(t *testing.T) {
 		t.Fatal("accepted a relative socket path")
 	}
 }
+
+func TestClientKeepsABadRequestAnErrorOutsideBootstrap(t *testing.T) {
+	client, _ := admin(t)
+	ctx := context.Background()
+	// The server does not exist yet: reading below it is Caddy's 400, which must not pass for
+	// "nothing to change" anywhere but in EnsureServer.
+	if err := client.SetPlainHosts(ctx, nil, []string{"a.example.com"}); err == nil {
+		t.Fatal("a 400 from Caddy was read as an absent value")
+	}
+	if err := client.EnsureServer(ctx); err != nil {
+		t.Fatal(err)
+	}
+}

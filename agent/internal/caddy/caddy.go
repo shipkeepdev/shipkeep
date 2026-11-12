@@ -126,7 +126,8 @@ func (c *Client) EnsureServer(ctx context.Context) error {
 // UpsertRoute replaces the route with route.ID, or appends it. Caddy applies each change
 // atomically and gracefully: in-flight requests finish on the old configuration.
 func (c *Client) UpsertRoute(ctx context.Context, route Route) error {
-	present, err := c.exists(ctx, "/id/"+route.ID)
+	var stored json.RawMessage
+	present, err := c.get(ctx, "/id/"+route.ID, &stored)
 	if err != nil {
 		return err
 	}
@@ -176,10 +177,17 @@ func (c *Client) SetPlainHosts(ctx context.Context, add, remove []string) error 
 	return c.do(ctx, http.MethodPatch, path, automaticHTTPS{Skip: skip}, nil)
 }
 
-// exists reports whether a config path or object id holds a value.
+// errUnreachablePath is Caddy's 400 to a read: a parent of the path does not exist.
+var errUnreachablePath = errors.New("caddy GET: status 400")
+
+// exists reports whether a config path holds a value. A path below a missing parent does not.
 func (c *Client) exists(ctx context.Context, path string) (bool, error) {
 	var value json.RawMessage
-	return c.get(ctx, path, &value)
+	present, err := c.get(ctx, path, &value)
+	if errors.Is(err, errUnreachablePath) {
+		return false, nil
+	}
+	return present, err
 }
 
 func (c *Client) get(ctx context.Context, path string, out any) (bool, error) {
@@ -233,8 +241,8 @@ func (c *Client) do(ctx context.Context, method, path string, body, out any) err
 		return ErrNotFound
 	case response.StatusCode == http.StatusBadRequest && method == http.MethodGet:
 		// Caddy answers a read below a missing parent ("invalid traversal path") with 400, not 404.
-		// A read sends no body, so nothing else about it can be malformed.
-		return ErrNotFound
+		// Only EnsureServer, which walks up to the first existing level, reads this as "missing".
+		return errUnreachablePath
 	case response.StatusCode/100 != 2:
 		// Caddy error text can contain configuration: report the status only.
 		return fmt.Errorf("caddy %s: status %d", method, response.StatusCode)

@@ -52,6 +52,9 @@ export function parseImageReference(reference: string): ImageReference {
   if (path.length === 0 || !path.every((component) => COMPONENT.test(component))) throw invalid();
   let registry = DOCKER_HUB_REGISTRY;
   let repository = path.join('/');
+  // Docker adds `library/` for Docker Hub written as no host or as one of its aliases only: the
+  // repository must stay the one the daemon pulls for the name as written.
+  let hub = !explicitRegistry;
   if (explicitRegistry) {
     const hostAndPort = first.split(':');
     if (
@@ -61,9 +64,10 @@ export function parseImageReference(reference: string): ImageReference {
     )
       throw invalid();
     // `docker.io/nginx` is Docker Hub written out: same host and `library/` rule as `nginx`.
-    if (!DOCKER_HUB_ALIASES.has(first)) registry = first;
+    hub = DOCKER_HUB_ALIASES.has(first);
+    if (!hub) registry = first;
   }
-  if (registry === DOCKER_HUB_REGISTRY && path.length === 1) repository = `library/${repository}`;
+  if (hub && path.length === 1) repository = `library/${repository}`;
   return {
     registry,
     repository,
