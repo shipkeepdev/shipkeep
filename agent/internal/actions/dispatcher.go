@@ -103,8 +103,23 @@ func (d *Dispatcher) Handle(ctx context.Context, req *agentv1.ActionRequest, sen
 		return
 	}
 	defer d.untrack(id)
+	// Every update of a final state carries its outcome. The control plane closes an action on the
+	// first final update it receives, so a result sent only afterwards would be dropped.
+	report := func(op journal.Operation) *agentv1.ActionUpdate {
+		next := update(op, nil, d.now())
+		switch op.State {
+		case journal.Succeeded:
+			if handler.Result != nil {
+				next.Result = handler.Result(op.Result)
+			}
+		case journal.Failed, journal.Compensated:
+			next.Error = errFailed
+		case journal.Pending, journal.Running, journal.Compensating, journal.Cancelled:
+		}
+		return next
+	}
 	notify := func(_ context.Context, op journal.Operation) error {
-		send(update(op, nil, d.now()))
+		send(report(op))
 		return nil
 	}
 	op, err := d.Journal.Execute(actionCtx, journal.Request{ID: id, Key: req.GetIdempotencyKey(), Kind: kind, PayloadHash: hash}, plan, notify)
@@ -118,11 +133,7 @@ func (d *Dispatcher) Handle(ctx context.Context, req *agentv1.ActionRequest, sen
 		}
 		send(failure(id, message, d.now()))
 	default:
-		var result *agentv1.ActionResult
-		if op.State == journal.Succeeded && handler.Result != nil {
-			result = handler.Result(op.Result)
-		}
-		send(update(op, result, d.now()))
+		send(report(op))
 	}
 }
 

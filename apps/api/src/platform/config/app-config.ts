@@ -9,7 +9,11 @@ export class AppConfig {
   constructor(private readonly config: ConfigService<ParsedConfig, true>) {}
 
   get<K extends keyof ParsedConfig>(key: K): ParsedConfig[K] {
-    return this.config.get(key, { infer: true });
+    const value: unknown = this.config.get(key, { infer: true });
+    // When validation left a key undefined, ConfigService falls back to the raw environment
+    // variable. No validated value is ever empty, so an empty string is that raw fallback for a
+    // variable the schema treats as unset (optional SMTP credentials left empty by compose).
+    return (value === '' ? undefined : value) as ParsedConfig[K];
   }
 
   get nodeEnv(): ParsedConfig['NODE_ENV'] {

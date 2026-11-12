@@ -1,6 +1,6 @@
 # Installing Shipkeep
 
-> **Status: not yet verified on a real server.** The image, the compose file and each step below were exercised piece by piece (see [What has been tested](#what-has-been-tested)), but nobody has run the whole procedure on a fresh machine yet, and no release has been published. Treat this page as the procedure under test, and please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
+> **Status: exercised locally, not yet on a public server.** The whole procedure has run on one machine with Docker (see [What has been tested](#what-has-been-tested)): the control plane, an agent installed by the installer in an Ubuntu 24.04 container, and a first deployment. A real server, a public certificate and a real mail provider have not been tried, and no release has been published. Please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
 
 A Shipkeep installation has two kinds of machines:
 
@@ -78,8 +78,17 @@ Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest, then run 
 
 ## What has been tested
 
-- The image contents, assembled by hand without Docker: production dependencies, migrations and the restricted login against PostgreSQL 18, then the control plane in production mode serving the API and the web UI.
-- The image build itself, by the `release` workflow in dry-run mode.
-- The provisioning script and the configuration parsing, by automated tests.
+On one machine with Docker Engine 29 and Compose 2.40, on 12 November 2026, from an image built from this repository:
 
-Not tested yet: `docker compose up` as a whole, Caddy obtaining a certificate, an agent enrolling against this installation, and a deployment.
+- `docker compose up -d`: the three one-shot steps exit 0, the control plane becomes healthy and answers over HTTPS through Caddy (with Caddy's internal certificate authority, since the test name was not public).
+- Restarting the control plane, restarting Caddy, and the control plane process exiting on its own: the site answers again each time without manual action.
+- Sign-up with the confirmation email (a local mail server with implicit TLS), sign-in, an organization, a project and an environment.
+- A join token, then `deploy/install.sh` in an Ubuntu 24.04 container running systemd: Docker and Caddy installed, the agent enrolled, the server shown as `ready`, the token file removed.
+- A deployment of a public image: network, pull by digest, container, health check, route, state `succeeded`, and the application answering through the node's Caddy.
+
+Not tested yet:
+
+- A real server or virtual machine: a reboot, a firewall, and Docker storage as on a normal host.
+- A public DNS name: Caddy obtaining certificates from Let's Encrypt, for the control plane and for an application domain.
+- A real SMTP provider.
+- Upgrading from one published release to the next, rollback, and removing a server.

@@ -84,7 +84,7 @@ func containerConfig(spec *agentv1.ContainerSpec) (string, docker.ContainerConfi
 		NetworkMode: spec.GetNetwork(),
 		Mounts:      mounts,
 		// no-new-privileges blocks setuid escalation even when SETUID is added.
-		SecurityOpt:    []string{"no-new-privileges:true"},
+		SecurityOpt:    []string{"no-new-privileges=true"},
 		ReadonlyRootfs: spec.GetReadOnlyRootfs(),
 		PidsLimit:      defaultPids,
 		IpcMode:        "private",

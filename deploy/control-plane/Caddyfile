@@ -1,4 +1,4 @@
-# HTTPS front of the control plane. Caddy shares the control plane's network namespace, so it
+# HTTPS front of the control plane. Caddy and the control plane share one network namespace (the `net` service), so it
 # reaches the API on loopback and the API can trust its forwarding headers (TRUST_PROXY=loopback).
 # Caddy obtains and renews the certificate for SHIPKEEP_DOMAIN by itself (ports 80 and 443).
 {$SHIPKEEP_DOMAIN} {
