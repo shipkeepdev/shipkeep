@@ -35,7 +35,7 @@ Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/
   - Acceptance: `pnpm install && pnpm lint && pnpm nx run-many -t test && go test ./agent/... ./cli/... ./lib/...` pass on a clean clone; the `ci` and `security` workflows pass on the PR.
 - [x] **M0.2 CI and security workflows** (X). Depends: M0.1
   - Harden the existing workflows in `.github/workflows/`: pin every third-party action to a full commit SHA (with the version in a comment) and every tool image to a digest (`semgrep/semgrep`, `gitleaks/gitleaks`); replace `securego/gosec@master` with a pinned release; pin the golangci-lint version so it matches `.golangci.yml`.
-  - `release.yml` is only checked with actionlint here; its first dry run happens in M8.2.
+  - `release.yml` is only checked with actionlint here; its first dry run happens in M8.2d1.
   - Acceptance: all required checks listed in `docs/MAINTAINING.md` are green on the PR; actionlint passes; no action referenced by a mutable tag.
 - [x] **M0.3 Proto and codegen pipeline** (X). Depends: M0.1
   - `buf.yaml` (lint `STANDARD`, breaking `FILE`), `buf.gen.yaml`; `proto/shipkeep/agent/v1/` with the skeleton from SPEC Appendix A and all action messages with fields from SPEC 3.3, 3.6 and the `ExecStream` frames from SPEC 3.1.
@@ -360,11 +360,13 @@ Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/
   - [x] **M8.2a** Foundation: `login`, `logout`, `init`, `status`, `secrets`, reached with an API token.
   - [x] **M8.2b** `deploy`, `rollback`, `server remove`, and a run of the real binary against the real API (`cli.integration.spec.ts`).
   - [ ] **M8.2c** `logs`, `env`, `db`, `backup`, `preview`, `server add`, as their bearer routes appear.
-  - [ ] **M8.2d** Release tooling below (needs a Homebrew tap and a release bucket).
-  - Go CLI commands from ARCHITECTURE; `.goreleaser.yaml` for agent and CLI; Homebrew tap and Scoop bucket; first `release.yml` dry run via workflow_dispatch.
+  - [x] **M8.2d1** `.goreleaser.yaml` for the agent (Linux) and the CLI (Linux, macOS, Windows), with checksums, SBOMs and a keyless cosign signature; `release.yml` dry run via workflow_dispatch.
+  - [ ] **M8.2d2** Homebrew tap and Scoop bucket (needs the two repositories and their tokens).
+  - Go CLI commands from ARCHITECTURE.
 - [ ] **M8.3 Installer and control plane upgrades** (X). Depends: M5.4
   - `get.shipkeep.dev` installer (CA fingerprint pinning, `shipkeep-build` user, cgroup v2 delegation, AppArmor profile on Ubuntu 24.04), signature checks, conflict detection.
-  - `deploy/control-plane.Dockerfile`, Trivy image scan in `release.yml`, `UpgradeControlPlane` action with snapshot and rollback; `UpgradeAgent` with signature check and rollback to the previous binary.
+  - [x] **M8.3b1** `deploy/control-plane.Dockerfile`: the API, the web UI, Prisma migrations and `deploy/postgres/provision-runtime.mjs` (restricted API login), built by `release.yml`.
+  - Trivy image scan in `release.yml`, `UpgradeControlPlane` action with snapshot and rollback; `UpgradeAgent` with signature check and rollback to the previous binary.
   - Acceptance: upgrade from previous release to current on a VM, then forced failure triggers automatic rollback.
 
 ## M9. Migration
