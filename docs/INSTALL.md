@@ -23,6 +23,8 @@ Use a separate machine for the control plane. It listens on ports 80 and 443, wh
    - `SHIPKEEP_IMAGE` is the release, by tag **and digest**, as printed in its release notes. You can check that the image was built by this repository's release workflow:
 
      ```sh
+     # Paste the same reference you put in .env.
+     SHIPKEEP_IMAGE='ghcr.io/shipkeepdev/shipkeep:<version>@sha256:<digest>'
      cosign verify "$SHIPKEEP_IMAGE" \
        --certificate-identity-regexp '^https://github.com/shipkeepdev/shipkeep/\.github/workflows/release\.yml@refs/tags/v' \
        --certificate-oidc-issuer https://token.actions.githubusercontent.com
