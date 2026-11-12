@@ -19,7 +19,16 @@ Use a separate machine for the control plane. It listens on ports 80 and 443, wh
 ## Install the control plane
 
 1. Get the three files of [`deploy/control-plane`](../deploy/control-plane): `compose.yml`, `Caddyfile` and `.env.example`. Put them in one directory, for example `/opt/shipkeep`.
-2. Copy `.env.example` to `.env` and fill it in. Generate the two database passwords with `openssl rand -hex 32`. Keep the file private: `chmod 600 .env`.
+2. Copy `.env.example` to `.env` and fill it in. Keep the file private: `chmod 600 .env`.
+   - `SHIPKEEP_IMAGE` is the release, by tag **and digest**, as printed in its release notes. You can check that the image was built by this repository's release workflow:
+
+     ```sh
+     cosign verify "$SHIPKEEP_IMAGE" \
+       --certificate-identity-regexp '^https://github.com/shipkeepdev/shipkeep/\.github/workflows/release\.yml@refs/tags/v' \
+       --certificate-oidc-issuer https://token.actions.githubusercontent.com
+     ```
+
+   - Generate the two database passwords with `openssl rand -hex 32`.
 3. Start it:
 
    ```sh
@@ -57,7 +66,7 @@ Store the output in a password manager or another place that is not this server.
 
 ## Upgrade
 
-Change `SHIPKEEP_VERSION` in `.env`, then run `docker compose pull` and `docker compose up -d`. The `migrate` and `database-role` steps run again before the new control plane starts. Take a PostgreSQL backup first: automatic snapshots before upgrades are not built yet.
+Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest, then run `docker compose pull` and `docker compose up -d`. The `migrate` and `database-role` steps run again before the new control plane starts. Take a PostgreSQL backup first: automatic snapshots before upgrades are not built yet.
 
 ## Troubleshooting
 

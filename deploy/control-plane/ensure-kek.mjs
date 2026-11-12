@@ -2,7 +2,8 @@
 // Runs once from the control plane image, before the API starts: `node setup/ensure-kek.mjs`.
 // An existing file is never replaced: losing the KEK makes every stored secret unreadable.
 import { randomBytes } from 'node:crypto';
-import { closeSync, openSync, statSync, writeSync } from 'node:fs';
+import { closeSync, fsyncSync, openSync, statSync, writeSync } from 'node:fs';
+import { dirname } from 'node:path';
 
 const path = process.env['SHIPKEEP_KEK_FILE'];
 if (!path) {
@@ -31,10 +32,19 @@ if (descriptor === undefined) {
   }
   console.log(`Key-encryption key present at ${path}.`);
 } else {
+  // The API encrypts under this key as soon as it starts: the key and its directory entry must
+  // be on disk before this step reports success, or a crash could lose the key and keep the data.
   try {
     writeSync(descriptor, randomBytes(32));
+    fsyncSync(descriptor);
   } finally {
     closeSync(descriptor);
+  }
+  const directory = openSync(dirname(path), 'r');
+  try {
+    fsyncSync(directory);
+  } finally {
+    closeSync(directory);
   }
   console.log(`Generated the key-encryption key at ${path}. Back it up: it cannot be recreated.`);
 }

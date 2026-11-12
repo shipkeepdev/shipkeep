@@ -9,8 +9,10 @@
 # Images are pinned to digests (THREAT_MODEL, supply chain); Renovate keeps them current.
 name: shipkeep
 
+# SHIPKEEP_IMAGE names the release by tag and digest. A tag alone can be repointed in the registry;
+# the digest cannot, and these containers hold the database administrator URL and the key file.
 x-shipkeep: &shipkeep
-  image: ghcr.io/shipkeepdev/shipkeep:${SHIPKEEP_VERSION:?set SHIPKEEP_VERSION in .env}
+  image: ${SHIPKEEP_IMAGE:?set SHIPKEEP_IMAGE in .env}
 
 x-admin-url: &admin-url postgresql://shipkeep_admin:${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD in .env}@postgres:5432/shipkeep
 x-app-url: &app-url postgresql://shipkeep_app:${POSTGRES_APP_PASSWORD:?set POSTGRES_APP_PASSWORD in .env}@postgres:5432/shipkeep
@@ -25,7 +27,9 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U shipkeep_admin -d shipkeep']
+      # Over TCP: during first-time initialization PostgreSQL answers on its Unix socket only,
+      # before it accepts the connections the next steps make.
+      test: ['CMD-SHELL', 'pg_isready -h 127.0.0.1 -U shipkeep_admin -d shipkeep']
       interval: 5s
       timeout: 5s
       retries: 12
