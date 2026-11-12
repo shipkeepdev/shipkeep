@@ -3,22 +3,103 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Shipkeep · Votre cloud, sur vos serveurs</title>
-<meta name="description" content="PaaS open source en développement. Déployez sur vos propres serveurs, sans jamais laisser la clé root dans un panneau web.">
+<title>Shipkeep · PaaS open source auto-hébergé sur vos serveurs</title>
+<meta name="description" content="PaaS open source auto-hébergé, en développement : déployez vos applications sur vos propres serveurs, sans Kubernetes ni clé root dans un panneau web.">
 <meta name="robots" content="index,follow">
 <link rel="canonical" href="https://shipkeep.vercel.app/">
 <link rel="alternate" hreflang="fr" href="https://shipkeep.vercel.app/">
 <link rel="alternate" hreflang="en" href="https://shipkeep.vercel.app/en">
+<link rel="alternate" hreflang="x-default" href="https://shipkeep.vercel.app/en">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Shipkeep · Votre cloud, sur vos serveurs">
-<meta property="og:description" content="PaaS open source en développement. Déployez sur vos propres serveurs, sans jamais laisser la clé root dans un panneau web.">
+<meta property="og:site_name" content="Shipkeep">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:locale:alternate" content="en_US">
+<meta property="og:title" content="Shipkeep · PaaS open source auto-hébergé sur vos serveurs">
+<meta property="og:description" content="PaaS open source auto-hébergé, en développement : déployez vos applications sur vos propres serveurs, sans Kubernetes ni clé root dans un panneau web.">
 <meta property="og:url" content="https://shipkeep.vercel.app/">
 <meta property="og:image" content="https://shipkeep.vercel.app/og.jpg">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://shipkeep.vercel.app/og.jpg">
+<script type="application/ld+json">
+{
+ "@context": "https://schema.org",
+ "@graph": [
+  {
+   "@type": "SoftwareApplication",
+   "@id": "https://shipkeep.vercel.app/#software",
+   "name": "Shipkeep",
+   "url": "https://shipkeep.vercel.app/",
+   "description": "PaaS open source auto-hébergé, en développement : déployez vos applications sur vos propres serveurs, sans Kubernetes ni clé root dans un panneau web.",
+   "applicationCategory": "DeveloperApplication",
+   "applicationSubCategory": "Platform as a service",
+   "operatingSystem": "Linux",
+   "inLanguage": "fr",
+   "license": "https://www.apache.org/licenses/LICENSE-2.0",
+   "isAccessibleForFree": true,
+   "creativeWorkStatus": "En développement : ne peut pas encore être installé.",
+   "offers": {
+    "@type": "Offer",
+    "price": "0",
+    "priceCurrency": "USD"
+   },
+   "image": "https://shipkeep.vercel.app/og.jpg",
+   "sameAs": [
+    "https://github.com/shipkeepdev/shipkeep"
+   ]
+  },
+  {
+   "@type": "FAQPage",
+   "@id": "https://shipkeep.vercel.app/#faq",
+   "inLanguage": "fr",
+   "mainEntity": [
+    {
+     "@type": "Question",
+     "name": "Shipkeep est-il vraiment gratuit ?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Oui. Apache-2.0, sans édition propriétaire. Une version hébergée viendra en option."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Faut-il Kubernetes ?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Non. Shipkeep place, surveille et bascule vos conteneurs Docker sur plusieurs serveurs."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Et si le plan de contrôle tombe ?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Vos apps continuent de tourner. Chaque agent garde sa table de routage et se reconnecte seul."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Où vont mes secrets ?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Chiffrés dans PostgreSQL, envoyés seulement à l’agent qui en a besoin. Le dépôt ne contient que leur nom."
+     }
+    },
+    {
+     "@type": "Question",
+     "name": "Quels serveurs sont compatibles ?",
+     "acceptedAnswer": {
+      "@type": "Answer",
+      "text": "Tout serveur Linux avec systemd. L’installeur ajoute Docker, Caddy et WireGuard si besoin."
+     }
+    }
+   ]
+  }
+ ]
+}
+</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap">
