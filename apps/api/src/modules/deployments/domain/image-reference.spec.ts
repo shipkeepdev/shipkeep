@@ -78,6 +78,23 @@ describe('parseImageReference', () => {
     });
   });
 
+  it('refuses a Docker Hub reference whose short name would name another host', () => {
+    // Emitted without `docker.io/`, these would make the node pull from the host in the path.
+    for (const reference of [
+      `docker.io/127.0.0.1/app@${DIGEST}`,
+      'docker.io/127.0.0.1/app:1',
+      'docker.io/localhost/app',
+      'docker.io/10.0.0.5/team/app',
+      'index.docker.io/internal.example.com/app',
+      `docker.io/169.254.169.254/app@${DIGEST}`,
+    ])
+      expect(() => parseImageReference(reference), reference).toThrow(
+        'The image reference is invalid.',
+      );
+    // A namespace without a dot is a Docker Hub namespace.
+    expect(parseImageReference('docker.io/acme/app').name).toBe('acme/app');
+  });
+
   it('rejects malformed and hostile references', () => {
     for (const bad of [
       '',
