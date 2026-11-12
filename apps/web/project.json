@@ -6,7 +6,23 @@
   "sourceRoot": "apps/web/src",
   "tags": ["type:app", "scope:web"],
   "targets": {
+    "prepare-installer": {
+      "executor": "nx:run-commands",
+      "options": { "command": "bash deploy/build-installer.sh" }
+    },
     "build": {
+      "dependsOn": ["^build", "prepare-installer"],
+      "inputs": [
+        "production",
+        "^production",
+        "{workspaceRoot}/deploy/**",
+        "{workspaceRoot}/agent/**",
+        "{workspaceRoot}/lib/**",
+        "{workspaceRoot}/cli/go.*",
+        "{workspaceRoot}/go.work",
+        { "env": "SHIPKEEP_VERSION" },
+        { "env": "SHIPKEEP_COMMIT" }
+      ],
       "executor": "@angular/build:application",
       "outputs": ["{options.outputPath}"],
       "defaultConfiguration": "production",

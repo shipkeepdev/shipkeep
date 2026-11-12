@@ -89,6 +89,15 @@ export const FR: Readonly<Record<string, string>> = {
   '3 servers': '3 serveurs',
   '3. Start shipkeep-agent. It checks the fingerprint, enrolls, then deletes the token.':
     "3. Démarrez shipkeep-agent. Il vérifie l'empreinte, s'inscrit, puis supprime le jeton.",
+  'On a fresh Ubuntu 24.04 server with curl and sudo, run this command, then paste the token when prompted. Docker and Caddy are installed; ports 80 and 443 must be free.':
+    'Sur un serveur Ubuntu 24.04 neuf avec curl et sudo, lancez cette commande, puis collez le jeton quand il est demandé. Docker et Caddy sont installés ; les ports 80 et 443 doivent être libres.',
+  'Install command': "Commande d'installation",
+  'Copy the command': 'Copier la commande',
+  'Command copied.': 'Commande copiée.',
+  'The command checks the installer and agent checksums. The agent checks the fingerprint, enrolls, then deletes the token.':
+    "La commande vérifie les sommes de contrôle de l'installeur et de l'agent. L'agent vérifie l'empreinte, s'enrôle, puis supprime le jeton.",
+  'The one-command installer needs HTTPS and a production build. Set this server up by hand:':
+    "L'installeur en une commande demande HTTPS et un build de production. Configurez ce serveur à la main :",
   '3. Start shipkeep-agent. It verifies the fingerprint, enrolls, then deletes the token.':
     "3. Démarrez shipkeep-agent. Il vérifie l'empreinte, s'inscrit, puis supprime le jeton.",
   '3.4 GiB': '3,4 Gio',

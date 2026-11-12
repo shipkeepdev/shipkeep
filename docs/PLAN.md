@@ -93,7 +93,7 @@ Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/
 - [ ] **M1.5 Caddy route management** (A). Depends: M1.3. The handlers and the typed admin client are done (`UpsertRoute`, `RemoveRoute`). Only the acceptance remains open: a switch under constant load against a real Caddy (CI-1 or the VM suite).
   - Caddy installed by the installer; agent manages routes through the admin Unix socket with typed JSON; `UpsertRoute`, `RemoveRoute` with switch-then-drain.
   - Acceptance: test deploys v1, switches to v2 under constant load (k6 or vegeta), zero failed requests.
-- [ ] **M1.6 Agent self-reconciliation** (A). Depends: M1.4, M1.5. Done: the intent journal, the 30 s reconciler restarting stopped managed containers offline, and `CollectFacts`. Remaining: send `StateReport` to the control plane; have the installer run Caddy with `--resume` so routes survive a Caddy restart (M8.3); the end-to-end acceptance on a VM.
+- [ ] **M1.6 Agent self-reconciliation** (A). Depends: M1.4, M1.5. Done: the intent journal, the 30 s reconciler restarting stopped managed containers offline, `CollectFacts`, and Caddy `--resume` in the M8.3a installer. Remaining: send `StateReport` to the control plane; the end-to-end acceptance on a VM (including routing persistence).
   - Reconcile loop every 30 s against `desired`; restart crashed managed containers; report `StateReport`; answer `CollectFacts`.
   - [x] **M1.6b1** Bounded managed-container snapshots and stream reporter: sample changes every second, refresh every 30 s, include stopped containers and suppress incomplete inventories. Unit/race tests cover shutdown, transport, missing containers and redaction. Daemon activation waits for the control-plane receiver (M1.6b2), so older gateways keep working.
   - [x] **M1.6b3** Show replicas with their node and observed state, in the API and on the application page.
@@ -364,6 +364,7 @@ Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/
   - [ ] **M8.2d2** Homebrew tap and Scoop bucket (needs the two repositories and their tokens).
   - Go CLI commands from ARCHITECTURE.
 - [ ] **M8.3 Installer and control plane upgrades** (X). Depends: M5.4
+  - [ ] **M8.3a** Agent/Caddy installer and verified command in Servers (first usable version; independent of control-plane upgrades). Implementation and local checks in this PR; a real VM reaching `ready` remains required. Caddy comes from its signed upstream repository (owner's decision, 2026-11-07) and runs with `--resume`; the M1.6 VM acceptance remains separate.
   - `get.shipkeep.dev` installer (CA fingerprint pinning, `shipkeep-build` user, cgroup v2 delegation, AppArmor profile on Ubuntu 24.04), signature checks, conflict detection.
   - [x] **M8.3b1** `deploy/control-plane.Dockerfile`: the API, the web UI, Prisma migrations and `deploy/postgres/provision-runtime.mjs` (restricted API login), built by `release.yml`.
   - [ ] **M8.3b2** `deploy/control-plane/compose.yml` (PostgreSQL, key-encryption key, migrations, restricted login, control plane, Caddy) and `docs/INSTALL.md`. Run end to end on one machine with Docker (control plane, installer in an Ubuntu 24.04 container, first deployment); stays open until it has run on a real server with a public name.

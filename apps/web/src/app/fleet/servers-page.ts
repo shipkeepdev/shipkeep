@@ -20,6 +20,7 @@ import { recoverOnEdit } from '../workspace/form-recovery';
 import { required } from '../workspace/validators';
 
 import { FleetApi, type FleetNode, type JoinToken } from './fleet-api';
+import { InstallCommand } from './install-command';
 import { PublicAddressesEditor } from './public-addresses-editor';
 
 /** The agent configuration for a new server (deploy/agent/agent.example.yaml). */
@@ -242,36 +243,70 @@ const COLUMNS =
                 <button
                   type="button"
                   class="btn btn-sm rounded-md px-2.5 py-1"
-                  (click)="clipboard.copy(token.token)"
+                  (click)="copy('token', token.token)"
                 >
                   {{ 'Copy' | t }}
                 </button>
               </div>
-              @if (clipboard.message(); as message) {
+              @if (copied() === 'token' && clipboard.message(); as message) {
                 <p class="text-[12px] text-mute" role="status">{{ message | t }}</p>
               }
-              <ol class="m-0 flex list-none flex-col gap-2.5 p-0 text-[12.5px] text-fg3">
-                <li>
-                  {{ '1. Save the token in /etc/shipkeep/join-token, readable by root only.' | t }}
-                </li>
-                <li>
-                  <pre class="code-box">
-sudo install -d -m 0700 /etc/shipkeep
-sudo install -m 0600 /dev/stdin /etc/shipkeep/join-token</pre>
-                </li>
-                <li>{{ '2. Write /etc/shipkeep/agent.yaml.' | t }}</li>
-                <li>
-                  <pre class="code-box" aria-label="agent.yaml">{{ config() }}</pre>
-                </li>
-                <li>
+              @if (command(); as install) {
+                <div class="text-[12.5px] leading-[1.55] text-fg3">
                   {{
-                    '3. Start shipkeep-agent. It checks the fingerprint, enrolls, then deletes the token.'
+                    'On a fresh Ubuntu 24.04 server with curl and sudo, run this command, then paste the token when prompted. Docker and Caddy are installed; ports 80 and 443 must be free.'
                       | t
                   }}
-                </li>
-              </ol>
+                </div>
+                <pre class="code-box" [attr.aria-label]="'Install command' | t">{{ install }}</pre>
+                <div class="flex flex-wrap items-center gap-2.5">
+                  <button class="btn btn-sm" type="button" (click)="copy('command', install)">
+                    {{ 'Copy the command' | t }}
+                  </button>
+                  @if (copied() === 'command' && clipboard.message(); as message) {
+                    <span class="text-[12px] text-mute" role="status">{{
+                      (message.startsWith('Copied') ? 'Command copied.' : message) | t
+                    }}</span>
+                  }
+                </div>
+                <div class="text-[12px] leading-[1.55] text-mute">
+                  {{
+                    'The command checks the installer and agent checksums. The agent checks the fingerprint, enrolls, then deletes the token.'
+                      | t
+                  }}
+                </div>
+              } @else {
+                <div class="text-[12.5px] leading-[1.55] text-fg3" role="status">
+                  {{
+                    'The one-command installer needs HTTPS and a production build. Set this server up by hand:'
+                      | t
+                  }}
+                </div>
+                <ol class="m-0 flex list-none flex-col gap-2.5 p-0 text-[12.5px] text-fg3">
+                  <li>
+                    {{
+                      '1. Save the token in /etc/shipkeep/join-token, readable by root only.' | t
+                    }}
+                  </li>
+                  <li>
+                    <pre class="code-box">
+sudo install -d -m 0700 /etc/shipkeep
+sudo install -m 0600 /dev/stdin /etc/shipkeep/join-token</pre>
+                  </li>
+                  <li>{{ '2. Write /etc/shipkeep/agent.yaml.' | t }}</li>
+                  <li>
+                    <pre class="code-box" aria-label="agent.yaml">{{ config() }}</pre>
+                  </li>
+                  <li>
+                    {{
+                      '3. Start shipkeep-agent. It checks the fingerprint, enrolls, then deletes the token.'
+                        | t
+                    }}
+                  </li>
+                </ol>
+              }
               <div>
-                <button class="btn btn-sm" type="button" (click)="issued.set(null)">
+                <button class="btn btn-sm" type="button" (click)="forgetEnrollment()">
                   {{ 'Done' | t }}
                 </button>
               </div>
@@ -341,6 +376,9 @@ sudo install -m 0600 /dev/stdin /etc/shipkeep/join-token</pre>
 export class ServersPage {
   private readonly api = inject(FleetApi);
   protected readonly i18n = inject(I18n);
+  private readonly installer = inject(InstallCommand);
+  /** The verified install command of the token shown, or null where only the manual setup works. */
+  protected readonly command = signal<string | null>(null);
   protected readonly runner = inject(MutationRunner);
   protected readonly clipboard = inject(PrivateClipboard);
   protected readonly columns = COLUMNS;
@@ -410,6 +448,9 @@ export class ServersPage {
     recoverOnEdit(this.join, this.runner);
     effect(() => {
       this.organizationId();
+      // A token and its command belong to the organization that issued them: shown under
+      // another one, the command would enroll a server into the wrong organization.
+      this.forgetEnrollment();
       void this.nodes.refresh();
     });
     const timer = setInterval(() => {
@@ -420,14 +461,52 @@ export class ServersPage {
     });
   }
 
+  /** Also the Done button: nothing of a token stays once the user is finished with it. */
+  protected forgetEnrollment(): void {
+    this.issued.set(null);
+    this.command.set(null);
+    this.copied.set(null);
+    this.clipboard.reset();
+  }
+
+  /** Which of the two copy buttons was used last: its confirmation shows next to it. */
+  protected readonly copied = signal<'token' | 'command' | null>(null);
+
+  protected async copy(target: 'token' | 'command', value: string): Promise<void> {
+    this.copied.set(target);
+    await this.clipboard.copy(value);
+  }
+
   protected async issue(): Promise<void> {
     const { password, totp } = this.join.getRawValue();
     const code = totp.trim();
-    const outcome = await this.runner.run({ joinToken: this.organizationId() }, () =>
-      this.api.issueJoinToken(this.organizationId(), { password, ...(code ? { totp: code } : {}) }),
-    );
+    // Read once: the page instance survives a change of organization during the awaits below.
+    const organizationId = this.organizationId();
+    const outcome = await this.runner.run({ joinToken: organizationId }, async () => {
+      // Without HTTPS or built artifacts (development) the page falls back to the manual setup.
+      const build = await this.installer.load().catch(() => null);
+      const token = await this.api.issueJoinToken(organizationId, {
+        password,
+        ...(code ? { totp: code } : {}),
+      });
+      // The token exists now and is shown once: an address the command cannot carry (an
+      // unbracketed IPv6 literal) falls back to the manual setup instead of losing it.
+      let command: string | null = null;
+      try {
+        command = build?.(token) ?? null;
+      } catch {
+        command = null;
+      }
+      return { token, command };
+    });
     this.join.reset();
-    if (outcome.ok) this.issued.set(outcome.value);
+    // A token issued for another organization than the one now shown is not displayed here.
+    if (outcome.ok && organizationId === this.organizationId()) {
+      // A confirmation left from the previous token would claim the new one was copied.
+      this.forgetEnrollment();
+      this.command.set(outcome.value.command);
+      this.issued.set(outcome.value.token);
+    }
   }
 
   /** One panel at a time: editing addresses and removing a server never overlap. */

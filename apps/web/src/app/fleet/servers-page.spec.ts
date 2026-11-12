@@ -2,8 +2,11 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, withComponentInputBinding, withRouterConfig } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 
+import { InstallCommand, installCommand } from './install-command';
+
 import { appRoutes } from '../app.routes';
 import { IDENTITY_FETCH } from '../identity/identity-api';
+import { PRIVATE_CLIPBOARD } from '../identity/private-clipboard';
 
 const ORG = '0190f5a8-7b1c-7e2d-8f3a-0000000000aa';
 const NODE = '0190f5a8-7b1c-7e2d-8f3a-0000000000bb';
@@ -71,13 +74,34 @@ describe('servers page', () => {
         return new Response(null, { status: 204 });
       },
     };
+    copied = [];
     TestBed.configureTestingModule({
       providers: [
+        {
+          provide: PRIVATE_CLIPBOARD,
+          useValue: (value: string) => {
+            copied.push(value);
+            return Promise.resolve();
+          },
+        },
         provideRouter(
           appRoutes,
           withComponentInputBinding(),
           withRouterConfig({ paramsInheritanceStrategy: 'always' }),
         ),
+        {
+          provide: InstallCommand,
+          useValue: {
+            load: () =>
+              Promise.resolve((token: { gatewayAddress: string; caFingerprint: string }) =>
+                installCommand(
+                  'https://shipkeep.example.com',
+                  { installer: 'b'.repeat(64), amd64: 'c'.repeat(64), arm64: 'd'.repeat(64) },
+                  token,
+                ),
+              ),
+          },
+        },
         {
           provide: IDENTITY_FETCH,
           useValue: async (request: Request) => {
@@ -99,6 +123,7 @@ describe('servers page', () => {
     await settle();
   });
 
+  let copied: string[] = [];
   function element(): HTMLElement {
     const element = harness.routeNativeElement;
     if (!element) throw new Error('missing route');
@@ -134,7 +159,7 @@ describe('servers page', () => {
     expect(table).toContain('4 CPU · 8 GiB');
   });
 
-  it('issues a join token after re-authentication and shows the agent configuration', async () => {
+  it('issues a join token after re-authentication and shows a verified install command', async () => {
     fill('join-password', 'correct horse browser fixture');
     await submit('#join-password');
     expect(requests.find((r) => r.method === 'POST')).toEqual({
@@ -143,12 +168,94 @@ describe('servers page', () => {
       body: { password: 'correct horse browser fixture' },
     });
     expect(element().querySelector<HTMLInputElement>('#join-token')?.value).toBe(TOKEN);
-    const config = element().querySelector('pre[aria-label="agent.yaml"]')?.textContent ?? '';
-    expect(config).toContain('address: shipkeep.example.com:7443');
-    expect(config).toContain(`ca_fingerprint: ${FINGERPRINT}`);
+    const config = element().querySelector('pre[aria-label="Install command"]')?.textContent ?? '';
+    expect(config).toContain("--control-plane 'shipkeep.example.com:7443'");
+    expect(config).toContain(`--ca-fingerprint '${FINGERPRINT}'`);
     // The token stays out of the configuration and of command lines.
     expect(config).not.toContain(TOKEN);
     expect(element().textContent).not.toContain('correct horse');
+    // The command is long and scrolls sideways: one button copies all of it, and only it.
+    const copy = [...element().querySelectorAll('button')].find(
+      (button) => button.textContent.trim() === 'Copy the command',
+    );
+    copy?.click();
+    await settle();
+    expect(copied).toEqual([config]);
+    // The confirmation names the command and sits next to its button, not under the token.
+    const statuses = [...element().querySelectorAll('[role="status"]')].map((status) =>
+      status.textContent.trim(),
+    );
+    expect(statuses).toEqual(['Command copied.']);
+  });
+
+  it('forgets the token and its command when another organization is shown', async () => {
+    fill('join-password', 'correct horse browser fixture');
+    await submit('#join-password');
+    expect(element().querySelector('#join-token')).not.toBeNull();
+    // Same page instance, another organization: the command would enroll into the first one.
+    await harness.navigateByUrl('/orgs/0190f5a8-7b1c-7e2d-8f3a-0000000000dd/servers');
+    await settle();
+    expect(element().querySelector('#join-token')).toBeNull();
+    expect(element().querySelector('pre[aria-label="Install command"]')).toBeNull();
+    expect(element().textContent).not.toContain(TOKEN);
+  });
+
+  it('drops the copy confirmation of the previous token when a new one is issued', async () => {
+    fill('join-password', 'correct horse browser fixture');
+    await submit('#join-password');
+    const copyToken = () =>
+      [...element().querySelectorAll('button')].find(
+        (button) => button.textContent.trim() === 'Copy',
+      );
+    copyToken()?.click();
+    await settle();
+    const statuses = () =>
+      [...element().querySelectorAll('[role="status"]')].map((status) => status.textContent.trim());
+    expect(statuses()).toEqual(['Copied. Save it in a secure place.']);
+    // Done, then a second token: the clipboard still holds the first one.
+    [...element().querySelectorAll('button')]
+      .find((button) => button.textContent.trim() === 'Done')
+      ?.click();
+    await settle();
+    fill('join-password', 'correct horse browser fixture');
+    await submit('#join-password');
+    expect(element().querySelector('#join-token')).not.toBeNull();
+    expect(statuses()).toEqual([]);
+  });
+
+  it('keeps the issued token when the command cannot carry the gateway address', async () => {
+    // The manifest loads, but building the command throws: the token already exists and is shown
+    // once, so the page must fall back to the manual setup instead of failing the whole request.
+    vi.spyOn(TestBed.inject(InstallCommand), 'load').mockResolvedValue(() => {
+      throw new Error('Verified installer requires HTTPS and valid build artifacts.');
+    });
+    fill('join-password', 'correct horse browser fixture');
+    await submit('#join-password');
+    expect(element().querySelector<HTMLInputElement>('#join-token')?.value).toBe(TOKEN);
+    expect(element().querySelector('pre[aria-label="Install command"]')).toBeNull();
+    expect(element().querySelector('pre[aria-label="agent.yaml"]')?.textContent).toContain(
+      'address: shipkeep.example.com:7443',
+    );
+    // The request is not reported as failed. The only alert left is the shell's, about the
+    // organization this fixture does not stub.
+    const alerts = [...element().querySelectorAll('[role="alert"]')].map((alert) =>
+      alert.textContent.trim(),
+    );
+    expect(alerts.filter((text) => !text.startsWith('This organization is not available'))).toEqual(
+      [],
+    );
+  });
+
+  it('falls back to the manual setup when the installer is unavailable, without the token', async () => {
+    vi.spyOn(TestBed.inject(InstallCommand), 'load').mockRejectedValue(new Error('no manifest'));
+    fill('join-password', 'correct horse browser fixture');
+    await submit('#join-password');
+    expect(element().querySelector<HTMLInputElement>('#join-token')?.value).toBe(TOKEN);
+    expect(element().querySelector('pre[aria-label="Install command"]')).toBeNull();
+    const config = element().querySelector('pre[aria-label="agent.yaml"]')?.textContent ?? '';
+    expect(config).toContain('address: shipkeep.example.com:7443');
+    expect(config).toContain(`ca_fingerprint: ${FINGERPRINT}`);
+    expect(config).not.toContain(TOKEN);
   });
 
   it('removes a server only after its exact name is typed, with a confirmation token', async () => {
@@ -254,5 +361,39 @@ describe('servers page', () => {
     expect(element().querySelector('#addresses-title')?.textContent).toContain('edge-2');
     expect(element().querySelector('#addresses-error')?.textContent.trim()).toBe('');
     expect(element().querySelector('#public-addresses')?.getAttribute('aria-invalid')).toBeNull();
+  });
+});
+
+describe('installer command boundary', () => {
+  const pins = { installer: 'b'.repeat(64), amd64: 'c'.repeat(64), arm64: 'd'.repeat(64) };
+  const token = { gatewayAddress: 'shipkeep.example.com:7443', caFingerprint: FINGERPRINT };
+  it.each(["host'; touch /tmp/pwned; '", '$(id)', 'host:7443\n', 'host:7443 `id`'])(
+    'rejects shell input %s',
+    (gatewayAddress) => {
+      expect(() =>
+        installCommand('https://shipkeep.example.com', pins, { ...token, gatewayAddress }),
+      ).toThrow();
+    },
+  );
+  it('rejects HTTP and malformed digests; never includes the join token', () => {
+    expect(() => installCommand('http://shipkeep.example.com', pins, token)).toThrow();
+    expect(() =>
+      installCommand(
+        'https://shipkeep.example.com',
+        { ...pins, installer: `${pins.installer}\n` },
+        token,
+      ),
+    ).toThrow();
+    const command = installCommand('https://shipkeep.example.com', pins, {
+      ...token,
+      token: TOKEN,
+    } as typeof token);
+    // A mismatch says so and runs nothing; the cleanup keeps the status of the step that failed.
+    expect(command).toContain(
+      "sha256sum --check --status || { echo 'shipkeep: installer checksum mismatch, nothing was run' >&2; false; }; } &&",
+    );
+    expect(command.trimEnd().endsWith('(exit "$shipkeep_install_status"); }')).toBe(true);
+    expect(command.indexOf('rm -rf')).toBeGreaterThan(command.indexOf('sudo bash'));
+    expect(command).not.toContain(TOKEN);
   });
 });
