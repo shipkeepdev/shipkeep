@@ -1,6 +1,7 @@
 // French texts of the interface, keyed by the English source text. English is the source language
 // (CLAUDE.md); the French copy comes from the design. A text without an entry shows in English.
 export const FR: Readonly<Record<string, string>> = {
+  '+{n} more': '+{n} de plus',
   ', expires': ', expire le',
   ", then review your changes. Saving does not deploy them. Reference secrets by name; keep their values in the environment's Secrets section.":
     ", puis vérifiez vos changements. L'enregistrement ne les déploie pas. Référencez les secrets par leur nom ; gardez leurs valeurs dans la section Secrets de l'environnement.",
@@ -207,6 +208,13 @@ export const FR: Readonly<Record<string, string>> = {
   'Add your first server': 'Ajouter un premier serveur',
   Added: 'Ajouté',
   Address: 'Adresse',
+  'Address {n} is not an IP address.': "L'adresse {n} n'est pas une adresse IP.",
+  'Address {n} is not an IPv4 or IPv6 address.':
+    "L'adresse {n} n'est pas une adresse IPv4 ou IPv6.",
+  'Address {n} is private or reserved. Enter the address visitors reach.':
+    "L'adresse {n} est privée ou réservée. Saisissez l'adresse que joignent les visiteurs.",
+  'Address {n}: write the IPv4 address without the ::ffff: prefix.':
+    "Adresse {n} : écrivez l'adresse IPv4 sans le préfixe ::ffff:.",
   Addresses: 'Adresses',
   'Adds PDF export': "Ajoute l'export PDF",
   Advanced: 'Avancé',
@@ -312,6 +320,7 @@ export const FR: Readonly<Record<string, string>> = {
   Certificate: 'Certificat',
   'Certificate expires in < 14 d': 'Certificat expire < 14 j',
   Certificates: 'Certificats',
+  Change: 'Modifier',
   'Change applications and deploy them': 'Modifier les applications et les déployer',
   'Change environment settings': "Modifier les réglages de l'environnement",
   'Change organization settings': "Modifier les réglages de l'organisation",
@@ -490,6 +499,7 @@ export const FR: Readonly<Record<string, string>> = {
     'Chaque organisation possède ses serveurs, ses projets et ses membres.',
   Edit: 'Modifiez',
   'Edit shipkeep.yml': 'Modifier shipkeep.yml',
+  'Edit the public addresses of {name}': 'Modifier les adresses publiques de {name}',
   Email: 'E-mail',
   'Email invitations are not built yet. For now, add people who already have an account, under Members & access.':
     "Les invitations par e-mail ne sont pas encore construites. Pour l'instant, ajoutez des personnes qui ont déjà un compte, dans Membres et accès.",
@@ -502,6 +512,7 @@ export const FR: Readonly<Record<string, string>> = {
   Endpoint: "Point d'accès",
   Engine: 'Moteur',
   'Enter a valid email address.': 'Entrez une adresse e-mail valide.',
+  'Enter at most {n} addresses.': 'Saisissez au plus {n} adresses.',
   'Enter it': 'Le saisir',
   'Enter maintenance': 'Mettre en maintenance',
   'Enter one complete 32-character recovery code.':
@@ -894,8 +905,9 @@ export const FR: Readonly<Record<string, string>> = {
   Placement: 'Placement',
   'Placement labels': 'Étiquettes de placement',
   Platform: 'Plateforme',
-  'Point each domain at the server running this application. Certificates are issued automatically once it answers on ports 80 and 443.':
-    "Faites pointer chaque domaine vers le serveur qui fait tourner l'application. Les certificats sont émis automatiquement dès qu'il répond sur les ports 80 et 443.",
+  'Point each domain at a public address of a server running this application. Administrators set these addresses on the Servers page. Certificates are issued automatically once it answers on ports 80 and 443.':
+    "Faites pointer chaque domaine vers une adresse publique d'un serveur qui fait tourner l'application. Les administrateurs renseignent ces adresses dans la page Serveurs. Les certificats sont émis automatiquement dès qu'il répond sur les ports 80 et 443.",
+  'Points at': 'Pointe vers',
   'PostgreSQL 17.2 · Client Lumen · production · srv-par-1 · volume pg-factures-data 18 GiB':
     'PostgreSQL 17.2 · Client Lumen · production · srv-par-1 · volume pg-factures-data 18 Gio',
   'Postgres, auth and storage.': 'Postgres, auth et stockage.',
@@ -933,6 +945,9 @@ export const FR: Readonly<Record<string, string>> = {
   'Proxy and certificates': 'Proxy et certificats',
   'Public Git repository': 'Dépôt Git public',
   'Public access': 'Accès public',
+  'Public address': 'Adresse publique',
+  'Public addresses': 'Adresses publiques',
+  'Public addresses of {name}': 'Adresses publiques de {name}',
   'Public or private projects, webhooks and previews per merge request.':
     'Projets publics ou privés, webhooks et previews par merge request.',
   'Public or private repositories, signed webhooks and previews per pull request.':
@@ -1036,6 +1051,7 @@ export const FR: Readonly<Record<string, string>> = {
     "Données d'exemple de la maquette : cet écran n'est pas encore relié au plan de contrôle.",
   Sat: 'sam.',
   Save: 'Enregistrer',
+  'Save addresses': 'Enregistrer les adresses',
   'Save configuration': 'Enregistrer la configuration',
   'Save settings': 'Enregistrer les réglages',
   'Save this token before leaving. It is shown only once and cannot be viewed here again after you close this display or leave this page.':
@@ -1078,6 +1094,7 @@ export const FR: Readonly<Record<string, string>> = {
   'Service · 3 containers': 'Service · 3 conteneurs',
   'Session recorded in the audit log. The terminal goes through the agent: no SSH port is open.':
     "Session enregistrée au journal d'audit. Le terminal passe par l'agent : aucun port SSH n'est ouvert.",
+  Set: 'Définir',
   'Set and remove secrets': 'Définir et retirer des secrets',
   'Set secret': 'Définir le secret',
   'Set up two-factor authentication': 'Configurer la double authentification',
@@ -1148,6 +1165,8 @@ export const FR: Readonly<Record<string, string>> = {
   'Team page': 'Page équipe',
   Telemetry: 'Télémétrie',
   'The API token has been revoked.': "Le jeton d'API a été révoqué.",
+  'The IPv4 and IPv6 addresses visitors reach this server on, one per line, at most {n}. The application page compares each domain with them.':
+    "Les adresses IPv4 et IPv6 par lesquelles les visiteurs joignent ce serveur, une par ligne, {n} au plus. La page de l'application compare chaque domaine avec elles.",
   'The account must already exist and have a verified email.':
     'Le compte doit déjà exister, avec un e-mail vérifié.',
   'The agent calls the control plane over outbound mTLS. No inbound port, no SSH key.':
@@ -1348,6 +1367,7 @@ export const FR: Readonly<Record<string, string>> = {
     'Votre forge auto-hébergée, avec webhooks et previews.',
   'Your session could not be checked. Try again when the service is available.':
     "Votre session n'a pas pu être vérifiée. Réessayez quand le service sera disponible.",
+  'a server running it': "un serveur qui l'exécute",
   'action StopContainer refused · lease expired on srv-fra-4 side':
     'action StopContainer refusée · bail expiré côté srv-fra-4',
   active: 'actif',
@@ -1372,6 +1392,8 @@ export const FR: Readonly<Record<string, string>> = {
   'by design': 'par conception',
   'cache 82% · srv-ams-6': 'cache 82 % · srv-ams-6',
   cancelled: 'annulé',
+  'cannot tell yet': "indéterminé pour l'instant",
+  'cannot tell: address not set': 'indéterminé : adresse absente',
   'ci-github · expires 05/02': 'ci-github · expire le 05/02',
   'client-billed': 'client-facturé',
   'cloned database': 'base clonée',
@@ -1475,6 +1497,8 @@ export const FR: Readonly<Record<string, string>> = {
   'no failover policy': 'pas de politique de bascule',
   'no limit': 'aucune limite',
   'no record': 'aucun enregistrement',
+  'no server running it': "aucun serveur qui l'exécute",
+  'no server runs it yet': "aucun serveur ne l'exécute encore",
   'node_exporter and persistent journald': 'node_exporter et journald persistant',
   none: 'aucun',
   'not backed up': 'non sauvegardée',
@@ -1496,6 +1520,7 @@ export const FR: Readonly<Record<string, string>> = {
   owner: 'propriétaire',
   'p95 latency': 'Latence p95',
   'p95 latency > 800 ms': 'Latence p95 > 800 ms',
+  'partly a server running it': "en partie un serveur qui l'exécute",
   'personal · all': 'personnel · tout',
   'pg pool 18/20 · wait 40 ms': 'pg pool 18/20 · attente 40 ms',
   'pg pool at 20': 'Pool pg à 20',

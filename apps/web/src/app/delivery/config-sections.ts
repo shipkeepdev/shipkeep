@@ -1,7 +1,7 @@
 import { type ShipkeepConfig } from '@shipkeep/config-schema';
 
 import { type Block, type CellInput, type FieldItem } from '../dashboard/screen-model';
-import { AMBER, GREEN, RED } from '../dashboard/format';
+import { AMBER, GREEN, GREY, RED } from '../dashboard/format';
 import { type SectionCopy } from './application-design';
 import { type DomainStatus, type Release, type Replica, type SecretMetadata } from './delivery-api';
 
@@ -25,6 +25,28 @@ const words = (command: readonly string[] | undefined) => command?.join(' ');
 const mono = (t: string, fg?: string): CellInput => ({ t, mono: true, ...(fg ? { fg } : {}) });
 const state = (t: string, color: string): CellInput => ({ t, fg: color, dot: color });
 const note = (text: string): Block => ({ type: 'note', text });
+
+/**
+ * Whether a domain reaches a server running the application, in words (PLAN M3.6b1). A failed
+ * lookup and servers without declared addresses are both "cannot tell", with the reason.
+ */
+export function domainMatch(domain: DomainStatus): CellInput {
+  switch (domain.match) {
+    case 'serving':
+      return state('a server running it', GREEN);
+    case 'partial':
+      return state('partly a server running it', AMBER);
+    case 'elsewhere':
+      return state('no server running it', RED);
+    case 'not_running':
+      return state('no server runs it yet', GREY);
+    default:
+      return state(
+        domain.status === 'unknown' ? 'cannot tell yet' : 'cannot tell: address not set',
+        AMBER,
+      );
+  }
+}
 
 /**
  * The application settings of the design, filled from the current shipkeep.yml and the API. They
@@ -86,10 +108,12 @@ export function configSection(key: string, data: SectionData): SectionCopy | nul
           ? [
               {
                 type: 'table',
-                cols: 'minmax(0,1.6fr) minmax(0,1fr) minmax(0,1.4fr)',
-                heads: ['Domain', 'DNS', 'Addresses'],
+                // The answer comes second, so it stays visible on a phone before the table scrolls.
+                cols: 'minmax(0,1.2fr) minmax(0,1.6fr) minmax(0,0.8fr) minmax(0,1fr)',
+                heads: ['Domain', 'Points at', 'DNS', 'Addresses'],
                 rows: data.domains.map((domain) => [
                   mono(domain.hostname, '#EDEDEF'),
+                  domainMatch(domain),
                   domain.status === 'public'
                     ? state('public', GREEN)
                     : domain.status === 'none'
@@ -101,7 +125,7 @@ export function configSection(key: string, data: SectionData): SectionCopy | nul
                 ]),
               },
               note(
-                'Point each domain at the server running this application. Certificates are issued automatically once it answers on ports 80 and 443.',
+                'Point each domain at a public address of a server running this application. Administrators set these addresses on the Servers page. Certificates are issued automatically once it answers on ports 80 and 443.',
               ),
             ]
           : [note('No domain yet. Add one under domains: in shipkeep.yml.')],

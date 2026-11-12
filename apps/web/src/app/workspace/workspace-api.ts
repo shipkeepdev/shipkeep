@@ -2,13 +2,18 @@ import { DOCUMENT } from '@angular/common';
 import { inject, Injectable } from '@angular/core';
 import { type components, createShipkeepClient } from '@shipkeep/api-client';
 
-import { browserRequest, IDENTITY_FETCH, IdentityRequestError } from '../identity/identity-api';
+import {
+  browserRequest,
+  IDENTITY_FETCH,
+  IdentityRequestError,
+  requestProblem,
+} from '../identity/identity-api';
 
 export type Schema<T extends keyof components['schemas']> = components['schemas'][T];
 export type Organization = Schema<'OrganizationDto'>;
 export type Project = Schema<'ProjectDto'>;
 export type Environment = Schema<'EnvironmentDto'>;
-type Result<T> = { data?: T; response: Response };
+type Result<T> = { data?: T; error?: unknown; response: Response };
 
 /** Session-cookie client for organizations, projects and environments (same origin only). */
 @Injectable({ providedIn: 'root' })
@@ -167,6 +172,7 @@ export class WorkspaceApi {
         throw new IdentityRequestError(
           result.response.status,
           Number.isFinite(seconds) ? Math.max(0, Math.min(3600, Math.ceil(seconds))) : 0,
+          requestProblem(result.error),
         );
       }
       return result.data;

@@ -20,6 +20,7 @@ import { recoverOnEdit } from '../workspace/form-recovery';
 import { required } from '../workspace/validators';
 
 import { FleetApi, type FleetNode, type JoinToken } from './fleet-api';
+import { PublicAddressesEditor } from './public-addresses-editor';
 
 /** The agent configuration for a new server (deploy/agent/agent.example.yaml). */
 export function agentConfig(token: JoinToken): string {
@@ -33,12 +34,15 @@ export function agentConfig(token: JoinToken): string {
 }
 
 const COLUMNS =
-  'grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(130px,1.4fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_84px]';
+  'grid-cols-[minmax(0,1.1fr)_minmax(0,0.8fr)_minmax(0,0.9fr)_minmax(130px,1.4fr)_minmax(0,1.1fr)_minmax(0,0.9fr)_minmax(0,0.8fr)_84px]';
 
-/** 03 Servers: status of every agent, adding one with a join token, confirmed removal. */
+/**
+ * 03 Servers: status of every agent, the public addresses domains are checked against, adding one
+ * with a join token, confirmed removal.
+ */
 @Component({
   selector: 'sk-servers-page',
-  imports: [ConfirmByName, ReactiveFormsModule, T],
+  imports: [ConfirmByName, PublicAddressesEditor, ReactiveFormsModule, T],
   providers: [MutationRunner, PrivateClipboard],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -65,7 +69,7 @@ const COLUMNS =
         [attr.aria-label]="'Servers' | t"
         tabindex="0"
       >
-        <div class="min-w-[880px]">
+        <div class="min-w-[1000px]">
           <div
             [class]="
               columns + ' grid gap-3 border-b border-line px-5 py-2.5 text-[11.5px] text-dim2'
@@ -75,6 +79,7 @@ const COLUMNS =
             ><span>{{ 'State' | t }}</span
             ><span>{{ 'Labels' | t }}</span
             ><span>{{ 'Capacity' | t }}</span
+            ><span>{{ 'Public address' | t }}</span
             ><span>{{ 'System' | t }}</span
             ><span>{{ 'Lease' | t }}</span
             ><span></span>
@@ -131,6 +136,31 @@ const COLUMNS =
                       </div>
                     </div>
                   </div>
+                  <div class="flex min-w-0 flex-col items-start gap-1">
+                    @if (n.node.publicAddresses.length) {
+                      <span class="max-w-full truncate font-mono text-[11.5px] text-fg3">{{
+                        n.node.publicAddresses[0]
+                      }}</span>
+                      @if (n.node.publicAddresses.length > 1) {
+                        <span class="text-[11px] text-dim">{{
+                          '+{n} more' | t: { n: n.node.publicAddresses.length - 1 }
+                        }}</span>
+                      }
+                    } @else {
+                      <span class="text-[11.5px] text-dim">{{ 'not set' | t }}</span>
+                    }
+                    <button
+                      type="button"
+                      class="btn btn-xs"
+                      [disabled]="busy()"
+                      [attr.aria-label]="
+                        'Edit the public addresses of {name}' | t: { name: n.node.name }
+                      "
+                      (click)="edit(n.node)"
+                    >
+                      {{ (n.node.publicAddresses.length ? 'Change' : 'Set') | t }}
+                    </button>
+                  </div>
                   <span class="truncate font-mono text-[11.5px] text-fg3">{{ n.os || '—' }}</span>
                   <span class="text-[12px] text-fg3">{{
                     'epoch {n}' | t: { n: n.node.leaseEpoch }
@@ -138,8 +168,9 @@ const COLUMNS =
                   <button
                     type="button"
                     class="btn btn-sm justify-self-end px-3 py-1.5"
+                    [disabled]="busy()"
                     [attr.aria-label]="'Remove {name}' | t: { name: n.node.name }"
-                    (click)="removing.set(n.node)"
+                    (click)="startRemoval(n.node)"
                   >
                     {{ 'Remove' | t }}
                   </button>
@@ -170,6 +201,16 @@ const COLUMNS =
         >
           {{ 'Its certificates are revoked and its agent is disconnected.' | t }}
         </sk-confirm-by-name>
+      }
+
+      @if (editing(); as node) {
+        <sk-public-addresses-editor
+          [organizationId]="organizationId()"
+          [node]="node"
+          (saved)="saved()"
+          (cancelled)="editing.set(null)"
+          (saving)="saving.set($event)"
+        />
       }
 
       <div class="flex flex-wrap items-start gap-3.5">
@@ -311,6 +352,10 @@ export class ServersPage {
     return token ? agentConfig(token) : '';
   });
   protected readonly removing = signal<FleetNode | null>(null);
+  protected readonly editing = signal<FleetNode | null>(null);
+  /** The address editor's save in flight; with the page's own runner, it holds row actions. */
+  protected readonly saving = signal(false);
+  protected readonly busy = computed(() => this.runner.busy() || this.saving());
   protected readonly join = new FormGroup({
     password: new FormControl('', { nonNullable: true, validators: [required] }),
     totp: new FormControl('', { nonNullable: true }),
@@ -383,6 +428,26 @@ export class ServersPage {
     );
     this.join.reset();
     if (outcome.ok) this.issued.set(outcome.value);
+  }
+
+  /** One panel at a time: editing addresses and removing a server never overlap. */
+  protected edit(node: FleetNode): void {
+    // A removal or a save in flight keeps its runner until it finishes and refreshes the list.
+    if (this.busy()) return;
+    this.keep();
+    this.editing.set(node);
+  }
+
+  protected startRemoval(node: FleetNode): void {
+    if (this.busy()) return;
+    this.editing.set(null);
+    this.removing.set(node);
+  }
+
+  protected async saved(): Promise<void> {
+    this.saving.set(false);
+    this.editing.set(null);
+    await this.nodes.refresh();
   }
 
   protected keep(): void {

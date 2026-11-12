@@ -16,10 +16,12 @@ const node = {
   status: 'ready',
   labels: {},
   facts: { cpu_count: 4, memory_bytes: 8 * 2 ** 30 },
+  publicAddresses: [] as string[],
   leaseEpoch: 1,
   createdAt: '2026-11-06T09:00:00Z',
   lastHeartbeatAt: '2026-11-06T09:00:00Z',
 };
+const other = { ...node, id: '0190f5a8-7b1c-7e2d-8f3a-0000000000cc', name: 'edge-2' };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
@@ -27,11 +29,14 @@ describe('servers page', () => {
   let harness: RouterTestingHarness;
   let requests: { method: string; path: string; body: unknown }[];
   let nodes: unknown[];
+  /** While set, address saves wait for it, as a slow network would. */
+  let held: Promise<void> | undefined;
 
   beforeEach(async () => {
     requests = [];
-    nodes = [node];
-    const routes: Partial<Record<string, () => Response>> = {
+    nodes = [node, other];
+    held = undefined;
+    const routes: Partial<Record<string, () => Response | Promise<Response>>> = {
       [`GET ${BASE}/nodes`]: () => json({ items: nodes, nextCursor: null }),
       [`POST ${BASE}/join-tokens`]: () =>
         json(
@@ -46,6 +51,21 @@ describe('servers page', () => {
         ),
       [`POST ${BASE}/confirmations`]: () =>
         json({ id: 'c1', token: 'confirmation-fixture', expiresAt: '2026-11-06T09:05:00Z' }, 201),
+      [`POST ${BASE}/nodes/${NODE}/public-addresses`]: async () => {
+        const sent = (requests.at(-1)?.body as { publicAddresses: string[] }).publicAddresses;
+        await held;
+        if (sent.includes('10.0.0.5'))
+          return json(
+            {
+              status: 400,
+              code: 'node_public_address_not_public',
+              details: { index: sent.indexOf('10.0.0.5') },
+            },
+            400,
+          );
+        nodes = [{ ...node, publicAddresses: sent }];
+        return json(nodes[0]);
+      },
       [`POST ${BASE}/nodes/${NODE}/remove`]: () => {
         nodes = [];
         return new Response(null, { status: 204 });
@@ -156,5 +176,83 @@ describe('servers page', () => {
       },
     ]);
     expect(element().textContent).toContain('No server yet.');
+  });
+
+  it('edits the public addresses of a server, with field messages for refused values', async () => {
+    const table = () =>
+      element().querySelector('[role="region"][aria-label="Servers"]')?.textContent ?? '';
+    expect(table()).toContain('not set');
+    element()
+      .querySelector<HTMLButtonElement>('button[aria-label="Edit the public addresses of edge-1"]')
+      ?.click();
+    await settle();
+    const field = () => element().querySelector<HTMLTextAreaElement>('#public-addresses');
+    const error = () => element().querySelector('#addresses-error')?.textContent.trim() ?? '';
+    expect(document.activeElement).toBe(field());
+    expect(field()?.getAttribute('aria-describedby')).toContain('addresses-error');
+
+    // A typo is caught before anything is sent.
+    fill('public-addresses', '8.8.8.8\nedge-1.example.com');
+    await submit('#public-addresses');
+    expect(error()).toBe('Address 2 is not an IP address.');
+    expect(field()?.getAttribute('aria-invalid')).toBe('true');
+    expect(requests.filter((r) => r.method === 'POST')).toEqual([]);
+
+    // The API decides what is public, and the message names the position it refused.
+    fill('public-addresses', '8.8.8.8\n10.0.0.5');
+    await submit('#public-addresses');
+    expect(error()).toBe('Address 2 is private or reserved. Enter the address visitors reach.');
+
+    fill('public-addresses', ' 8.8.8.8\n\n2606:4700:4700::1111 ');
+    expect(error()).toBe('');
+    await submit('#public-addresses');
+    expect(requests.filter((r) => r.method === 'POST').map((r) => r.body)).toEqual([
+      { publicAddresses: ['8.8.8.8', '10.0.0.5'] },
+      { publicAddresses: ['8.8.8.8', '2606:4700:4700::1111'] },
+    ]);
+    expect(field()).toBeNull();
+    expect(table()).toContain('8.8.8.8');
+    expect(table()).toContain('+1 more');
+  });
+
+  it('holds row actions while a save is pending, then edits another server cleanly', async () => {
+    const open = (name: string) => {
+      element()
+        .querySelector<HTMLButtonElement>(
+          `button[aria-label="Edit the public addresses of ${name}"]`,
+        )
+        ?.click();
+      harness.fixture.detectChanges();
+    };
+    let release: (() => void) | undefined;
+    held = new Promise((resolve) => {
+      release = resolve;
+    });
+    open('edge-1');
+    fill('public-addresses', '10.0.0.5');
+    element()
+      .querySelector('#public-addresses')
+      ?.closest('form')
+      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    harness.fixture.detectChanges();
+    expect(requests.filter((r) => r.method === 'POST').map((r) => r.body)).toEqual([
+      { publicAddresses: ['10.0.0.5'] },
+    ]);
+    // Row actions wait for the save: neither another server nor a removal can start meanwhile.
+    const button = (label: string) =>
+      element().querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`);
+    expect(button('Edit the public addresses of edge-2')?.disabled).toBe(true);
+    expect(button('Remove edge-1')?.disabled).toBe(true);
+    release?.();
+    await settle();
+    expect(element().querySelector('#addresses-error')?.textContent.trim()).toBe(
+      'Address 1 is private or reserved. Enter the address visitors reach.',
+    );
+    open('edge-2');
+    await settle();
+    expect(element().querySelector('#addresses-title')?.textContent).toContain('edge-2');
+    expect(element().querySelector('#addresses-error')?.textContent.trim()).toBe('');
+    expect(element().querySelector('#public-addresses')?.getAttribute('aria-invalid')).toBeNull();
   });
 });

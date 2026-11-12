@@ -1,7 +1,13 @@
 import { DOCUMENT } from '@angular/common';
 import { TestBed } from '@angular/core/testing';
 
-import { browserRequest, IDENTITY_FETCH, IdentityApi, IdentityRequestError } from './identity-api';
+import {
+  browserRequest,
+  IDENTITY_FETCH,
+  IdentityApi,
+  IdentityRequestError,
+  requestProblem,
+} from './identity-api';
 
 describe('browser identity transport', () => {
   const origin = 'https://shipkeep.example.com';
@@ -117,5 +123,27 @@ describe('browser identity transport', () => {
     ).resolves.toBeUndefined();
     await expect(api.logout('request-key')).resolves.toBeUndefined();
     await expect(api.session()).rejects.toThrow('temporarily unavailable');
+  });
+});
+
+describe('requestProblem', () => {
+  it('keeps only a well-formed code and a small index', () => {
+    expect(
+      requestProblem({ code: 'node_public_address_invalid', details: { index: 2 }, title: 'x' }),
+    ).toEqual({ code: 'node_public_address_invalid', index: 2 });
+    expect(
+      requestProblem({ code: 'domain_taken', details: { hostname: 'a.example.com' } }),
+    ).toEqual({ code: 'domain_taken' });
+    for (const body of [
+      undefined,
+      null,
+      'text',
+      { code: 42 },
+      { code: '<script>' },
+      { code: 'x'.repeat(65) },
+    ])
+      expect(requestProblem(body)).toBeUndefined();
+    for (const index of [-1, 1.5, 1000, '1'])
+      expect(requestProblem({ code: 'a_b', details: { index } })).toEqual({ code: 'a_b' });
   });
 });
