@@ -27,16 +27,22 @@ describe('HTTP session boundary', () => {
     } as IdentityRequest;
     expect(() => resourceContext(input)).toThrow('Authentication failed.');
     input.identity = { ...base, kind: 'session', sessionId: 'session-id' };
-    expect(resourceContext(input)).toEqual({
+    const session = resourceContext(input);
+    expect(session).toEqual({
       userId: base.userId,
       securityVersion: 3,
       ip: '127.0.0.1',
       userAgent: 'Fixture',
+      // Kept so that a stream can check the session it was opened under; never an API credential.
+      session: { token: base.token },
     });
+    expect(session.apiCredential).toBeUndefined();
+    expect(JSON.stringify(session)).not.toContain(token);
     input.identity = { ...base, kind: 'api_token', tokenId: 'token-id' };
     const context = resourceContext(input);
     expect(context.apiCredential?.id).toBe('token-id');
     expect(context.apiCredential?.value).toBe(base.token);
+    expect(context.session).toBeUndefined();
     expect(JSON.stringify(context)).not.toContain(token);
   });
   it('requires a unique, canonical cookie value', () => {

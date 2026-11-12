@@ -52,6 +52,31 @@ export function publicLookup(resolve: Resolver = dnsLookup): LookupFunction {
   };
 }
 
+/** Refuses a registry host that is, or resolves to, an address that is not public. */
+export type RegistryHostCheck = (host: string) => Promise<void>;
+
+/**
+ * The check for a registry that is named without being contacted (a reference pinned by digest):
+ * the node will pull from it, so it must pass the same address policy as a registry we query.
+ * `host` may carry a port.
+ */
+export function publicRegistryHost(resolve: Resolver = dnsLookup): RegistryHostCheck {
+  const lookup = publicLookup(resolve);
+  return (host) => {
+    const url = new URL(`https://${host}/`);
+    assertRegistryUrl(url);
+    const name = url.hostname.replace(/^\[|\]$/g, '');
+    if (isIP(name)) return Promise.resolve();
+    return new Promise((done, fail) => {
+      lookup(name, { all: true }, (error) => {
+        if (error instanceof RegistryAccessError) fail(error);
+        else if (error) fail(new RegistryAccessError('registry host does not resolve'));
+        else done();
+      });
+    });
+  };
+}
+
 /** Checks what can be checked before connecting: HTTPS, no credentials, public IP literals. */
 export function assertRegistryUrl(url: URL): void {
   const host = url.hostname.replace(/^\[|\]$/g, '');

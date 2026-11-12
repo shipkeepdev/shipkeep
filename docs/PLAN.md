@@ -367,6 +367,7 @@ Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/
   - [ ] **M8.3a** Agent/Caddy installer and verified command in Servers (first usable version; independent of control-plane upgrades). Implementation and local checks in this PR; a real VM reaching `ready` remains required. Caddy comes from its signed upstream repository (owner's decision, 2026-11-07) and runs with `--resume`; the M1.6 VM acceptance remains separate.
   - `get.shipkeep.dev` installer (CA fingerprint pinning, `shipkeep-build` user, cgroup v2 delegation, AppArmor profile on Ubuntu 24.04), signature checks, conflict detection.
   - [x] **M8.3b1** `deploy/control-plane.Dockerfile`: the API, the web UI, Prisma migrations and `deploy/postgres/provision-runtime.mjs` (restricted API login), built by `release.yml`.
+  - [ ] **M8.3b2** `deploy/control-plane/compose.yml` (PostgreSQL, key-encryption key, migrations, restricted login, control plane, Caddy) and `docs/INSTALL.md`. Run end to end on one machine with Docker (control plane, installer in an Ubuntu 24.04 container, first deployment); stays open until it has run on a real server with a public name.
   - Trivy image scan in `release.yml`, `UpgradeControlPlane` action with snapshot and rollback; `UpgradeAgent` with signature check and rollback to the previous binary.
   - Acceptance: upgrade from previous release to current on a VM, then forced failure triggers automatic rollback.
 

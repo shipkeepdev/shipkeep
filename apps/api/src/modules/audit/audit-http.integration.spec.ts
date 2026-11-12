@@ -101,4 +101,37 @@ describe('audit events over HTTP', () => {
     await fixture.get(stream, 'environmentViewer').expect(406);
     await fixture.get(stream, 'outsider').expect(404);
   });
+
+  // Last on purpose: it signs the environment viewer out.
+  it('ends an open stream once its session is signed out, and sends nothing afterwards', async () => {
+    let opened: () => void = () => undefined;
+    const open = new Promise<void>((resolve) => (opened = resolve));
+    const stream = fixture
+      .get(`${fixture.environment}/events`, 'environmentViewer')
+      .set('Accept', 'text/event-stream')
+      .buffer(true)
+      .parse((response, done) => {
+        // Called when the response headers arrive: the server has accepted the stream.
+        opened();
+        let text = '';
+        response.setEncoding('utf8');
+        response.on('data', (chunk: string) => (text += chunk));
+        response.on('end', () => {
+          done(null, text);
+        });
+      });
+    const ended = stream.then((response) => response);
+    // The stream is open under the viewer's session; only then sign that session out.
+    await open;
+    await fixture.post('/api/v1/auth/logout', 'environmentViewer', {}).expect(204);
+    await fixture
+      .post(`${fixture.environment}/secrets`, 'owner', { name: 'AFTER_LOGOUT', value: 'x' })
+      .expect(200);
+    // Without the session check the stream would run for an hour and this would time out.
+    const response = await ended;
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain('text/event-stream');
+    expect(response.body).not.toContain('secret.set');
+    expect(response.body).not.toContain('event: change');
+  }, 20_000);
 });

@@ -33,6 +33,11 @@ func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && r.URL.Path == "/config/apps":
 		writeExists(w, f.apps)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/config/apps/http"):
+		if !f.apps {
+			// As Caddy does for a path below a missing parent.
+			http.Error(w, `{"error":"invalid traversal path at: config/apps/http"}`, http.StatusBadRequest)
+			return
+		}
 		writeExists(w, f.server && !strings.HasSuffix(r.URL.Path, "automatic_https"))
 	case r.Method == http.MethodPut && r.URL.Path == "/config/apps":
 		f.apps, f.server = true, true
@@ -134,5 +139,18 @@ func TestClientHidesCaddyErrors(t *testing.T) {
 	}
 	if _, err := New("relative.sock"); err == nil {
 		t.Fatal("accepted a relative socket path")
+	}
+}
+
+func TestClientKeepsABadRequestAnErrorOutsideBootstrap(t *testing.T) {
+	client, _ := admin(t)
+	ctx := context.Background()
+	// The server does not exist yet: reading below it is Caddy's 400, which must not pass for
+	// "nothing to change" anywhere but in EnsureServer.
+	if err := client.SetPlainHosts(ctx, nil, []string{"a.example.com"}); err == nil {
+		t.Fatal("a 400 from Caddy was read as an absent value")
+	}
+	if err := client.EnsureServer(ctx); err != nil {
+		t.Fatal(err)
 	}
 }

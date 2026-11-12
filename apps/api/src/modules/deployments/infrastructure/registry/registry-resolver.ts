@@ -12,7 +12,9 @@ import {
 import {
   assertRegistryUrl,
   GuardedHttps,
+  publicRegistryHost,
   RegistryAccessError,
+  type RegistryHostCheck,
   type RegistryRequest,
   type RegistryResponse,
   type RegistryTransport,
@@ -31,19 +33,27 @@ const MAX_TOKEN = 8192;
 /**
  * Resolves image tags to digests with the registry HTTP API v2 (ADR 0012), anonymously: public
  * images only until registry credentials exist. Every request goes through the SSRF-guarded
- * transport. Errors name the registry and the status, never tokens.
+ * transport, and a reference already pinned by digest passes the same address policy. Errors name the registry and the status, never tokens.
  */
 export class RegistryResolver implements ImageResolver {
   private readonly transport: RegistryTransport;
 
-  constructor(transport?: RegistryTransport) {
+  private readonly checkHost: RegistryHostCheck;
+
+  constructor(transport?: RegistryTransport, checkHost?: RegistryHostCheck) {
     this.transport = transport ?? new GuardedHttps();
+    this.checkHost = checkHost ?? publicRegistryHost();
   }
 
   async resolve(reference: string): Promise<string> {
     const image = parseImageReference(reference);
-    if (image.digest) return pinnedReference(image, image.digest);
     try {
+      if (image.digest) {
+        // Nothing to look up, but the node will pull from this registry: a digest must not be a
+        // way around the address policy that a tag goes through.
+        await this.checkHost(image.registry);
+        return pinnedReference(image, image.digest);
+      }
       return pinnedReference(image, await this.digestOf(image));
     } catch (error: unknown) {
       if (error instanceof InvalidInputError) throw error;

@@ -139,6 +139,24 @@ export class SessionCommands {
     return record;
   }
 
+  /**
+   * Whether this user's session can still be used, for work that started under it and continues
+   * (an event stream). Unlike `authenticate` it does not count as activity: a stream left open must
+   * not keep an idle session alive.
+   */
+  async assertLive(userId: string, token: Secret, now = new Date()): Promise<void> {
+    if (!TOKEN_PATTERN.test(token.expose())) throw new AuthenticationError();
+    const record = await this.store.findSession(this.secrets.hash('session', token));
+    if (
+      !record ||
+      record.session.userId !== userId ||
+      record.user.status !== 'active' ||
+      record.user.securityVersion !== record.session.securityVersion ||
+      !sessionIsLive(record.session, now)
+    )
+      throw new AuthenticationError();
+  }
+
   async logout(userId: string, token: Secret, now = new Date()): Promise<void> {
     await this.store.withUserLock(userId, async () => {
       if (await this.store.revokeSession(userId, this.secrets.hash('session', token), now)) {

@@ -96,6 +96,12 @@ func TestDispatcherRunsJournaledActionsOnce(t *testing.T) {
 	if len(first.updates) < 2 {
 		t.Fatalf("expected progress updates, got %d", len(first.updates))
 	}
+	// The control plane closes the action on the first final update: it must hold the result.
+	for _, sent := range first.updates {
+		if sent.GetState() == agentv1.OperationState_OPERATION_STATE_SUCCEEDED && sent.GetResult().GetContainerId() != "net-1" {
+			t.Fatalf("a succeeded update was sent without its result: %v", sent)
+		}
+	}
 	// Redelivery with the same key replays the journaled outcome without running the step again.
 	replay := &recorder{}
 	d.Handle(context.Background(), request("sk-app"), replay.send)
@@ -181,5 +187,34 @@ func TestDispatcherCancelsRunningActions(t *testing.T) {
 	}
 	if d.Cancel(testID) {
 		t.Fatal("finished action is still tracked")
+	}
+}
+
+func TestDispatcherReportsWhyAFinalStateIsNotSuccess(t *testing.T) {
+	store := open(t)
+	var applied atomic.Int32
+	d := dispatcher(store, &applied, func(context.Context) (journal.Outcome, error) {
+		return journal.Outcome{}, errors.New("daemon refused: secret detail")
+	})
+	sent := &recorder{}
+	d.Handle(context.Background(), request("sk-app"), sent.send)
+	final := 0
+	for _, update := range sent.updates {
+		ended := update.GetState() == agentv1.OperationState_OPERATION_STATE_COMPENSATED ||
+			update.GetState() == agentv1.OperationState_OPERATION_STATE_FAILED
+		if !ended {
+			if update.GetError() != "" {
+				t.Fatalf("progress update carries an error: %v", update)
+			}
+			continue
+		}
+		final++
+		// A fixed message: the step's own error may hold host details.
+		if update.GetError() != errFailed || update.GetResult() != nil {
+			t.Fatalf("unexpected final update: %v", update)
+		}
+	}
+	if final == 0 {
+		t.Fatalf("no final update among %d", len(sent.updates))
 	}
 }
