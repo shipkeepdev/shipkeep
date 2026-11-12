@@ -47,10 +47,12 @@ jobs:
 
   control-plane-image:
     name: Control plane image
+    # The last step adds the image reference to the release that the binaries job creates.
+    needs: binaries
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
-      contents: read
+      contents: write
       packages: write
       id-token: write
       attestations: write
@@ -87,3 +89,22 @@ jobs:
           provenance: mode=max
       - if: env.PUBLISH == 'true'
         run: cosign sign --yes "ghcr.io/${{ github.repository_owner }}/shipkeep@${{ steps.build.outputs.digest }}"
+      # docs/INSTALL.md asks operators for the image by tag and digest: publish that exact line.
+      - name: Record the image reference
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/shipkeep
+          VERSION: ${{ steps.meta.outputs.version }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TAG: ${{ github.ref_name }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          reference="${IMAGE}:${VERSION}@${DIGEST}"
+          echo "Control plane image: \`${reference}\`" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$PUBLISH" = true ]; then
+            {
+              gh release view "$TAG" --json body --jq .body
+              printf '\n## Control plane image\n\n```\nSHIPKEEP_IMAGE=%s\n```\n' "$reference"
+            } > "$RUNNER_TEMP/notes.md"
+            gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md"
+          fi
