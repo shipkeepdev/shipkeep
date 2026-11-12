@@ -8,6 +8,10 @@ export type SecretMetadata = Schema<'SecretDto'>;
 export type DomainStatus = Schema<'DomainDto'>;
 export type Replica = Schema<'ReplicaDto'>;
 export type Release = Schema<'ReleaseDto'>;
+export type AgentAction = Schema<'AgentActionDto'>;
+
+/** Agent actions per page on the application screen. */
+export const AGENT_ACTION_PAGE = 20;
 
 /** The environment an application lives in; every route below is scoped by it. */
 export interface EnvironmentRef {
@@ -83,6 +87,24 @@ export class DeliveryApi extends WorkspaceApi {
         ),
       )
     ).items;
+  }
+  /** Newest first; `cursor` is the last id of the page before. */
+  agentActions(
+    environment: EnvironmentRef,
+    applicationId: string,
+    cursor?: string,
+  ): Promise<Schema<'AgentActionPageDto'>> {
+    return this.required(() =>
+      this.client.GET(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/agent-actions',
+        {
+          params: {
+            path: { ...environment, applicationId },
+            query: { limit: AGENT_ACTION_PAGE, ...(cursor ? { cursor } : {}) },
+          },
+        },
+      ),
+    );
   }
   async domains(
     environment: EnvironmentRef,

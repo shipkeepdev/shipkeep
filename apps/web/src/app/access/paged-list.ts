@@ -6,6 +6,8 @@ interface Page<T> {
   readonly items: readonly T[];
   readonly nextCursor: string | null;
 }
+const isDenied = (error: unknown): boolean =>
+  error instanceof IdentityRequestError && [403, 404].includes(error.status);
 const message = (error: unknown): string =>
   error instanceof IdentityRequestError ? error.message : 'This list could not be loaded.';
 
@@ -18,6 +20,8 @@ export class PagedList<T> {
   private readonly extending = signal(false);
   private readonly refused = signal(false);
   private revision = 0;
+  /** Newest-page reloads; only the latest one applies. */
+  private head = 0;
   readonly items = this.loaded.asReadonly();
   readonly state = this.status.asReadonly();
   readonly problem = this.failure.asReadonly();
@@ -41,12 +45,57 @@ export class PagedList<T> {
       this.refused.set(false);
       this.status.set('ready');
     } catch (error: unknown) {
-      if (revision !== this.revision) return;
-      this.loaded.set([]);
-      this.cursor.set(null);
-      this.failure.set(message(error));
-      this.refused.set(error instanceof IdentityRequestError && [403, 404].includes(error.status));
-      this.status.set('failed');
+      if (revision === this.revision) this.fail(error);
+    }
+  }
+
+  private fail(error: unknown): void {
+    this.loaded.set([]);
+    this.cursor.set(null);
+    this.failure.set(message(error));
+    this.refused.set(isDenied(error));
+    this.status.set('failed');
+  }
+
+  /**
+   * Reloads the newest page and keeps the older pages already opened: fresh items replace their
+   * old copies by key. The merge uses the list as it is when the answer arrives, so an older page
+   * appended meanwhile stays. When the newest page no longer reaches what is shown, so items in
+   * between would be missing, it falls back to a full refresh. Losing access clears the list as
+   * `refresh` does; other failures keep what is shown.
+   */
+  async refreshFirst(key: (item: T) => string): Promise<void> {
+    if (this.status() !== 'ready' || !this.loaded().length) {
+      await this.refresh();
+      return;
+    }
+    const revision = this.revision;
+    const head = ++this.head;
+    const current = (): boolean => revision === this.revision && head === this.head;
+    try {
+      const page = await this.load();
+      if (!current()) return;
+      const shown = this.loaded();
+      const fresh = new Set(page.items.map(key));
+      if (page.nextCursor === null) {
+        // The newest page is now the whole list.
+        this.loaded.set(page.items);
+        this.cursor.set(null);
+      } else if (shown.some((item) => fresh.has(key(item)))) {
+        this.loaded.set([...page.items, ...shown.filter((item) => !fresh.has(key(item)))]);
+      } else {
+        await this.refresh();
+        return;
+      }
+      this.failure.set(null);
+    } catch (error: unknown) {
+      if (!current()) return;
+      if (isDenied(error)) {
+        // Older pages still loading must not bring rows back.
+        this.revision++;
+        this.extending.set(false);
+        this.fail(error);
+      } else this.failure.set(message(error));
     }
   }
 

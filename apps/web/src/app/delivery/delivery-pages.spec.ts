@@ -74,6 +74,8 @@ describe('delivery screens', () => {
   let sources: FakeEventSource[];
   let requests: { method: string; path: string; body: unknown }[];
   let routes: Partial<Record<string, () => Response | Promise<Response>>>;
+  /** Query of the request being answered, for routes that page. */
+  let query: URLSearchParams;
 
   beforeEach(async () => {
     requests = [];
@@ -97,6 +99,7 @@ describe('delivery screens', () => {
           provide: IDENTITY_FETCH,
           useValue: async (request: Request) => {
             const path = new URL(request.url).pathname;
+            query = new URL(request.url).searchParams;
             const text = request.method === 'GET' ? '' : await request.clone().text();
             requests.push({
               method: request.method,
@@ -391,6 +394,172 @@ describe('delivery screens', () => {
     expect(table).toContain('edge-1');
     expect(table).toContain('running');
     expect(table).toContain('not reported yet');
+  });
+
+  it('lists agent actions with their server, result and refusal, pages them and links their deployment', async () => {
+    const id = (n: number) => `0190f5a8-7b1c-7e2d-8f3a-${String(n).padStart(12, '0')}`;
+    const older = {
+      ...deployment('succeeded'),
+      id: id(800),
+      releaseId: `abcdef1${id(801).slice(7)}`,
+    };
+    const action = (n: number, fields: object = {}) => ({
+      id: id(n),
+      kind: 'startContainer',
+      nodeId: id(900),
+      nodeName: 'srv-par-1',
+      state: 'succeeded',
+      step: 'started',
+      attempts: 1,
+      outcome: 'succeeded',
+      reason: null,
+      result: null,
+      deploymentId: older.id,
+      createdAt: '2026-11-11T10:12:58Z',
+      updatedAt: '2026-11-11T10:12:58Z',
+      completedAt: '2026-11-11T10:12:58Z',
+      ...fields,
+    });
+    let failing = true;
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () =>
+        json({ items: [deployment('succeeded'), older] }),
+      [`GET ${BASE}/applications/${APP}/releases`]: () =>
+        json({ items: [{ id: older.releaseId, number: 4, image: 'nginx:1.27', ...stamp }] }),
+      [`GET ${BASE}/applications/${APP}/agent-actions`]: () => {
+        if (failing) return json({ status: 503 }, 503);
+        return query.get('cursor')
+          ? json({
+              items: [
+                action(1, { kind: 'pullImage', nodeName: 'srv-fra-2', deploymentId: id(700) }),
+              ],
+              nextCursor: null,
+            })
+          : json({
+              items: [
+                action(3, { kind: 'upsertRoute' }),
+                action(2, {
+                  kind: 'stopContainer',
+                  nodeName: 'srv-fra-4',
+                  state: 'failed',
+                  outcome: 'refused',
+                  reason: 'stale_lease_epoch',
+                }),
+              ],
+              nextCursor: id(2),
+            });
+      },
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}?section=actions`,
+    );
+    await settle();
+    expect(element().querySelector('#panel-config [role="alert"]')?.textContent).toContain(
+      'temporarily unavailable',
+    );
+    failing = false;
+    await click('Retry');
+    const rows = () =>
+      Array.from(element().querySelectorAll('[role="table"] [role="row"]'))
+        .slice(1)
+        .map((row) =>
+          Array.from(row.querySelectorAll('[role="cell"]')).map((cell) =>
+            cell.textContent.replace(/\s+/g, ' ').trim(),
+          ),
+        );
+    expect(rows().map((cells) => cells.slice(1))).toEqual([
+      // Phones show the deployment after the server, and hide its column (CSS, not in jsdom).
+      ['UpsertRoute', 'srv-par-1 · #4', 'ok', '#4'],
+      ['StopContainer', 'srv-fra-4 · #4', 'refused · lease superseded', '#4'],
+    ]);
+    // Real data: the sample rows and the Preview label are gone from this section.
+    expect(element().querySelector('#panel-config sk-preview-pill')).toBeNull();
+    expect(configText()).not.toContain('srv-ams-3');
+    expect(requests.filter((r) => r.path.endsWith('/agent-actions')).length).toBeGreaterThan(0);
+
+    await click('Load older actions');
+    expect(rows().map((cells) => cells[1])).toEqual(['UpsertRoute', 'StopContainer', 'PullImage']);
+    // A deployment the page does not know shows the end of its id.
+    expect(rows()[2]?.[4]).toBe('000700');
+    expect(query.get('cursor')).toBe(id(2));
+    expect(element().textContent).not.toContain('Load older actions');
+
+    // The deployment link opens that deployment, not the latest one.
+    const link = element().querySelector<HTMLAnchorElement>('[role="cell"] a');
+    expect(link?.getAttribute('href')).toContain(`deployment=${older.id}`);
+    await harness.navigateByUrl(link?.getAttribute('href') ?? '');
+    await settle();
+    expect(element().querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain(
+      'Deployments',
+    );
+    expect(deploymentsText()).toContain('Deployment abcdef1');
+    expect(deploymentsText()).not.toContain('Deployment 0190f5a');
+  });
+
+  it('reloads only the newest agent actions once per live update, keeping older pages', async () => {
+    const id = (n: number) => `0190f5a8-7b1c-7e2d-8f3a-${String(n).padStart(12, '0')}`;
+    const action = (n: number) => ({
+      id: id(n),
+      kind: 'startContainer',
+      nodeId: id(900),
+      nodeName: 'srv-par-1',
+      state: 'succeeded',
+      step: 'started',
+      attempts: 1,
+      outcome: 'succeeded',
+      reason: null,
+      result: null,
+      deploymentId: null,
+      createdAt: '2026-11-11T10:12:58Z',
+      updatedAt: '2026-11-11T10:12:58Z',
+      completedAt: '2026-11-11T10:12:58Z',
+    });
+    // Newest first: 21 to 2 on the first page, 1 on the older one; 22 arrives later.
+    let newest = 21;
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () =>
+        json({ items: [deployment('succeeded')] }),
+      [`GET ${BASE}/applications/${APP}/agent-actions`]: () =>
+        query.get('cursor')
+          ? json({ items: [action(1)], nextCursor: null })
+          : json({
+              items: Array.from({ length: 20 }, (_, i) => action(newest - i)),
+              nextCursor: id(newest - 19),
+            }),
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}?section=actions`,
+    );
+    await settle();
+    await click('Load older actions');
+    const shown = () => element().querySelectorAll('[role="table"] [role="row"]').length - 1;
+    const loads = () => requests.filter((r) => r.path.endsWith('/agent-actions')).length;
+    expect(shown()).toBe(21);
+    const before = loads();
+    newest = 22;
+    sources[0]?.emit({ applicationId: APP });
+    await settle();
+    await settle();
+    // One newest-page request per update: the merge must not trigger another load.
+    expect(loads() - before).toBe(1);
+    expect(shown()).toBe(22);
+  });
+
+  it('says when an application has no agent action yet', async () => {
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: [] }),
+      [`GET ${BASE}/applications/${APP}/agent-actions`]: () =>
+        json({ items: [], nextCursor: null }),
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}?section=actions`,
+    );
+    await settle();
+    expect(configText()).toContain('No agent action yet.');
+    expect(configText()).not.toContain('Load older actions');
   });
 
   it('compares a release with the previous one', async () => {
