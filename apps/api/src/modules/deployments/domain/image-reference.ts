@@ -17,7 +17,11 @@ export interface ImageReference {
   readonly registry: string;
   /** Repository path inside the registry, for example `library/nginx`. */
   readonly repository: string;
-  /** The reference as written without tag and digest; what the agent pulls (`<name>@<digest>`). */
+  /**
+   * What the agent pulls (`<name>@<digest>`) and what Docker then records for the image: the
+   * reference without tag and digest, in Docker's own short form for Docker Hub (`nginx`, not
+   * `docker.io/library/nginx`). The agent checks the pulled image against this exact name.
+   */
   readonly name: string;
   readonly tag: string | null;
   readonly digest: string | null;
@@ -71,10 +75,15 @@ export function parseImageReference(reference: string): ImageReference {
   return {
     registry,
     repository,
-    name,
+    name: hub ? familiarHubName(path) : name,
     tag: tag ?? (digest === null ? 'latest' : null),
     digest,
   };
+}
+
+/** Docker Hub repositories are recorded without a host, and official images without `library/`. */
+function familiarHubName(path: readonly string[]): string {
+  return path.length === 2 && path[0] === 'library' ? (path[1] ?? '') : path.join('/');
 }
 
 /** The digest-pinned reference the agent accepts (`PullImage`, `ContainerSpec.image_ref`). */
