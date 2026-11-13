@@ -5,6 +5,7 @@ Static marketing page, deployed on Vercel at <https://shipkeep.vercel.app> (proj
 - `index.html` (French, the default) and `en/index.html` are static pages. Edit them directly: they have no build step.
 - `site.js` holds the interactions, with no dependency. `vercel.json` sets the Content-Security-Policy.
 - `hero-fr.jpg` and `hero-en.jpg` are screenshots of the dashboard mockup, captioned as fictional data.
+- `og.jpg` is the image shown when a link to the site is shared: a 1200 × 630 screenshot of the top of the French page. It shows the status line, so take it again whenever the status line, the navigation or the hero changes.
 
 **Say only what is true.** The status line at the top stays until a stable release: it says that a prerelease can be tried and that the page describes more than that prerelease contains. The "requests served" card is an example and stays labeled as one. The Shipkeep column of the comparison is the first release's target, and the note under the table says so; recheck the other columns against each project's documentation before changing that date, and keep one primary source link per cell (the project's own docs, license file or repository) under the table. No star counts. Installation is a link to `docs/INSTALL.md`, never a command on the page.
 
