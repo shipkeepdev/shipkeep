@@ -1,6 +1,6 @@
 # Installing Shipkeep
 
-> **Status: exercised locally, not yet on a public server.** The whole procedure has run on one machine with Docker (see [What has been tested](#what-has-been-tested)): the control plane, a server installed with the command from the Servers page, deployments and a rollback. A real server, a public certificate and a real mail provider have not been tried. Please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
+> **Status: a prerelease, exercised on one machine, not yet on a public server.** The whole procedure has run with the published artifacts of [`v0.1.0-alpha.1`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.1) (see [What has been tested](#what-has-been-tested)): the control plane, a server installed with the command from the Servers page, deployments, a rollback and a reboot of the server. A real server, a public certificate and a real mail provider have not been tried. Use it on servers you can afford to lose, and please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
 
 A Shipkeep installation has two kinds of machines:
 
@@ -18,9 +18,9 @@ Use a separate machine for the control plane. It listens on ports 80 and 443, wh
 
 ## Install the control plane
 
-1. Get the three files of [`deploy/control-plane`](../deploy/control-plane): `compose.yml`, `Caddyfile` and `.env.example`. Put them in one directory, for example `/opt/shipkeep`.
+1. Pick a release on the [releases page](https://github.com/shipkeepdev/shipkeep/releases). From the repository at that release's tag, get the three files of [`deploy/control-plane`](../deploy/control-plane): `compose.yml`, `Caddyfile` and `.env.example`. Put them in one directory, for example `/opt/shipkeep`.
 2. Copy `.env.example` to `.env` and fill it in. Keep the file private: `chmod 600 .env`.
-   - `SHIPKEEP_IMAGE` is the release, by tag **and digest**, as printed in its release notes. You can check that the image was built by this repository's release workflow:
+   - `SHIPKEEP_IMAGE` is the release, by tag **and digest**: copy the `SHIPKEEP_IMAGE=…` line at the bottom of its release notes. You can check that the image was built by this repository's release workflow:
 
      ```sh
      # Paste the same reference you put in .env.
@@ -89,19 +89,26 @@ Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest, then run 
 
 ## What has been tested
 
-Everything below was run on one machine with Docker Engine 29 and Compose 2.40, on 12 November 2026, in a single run that started from nothing, with an image built from `main` at commit `8eeef12` (the code of the first prerelease; later commits change documentation only):
+With the published artifacts of `v0.1.0-alpha.1`, on 13 November 2026, on one machine with Docker Engine 29 and Compose 2.40, in a single run that started from nothing, with `compose.yml` and `.env.example` taken from the tag:
 
+- The image pulled by tag and digest without credentials, and the `cosign verify` command above: it succeeds, and it fails when given another identity.
 - `docker compose up -d`: the three one-shot steps exit 0, the control plane becomes healthy and answers over HTTPS through Caddy (with Caddy's internal certificate authority, since the test name was not public).
-- Restarting the control plane, restarting Caddy, and the control plane process exiting on its own: the site answers again each time without manual action.
 - Sign-up with the confirmation email (a local mail server with implicit TLS), sign-in, an organization, a project and an environment.
-- The install command copied from the Servers page, run in an Ubuntu 24.04 container with systemd: it exits 0, Docker and Caddy are installed, the agent enrolls, the server shows as `ready` and the token file is removed. With a wrong checksum it reports the mismatch, runs nothing and exits 1. On a server already installed it refuses and exits 1.
-- Deployments of public images written as `owner/image`, `docker.io/owner/image`, `index.docker.io/owner/image`, `nginx` and `docker.io/library/nginx`: network, pull by digest, container, health check, route, state `succeeded`, and the application answering through the server's Caddy.
-- A second deployment replacing the first, then a rollback to the first release.
-- On the server: restarting Caddy and killing it with `kill -9` (the route keeps serving and the admin socket keeps mode 0660, with no TCP admin listener), restarting the agent (it reconnects), then a new deployment.
+- The install command copied from the Servers page, run in an Ubuntu 24.04 container with systemd: it exits 0, Docker and Caddy are installed, the agent enrolls with version `0.1.0-alpha.1`, the server shows as `ready` and the token file is removed. Run again on that server, it refuses and exits 1.
+- A deployment of `docker.io/traefik/whoami:v1.10.3`: network, pull by digest, container, health check, route, state `succeeded`, and the application answering through the server's Caddy.
+- A reboot of the server (a restart of its container, with Docker's storage on disk): the three services come back, the application's container restarts, Caddy serves its route again, and the server shows as `ready` again. Then a second deployment, and a rollback to the first release.
+- The agent and CLI archives of the release: their checksums match `checksums.txt`, and both binaries report the release version.
+
+With an image built from the same code (`main` at `8eeef12`) on 12 November 2026, on the same machine:
+
+- Restarting the control plane, restarting Caddy, and the control plane process exiting on its own: the site answers again each time without manual action. After a reboot of the machine itself, the whole stack came back and sign-in worked with the same account.
+- The install command with a wrong checksum: it reports the mismatch, runs nothing and exits 1.
+- Deployments of images written as `owner/image`, `index.docker.io/owner/image`, `nginx` and `docker.io/library/nginx`.
+- On the server: restarting Caddy and killing it with `kill -9` (the route keeps serving and the admin socket keeps mode 0660, with no TCP admin listener), and restarting the agent (it reconnects).
 
 Not tested yet:
 
-- A real server or virtual machine: a reboot, a firewall, and Docker storage as on a normal host. The server of the test was a privileged container.
+- A real server or virtual machine, and a firewall. The server of the test was a privileged container.
 - A public DNS name: Caddy obtaining certificates from Let's Encrypt, for the control plane and for an application domain. Applications were checked over HTTP on the server.
 - A real SMTP provider.
-- arm64 at run time, upgrading from one published release to the next, and removing a server.
+- arm64 at run time, upgrading from one published release to the next, removing a server, and the released CLI against an installation.

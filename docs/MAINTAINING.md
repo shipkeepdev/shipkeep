@@ -73,3 +73,5 @@ Signing uses cosign keyless (GitHub OIDC), so no signing key secret is needed. G
 
 - Tags `vMAJOR.MINOR.PATCH` trigger `release.yml`: agent and CLI binaries (GoReleaser), control plane image on `ghcr.io/$OWNER/shipkeep`, all signed with cosign, SBOM and provenance attached.
 - Pre-releases use `-alpha.N`, `-beta.N`, `-rc.N`.
+- The image job pushes to the `shipkeep` container package of the organization. That needs three settings, made once: the organization allows public packages (Settings, Packages), the package is public, and the repository has the Write role on it (package settings, Manage Actions access). Without the last one the push fails with `permission_denied: write_package`; fix the setting and rerun the failed job, which also adds the `SHIPKEEP_IMAGE` line to the release notes.
+- After a release, run `docs/INSTALL.md` with its published artifacts and update "What has been tested" there.
