@@ -25,7 +25,7 @@
 Shipkeep is a self-hosted platform to deploy applications, databases and services on servers you own: git push to deploy, automatic HTTPS, managed databases with backups, preview environments, logs, metrics and alerts, without Kubernetes.
 
 > [!NOTE]
-> **Shipkeep is in development and cannot be installed yet.** This page describes the first release being built, and [what works today](#what-works-today) says where it stands. It is built in the open under [Apache-2.0](LICENSE), and [contributions are welcome](CONTRIBUTING.md).
+> **Shipkeep is in development.** A first prerelease, [`v0.1.0-alpha.1`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.1), can be installed to try it, on servers you can afford to lose: it has run end to end on one test machine, not yet on a real server. [What works today](#what-works-today) says where it stands, and the [installation procedure](docs/INSTALL.md) says what was tested. It is built in the open under [Apache-2.0](LICENSE), and [contributions are welcome](CONTRIBUTING.md).
 
 ## Why Shipkeep
 
@@ -78,15 +78,15 @@ shipkeep status --org <id> --project <id> --env <id>
 
 ## What works today
 
-| Area                                                                                                       | State                                                                                                                                |
-| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Accounts, two-factor authentication, API tokens, roles, audit log                                          | Built, tested against a real database and browser                                                                                    |
-| Web UI: organizations, members, servers, applications, deployments, secrets, audit                         | Built, tested in a real browser, except removing a server and following a deployment to its end                                      |
-| CLI: `login`, `init`, `deploy`, `rollback`, `status`, `secrets`, `server remove`                           | Built, tested against the real API                                                                                                   |
-| Agent, deployment pipeline, rollback, routing through Caddy                                                | Run end to end in containers on one machine: deployments and a rollback succeed. **Not yet run on a real server**                    |
-| Installation: control plane with Docker Compose, servers with one command                                  | Run end to end locally, see the [installation procedure](docs/INSTALL.md). **Not yet on a real server or with a public certificate** |
-| Compose applications                                                                                       | Validator built, not connected yet                                                                                                   |
-| Git providers, builds, WireGuard network, failover, managed databases, backups, logs and metrics, previews | Planned, see the [roadmap](docs/PLAN.md)                                                                                             |
+| Area                                                                                                       | State                                                                                                                                                                     |
+| ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Accounts, two-factor authentication, API tokens, roles, audit log                                          | Built, tested against a real database and browser                                                                                                                         |
+| Web UI: organizations, members, servers, applications, deployments, secrets, audit                         | Built, tested in a real browser, except removing a server and following a deployment to its end                                                                           |
+| CLI: `login`, `init`, `deploy`, `rollback`, `status`, `secrets`, `server remove`                           | Built, tested against the real API                                                                                                                                        |
+| Agent, deployment pipeline, rollback, routing through Caddy                                                | Run end to end in containers on one machine: deployments, a rollback and a restart of the server's container succeed. **Not yet run on a real server**                    |
+| Installation: control plane with Docker Compose, servers with one command                                  | Run end to end with the published prerelease on one machine, see the [installation procedure](docs/INSTALL.md). **Not yet on a real server or with a public certificate** |
+| Compose applications                                                                                       | Validator built, not connected yet                                                                                                                                        |
+| Git providers, builds, WireGuard network, failover, managed databases, backups, logs and metrics, previews | Planned, see the [roadmap](docs/PLAN.md)                                                                                                                                  |
 
 Continuous integration runs on every pull request: lint, unit, integration and browser tests, plus security scanners.
 
@@ -204,7 +204,7 @@ To send real emails instead, change the `SMTP_*` lines in `.env`. To connect an 
 - [Technical specification](docs/SPEC.md)
 - [Threat model](docs/THREAT_MODEL.md)
 - [Implementation plan](docs/PLAN.md)
-- [Installation procedure](docs/INSTALL.md), run locally, not yet on a real server
+- [Installation procedure](docs/INSTALL.md), run with the published prerelease on one machine, not yet on a real server
 - [Architecture decision records](docs/adr/)
 - [Contributing guide](CONTRIBUTING.md) and [code of conduct](CODE_OF_CONDUCT.md)
 - [Route and role matrix](docs/generated/route-role-matrix.md) (generated)
