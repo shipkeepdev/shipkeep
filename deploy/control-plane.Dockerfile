@@ -43,8 +43,11 @@ RUN NODE_ENV=production pnpm exec nx run-many -t build -p web api \
 
 FROM ${NODE_IMAGE} AS runtime
 ARG PNPM_VERSION
+# The control plane reports it at /api/v1/health; without it a release would call itself "dev".
+ARG SHIPKEEP_VERSION=dev
 ENV NODE_ENV=production \
-  WEB_DIST_DIR=/app/web/browser
+  WEB_DIST_DIR=/app/web/browser \
+  SHIPKEEP_VERSION=${SHIPKEEP_VERSION}
 WORKDIR /app
 # apps/api/dist holds main.js, a pruned package.json and lockfile, and the workspace packages.
 COPY --from=build /src/apps/api/dist/ ./
