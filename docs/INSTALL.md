@@ -1,6 +1,6 @@
 # Installing Shipkeep
 
-> **Status: a prerelease, exercised on one machine, not yet on a public server.** The whole procedure has run with the published artifacts of [`v0.1.0-alpha.1`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.1) (see [What has been tested](#what-has-been-tested)): the control plane, a server installed with the command from the Servers page, deployments, a rollback and a reboot of the server. A real server, a public certificate and a real mail provider have not been tried. Use it on servers you can afford to lose, and please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
+> **Status: a prerelease, exercised on one machine, not yet on a public server.** Installing the control plane and adding a server have run with the published artifacts of [`v0.1.0-alpha.1`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.1) (see [What has been tested](#what-has-been-tested)), followed by deployments, a rollback and a restart of the server's container. The upgrade steps have not run, and neither a real server, a public certificate nor a real mail provider has been tried. Use it on servers you can afford to lose, and please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
 
 A Shipkeep installation has two kinds of machines:
 
@@ -96,7 +96,7 @@ With the published artifacts of `v0.1.0-alpha.1`, on 13 November 2026, on one ma
 - Sign-up with the confirmation email (a local mail server with implicit TLS), sign-in, an organization, a project and an environment.
 - The install command copied from the Servers page, run in an Ubuntu 24.04 container with systemd: it exits 0, Docker and Caddy are installed, the agent enrolls with version `0.1.0-alpha.1`, the server shows as `ready` and the token file is removed. Run again on that server, it refuses and exits 1.
 - A deployment of `docker.io/traefik/whoami:v1.10.3`: network, pull by digest, container, health check, route, state `succeeded`, and the application answering through the server's Caddy.
-- A reboot of the server (a restart of its container, with Docker's storage on disk): the three services come back, the application's container restarts, Caddy serves its route again, and the server shows as `ready` again. Then a second deployment, and a rollback to the first release.
+- A restart of the server's container, with Docker's storage on disk. It is the closest this setup gets to a reboot, and it is not one: the three services come back, the application's container restarts, Caddy serves its route again, and the server shows as `ready` again. Then a second deployment, and a rollback to the first release.
 - The agent and CLI archives of the release: their checksums match `checksums.txt`, and both binaries report the release version.
 
 With an image built from the same code (`main` at `8eeef12`) on 12 November 2026, on the same machine:
@@ -108,7 +108,7 @@ With an image built from the same code (`main` at `8eeef12`) on 12 November 2026
 
 Not tested yet:
 
-- A real server or virtual machine, and a firewall. The server of the test was a privileged container.
+- A real server or virtual machine, its reboot, and a firewall. The server of the test was a privileged container.
 - A public DNS name: Caddy obtaining certificates from Let's Encrypt, for the control plane and for an application domain. Applications were checked over HTTP on the server.
 - A real SMTP provider.
 - arm64 at run time, upgrading from one published release to the next, removing a server, and the released CLI against an installation.
