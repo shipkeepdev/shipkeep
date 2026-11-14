@@ -107,7 +107,7 @@ install_docker() {
   printf 'Installing Docker from its signed repository...\n'
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq </dev/null
-  apt-get install -y --no-install-recommends ca-certificates curl gnupg </dev/null
+  apt-get install -y -qq --no-install-recommends ca-certificates curl gnupg </dev/null >/dev/null
   work=$(mktemp -d)
   curl --fail --silent --show-error --proto '=https' --max-time 60 https://download.docker.com/linux/ubuntu/gpg -o "$work/docker.asc"
   key=$(gpg --batch --show-keys --with-colons "$work/docker.asc" | awk -F: '$1=="fpr" {print $10; exit}')
@@ -125,7 +125,7 @@ Signed-By: /etc/apt/keyrings/shipkeep-docker.asc
 REPO
   chmod 0644 /etc/apt/sources.list.d/shipkeep-docker.sources
   apt-get update -qq </dev/null
-  apt-get install -y --no-install-recommends docker-ce docker-ce-cli containerd.io docker-compose-plugin </dev/null
+  apt-get install -y -qq --no-install-recommends docker-ce docker-ce-cli containerd.io docker-compose-plugin </dev/null >/dev/null
   systemctl enable --now docker
 }
 
@@ -146,7 +146,7 @@ https_answers() {
 
 # Printed when the run stops after the settings file is written: its passwords must be kept.
 unfinished() {
-  ((!writing)) || printf 'shipkeep-install: the installation did not finish. Keep %s/.env: it holds the database passwords. Once the cause is fixed, finish with: cd %s && docker compose up -d\n' "$directory" "$directory" >&2
+  ((!writing)) || printf 'shipkeep-install: the installation did not finish. Keep %s/.env: it holds the database passwords. Once the cause is fixed, finish with: cd %s && sudo docker compose up -d\n' "$directory" "$directory" >&2
 }
 
 main() {
@@ -232,7 +232,8 @@ main() {
   [[ $admin_password =~ ^[a-f0-9]{64}$ && $app_password =~ ^[a-f0-9]{64}$ ]] || fail 'Cannot generate the database passwords.'
   trap unfinished EXIT
   writing=1
-  install -d -m 0700 "$directory"
+  # Only .env is private. An existing directory keeps its mode.
+  [[ -d $directory ]] || install -d -m 0755 "$directory"
   install -m 0644 "$here/compose.yml" "$here/Caddyfile" "$directory/"
   write_env "$directory/.env.new"
   mv -- "$directory/.env.new" "$directory/.env"
@@ -250,7 +251,7 @@ main() {
     if ((attempt >= 24)); then
       printf 'The control plane is running, but https://%s does not answer with a valid certificate yet.\n' "$domain" >&2
       printf 'Check that %s points at this machine and that ports 80 and 443 are reachable from the internet.\n' "$domain" >&2
-      printf 'Caddy keeps trying by itself: do not run this installer again. Its reasons are in: cd %s && docker compose logs caddy\n' "$directory" >&2
+      printf 'Caddy keeps trying by itself: do not run this installer again. Its reasons are in: cd %s && sudo docker compose logs caddy\n' "$directory" >&2
       exit 1
     fi
     sleep 5
