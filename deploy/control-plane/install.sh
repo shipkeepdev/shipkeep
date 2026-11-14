@@ -110,7 +110,8 @@ install_docker() {
   apt-get install -y -qq --no-install-recommends ca-certificates curl gnupg </dev/null >/dev/null
   work=$(mktemp -d)
   curl --fail --silent --show-error --proto '=https' --max-time 60 https://download.docker.com/linux/ubuntu/gpg -o "$work/docker.asc"
-  key=$(gpg --batch --show-keys --with-colons "$work/docker.asc" | awk -F: '$1=="fpr" {print $10; exit}')
+  # Its own home, so that reading the key leaves nothing in root's.
+  key=$(GNUPGHOME=$work gpg --batch --quiet --show-keys --with-colons "$work/docker.asc" | awk -F: '$1=="fpr" {print $10; exit}')
   [[ $key == 9DC858229FC7DD38854AE2D88D81803C0EBFCD88 ]] || fail 'Docker signing key mismatch.'
   install -d -m 0755 /etc/apt/keyrings
   install -m 0644 "$work/docker.asc" /etc/apt/keyrings/shipkeep-docker.asc
@@ -126,7 +127,7 @@ REPO
   chmod 0644 /etc/apt/sources.list.d/shipkeep-docker.sources
   apt-get update -qq </dev/null
   apt-get install -y -qq --no-install-recommends docker-ce docker-ce-cli containerd.io docker-compose-plugin </dev/null >/dev/null
-  systemctl enable --now docker
+  systemctl enable --quiet --now docker
 }
 
 # Asks the control plane, through Caddy, with certificate verification: it succeeds only once the
