@@ -92,12 +92,42 @@ jobs:
           provenance: mode=max
       - if: env.PUBLISH == 'true'
         run: cosign sign --yes "ghcr.io/${{ github.repository_owner }}/shipkeep@${{ steps.build.outputs.digest }}"
-      # docs/INSTALL.md asks operators for the image by tag and digest: publish that exact line.
-      - name: Record the image reference
+      # The installer, the files it installs and the image reference by tag and digest. It is built
+      # here because it pins the digest of the image that was just pushed.
+      - name: Build the control plane bundle
+        id: bundle
         env:
           IMAGE: ghcr.io/${{ github.repository_owner }}/shipkeep
           VERSION: ${{ steps.meta.outputs.version }}
           DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          if [ "$PUBLISH" != true ]; then
+            # Nothing was pushed. The placeholder digest still exercises this step, and the
+            # installer refuses a bundle that carries it.
+            VERSION=0.0.0
+            DIGEST=sha256:0000000000000000000000000000000000000000000000000000000000000000
+          fi
+          SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)
+          export SOURCE_DATE_EPOCH
+          archive=$(deploy/control-plane/build-bundle.sh "$VERSION" "${IMAGE}:${VERSION}@${DIGEST}" "$RUNNER_TEMP/bundle")
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+      - name: Sign the bundle
+        if: env.PUBLISH == 'true'
+        env:
+          ARCHIVE: ${{ steps.bundle.outputs.archive }}
+        run: cosign sign-blob --yes --bundle "$ARCHIVE.sigstore.json" "$ARCHIVE"
+      - if: env.PUBLISH == 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: ${{ steps.bundle.outputs.archive }}
+      # docs/INSTALL.md asks operators for the image by tag and digest: publish that exact line,
+      # next to the bundle that installs it.
+      - name: Publish the bundle and record the image reference
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/shipkeep
+          VERSION: ${{ steps.meta.outputs.version }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          ARCHIVE: ${{ steps.bundle.outputs.archive }}
           TAG: ${{ github.ref_name }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
@@ -111,10 +141,11 @@ jobs:
             echo "The image version or digest is missing." >&2
             exit 1
           fi
+          gh release upload "$TAG" "$ARCHIVE" "$ARCHIVE.sigstore.json" --clobber
           reference="${IMAGE}:${VERSION}@${DIGEST}"
           # Three backticks, written by code so that the script holds no literal fence.
           fence=$(printf '\140\140\140')
-          block=$(printf '## Control plane image\n\n%s\nSHIPKEEP_IMAGE=%s\n%s' "$fence" "$reference" "$fence")
+          block=$(printf '## Control plane\n\nInstall it with %s, attached to this release: docs/INSTALL.md says how. It runs this image:\n\n%s\nSHIPKEEP_IMAGE=%s\n%s' "$(basename "$ARCHIVE")" "$fence" "$reference" "$fence")
           printf '%s\n' "$block" >> "$GITHUB_STEP_SUMMARY"
           {
             gh release view "$TAG" --json body --jq .body

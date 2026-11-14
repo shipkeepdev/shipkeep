@@ -61,8 +61,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: shellcheck deploy/*.sh
+      - run: shellcheck deploy/*.sh deploy/control-plane/*.sh
       - run: bash deploy/install_test.sh
+      # Reads the settings file back from a real container: it uses the runner's Docker.
+      - run: bash deploy/control-plane/install_test.sh
 
   go:
     name: Go (lint, test)
