@@ -1,26 +1,72 @@
 # Installing Shipkeep
 
 > **Status: a prerelease, exercised on one machine, not yet on a public server.** Installing the control plane and adding a server have run with the published artifacts of [`v0.1.0-alpha.1`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.1) (see [What has been tested](#what-has-been-tested)), followed by deployments, a rollback and a restart of the server's container. The upgrade steps have not run, and neither a real server, a public certificate nor a real mail provider has been tried. Use it on servers you can afford to lose, and please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
+>
+> The control plane installer described below is newer than that release. It has run on test machines from a bundle built from this repository, and no release carries it yet.
 
 A Shipkeep installation has two kinds of machines:
 
-- **One control plane**: the web UI, the API and PostgreSQL. Installed with Docker Compose, below.
+- **One control plane**: the web UI, the API and PostgreSQL. It runs with Docker Compose, and an installer sets it up, below.
 - **One or more servers** that run your applications. Each runs the Shipkeep agent, which connects out to the control plane. The Servers page gives the command that installs it.
 
 Use a separate machine for the control plane. It listens on ports 80 and 443, which a server running applications also needs for its own Caddy.
 
 ## What you need
 
-- A Linux machine with Docker Engine and the Compose plugin, 2 GB of memory or more.
+- A Linux machine, amd64 or arm64, with 2 GB of memory or more. On Ubuntu 24.04 the installer adds Docker when it is absent; on another system, install Docker Engine and its Compose plugin first.
 - A DNS name pointing at that machine, for example `shipkeep.example.com`.
 - Ports **80** and **443** (web UI, HTTPS certificate) and **7443** (agents) reachable from where they are needed.
 - An SMTP account with implicit TLS (port 465). It is required: accounts are confirmed by email, so the first sign-up fails without it.
 
 ## Install the control plane
 
-1. Pick a release on the [releases page](https://github.com/shipkeepdev/shipkeep/releases). From the repository at that release's tag, get the three files of [`deploy/control-plane`](../deploy/control-plane): `compose.yml`, `Caddyfile` and `.env.example`. Put them in one directory, for example `/opt/shipkeep`.
+Each release after `v0.1.0-alpha.1` carries a bundle, `shipkeep-control-plane_<version>.tar.gz`: the installer, the two files it installs and the image it runs, by tag and digest. For `v0.1.0-alpha.1` itself, [install by hand](#install-by-hand).
+
+1. On the machine, download the bundle of a release from the [releases page](https://github.com/shipkeepdev/shipkeep/releases) and unpack it:
+
+   ```sh
+   VERSION=<version>
+   curl -fsSLO "https://github.com/shipkeepdev/shipkeep/releases/download/v${VERSION}/shipkeep-control-plane_${VERSION}.tar.gz"
+   tar -xzf "shipkeep-control-plane_${VERSION}.tar.gz"
+   ```
+
+2. Run the installer and answer its questions: the DNS name, then the SMTP host, the sender address, the SMTP user and its password.
+
+   ```sh
+   sudo ./shipkeep-control-plane/install.sh
+   ```
+
+3. Open `https://shipkeep.example.com`, create your account and confirm it with the code sent by email. Then [back up the key-encryption key](#back-up-the-key-encryption-key).
+
+What the installer does, in order:
+
+| Step     | What it does                                                                                                                                                        |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Checks   | Ports 80, 443 and 7443 are free, the DNS name resolves, and no earlier installation or its Docker volumes exist. A refusal here leaves the machine as it was.       |
+| Docker   | On Ubuntu 24.04, installs Docker from Docker's own repository when it is absent, with the signing key pinned.                                                       |
+| Settings | Writes `compose.yml`, `Caddyfile` and `.env` in `/opt/shipkeep` (`--dir` changes it), with two generated database passwords. `.env` is readable by root only.       |
+| Start    | Downloads the images, starts the stack (see the steps under [Install by hand](#install-by-hand)) and waits until `https://<name>` answers with a valid certificate. |
+
+It never overwrites an installation: run again, it refuses. If the certificate has not arrived after two minutes, it says so and exits with an error while the control plane keeps running; see [Troubleshooting](#troubleshooting).
+
+Without a terminal, give the answers as options: `--domain`, `--smtp-host`, `--smtp-port` (465 by default), `--smtp-from` and `--smtp-user` (empty when the server asks for no login). The SMTP password is read from standard input, never from an option.
+
+To check that the bundle was built by this repository's release workflow, download its `.sigstore.json` file from the same release and run:
+
+```sh
+cosign verify-blob "shipkeep-control-plane_${VERSION}.tar.gz" \
+  --bundle "shipkeep-control-plane_${VERSION}.tar.gz.sigstore.json" \
+  --certificate-identity-regexp '^https://github.com/shipkeepdev/shipkeep/\.github/workflows/release\.yml@refs/tags/v' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+```
+
+### Install by hand
+
+The installer only automates these steps. They need Docker Engine and the Compose plugin.
+
+1. Pick a release on the [releases page](https://github.com/shipkeepdev/shipkeep/releases). Get `compose.yml`, `Caddyfile` and `.env.example` from its bundle, or from [`deploy/control-plane`](../deploy/control-plane) in the repository at that release's tag. Put them in one directory, for example `/opt/shipkeep`.
 2. Copy `.env.example` to `.env` and fill it in. Keep the file private: `chmod 600 .env`.
-   - `SHIPKEEP_IMAGE` is the release, by tag **and digest**: copy the `SHIPKEEP_IMAGE=…` line at the bottom of its release notes. You can check that the image was built by this repository's release workflow:
+   - `SHIPKEEP_IMAGE` is the release, by tag **and digest**: copy it from the `image` file of the bundle, or from the `SHIPKEEP_IMAGE=…` line at the bottom of the release notes. You can check that the image was built by this repository's release workflow:
 
      ```sh
      # Paste the same reference you put in .env.
@@ -71,6 +117,8 @@ On failure, `journalctl -u shipkeep-agent` on the server says why. The installer
 
 The `kek` step prints `Back it up: it cannot be recreated.` Every secret stored by Shipkeep is encrypted under that key. Without it, a database backup cannot be read.
 
+Run this command, and the `docker compose` commands of the next sections, from the installation directory: `/opt/shipkeep` when the installer made it. Add `sudo` when your user cannot use Docker.
+
 ```sh
 docker compose run --rm --no-deps -T kek node -e "process.stdout.write(require('node:fs').readFileSync('/var/lib/shipkeep/kek').toString('base64'))"
 ```
@@ -79,13 +127,16 @@ Store the output in a password manager or another place that is not this server.
 
 ## Upgrade
 
-Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest, then run `docker compose pull` and `docker compose up -d`. The `migrate` and `database-role` steps run again before the new control plane starts. Take a PostgreSQL backup first: automatic snapshots before upgrades are not built yet.
+The installer does not upgrade. Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest (the `image` file of its bundle), then run `docker compose pull` and `docker compose up -d`. The `migrate` and `database-role` steps run again before the new control plane starts. Take a PostgreSQL backup first: automatic snapshots before upgrades are not built yet.
 
 ## Troubleshooting
 
+- **The installer refuses to start:** it names the reason (a busy port, a name that does not resolve, an earlier installation or its Docker volumes) and has changed nothing. Fix it and run the installer again.
+- **The installer stopped while starting the stack:** it prints the command that finishes the installation. Keep `.env`: the database is created with the passwords it holds, and the installer will not run a second time on this directory.
 - **`migrate` or `database-role` exited with an error:** `docker compose logs migrate database-role`. A changed `POSTGRES_APP_PASSWORD` is the usual cause: an existing login keeps its password, so put the original value back.
 - **`control-plane` keeps restarting:** `docker compose logs control-plane`. The first line names every invalid or missing setting.
-- **No certificate:** the DNS name must point at this machine and ports 80 and 443 must be reachable from the internet. `docker compose logs caddy` shows the reason.
+- **No certificate:** the DNS name must point at this machine and ports 80 and 443 must be reachable from the internet. `docker compose logs caddy` shows the reason. The installer exits with an error when the certificate has not arrived after two minutes; the control plane is running all the same, and Caddy keeps trying, so nothing has to be run again.
+- **Starting over, on a machine you can afford to lose:** `docker compose down --volumes` in the installation directory, then remove that directory. This deletes the database and the key-encryption key, and with them everything Shipkeep stored.
 
 ## What has been tested
 
@@ -106,8 +157,17 @@ With an image built from the same code (`main` at `8eeef12`) on 12 November 2026
 - Deployments of images written as `owner/image`, `index.docker.io/owner/image`, `nginx` and `docker.io/library/nginx`.
 - On the server: restarting Caddy and killing it with `kill -9` (the route keeps serving and the admin socket keeps mode 0660, with no TCP admin listener), and restarting the agent (it reconnects).
 
+The control plane installer, on 14 November 2026, from a bundle built with `deploy/control-plane/build-bundle.sh` around the published `v0.1.0-alpha.1` image, in fresh Ubuntu 24.04 containers with systemd and without Docker:
+
+- A run through a terminal: an invalid answer is asked again, the SMTP password is not shown, Docker 29 and Compose 5.7 are installed, the settings are written (`.env` readable by root only), the three one-shot steps exit 0 and the control plane becomes healthy. The test name was not public, so no certificate could be issued and the run ended the way this page describes for that case: an error after two minutes, with the control plane running.
+- On that installation, once Caddy was switched to its internal certificate authority and a local mail server that checks the login was added (both by hand, for the test): sign-up with the confirmation email, with an SMTP password made of quotes, a dollar sign, a backslash, a `#` and spaces that reached the mail server unchanged; sign-in; a server added with the command from the Servers page, through port 7443, with the settings as the installer wrote them; a deployment of `docker.io/traefik/whoami:v1.10.3` answering through that server's Caddy.
+- The installer's HTTPS check: it refuses Caddy's internal certificate, accepts it once that authority is trusted, and refuses another name.
+- Its refusals, each leaving the machine as it was: without `sudo`, a bundle from a dry run, an incomplete bundle, a busy port, a name that does not resolve, an invalid answer without a terminal. Run again after an installation, it refuses the directory, and with another directory it refuses the Docker volumes.
+- Starting over as described under [Troubleshooting](#troubleshooting), then a second installation without a terminal (options, and the password on standard input) with Docker already present.
+
 Not tested yet:
 
+- The installer ending with a publicly trusted certificate, and the bundle as a release publishes it: its download, its signature and its attestation. The release workflow has built the bundle in a dry run only.
 - A real server or virtual machine, its reboot, and a firewall. The server of the test was a privileged container.
 - A public DNS name: Caddy obtaining certificates from Let's Encrypt, for the control plane and for an application domain. Applications were checked over HTTP on the server.
 - A real SMTP provider.
