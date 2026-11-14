@@ -72,6 +72,7 @@ grep -q 'must belong to root' "$work/output" || die 'a directory of a regular us
 refused assert_root_directory /tmp || die 'a world-writable directory was accepted'
 ln -s /usr "$work/usr-link"
 refused assert_root_directory "$work/usr-link" || die 'a link to a directory was accepted'
+grep -q 'is not a directory' "$work/output" || die 'a link to a directory was not refused as a link'
 refused assert_root_directory "$work/installed/.env" || die 'a file was accepted as the directory'
 # Inside some sandboxes root's files appear to belong to nobody: the check cannot pass there.
 if [[ $(stat -c %u /usr) == 0 ]]; then assert_root_directory /usr; else printf 'Skipped: root does not own /usr here.\n' >&2; fi
@@ -90,6 +91,8 @@ cat "$work/first.asc" "$work/second.asc" >"$work/first-then-second.asc"
 cat "$work/second.asc" "$work/first.asc" >"$work/second-then-first.asc"
 gpg --homedir "$keys" --batch --quiet --armor --export first@example.com second@example.com >"$work/one-block.asc"
 single_signing_key "$work/first.asc" "$work/first.gpg" "$first" || die 'the expected key alone was refused'
+# apt is given gpg's own export of that key, never the downloaded bytes.
+! grep -q 'BEGIN PGP' "$work/first.gpg" || die 'the downloaded file was installed as it came'
 [[ $(gpg --homedir "$keys" --batch --show-keys --with-colons "$work/first.gpg" | grep -c '^pub:') == 1 ]] || die 'the installed keyring does not hold one key'
 gpg --homedir "$keys" --batch --show-keys --with-colons "$work/first.gpg" | grep -q "^fpr:.*:$first:" || die 'the installed keyring holds another key'
 gpgconf --homedir "$keys" --kill all
