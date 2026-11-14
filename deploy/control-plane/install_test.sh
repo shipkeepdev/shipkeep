@@ -61,6 +61,42 @@ ln -s /nonexistent "$work/linked/compose.yml"
 refused assert_no_installation "$work/installed" || die 'an existing settings file was accepted'
 grep -q 'Existing installation' "$work/output" || die 'an existing settings file was refused without saying why'
 refused assert_no_installation "$work/linked" || die 'a dangling link was accepted'
+mkdir "$work/interrupted"
+: >"$work/interrupted/.env.new"
+refused assert_no_installation "$work/interrupted" || die 'a leftover settings draft was accepted'
+
+# A directory that someone other than root can change is refused, whatever it holds.
+assert_root_directory "$work/absent"
+refused assert_root_directory "$work/fresh" || die 'a directory of a regular user was accepted'
+grep -q 'must belong to root' "$work/output" || die 'a directory of a regular user was refused without saying why'
+refused assert_root_directory /tmp || die 'a world-writable directory was accepted'
+ln -s /usr "$work/usr-link"
+refused assert_root_directory "$work/usr-link" || die 'a link to a directory was accepted'
+refused assert_root_directory "$work/installed/.env" || die 'a file was accepted as the directory'
+# Inside some sandboxes root's files appear to belong to nobody: the check cannot pass there.
+if [[ $(stat -c %u /usr) == 0 ]]; then assert_root_directory /usr; else printf 'Skipped: root does not own /usr here.\n' >&2; fi
+
+# Only the pinned signing key is installed, whatever else the downloaded file holds.
+keys=$work/keys
+mkdir -m 0700 "$keys"
+for name in first second; do
+  gpg --homedir "$keys" --batch --quiet --passphrase '' --quick-generate-key "$name@example.com" ed25519 sign never 2>/dev/null
+  gpg --homedir "$keys" --batch --quiet --armor --export "$name@example.com" >"$work/$name.asc"
+done
+first=$(gpg --homedir "$keys" --batch --with-colons --list-keys first@example.com 2>/dev/null | awk -F: '$1=="fpr" {print $10; exit}')
+second=$(gpg --homedir "$keys" --batch --with-colons --list-keys second@example.com 2>/dev/null | awk -F: '$1=="fpr" {print $10; exit}')
+[[ ${#first} == 40 && ${#second} == 40 && $first != "$second" ]] || die 'no test keys'
+cat "$work/first.asc" "$work/second.asc" >"$work/first-then-second.asc"
+cat "$work/second.asc" "$work/first.asc" >"$work/second-then-first.asc"
+gpg --homedir "$keys" --batch --quiet --armor --export first@example.com second@example.com >"$work/one-block.asc"
+single_signing_key "$work/first.asc" "$work/first.gpg" "$first" || die 'the expected key alone was refused'
+[[ $(gpg --homedir "$keys" --batch --show-keys --with-colons "$work/first.gpg" | grep -c '^pub:') == 1 ]] || die 'the installed keyring does not hold one key'
+gpg --homedir "$keys" --batch --show-keys --with-colons "$work/first.gpg" | grep -q "^fpr:.*:$first:" || die 'the installed keyring holds another key'
+gpgconf --homedir "$keys" --kill all
+for file in second.asc first-then-second.asc second-then-first.asc one-block.asc image missing.asc; do
+  refused single_signing_key "$work/$file" "$work/refused.gpg" "$first" || die "accepted the key file $file"
+  [[ ! -s $work/refused.gpg ]] || die "a keyring was written from $file"
+done
 
 digest=$(printf 'a%.0s' {1..64})
 reference=ghcr.io/shipkeepdev/shipkeep:1.2.3@sha256:$digest
@@ -105,6 +141,11 @@ image=$reference domain=shipkeep.example.com admin_password=$digest app_password
 # shellcheck disable=SC2034
 smtp_host=smtp.example.com smtp_port=465 smtp_from=shipkeep@example.com smtp_user=user@example.com smtp_password=$secret
 write_env "$work/settings/.env"
+# It never writes through something that is already there.
+refused write_env "$work/settings/.env" || die 'an existing settings file was overwritten'
+ln -s "$work/settings/elsewhere" "$work/settings/.env.new"
+refused write_env "$work/settings/.env.new" || die 'the settings were written through a link'
+[[ ! -e $work/settings/elsewhere ]] || die 'the settings followed a link'
 cp deploy/control-plane/compose.yml deploy/control-plane/Caddyfile "$work/settings/"
 docker compose --project-directory "$work/settings" config --quiet
 [[ $(grep -c '' "$work/settings/.env") == 10 ]] || die 'unexpected settings file'

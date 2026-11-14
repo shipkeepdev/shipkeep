@@ -42,6 +42,8 @@ env_line() {
 }
 
 write_env() {
+  # Never through a file or a link that is already there: it could lead the passwords elsewhere.
+  set -o noclobber
   {
     printf '# Written by the Shipkeep installer. Keep this file private: it holds the database passwords.\n'
     env_line SHIPKEEP_IMAGE "$image"
@@ -53,7 +55,8 @@ write_env() {
     env_line SMTP_FROM "$smtp_from"
     env_line SMTP_USER "$smtp_user"
     env_line SMTP_PASSWORD "$smtp_password"
-  } >"$1"
+  } >"$1" || fail "Cannot create $1."
+  set +o noclobber
 }
 
 # The release this bundle installs, by tag and digest.
@@ -66,9 +69,46 @@ read_image() {
 
 assert_no_installation() {
   local file
-  for file in .env compose.yml Caddyfile; do
+  for file in .env .env.new compose.yml Caddyfile; do
     [[ ! -e $1/$file && ! -L $1/$file ]] || fail "Existing installation in $1; refusing to overwrite it."
   done
+}
+
+# An existing directory must be root's alone to change: whoever can write there could plant a
+# file for Docker Compose to load, or a link for the passwords to follow.
+assert_root_directory() {
+  local owner mode
+  [[ -e $1 || -L $1 ]] || return 0
+  [[ -d $1 && ! -L $1 ]] || fail "$1 exists and is not a directory."
+  owner=$(stat -c %u -- "$1") mode=$(stat -c %a -- "$1")
+  if [[ $owner != 0 ]] || ((8#$mode & 8#22)); then fail "$1 must belong to root and be writable by root only."; fi
+}
+
+# New passwords cannot open the database that an earlier installation left behind.
+assert_no_volumes() {
+  local volume
+  for volume in shipkeep_postgres-data shipkeep_keys shipkeep_caddy-data shipkeep_caddy-config; do
+    ! docker volume inspect "$volume" >/dev/null 2>&1 || fail "The Docker volume $volume of an earlier installation exists; refusing to reuse it."
+  done
+}
+
+# Writes to $2 a keyring that holds the key with fingerprint $3 and nothing else, taken from the
+# downloaded file $1. It fails unless that file holds exactly this one key: apt trusts every key
+# of the keyring a repository names, so a second key in the download would be trusted too.
+single_signing_key() {
+  local home listed status=1
+  home=$(mktemp -d)
+  if gpg --homedir "$home" --batch --quiet --import "$1" 2>/dev/null; then
+    listed=$(gpg --homedir "$home" --batch --quiet --with-colons --list-keys 2>/dev/null | awk -F: '$1=="pub" {keys++} $1=="fpr" && !first {first=$10} END {print keys ":" first}')
+    if [[ $listed == "1:$3" ]] && gpg --homedir "$home" --batch --quiet --export "$3" >"$2" 2>/dev/null && [[ -s $2 ]]; then status=0; fi
+  fi
+  rm -rf -- "$home"
+  return "$status"
+}
+
+# The bundled file only: Docker Compose would otherwise also load an override file found next to it.
+compose() {
+  docker compose --file compose.yml "$@"
 }
 
 # Sets the variable named by $1 from stdin, unless a flag already did. An invalid answer is asked
@@ -96,25 +136,23 @@ ask() {
 # Ubuntu 24.04 only, from Docker's own repository, with its signing key pinned (as the server
 # installer does). Elsewhere the operator installs Docker.
 install_docker() {
-  local package key work
+  local package work
   # shellcheck source=/dev/null
   [[ -r /etc/os-release ]] && . /etc/os-release
   [[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 24.04 && -d /run/systemd/system ]] || fail 'Docker is not installed. Install Docker Engine and its Compose plugin (https://docs.docker.com/engine/install/), then run this installer again.'
   for package in docker.io podman-docker containerd runc; do
     ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q 'install ok installed' || fail 'Conflicting Docker packages; reconcile them manually.'
   done
-  [[ ! -e /etc/apt/sources.list.d/shipkeep-docker.sources && ! -e /etc/apt/keyrings/shipkeep-docker.asc ]] || fail 'An earlier run left /etc/apt/sources.list.d/shipkeep-docker.sources or /etc/apt/keyrings/shipkeep-docker.asc: remove both, then run this installer again.'
+  [[ ! -e /etc/apt/sources.list.d/shipkeep-docker.sources && ! -e /etc/apt/keyrings/shipkeep-docker.gpg ]] || fail 'An earlier run left /etc/apt/sources.list.d/shipkeep-docker.sources or /etc/apt/keyrings/shipkeep-docker.gpg: remove both, then run this installer again.'
   printf 'Installing Docker from its signed repository...\n'
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq </dev/null
   apt-get install -y -qq --no-install-recommends ca-certificates curl gnupg </dev/null >/dev/null
   work=$(mktemp -d)
   curl --fail --silent --show-error --proto '=https' --max-time 60 https://download.docker.com/linux/ubuntu/gpg -o "$work/docker.asc"
-  # Its own home, so that reading the key leaves nothing in root's.
-  key=$(GNUPGHOME=$work gpg --batch --quiet --show-keys --with-colons "$work/docker.asc" | awk -F: '$1=="fpr" {print $10; exit}')
-  [[ $key == 9DC858229FC7DD38854AE2D88D81803C0EBFCD88 ]] || fail 'Docker signing key mismatch.'
+  single_signing_key "$work/docker.asc" "$work/docker.gpg" 9DC858229FC7DD38854AE2D88D81803C0EBFCD88 || fail 'Docker signing key mismatch.'
   install -d -m 0755 /etc/apt/keyrings
-  install -m 0644 "$work/docker.asc" /etc/apt/keyrings/shipkeep-docker.asc
+  install -m 0644 "$work/docker.gpg" /etc/apt/keyrings/shipkeep-docker.gpg
   rm -rf -- "$work"
   cat >/etc/apt/sources.list.d/shipkeep-docker.sources <<REPO
 Types: deb
@@ -122,7 +160,7 @@ URIs: https://download.docker.com/linux/ubuntu
 Suites: noble
 Components: stable
 Architectures: $(dpkg --print-architecture)
-Signed-By: /etc/apt/keyrings/shipkeep-docker.asc
+Signed-By: /etc/apt/keyrings/shipkeep-docker.gpg
 REPO
   chmod 0644 /etc/apt/sources.list.d/shipkeep-docker.sources
   apt-get update -qq </dev/null
@@ -134,7 +172,7 @@ REPO
 # certificate of the domain is issued. Over loopback, so that it does not depend on the route from
 # this machine to its own public address.
 https_answers() {
-  docker compose exec -T control-plane node -e '
+  compose exec -T control-plane node -e '
     const name = process.argv[1];
     const request = require("node:https").get(
       { host: "127.0.0.1", port: 443, servername: name, path: "/api/v1/health", headers: { host: name }, timeout: 8000 },
@@ -147,13 +185,13 @@ https_answers() {
 
 # Printed when the run stops after the settings file is written: its passwords must be kept.
 unfinished() {
-  ((!writing)) || printf 'shipkeep-install: the installation did not finish. Keep %s/.env: it holds the database passwords. Once the cause is fixed, finish with: cd %s && sudo docker compose up -d\n' "$directory" "$directory" >&2
+  ((!writing)) || printf 'shipkeep-install: the installation did not finish. Keep %s/.env: it holds the database passwords. Once the cause is fixed, finish with: cd %s && sudo docker compose -f compose.yml up -d\n' "$directory" "$directory" >&2
 }
 
 main() {
   umask 077
   export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-  local here file port volume listeners attempt=0 user_given=0
+  local here file port listeners attempt=0 user_given=0
   directory=/opt/shipkeep writing=0
   domain='' smtp_host='' smtp_port='' smtp_from='' smtp_user='' smtp_password=''
   while (($#)); do
@@ -185,14 +223,12 @@ main() {
   for file in compose.yml Caddyfile; do
     [[ -f $here/$file && ! -L $here/$file ]] || fail "Run this installer from a release bundle: $file is missing."
   done
+  assert_root_directory "$directory"
   assert_no_installation "$directory"
   if command -v docker >/dev/null; then
     docker info >/dev/null 2>&1 || fail 'Docker is installed, but its daemon does not answer.'
     docker compose version >/dev/null 2>&1 || fail 'The Docker Compose plugin is missing (https://docs.docker.com/compose/install/linux/).'
-    # New passwords cannot open the database that an earlier installation left behind.
-    for volume in shipkeep_postgres-data shipkeep_keys shipkeep_caddy-data shipkeep_caddy-config; do
-      ! docker volume inspect "$volume" >/dev/null 2>&1 || fail "The Docker volume $volume of an earlier installation exists; refusing to reuse it."
-    done
+    assert_no_volumes
   fi
   command -v ss >/dev/null || fail 'Install iproute2 before running this installer.'
   for port in 80 443 7443; do
@@ -227,23 +263,28 @@ main() {
     valid_credential "$smtp_password" 4096 || fail 'Invalid SMTP password: a single line is required.'
   fi
 
-  command -v docker >/dev/null || install_docker
+  if ! command -v docker >/dev/null; then
+    install_docker
+    # Volumes outlive a removed Docker, and only show again now.
+    assert_no_volumes
+  fi
   admin_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
   app_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
   [[ $admin_password =~ ^[a-f0-9]{64}$ && $app_password =~ ^[a-f0-9]{64}$ ]] || fail 'Cannot generate the database passwords.'
   trap unfinished EXIT
-  writing=1
   # Only .env is private. An existing directory keeps its mode.
   [[ -d $directory ]] || install -d -m 0755 "$directory"
+  assert_root_directory "$directory"
+  writing=1
   install -m 0644 "$here/compose.yml" "$here/Caddyfile" "$directory/"
   write_env "$directory/.env.new"
   mv -- "$directory/.env.new" "$directory/.env"
   unset smtp_password admin_password app_password
   cd -- "$directory"
   printf 'Downloading %s...\n' "${image%%@*}"
-  docker compose pull
+  compose pull
   printf 'Starting the control plane...\n'
-  docker compose up -d
+  compose up -d
   writing=0
 
   printf 'Waiting for the HTTPS certificate of %s...\n' "$domain"
@@ -252,7 +293,7 @@ main() {
     if ((attempt >= 24)); then
       printf 'The control plane is running, but https://%s does not answer with a valid certificate yet.\n' "$domain" >&2
       printf 'Check that %s points at this machine and that ports 80 and 443 are reachable from the internet.\n' "$domain" >&2
-      printf 'Caddy keeps trying by itself: do not run this installer again. Its reasons are in: cd %s && sudo docker compose logs caddy\n' "$directory" >&2
+      printf 'Caddy keeps trying by itself: do not run this installer again. Its reasons are in: cd %s && sudo docker compose -f compose.yml logs caddy\n' "$directory" >&2
       exit 1
     fi
     sleep 5
