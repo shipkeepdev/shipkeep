@@ -78,11 +78,16 @@ ask() {
   [[ -z ${!name} ]] || return 0
   while :; do
     printf '%s: ' "$question" >&2
-    IFS= read -r answer || [[ -n $answer ]] || fail "$error"
+    if ! IFS= read -r answer && [[ -z $answer ]]; then
+      printf '\n' >&2
+      fail "$error"
+    fi
     if "$check" "$answer"; then
       printf -v "$name" '%s' "$answer"
       return 0
     fi
+    # Not a terminal: nobody can answer again, and the question still waits for its line end.
+    [[ -t 0 ]] || printf '\n' >&2
     [[ -t 0 ]] || fail "$error"
     printf '%s\n' "$error" >&2
   done
@@ -207,7 +212,10 @@ main() {
   ask smtp_from 'Sender address, for example shipkeep@example.com' valid_address 'A sender address is required.'
   if ((!user_given)); then
     printf 'SMTP user (empty when the server asks for no login): ' >&2
-    IFS= read -r smtp_user || [[ -n $smtp_user ]] || fail 'Missing SMTP user: pass --smtp-user.'
+    if ! IFS= read -r smtp_user && [[ -z $smtp_user ]]; then
+      printf '\n' >&2
+      fail 'Missing SMTP user: pass --smtp-user, empty when the server asks for no login.'
+    fi
     valid_credential "$smtp_user" 254 || fail 'Invalid SMTP user.'
   fi
   if [[ -n $smtp_user ]]; then
