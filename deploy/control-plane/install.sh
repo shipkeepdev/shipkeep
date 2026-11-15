@@ -74,14 +74,22 @@ assert_no_installation() {
   done
 }
 
-# An existing directory must be root's alone to change: whoever can write there could plant a
-# file for Docker Compose to load, or a link for the passwords to follow.
+# The directory and every directory above it must be root's alone to change, and none may be a
+# link: whoever can change one of them could plant a file for Docker Compose to load, lead the
+# passwords elsewhere, or swap the whole installation for another before it is used. Components
+# that do not exist yet are created by root below a directory that passed.
 assert_root_directory() {
-  local owner mode
-  [[ -e $1 || -L $1 ]] || return 0
-  [[ -d $1 && ! -L $1 ]] || fail "$1 exists and is not a directory."
-  owner=$(stat -c %u -- "$1") mode=$(stat -c %a -- "$1")
-  if [[ $owner != 0 ]] || ((8#$mode & 8#22)); then fail "$1 must belong to root and be writable by root only."; fi
+  local path=/ part owner mode
+  local -a parts
+  IFS=/ read -r -a parts <<<"${1#/}"
+  for part in '' "${parts[@]}"; do
+    [[ -z $part ]] || path=${path%/}/$part
+    [[ -e $path || -L $path ]] || return 0
+    [[ ! -L $path ]] || fail "$path is a link: give the real path with --dir."
+    [[ -d $path ]] || fail "$path exists and is not a directory."
+    owner=$(stat -c %u -- "$path") mode=$(stat -c %a -- "$path")
+    if [[ $owner != 0 ]] || ((8#$mode & 8#22)); then fail "$path must belong to root and be writable by root only."; fi
+  done
 }
 
 # New passwords cannot open the database that an earlier installation left behind.

@@ -65,17 +65,30 @@ mkdir "$work/interrupted"
 : >"$work/interrupted/.env.new"
 refused assert_no_installation "$work/interrupted" || die 'a leftover settings draft was accepted'
 
-# A directory that someone other than root can change is refused, whatever it holds.
-assert_root_directory "$work/absent"
+# A directory that someone other than root can change is refused, and so is anything below it.
 refused assert_root_directory "$work/fresh" || die 'a directory of a regular user was accepted'
 grep -q 'must belong to root' "$work/output" || die 'a directory of a regular user was refused without saying why'
-refused assert_root_directory /tmp || die 'a world-writable directory was accepted'
-ln -s /usr "$work/usr-link"
-refused assert_root_directory "$work/usr-link" || die 'a link to a directory was accepted'
-grep -q 'is not a directory' "$work/output" || die 'a link to a directory was not refused as a link'
-refused assert_root_directory "$work/installed/.env" || die 'a file was accepted as the directory'
-# Inside some sandboxes root's files appear to belong to nobody: the check cannot pass there.
-if [[ $(stat -c %u /usr) == 0 ]]; then assert_root_directory /usr; else printf 'Skipped: root does not own /usr here.\n' >&2; fi
+refused assert_root_directory "$work/absent/deeper" || die 'a path below a directory of a regular user was accepted'
+refused assert_root_directory /tmp/shipkeep-absent || die 'a path below a world-writable directory was accepted'
+# The cases that need root-owned system directories. Inside some sandboxes root's files appear to
+# belong to nobody, and nothing can pass there.
+if [[ $(stat -c %u / /usr | tr -d '\n') == 00 ]]; then
+  assert_root_directory /usr
+  assert_root_directory /usr/shipkeep-absent/deeper
+  refused assert_root_directory /etc/passwd || die 'a file was accepted as the directory'
+  grep -q 'is not a directory' "$work/output" || die 'a file was refused without saying why'
+  # /bin is a link to usr/bin on a merged-/usr system such as the CI runner.
+  link=$(find / -maxdepth 1 -type l -print -quit)
+  if [[ -n $link ]]; then
+    refused assert_root_directory "$link/shipkeep" || die 'a link above the directory was accepted'
+    grep -q 'is a link' "$work/output" || die 'a link above the directory was refused without saying why'
+    refused assert_root_directory "$link" || die 'a link was accepted as the directory'
+  else
+    printf 'Skipped: no link in / to check with.\n' >&2
+  fi
+else
+  printf 'Skipped: root does not own / and /usr here.\n' >&2
+fi
 
 # Only the pinned signing key is installed, whatever else the downloaded file holds.
 keys=$work/keys
