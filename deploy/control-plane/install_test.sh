@@ -75,6 +75,10 @@ refused assert_root_directory /tmp/shipkeep-absent || die 'a path below a world-
 if [[ $(stat -c %u / /usr | tr -d '\n') == 00 ]]; then
   assert_root_directory /usr
   assert_root_directory /usr/shipkeep-absent/deeper
+  # A home directory is not writable by others, and still is not root's.
+  if [[ -d $HOME && $(stat -c %u "$HOME") != 0 ]]; then
+    refused assert_root_directory "$HOME/shipkeep-absent" || die 'a path below a home directory was accepted'
+  fi
   refused assert_root_directory /etc/passwd || die 'a file was accepted as the directory'
   grep -q 'is not a directory' "$work/output" || die 'a file was refused without saying why'
   # /bin is a link to usr/bin on a merged-/usr system such as the CI runner.
