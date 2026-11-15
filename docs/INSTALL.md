@@ -1,8 +1,6 @@
 # Installing Shipkeep
 
-> **Status: a prerelease, exercised on one machine, not yet on a public server.** Installing the control plane and adding a server have run with the published artifacts of [`v0.1.0-alpha.1`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.1) (see [What has been tested](#what-has-been-tested)), followed by deployments, a rollback and a restart of the server's container. The upgrade steps have not run, and neither a real server, a public certificate nor a real mail provider has been tried. Use it on servers you can afford to lose, and please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
->
-> The control plane installer described below is newer than that release. It has run on test machines from a bundle built from this repository, and no release carries it yet.
+> **Status: a prerelease, exercised on one machine, not yet on a public server.** Installing the control plane with the installer, adding a server and deploying an application have run with the published artifacts of [`v0.1.0-alpha.2`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.2) (see [What has been tested](#what-has-been-tested)). A rollback and a restart of the server's container were run with `v0.1.0-alpha.1`. The upgrade steps have not run, and neither a real server, a public certificate nor a real mail provider has been tried. Use it on servers you can afford to lose, and please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
 
 A Shipkeep installation has two kinds of machines:
 
@@ -20,7 +18,7 @@ Use a separate machine for the control plane. It listens on ports 80 and 443, wh
 
 ## Install the control plane
 
-Each release after `v0.1.0-alpha.1` carries a bundle, `shipkeep-control-plane_<version>.tar.gz`: the installer, the two files it installs and the image it runs, by tag and digest. For `v0.1.0-alpha.1` itself, [install by hand](#install-by-hand).
+Each release since `v0.1.0-alpha.2` carries a bundle, `shipkeep-control-plane_<version>.tar.gz`: the installer, the two files it installs and the image it runs, by tag and digest. `v0.1.0-alpha.1` has none: [install it by hand](#install-by-hand).
 
 1. On the machine, download the bundle of a release from the [releases page](https://github.com/shipkeepdev/shipkeep/releases) and unpack it:
 
@@ -140,6 +138,12 @@ The installer does not upgrade. Change `SHIPKEEP_IMAGE` in `.env` to the new rel
 
 ## What has been tested
 
+With the published artifacts of `v0.1.0-alpha.2`, on 15 November 2026, in fresh Ubuntu 24.04 containers with systemd and without Docker, following this page from its first command:
+
+- The bundle downloaded from the release, and the `cosign verify-blob` command above: it succeeds, and it fails when given another identity or a modified file. The image signature verifies the same way.
+- The installer through a terminal, left alone until it ended: Docker 29 and Compose 5.7 installed, the image pulled by tag and digest without credentials, the settings written, the three one-shot steps exiting 0, the control plane healthy and reporting `0.1.0-alpha.2`. The test name was not public, so no certificate could be issued and the run ended the way this page describes for that case. Run again, it refuses the existing installation.
+- On that installation, once Caddy was switched to its internal certificate authority and a local mail server that checks the login was added (both by hand, for the test): sign-up with the confirmation email, sign-in, a server added with the command from the Servers page (its agent reports `0.1.0-alpha.2`), and a deployment of `docker.io/traefik/whoami:v1.10.3` that succeeded and answers through that server's Caddy.
+
 With the published artifacts of `v0.1.0-alpha.1`, on 13 November 2026, on one machine with Docker Engine 29 and Compose 2.40, in a single run that started from nothing, with `compose.yml` and `.env.example` taken from the tag:
 
 - The image pulled by tag and digest without credentials, and the `cosign verify` command above: it succeeds, and it fails when given another identity.
@@ -168,7 +172,8 @@ The control plane installer, on 15 November 2026, from a bundle built with `depl
 
 Not tested yet:
 
-- The installer ending with a publicly trusted certificate, and the bundle as a release publishes it: its download, its signature and its attestation. The release workflow has built the bundle in a dry run only.
+- The installer ending with a publicly trusted certificate.
+- The provenance attestation of the bundle: GitHub lists one for the published file, and `gh attestation verify` did not answer on the test machine, so it was not verified.
 - A real server or virtual machine, its reboot, and a firewall. The server of the test was a privileged container.
 - A public DNS name: Caddy obtaining certificates from Let's Encrypt, for the control plane and for an application domain. Applications were checked over HTTP on the server.
 - A real SMTP provider.

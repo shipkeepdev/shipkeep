@@ -1,6 +1,6 @@
 # Shipkeep
 
-> Shipkeep is an open source (Apache-2.0), self-hosted platform as a service (PaaS) that deploys applications, databases and services to servers you own, without Kubernetes. It is in development. A first prerelease, v0.1.0-alpha.1, can be installed to try it: it has run end to end on one test machine, not yet on a real server, and not everything described here is in it.
+> Shipkeep is an open source (Apache-2.0), self-hosted platform as a service (PaaS) that deploys applications, databases and services to servers you own, without Kubernetes. It is in development. A prerelease can be installed to try it: it has run end to end on one test machine, not yet on a real server, and not everything described here is in it.
 
 How it differs from panels that connect to servers over SSH:
 
