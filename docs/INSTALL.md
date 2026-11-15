@@ -40,12 +40,12 @@ Each release after `v0.1.0-alpha.1` carries a bundle, `shipkeep-control-plane_<v
 
 What the installer does, in order:
 
-| Step     | What it does                                                                                                                                                                                                                        |
-| -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Checks   | Ports 80, 443 and 7443 are free, the DNS name resolves, no earlier installation or its Docker volumes exist, and an existing directory belongs to root alone. A refusal here leaves the machine as it was.                          |
-| Docker   | On Ubuntu 24.04, installs Docker from Docker's own repository when it is absent, and gives apt the pinned signing key only. Volumes of an earlier installation that show again with Docker stop the run before anything is written. |
-| Settings | Writes `compose.yml`, `Caddyfile` and `.env` in `/opt/shipkeep` (`--dir` changes it), with two generated database passwords. `.env` is readable by root only.                                                                       |
-| Start    | Downloads the images, starts the stack (see the steps under [Install by hand](#install-by-hand)) and waits until `https://<name>` answers with a valid certificate.                                                                 |
+| Step     | What it does                                                                                                                                                                                                                                |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Checks   | Ports 80, 443 and 7443 are free, the DNS name resolves, no earlier installation or its Docker volumes exist, and the installation directory and every directory above it belong to root alone. A refusal here leaves the machine as it was. |
+| Docker   | On Ubuntu 24.04, installs Docker from Docker's own repository when it is absent, and gives apt the pinned signing key only. Volumes of an earlier installation that show again with Docker stop the run before anything is written.         |
+| Settings | Writes `compose.yml`, `Caddyfile` and `.env` in `/opt/shipkeep` (`--dir` changes it), with two generated database passwords. `.env` is readable by root only.                                                                               |
+| Start    | Downloads the images, starts the stack (see the steps under [Install by hand](#install-by-hand)) and waits until `https://<name>` answers with a valid certificate.                                                                         |
 
 It never overwrites an installation: run again, it refuses. If the certificate has not arrived after two minutes, it says so and exits with an error while the control plane keeps running; see [Troubleshooting](#troubleshooting).
 
@@ -131,7 +131,7 @@ The installer does not upgrade. Change `SHIPKEEP_IMAGE` in `.env` to the new rel
 
 ## Troubleshooting
 
-- **The installer refuses to start:** it names the reason (a busy port, a name that does not resolve, a directory that is not root's alone, an earlier installation or its Docker volumes) and has changed nothing. Fix it and run the installer again. One refusal comes later: when Docker was removed and the volumes of an earlier installation remain, they only show once the installer has put Docker back.
+- **The installer refuses to start:** it names the reason (a busy port, a name that does not resolve, a directory that is not root's alone or lies below one, an earlier installation or its Docker volumes) and has changed nothing. Fix it and run the installer again. One refusal comes later: when Docker was removed and the volumes of an earlier installation remain, they only show once the installer has put Docker back.
 - **The installer stopped while starting the stack:** it prints the command that finishes the installation. Keep `.env`: the database is created with the passwords it holds, and the installer will not run a second time on this directory.
 - **`migrate` or `database-role` exited with an error:** `docker compose logs migrate database-role`. A changed `POSTGRES_APP_PASSWORD` is the usual cause: an existing login keeps its password, so put the original value back.
 - **`control-plane` keeps restarting:** `docker compose logs control-plane`. The first line names every invalid or missing setting.
@@ -157,12 +157,12 @@ With an image built from the same code (`main` at `8eeef12`) on 12 November 2026
 - Deployments of images written as `owner/image`, `index.docker.io/owner/image`, `nginx` and `docker.io/library/nginx`.
 - On the server: restarting Caddy and killing it with `kill -9` (the route keeps serving and the admin socket keeps mode 0660, with no TCP admin listener), and restarting the agent (it reconnects).
 
-The control plane installer, on 14 November 2026, from a bundle built with `deploy/control-plane/build-bundle.sh` around the published `v0.1.0-alpha.1` image, in fresh Ubuntu 24.04 containers with systemd and without Docker:
+The control plane installer, on 15 November 2026, from a bundle built with `deploy/control-plane/build-bundle.sh` around the published `v0.1.0-alpha.1` image, in fresh Ubuntu 24.04 containers with systemd and without Docker:
 
 - A run through a terminal: an invalid answer is asked again, the SMTP password is not shown, Docker 29 and Compose 5.7 are installed, the settings are written (`.env` readable by root only), the three one-shot steps exit 0 and the control plane becomes healthy. The test name was not public, so no certificate could be issued and the run ended the way this page describes for that case: an error after two minutes, with the control plane running.
-- On an installation made the same way, once Caddy was switched to its internal certificate authority and a local mail server that checks the login was added (both by hand, for the test): sign-up with the confirmation email, with an SMTP password made of quotes, a dollar sign, a backslash, a `#` and spaces that reached the mail server unchanged; sign-in; a server added with the command from the Servers page, through port 7443, with the settings as the installer wrote them; a deployment of `docker.io/traefik/whoami:v1.10.3` answering through that server's Caddy.
+- On that installation, once Caddy was switched to its internal certificate authority and a local mail server that checks the login was added (both by hand, for the test): sign-up with the confirmation email, with an SMTP password made of quotes, a dollar sign, a backslash, a `#` and spaces that reached the mail server unchanged; sign-in; a server added with the command from the Servers page, through port 7443, with the settings as the installer wrote them; a deployment of `docker.io/traefik/whoami:v1.10.3` answering through that server's Caddy.
 - The installer's HTTPS check: it refuses Caddy's internal certificate, accepts it once that authority is trusted, and refuses another name.
-- Its refusals, each leaving the machine as it was: without `sudo`, a bundle from a dry run, an incomplete bundle, a directory that belongs to a regular user or is writable by everyone, a link in place of the directory, a leftover settings draft, a busy port, a name that does not resolve, an invalid answer without a terminal. Run again after an installation, it refuses the directory, and with another directory it refuses the Docker volumes.
+- Its refusals, each leaving the machine as it was: without `sudo`, a bundle from a dry run, an incomplete bundle, a directory that belongs to a regular user or lies below such a directory, below a world-writable one or below a link, a link in place of the directory, a leftover settings draft, a busy port, a name that does not resolve, an invalid answer without a terminal. Run again after an installation, it refuses the directory, and with another directory it refuses the Docker volumes.
 - Docker removed while the volumes of an earlier installation remained: the installer puts Docker back, then refuses those volumes and writes nothing.
 - Starting over as described under [Troubleshooting](#troubleshooting), then a second installation without a terminal (options, and the password on standard input) with Docker already present.
 
