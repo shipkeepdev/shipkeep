@@ -1,32 +1,10 @@
-import * as x509 from '@peculiar/x509';
 import { Client } from 'pg';
 
+import { enrollTestNode } from '../../testing/enroll-test-node';
 import { tenantHttpFixture } from '../../testing/tenant-http';
-import { EnrollNode } from '../fleet/application/enroll-node';
-import { IssueJoinToken } from '../fleet/application/issue-join-token';
-import { NodeLiveness } from '../fleet/application/node-liveness';
-import {
-  generateEd25519KeyPair,
-  importPrivateKey,
-  importPublicKey,
-  SIGNING_ALGORITHM,
-} from '../fleet/infrastructure/ca/x509';
 
 import { DeploymentPipeline } from './application/deployment-pipeline';
 import { PIPELINE_STORE, type PipelineStore } from './application/ports';
-
-async function agentCsr(): Promise<string> {
-  const pair = await generateEd25519KeyPair();
-  const csr = await x509.Pkcs10CertificateRequestGenerator.create({
-    name: 'CN=agent',
-    keys: {
-      publicKey: await importPublicKey(pair.publicKeyPem),
-      privateKey: await importPrivateKey(pair.privateKeyPem),
-    },
-    signingAlgorithm: SIGNING_ALGORITHM,
-  });
-  return csr.toString('pem');
-}
 
 /** Issue #315: deployments placed at the same moment must not take the same room. */
 describe('concurrent placements with PostgreSQL', () => {
@@ -36,27 +14,15 @@ describe('concurrent placements with PostgreSQL', () => {
 
   beforeAll(async () => {
     fixture = await tenantHttpFixture();
-    const token = await fixture.app.get(IssueJoinToken).execute({
-      organizationId: fixture.organizationId,
-      actor: { kind: 'user', id: fixture.actors.owner.id },
+    // One CPU: room for exactly one application that declares no `resources`.
+    nodeId = await enrollTestNode(fixture, {
+      facts: {
+        hostname: 'edge-one-cpu.example.com',
+        architecture: 'amd64',
+        cpu_count: 1,
+        memory_bytes: 2 ** 33,
+      },
     });
-    nodeId = (
-      await fixture.app.get(EnrollNode).execute({
-        joinToken: token.value,
-        csrPem: await agentCsr(),
-        // One CPU: room for exactly one application that declares no `resources`.
-        facts: {
-          hostname: 'edge-one-cpu.example.com',
-          architecture: 'amd64',
-          cpu_count: 1,
-          memory_bytes: 2 ** 33,
-        },
-        agentVersion: '0.1.0',
-      })
-    ).nodeId;
-    await fixture.app
-      .get(NodeLiveness)
-      .heartbeat({ organizationId: fixture.organizationId, nodeId, serial: '' });
   });
   afterAll(async () => {
     await fixture.close();

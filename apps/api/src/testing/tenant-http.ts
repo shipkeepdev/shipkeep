@@ -22,7 +22,7 @@ import { tenantActors, type TenantActor } from './tenant-personas';
 
 export { tenantActors, type TenantActor };
 
-type TenantHttpFixture = Awaited<ReturnType<typeof integrationApp>> & {
+export type TenantHttpFixture = Awaited<ReturnType<typeof integrationApp>> & {
   prisma: PrismaService;
   database: PrismaUnitOfWork;
   password: Secret;

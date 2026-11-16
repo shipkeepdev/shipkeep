@@ -92,7 +92,7 @@ export class DeploymentPipeline {
         if (!isDomainError(error)) throw error;
         return this.fail(loaded, error.message, clock());
       }
-      const outcome = await this.apply(loaded, decision, clock());
+      const outcome = await this.apply(loaded, decision, clock);
       if (outcome !== 'continue') return outcome;
     }
     return 'wait';
@@ -101,9 +101,10 @@ export class DeploymentPipeline {
   private async apply(
     loaded: Loaded,
     decision: PipelineDecision,
-    now: Date,
+    clock: () => Date,
   ): Promise<'continue' | 'wait' | 'done'> {
     const { context, application } = loaded;
+    const now = clock();
     switch (decision.kind) {
       case 'done':
         // A deployment cancelled through the API still holds its replicas: clean them up once.
@@ -139,7 +140,8 @@ export class DeploymentPipeline {
         return 'continue';
       }
       case 'place':
-        return this.place(loaded, decision.replicas, now);
+        // Placement may wait for a lock: it reads the time itself, once it holds it.
+        return this.place(loaded, decision.replicas, clock);
       case 'run':
         if (decision.steps.length) {
           const failure = await this.tenant(application, () =>
@@ -195,7 +197,7 @@ export class DeploymentPipeline {
     };
   }
 
-  private place(loaded: Loaded, replicas: number, now: Date): Promise<'continue' | 'done'> {
+  private place(loaded: Loaded, replicas: number, clock: () => Date): Promise<'continue' | 'done'> {
     const { context, application } = loaded;
     const config = context.release.config;
     return this.tenant(application, async () => {
@@ -204,14 +206,14 @@ export class DeploymentPipeline {
       await this.pipeline.lockPlacement(application.organizationId);
       const nodes = await this.pipeline.nodes(application.organizationId);
       // The replicas this deployment replaces give their room to the new release (SPEC 6).
-      const scheduler = schedulableNodes(
-        nodes,
-        await this.pipeline.load(application.organizationId, {
-          applicationId: application.id,
-          releaseId: context.release.id,
-        }),
-        now,
-      );
+      const load = await this.pipeline.load(application.organizationId, {
+        applicationId: application.id,
+        releaseId: context.release.id,
+      });
+      // The time is read here, not before the lock: a node whose heartbeats stopped while this
+      // placement waited is no longer ready (SPEC 5.2).
+      const now = clock();
+      const scheduler = schedulableNodes(nodes, load, now);
       let request: PlacementRequest;
       let placed: ReturnType<typeof schedule>;
       try {
