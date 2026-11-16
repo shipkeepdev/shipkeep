@@ -9,6 +9,9 @@ import { PIPELINE_STORE, type PipelineStore } from './application/ports';
 /** Issue #315: deployments placed at the same moment must not take the same room. */
 describe('concurrent placements with PostgreSQL', () => {
   const APPLICATIONS = 4;
+  // The node's heartbeat and the pipeline's clock: the node stays ready however long the test
+  // takes, so a slow run cannot fail for `not_ready`.
+  const NOW = new Date();
   let fixture: Awaited<ReturnType<typeof tenantHttpFixture>>;
   let nodeId: string;
 
@@ -22,6 +25,7 @@ describe('concurrent placements with PostgreSQL', () => {
         cpu_count: 1,
         memory_bytes: 2 ** 33,
       },
+      heartbeatAt: NOW,
     });
   });
   afterAll(async () => {
@@ -52,18 +56,46 @@ describe('concurrent placements with PostgreSQL', () => {
       deploymentIds.push((queued.body as { deployment: { id: string } }).deployment.id);
     }
 
-    // Each placement pauses after it has read the load, so that the reads overlap every time
-    // unless something serializes them: the test does not depend on timing.
+    // The first placement to read the load is held there, inside its transaction, until the
+    // test lets it go. A placement that is not serialized would read the load too.
     const store = fixture.app.get<PipelineStore>(PIPELINE_STORE);
     const load = store.load.bind(store);
+    let reads = 0;
+    let letTheFirstGo: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      letTheFirstGo = resolve;
+    });
     vi.spyOn(store, 'load').mockImplementation(async (...parameters) => {
       const loads = await load(...parameters);
-      await new Promise((resolve) => setTimeout(resolve, 150));
+      reads += 1;
+      if (reads === 1) await held;
       return loads;
     });
 
     const pipeline = fixture.app.get(DeploymentPipeline);
-    await Promise.all(deploymentIds.map((id) => pipeline.run(fixture.organizationId, id)));
+    const runs = Promise.all(
+      deploymentIds.map((id) => pipeline.run(fixture.organizationId, id, () => NOW)),
+    );
+    const observer = new Client({ connectionString: fixture.databaseUrl });
+    await observer.connect();
+    try {
+      // PostgreSQL itself says that every other placement waits for the advisory lock.
+      let waiting = 0;
+      for (let attempt = 0; attempt < 50 && waiting < APPLICATIONS - 1; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        const { rows } = await observer.query<{ waiting: number }>(
+          `SELECT count(*)::int AS waiting FROM pg_locks
+           WHERE locktype = 'advisory' AND NOT granted
+             AND database = (SELECT oid FROM pg_database WHERE datname = current_database())`,
+        );
+        waiting = rows[0]?.waiting ?? 0;
+      }
+      expect({ waiting, reads }).toEqual({ waiting: APPLICATIONS - 1, reads: 1 });
+    } finally {
+      letTheFirstGo();
+      await observer.end();
+    }
+    await runs;
 
     const admin = new Client({ connectionString: fixture.databaseUrl });
     await admin.connect();
@@ -72,7 +104,7 @@ describe('concurrent placements with PostgreSQL', () => {
         "SELECT count(*) AS replicas, coalesce(sum(cpu_millis), 0) AS cpu FROM allocations WHERE node_id = $1 AND state = 'placed'",
         [nodeId],
       );
-      // Unserialized, every run reads the load before any of them stores its replica.
+      // Unserialized, every run would have stored a replica on the one-CPU node.
       expect(reserved.rows).toEqual([{ replicas: '1', cpu: '1000' }]);
       const deployments = await admin.query<{ state: string; error: string | null }>(
         'SELECT state, error FROM deployments WHERE id = ANY($1::uuid[]) ORDER BY state',
