@@ -1,4 +1,10 @@
-import { DEFAULT_RESOURCES, type ShipkeepConfig } from '@shipkeep/config-schema';
+import {
+  cpuMillicores,
+  DEFAULT_RESOURCES,
+  durationInMs,
+  type ShipkeepConfig,
+  sizeInBytes,
+} from '@shipkeep/config-schema';
 import { InvalidInputError, type Resources } from '@shipkeep/domain';
 
 /** What the pipeline asks an agent to run; the worker turns it into a proto `ContainerSpec`. */
@@ -31,38 +37,16 @@ export interface HealthPlan {
   readonly healthyThreshold: number;
 }
 
-const SIZE_UNITS: Readonly<Record<string, number>> = {
-  '': 1,
-  K: 1e3,
-  M: 1e6,
-  G: 1e9,
-  T: 1e12,
-  Ki: 2 ** 10,
-  Mi: 2 ** 20,
-  Gi: 2 ** 30,
-  Ti: 2 ** 40,
-};
-const DURATION_UNITS: ReadonlyMap<string, number> = new Map([
-  ['ms', 1],
-  ['s', 1e3],
-  ['m', 6e4],
-  ['h', 3.6e6],
-]);
-
 /** `0.5` or `500m` (SPEC 2) as whole millicores, at least one. Zero is refused, not unlimited. */
 export function cpuMillis(value: string): number {
-  const millis = /^([0-9]+)m$/.exec(value);
-  const cores = /^([0-9]+(?:\.[0-9]+)?)$/.exec(value);
-  const amount = millis?.[1] ? Number(millis[1]) : cores?.[1] ? Number(cores[1]) * 1000 : NaN;
+  const amount = cpuMillicores(value);
   // A positive amount below one millicore is one millicore: rounding must not remove the limit.
   return positive(amount > 0 ? Math.max(1, Math.round(amount)) : amount, 'cpu');
 }
 
 /** Kubernetes-style size (`512Mi`, `2G`, bare bytes) as bytes. Zero is refused, not unlimited. */
 export function sizeBytes(value: string): number {
-  const match = /^([0-9]+)(Ki|Mi|Gi|Ti|K|M|G|T)?$/.exec(value);
-  const unit = SIZE_UNITS[match?.[2] ?? ''];
-  return positive(match?.[1] && unit ? Number(match[1]) * unit : NaN, 'memory');
+  return positive(sizeInBytes(value), 'memory');
 }
 
 /**
@@ -80,12 +64,7 @@ export function resourceLimits(config: ShipkeepConfig): Resources {
 
 /** Go-style duration (`30s`, `1m30s`, `500ms`) in milliseconds. */
 export function durationMs(value: string | undefined, fallback: number): number {
-  if (value === undefined) return fallback;
-  if (!/^([0-9]+(ms|s|m|h))+$/.test(value)) return bounded(NaN, 'duration');
-  let total = 0;
-  for (const [, amount, unit] of value.matchAll(/([0-9]+)(ms|s|m|h)/g))
-    total += Number(amount) * (DURATION_UNITS.get(unit) ?? NaN);
-  return bounded(total, 'duration');
+  return value === undefined ? fallback : bounded(durationInMs(value), 'duration');
 }
 
 /** Docker network of an environment: one per environment and node. */

@@ -42,7 +42,8 @@ func (i Issue) String() string {
 	return i.Path + ": " + i.Message
 }
 
-// ValidationError is returned when a document does not satisfy the schema.
+// ValidationError is returned when a document does not satisfy the schema or holds a value that
+// could never be deployed.
 type ValidationError struct {
 	Issues []Issue
 }
@@ -104,7 +105,7 @@ func Parse(data []byte) (any, error) {
 	return value, nil
 }
 
-// Validate checks a parsed document against the schema.
+// Validate checks a parsed document against the schema, then the values the schema cannot bound.
 func Validate(value any) error {
 	s, err := schema()
 	if err != nil {
@@ -112,6 +113,10 @@ func Validate(value any) error {
 	}
 	err = s.Validate(value)
 	if err == nil {
+		// Well-formed values that could never be deployed (SPEC 2.2).
+		if issues := valueIssues(value); len(issues) > 0 {
+			return &ValidationError{Issues: issues}
+		}
 		return nil
 	}
 	var verr *jsonschema.ValidationError

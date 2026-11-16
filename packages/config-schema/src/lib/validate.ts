@@ -4,6 +4,8 @@ import { parse as parseYaml, YAMLParseError } from 'yaml';
 import type { ShipkeepConfig } from '../gen/shipkeep-config.js';
 import { validate as validateFn } from '../gen/validator.js';
 
+import { valueIssues } from './values.js';
+
 /** One validation problem, located by a JSON pointer into the document. */
 export interface ConfigIssue {
   /** JSON pointer of the offending value, for example `/run/port`. Empty string is the root. */
@@ -29,11 +31,15 @@ const YAML_OPTIONS = {
 export const MAX_CONFIG_BYTES = 256 * 1024;
 
 /**
- * Validates an already parsed document against the shipkeep.yml schema.
+ * Validates an already parsed document against the shipkeep.yml schema, then checks the values
+ * the schema cannot bound.
  */
 export function validateShipkeepConfig(value: unknown): ValidationResult {
   if (validateFn(value)) {
-    return { ok: true, config: value as ShipkeepConfig };
+    const config = value as ShipkeepConfig;
+    // Well-formed values that could never be deployed (SPEC 2.2).
+    const issues = valueIssues(config);
+    return issues.length ? { ok: false, issues } : { ok: true, config };
   }
   return { ok: false, issues: toIssues(validateFn.errors ?? []) };
 }
