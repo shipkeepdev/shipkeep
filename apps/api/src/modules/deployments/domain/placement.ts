@@ -30,7 +30,8 @@ const ARCHITECTURES = ['amd64', 'arm64'] as const;
 
 /**
  * Scheduler view of the organization's nodes (SPEC 6), keyed by node name. Capacity comes from the
- * agent's facts; a node without them has no capacity and only accepts unreserved replicas.
+ * agent's facts; a node without them has no capacity, so the scheduler skips it (`architecture`,
+ * `cpu` or `memory`) and still places on the others.
  * Liveness is read at `now` (SPEC 5.2), so a node whose heartbeats stopped is not ready.
  */
 export function schedulableNodes(

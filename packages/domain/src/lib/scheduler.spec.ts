@@ -127,9 +127,32 @@ describe('SPEC 6 scheduler examples', () => {
       expect(() => placeReplica(bad, [node('a')])).toThrow('Invalid placement request.');
     expect(() => placeReplica(request, [node('a'), node('a')])).toThrow('unique');
     expect(() =>
-      placeReplica(request, [node('a', { capacity: { cpuMillis: 0, memoryBytes: GiB } })]),
+      placeReplica(request, [node('a', { capacity: { cpuMillis: -1, memoryBytes: GiB } })]),
     ).toThrow('Invalid scheduling state');
     expect(() => placeReplicas(request, -1, [])).toThrow('Replicas must be');
+  });
+
+  it('rejects a node without capacity instead of failing the whole placement', () => {
+    // A node that has not reported its CPU count or its memory has no room: that is a reason
+    // to skip it, never a reason to refuse the other nodes (issue #314).
+    const nodes = [
+      node('no-cpu', { capacity: { cpuMillis: 0, memoryBytes: GiB } }),
+      node('no-memory', { capacity: { cpuMillis: 4000, memoryBytes: 0 } }),
+      node('ready'),
+    ];
+    expect(placeReplica(request, nodes)).toEqual({ placed: true, node: 'ready' });
+    expect(placeReplicas(request, 2, nodes)).toEqual({ nodes: ['ready', 'ready'], unplaced: 0 });
+    expect(placeReplica(request, nodes.slice(0, 2))).toEqual({
+      placed: false,
+      rejections: { 'no-cpu': 'cpu', 'no-memory': 'memory' },
+    });
+    // Even a replica that reserves nothing does not run where the capacity is unknown.
+    const unreserved = { ...request, resources: { cpuMillis: 0, memoryBytes: 0 } };
+    expect(placeReplica(unreserved, nodes.slice(0, 2))).toEqual({
+      placed: false,
+      rejections: { 'no-cpu': 'cpu', 'no-memory': 'memory' },
+    });
+    expect(placeReplica(unreserved, nodes)).toEqual({ placed: true, node: 'ready' });
   });
 });
 

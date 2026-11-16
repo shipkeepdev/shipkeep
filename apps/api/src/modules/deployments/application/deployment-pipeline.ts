@@ -4,10 +4,12 @@ import {
   createEvent,
   type DomainEvent,
   isDomainError,
+  type PlacementRequest,
   placeReplica,
   placeReplicas,
   rollBack,
   type RoutingOutcome,
+  type SchedulableNode,
   stop,
   SYSTEM_ACTOR,
 } from '@shipkeep/domain';
@@ -81,7 +83,15 @@ export class DeploymentPipeline {
         this.load(deploymentId),
       );
       if (!loaded) return 'done';
-      const decision = plan(loaded.context);
+      let decision: PipelineDecision;
+      try {
+        decision = plan(loaded.context);
+      } catch (error: unknown) {
+        // A release the planner cannot read fails like any other failure. Throwing would only
+        // retry the run and leave the deployment where it is, holding the application.
+        if (!isDomainError(error)) throw error;
+        return this.fail(loaded, error.message, clock());
+      }
       const outcome = await this.apply(loaded, decision, clock());
       if (outcome !== 'continue') return outcome;
     }
@@ -199,21 +209,17 @@ export class DeploymentPipeline {
         }),
         now,
       );
-      const request = placementRequest(application.id, config);
-      const placed = placeReplicas(request, replicas, scheduler);
-      if (placed.unplaced > 0) {
-        const decision = placeReplica(request, scheduler);
-        const reasons = decision.placed
-          ? 'capacity'
-          : Object.entries(decision.rejections)
-              .map(([node, why]) => `${node}: ${why}`)
-              .join(', ') || 'no nodes';
-        return this.failInTransaction(
-          loaded,
-          `No node can run replica ${String(replicas - placed.unplaced + 1)} of ${String(replicas)} (${reasons}).`,
-          now,
-        );
+      let request: PlacementRequest;
+      let placed: ReturnType<typeof schedule>;
+      try {
+        request = placementRequest(application.id, config);
+        placed = schedule(request, replicas, scheduler);
+      } catch (error: unknown) {
+        // Same rule as for the planner: a release that cannot be scheduled fails, it is not retried.
+        if (!isDomainError(error)) throw error;
+        return this.failInTransaction(loaded, error.message, now);
       }
+      if ('failure' in placed) return this.failInTransaction(loaded, placed.failure, now);
       const ids = new Map(nodes.map((node) => [node.name, node.id]));
       const allocations = placed.nodes.map((name, index) => ({
         index,
@@ -396,6 +402,25 @@ function cancelledRouting(context: PipelineContext): RoutingOutcome {
     [...context.steps.keys()].some((key) => key.startsWith(`d:${context.deployment.id}:${step}:`));
   if (ran('unroute') || ran('stop')) return 'new_release_serving';
   return ran('route') ? 'restore_previous' : 'untouched';
+}
+
+/** The node of each replica, or why one of them fits nowhere. Pure: it only throws domain errors. */
+function schedule(
+  request: PlacementRequest,
+  replicas: number,
+  nodes: readonly SchedulableNode[],
+): { readonly nodes: readonly string[] } | { readonly failure: string } {
+  const placed = placeReplicas(request, replicas, nodes);
+  if (placed.unplaced === 0) return { nodes: placed.nodes };
+  const decision = placeReplica(request, nodes);
+  const reasons = decision.placed
+    ? 'capacity'
+    : Object.entries(decision.rejections)
+        .map(([node, why]) => `${node}: ${why}`)
+        .join(', ') || 'no nodes';
+  return {
+    failure: `No node can run replica ${String(replicas - placed.unplaced + 1)} of ${String(replicas)} (${reasons}).`,
+  };
 }
 
 function reason(error: unknown, fallback: string): string {
