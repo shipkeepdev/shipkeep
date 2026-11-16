@@ -4,3 +4,4 @@ export { shipkeepSchema } from './gen/schema.js';
 export type * from './gen/shipkeep-config.js';
 export * from './lib/defaults.js';
 export * from './lib/validate.js';
+export * from './lib/values.js';

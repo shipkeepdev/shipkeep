@@ -181,22 +181,49 @@ describe('deployment pipeline with PostgreSQL and pg-boss', () => {
   });
 
   it('fails a deployment whose release cannot be planned, and frees the application', async () => {
-    const application = await fixture
+    const config = {
+      version: 1,
+      name: 'unplannable-api',
+      build: { type: 'image', image: `ghcr.io/acme/billing@sha256:${'c'.repeat(64)}` },
+      run: { port: 3000 },
+    };
+    // Sixteen digits pass the schema and overflow the planner. Saving them is refused now...
+    const refused = await fixture
       .post(`${fixture.environment}/applications`, 'owner', {
-        config: {
-          version: 1,
-          name: 'unplannable-api',
-          build: { type: 'image', image: `ghcr.io/acme/billing@sha256:${'c'.repeat(64)}` },
-          run: { port: 3000 },
-          // Sixteen digits pass the schema and overflow the planner (issue #314).
-          resources: { cpu: '9999999999999999' },
-        },
+        config: { ...config, resources: { cpu: '9999999999999999' } },
       })
+      .expect(400);
+    expect(refused.body).toMatchObject({
+      code: 'invalid_application_config',
+      details: { issues: [{ path: '/resources/cpu', message: 'must be at most 256 CPUs' }] },
+    });
+    const application = await fixture
+      .post(`${fixture.environment}/applications`, 'owner', { config })
       .expect(201);
     const applicationId = (application.body as { id: string }).id;
     const deployments = `${fixture.environment}/applications/${applicationId}/deployments`;
     const queued = await fixture.post(deployments, 'owner', {}).expect(201);
-    const deploymentId = (queued.body as { deployment: { id: string } }).deployment.id;
+    const { deployment, release } = queued.body as {
+      deployment: { id: string };
+      release: { id: string };
+    };
+    const deploymentId = deployment.id;
+    // ...but a release stored before that check may still hold such a value (issue #314).
+    const owner = new Client({ connectionString: fixture.databaseUrl });
+    await owner.connect();
+    try {
+      await owner.query('BEGIN');
+      await owner.query('ALTER TABLE releases DISABLE TRIGGER releases_write_once');
+      await owner.query(
+        `UPDATE releases SET config = jsonb_set(config, '{resources}', '{"cpu":"9999999999999999"}')
+         WHERE id = $1`,
+        [release.id],
+      );
+      await owner.query('ALTER TABLE releases ENABLE TRIGGER releases_write_once');
+      await owner.query('COMMIT');
+    } finally {
+      await owner.end();
+    }
 
     // The run used to throw, which only retried the job and left the deployment queued.
     expect(

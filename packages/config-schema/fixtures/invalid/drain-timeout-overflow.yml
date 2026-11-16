@@ -1,0 +1,8 @@
+version: 1
+name: api
+build:
+  type: dockerfile
+run:
+  port: 3000
+deploy:
+  drain_timeout: 99999999999999999999999999999h

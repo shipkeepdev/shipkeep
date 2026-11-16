@@ -107,6 +107,10 @@ compose:
 ### 2.2 Rules
 
 - Validated against `packages/config-schema/shipkeep.schema.json` (JSON Schema 2020-12). Unknown keys are errors.
+- Both validators (`packages/config-schema` and `lib/config`) then refuse well-formed values that could never be deployed, so that saving them fails instead of every later deployment. The shared fixtures keep the two in step.
+  - `resources.cpu` above 256 CPUs and `resources.memory` above `1Ti`: the agent refuses more (section 3.3).
+  - `resources.memory` below `6Mi`: Docker refuses less.
+  - A duration the pipeline reads (`run.healthcheck.interval`, `timeout` and `start_period`, `release.timeout`, `deploy.drain_timeout`) that is too long to be counted.
 - `name`: `^[a-z][a-z0-9-]{1,38}[a-z0-9]$`.
 - `run.command`, `release.command`: arrays of strings, max 64 items, each max 4096 bytes. No shell is ever implied.
 - Durations: Go-style (`30s`, `10m`, `72h`). Sizes: Kubernetes-style (`512Mi`, `2Gi`).
@@ -199,7 +203,7 @@ The agent reaches Docker through `agent/internal/docker`, a minimal typed Engine
 Containers are created from the typed create body in `agent/internal/docker`. That body has no field for privileged mode, host namespaces, devices or bind mounts, so none of them can be requested. The agent always sets:
 
 - `no-new-privileges`, a private IPC namespace and an init process;
-- the CPU and the memory limit of the spec. Both are required: zero would mean unlimited to Docker, so a spec without either is refused, for a replica and for a release task alike. The agent has no default of its own, since placement must have reserved the value it enforces;
+- the CPU and the memory limit of the spec, at most 256 CPUs and 1 TiB. Both are required: zero would mean unlimited to Docker, so a spec without either is refused, for a replica and for a release task alike. The agent has no default of its own, since placement must have reserved the value it enforces;
 - a pids limit (1024 unless specified, at most 65,536);
 - bounded `json-file` logs;
 - added capabilities from the allow-list only.
@@ -697,7 +701,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - Resource limits (issue #301). Reservations equal limits, so with the defaults a node runs as many applications as it has CPUs, unless they declare less. Still open:
   - a reservation smaller than the limit, quotas per environment, and capacity kept back for the node's own services (agent, Caddy, Docker);
   - `deploy.strategy: recreate`, which would stop the serving release first and avoid the overlap described in section 6: the pipeline always starts the new release next to the old one;
-  - limits below what Docker accepts (under 0.01 CPU or 6 MiB) pass validation and fail when the container is created;
+  - health check and release durations outside what the agent accepts, for example a release timeout above one hour, pass validation and fail when that step runs;
   - containers created before the limits became mandatory keep running without them, with a reservation of zero, until their application is deployed again.
 
 - Private registries: credentials for private images, and an explicit allow-list for registries on private networks (the resolver refuses non-public addresses by default, SSRF).
