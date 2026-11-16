@@ -142,6 +142,9 @@ func TestReleaseTaskRunsOnceAndCleansUp(t *testing.T) {
 	if engine.created[0].HostConfig.RestartPolicy.Name != "no" || len(engine.started) != 1 || len(engine.containers) != 0 {
 		t.Fatalf("release task not run once and removed: %+v", engine)
 	}
+	if host := engine.created[0].HostConfig; host.NanoCPUs != 500_000_000 || host.Memory != 512<<20 {
+		t.Fatalf("release task not limited: %+v", host)
+	}
 	hanging := newFakeEngine()
 	hanging.hang = true
 	if update := release(hanging, time.Second); succeeded(update) || len(hanging.stopped) != 1 || len(hanging.containers) != 0 {
@@ -154,5 +157,29 @@ func TestReleaseTaskRunsOnceAndCleansUp(t *testing.T) {
 	}
 	if update := release(newFakeEngine(), 2*time.Hour); update.GetError() != errInvalid {
 		t.Fatal("accepted a two-hour timeout")
+	}
+}
+
+// A release task is a container like any other: without a CPU and a memory limit it is refused.
+func TestReleaseTaskRefusesASpecWithoutLimits(t *testing.T) {
+	mutations := map[string]func(*agentv1.ContainerSpec){
+		"no resources":    func(s *agentv1.ContainerSpec) { s.Resources = nil },
+		"no cpu limit":    func(s *agentv1.ContainerSpec) { s.Resources.CpuMillis = 0 },
+		"no memory limit": func(s *agentv1.ContainerSpec) { s.Resources.MemoryBytes = 0 },
+	}
+	for name, mutate := range mutations {
+		t.Run(name, func(t *testing.T) {
+			engine := newFakeEngine()
+			d := &Dispatcher{Journal: open(t), Handlers: dockerHandlers(engine, nil, &fakeProber{}, nil), Epoch: func() uint64 { return 3 }}
+			out := &recorder{}
+			spec := validSpec()
+			spec.Name = "sk-api-migrate"
+			mutate(spec)
+			d.Handle(context.Background(), &agentv1.ActionRequest{ActionId: testID, IdempotencyKey: "release", LeaseEpoch: 3, DeadlineUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+				Action: &agentv1.ActionRequest_RunReleaseTask{RunReleaseTask: &agentv1.RunReleaseTask{Spec: spec, Timeout: durationpb.New(time.Minute)}}}, out.send)
+			if update := out.last(t); update.GetError() != errInvalid || len(engine.created) != 0 {
+				t.Fatalf("ran an unlimited release task: %v", update)
+			}
+		})
 	}
 }

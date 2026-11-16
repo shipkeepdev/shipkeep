@@ -66,11 +66,12 @@ message Mount {
   }
 }
 
-// Resource reservation and limit for one container.
+// Resource reservation and limit for one container. A container always has a CPU and a memory
+// limit: the control plane fills in its defaults, and the agent refuses a spec without them.
 message Resources {
-  // CPU limit in thousandths of a core (500 = half a core). Zero means unlimited.
+  // CPU limit in thousandths of a core (500 = half a core). Required: zero is refused.
   uint32 cpu_millis = 1;
-  // Memory limit in bytes. Zero means unlimited.
+  // Memory limit in bytes. Required: zero is refused.
   uint64 memory_bytes = 2;
   // Maximum number of processes. Zero means the Docker default.
   uint32 pids_limit = 3;

@@ -637,12 +637,13 @@ func (*Mount_VolumeName) isMount_Source() {}
 
 func (*Mount_Tmpfs_) isMount_Source() {}
 
-// Resource reservation and limit for one container.
+// Resource reservation and limit for one container. A container always has a CPU and a memory
+// limit: the control plane fills in its defaults, and the agent refuses a spec without them.
 type Resources struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// CPU limit in thousandths of a core (500 = half a core). Zero means unlimited.
+	// CPU limit in thousandths of a core (500 = half a core). Required: zero is refused.
 	CpuMillis uint32 `protobuf:"varint,1,opt,name=cpu_millis,json=cpuMillis,proto3" json:"cpu_millis,omitempty"`
-	// Memory limit in bytes. Zero means unlimited.
+	// Memory limit in bytes. Required: zero is refused.
 	MemoryBytes uint64 `protobuf:"varint,2,opt,name=memory_bytes,json=memoryBytes,proto3" json:"memory_bytes,omitempty"`
 	// Maximum number of processes. Zero means the Docker default.
 	PidsLimit     uint32 `protobuf:"varint,3,opt,name=pids_limit,json=pidsLimit,proto3" json:"pids_limit,omitempty"`

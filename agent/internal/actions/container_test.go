@@ -132,7 +132,13 @@ func TestCreateContainerRejectsMaliciousSpecs(t *testing.T) {
 		"port zero":           func(s *agentv1.ContainerSpec) { s.Ports[0].ContainerPort = 0 },
 		"reserved label":      func(s *agentv1.ContainerSpec) { s.Labels["sk.managed"] = "false" },
 		"cpu overflow":        func(s *agentv1.ContainerSpec) { s.Resources.CpuMillis = maxCPUMillis + 1 },
-		"stop timeout of 1h":  func(s *agentv1.ContainerSpec) { s.StopTimeout = durationpb.New(time.Hour) },
+		"memory overflow":     func(s *agentv1.ContainerSpec) { s.Resources.MemoryBytes = maxMemoryBytes + 1 },
+		// A container without a CPU or a memory limit could starve its node (#301).
+		"no resources":       func(s *agentv1.ContainerSpec) { s.Resources = nil },
+		"empty resources":    func(s *agentv1.ContainerSpec) { s.Resources = &agentv1.Resources{PidsLimit: 64} },
+		"no cpu limit":       func(s *agentv1.ContainerSpec) { s.Resources.CpuMillis = 0 },
+		"no memory limit":    func(s *agentv1.ContainerSpec) { s.Resources.MemoryBytes = 0 },
+		"stop timeout of 1h": func(s *agentv1.ContainerSpec) { s.StopTimeout = durationpb.New(time.Hour) },
 		"restart storm": func(s *agentv1.ContainerSpec) {
 			s.RestartPolicy = &agentv1.RestartPolicy{Mode: agentv1.RestartPolicy_MODE_ON_FAILURE, MaxRestarts: 1000}
 		},

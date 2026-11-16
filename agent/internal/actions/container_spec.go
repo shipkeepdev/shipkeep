@@ -223,9 +223,13 @@ func exposedPorts(input []*agentv1.PortMapping) (map[string]struct{}, error) {
 	return ports, nil
 }
 
+// resources sets the CPU, memory and process limits. A spec without a CPU or a memory limit is
+// refused: zero would mean unlimited to Docker, and one container could then starve the node
+// (SPEC 3.3). The control plane sends its defaults, so the agent never has to invent a value
+// that placement did not reserve.
 func resources(input *agentv1.Resources, host *docker.HostConfig) error {
-	if input == nil {
-		return nil
+	if input.GetCpuMillis() == 0 || input.GetMemoryBytes() == 0 {
+		return errInput
 	}
 	if input.GetCpuMillis() > maxCPUMillis || input.GetMemoryBytes() > maxMemoryBytes || input.GetPidsLimit() > maxPids {
 		return errInput

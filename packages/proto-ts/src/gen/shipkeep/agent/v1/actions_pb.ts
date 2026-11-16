@@ -208,20 +208,21 @@ export const Mount_TmpfsSchema: GenMessage<Mount_Tmpfs> = /*@__PURE__*/
   messageDesc(file_shipkeep_agent_v1_actions, 3, 0);
 
 /**
- * Resource reservation and limit for one container.
+ * Resource reservation and limit for one container. A container always has a CPU and a memory
+ * limit: the control plane fills in its defaults, and the agent refuses a spec without them.
  *
  * @generated from message shipkeep.agent.v1.Resources
  */
 export type Resources = Message<"shipkeep.agent.v1.Resources"> & {
   /**
-   * CPU limit in thousandths of a core (500 = half a core). Zero means unlimited.
+   * CPU limit in thousandths of a core (500 = half a core). Required: zero is refused.
    *
    * @generated from field: uint32 cpu_millis = 1;
    */
   cpuMillis: number;
 
   /**
-   * Memory limit in bytes. Zero means unlimited.
+   * Memory limit in bytes. Required: zero is refused.
    *
    * @generated from field: uint64 memory_bytes = 2;
    */
