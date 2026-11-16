@@ -4,7 +4,7 @@ import { type DomainEvent, InvalidInputError, Secret } from '@shipkeep/domain';
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import type { SecretStore } from '../../secrets/application/ports';
 import type { StepOutcome } from '../domain/pipeline';
-import type { NodeLoad, NodeView } from '../domain/placement';
+import { nodeLoads, type NodeView } from '../domain/placement';
 import type { DeploymentRecord, Release } from '../domain/release';
 
 import { DeploymentPipeline } from './deployment-pipeline';
@@ -140,23 +140,21 @@ function world(
       return Promise.resolve(true);
     },
     nodes: () => Promise.resolve(nodes),
-    // Like the store: every placed replica of the organization, whatever its release.
-    load: () => {
-      const load = new Map<string, NodeLoad>();
-      const placed = [
-        ...allocations.filter((a) => !a.stopped).map((a) => ({ ...a, applicationId: APP })),
-        ...(options.neighbours ?? []).map((a) => ({ ...a, applicationId: 'other' })),
-      ];
-      for (const a of placed) {
-        const current = load.get(a.nodeId) ?? { cpuMillis: 0, memoryBytes: 0, applications: [] };
-        load.set(a.nodeId, {
-          cpuMillis: current.cpuMillis + a.cpuMillis,
-          memoryBytes: current.memoryBytes + a.memoryBytes,
-          applications: [...new Set([...current.applications, a.applicationId])],
-        });
-      }
-      return Promise.resolve(load);
-    },
+    // Like the store: every placed replica of the organization, from one read.
+    load: (_org, replacing) =>
+      Promise.resolve(
+        nodeLoads(
+          [
+            ...allocations.filter((a) => !a.stopped).map((a) => ({ ...a, applicationId: APP })),
+            ...(options.neighbours ?? []).map((a) => ({
+              ...a,
+              applicationId: 'other',
+              releaseId: 'other-release',
+            })),
+          ],
+          replacing,
+        ),
+      ),
   };
   const secretStore = {
     values: (_target: unknown, names: readonly string[]) =>

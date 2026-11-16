@@ -23,7 +23,7 @@ import {
   plan,
   recovery,
 } from '../domain/pipeline';
-import { placementRequest, schedulableNodes, withoutReplaced } from '../domain/placement';
+import { placementRequest, schedulableNodes } from '../domain/placement';
 import type { DeploymentRecord } from '../domain/release';
 import { agentAction, type SecretValues } from '../infrastructure/agent-steps';
 
@@ -39,7 +39,6 @@ import {
   PIPELINE_STORE,
   type PipelineApplication,
   type PipelineStore,
-  type StoredAllocation,
 } from './ports';
 
 /** Agent actions get an hour: release tasks and health probes are bounded well below it. */
@@ -52,8 +51,6 @@ interface Loaded {
   readonly application: PipelineApplication;
   /** Releases whose replicas this deployment replaces. */
   readonly previousReleases: readonly string[];
-  /** Those replicas with what they reserve: room the new release takes over (SPEC 6). */
-  readonly replaced: readonly StoredAllocation[];
 }
 
 /**
@@ -166,7 +163,6 @@ export class DeploymentPipeline {
     return {
       application,
       previousReleases: [...new Set(previous.map((a) => a.releaseId))],
-      replaced: previous,
       context: {
         deployment,
         application: {
@@ -197,7 +193,10 @@ export class DeploymentPipeline {
       // The replicas this deployment replaces give their room to the new release (SPEC 6).
       const scheduler = schedulableNodes(
         nodes,
-        withoutReplaced(await this.pipeline.load(application.organizationId), loaded.replaced),
+        await this.pipeline.load(application.organizationId, {
+          applicationId: application.id,
+          releaseId: context.release.id,
+        }),
         now,
       );
       const request = placementRequest(application.id, config);

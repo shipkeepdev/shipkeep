@@ -112,8 +112,33 @@ describe('pipeline store', () => {
       name: 'edge-pipeline',
       facts: { cpu_count: 2 },
     });
+    // A deployment that replaces this release does not count it (SPEC 6); any other one does.
+    const next = '0190f5a8-7b1c-7e2d-8f3a-0000000000f2';
+    expect(
+      (await tenant((s) => s.load(fixture.organizationId, { applicationId, releaseId: next }))).get(
+        nodeId,
+      ),
+    ).toEqual({ cpuMillis: 0, memoryBytes: 0, applications: [applicationId] });
+    expect(
+      (await tenant((s) => s.load(fixture.organizationId, { applicationId, releaseId }))).get(
+        nodeId,
+      ),
+    ).toEqual({ cpuMillis: 500, memoryBytes: 2 ** 29, applications: [applicationId] });
+    expect(
+      (
+        await tenant((s) =>
+          s.load(fixture.organizationId, { applicationId: next, releaseId: next }),
+        )
+      ).get(nodeId),
+    ).toEqual({ cpuMillis: 500, memoryBytes: 2 ** 29, applications: [applicationId] });
     await tenant((s) => s.stop(applicationId, [releaseId], now));
     expect(await tenant((s) => s.allocations(applicationId))).toEqual([]);
+    // Stopped replicas are in no load: their room cannot be freed a second time.
+    expect(
+      (await tenant((s) => s.load(fixture.organizationId, { applicationId, releaseId: next }))).has(
+        nodeId,
+      ),
+    ).toBe(false);
   });
 
   it('records a release digest once and reads the deployment steps by prefix', async () => {

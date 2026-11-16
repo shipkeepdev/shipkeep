@@ -67,31 +67,51 @@ export function schedulableNodes(
     });
 }
 
+/** A placed, unstopped replica, as the load of its node needs it. */
+export interface PlacedReplica {
+  readonly nodeId: string;
+  readonly applicationId: string;
+  readonly releaseId: string;
+  readonly cpuMillis: number;
+  readonly memoryBytes: number;
+}
+
+/** The release a deployment places: the application's replicas of other releases are replaced. */
+export interface ReplacingRelease {
+  readonly applicationId: string;
+  readonly releaseId: string;
+}
+
 /**
- * The load of the nodes without the replicas a deployment replaces (SPEC 6). Those replicas stop
- * when it succeeds, and its own replicas are removed when it fails, so only one of the two
- * releases keeps its reservation. Counting both would refuse every new release of an application
- * on a node that the application fills. `applications` is kept: it only ranks nodes for spread.
+ * Sums placed replicas into the load of each node (SPEC 6). The replicas that the deployment of
+ * `replacing` replaces reserve nothing: they stop when it succeeds, and its own replicas are
+ * removed when it fails, so only one of the two releases keeps its reservation. Counting both
+ * would refuse every new release of an application on a node that the application fills. They
+ * still count in `applications`, which only ranks nodes for spread.
+ *
+ * `replicas` must come from one read: taking the replaced replicas from an earlier read could
+ * free the room of replicas that were stopped in between, and so free it twice.
  */
-export function withoutReplaced(
-  load: ReadonlyMap<string, NodeLoad>,
-  replaced: readonly {
-    readonly nodeId: string;
-    readonly cpuMillis: number;
-    readonly memoryBytes: number;
-  }[],
+export function nodeLoads(
+  replicas: readonly PlacedReplica[],
+  replacing?: ReplacingRelease,
 ): Map<string, NodeLoad> {
-  const result = new Map(load);
-  for (const replica of replaced) {
-    const current = result.get(replica.nodeId);
-    if (current)
-      result.set(replica.nodeId, {
-        ...current,
-        cpuMillis: Math.max(0, current.cpuMillis - replica.cpuMillis),
-        memoryBytes: Math.max(0, current.memoryBytes - replica.memoryBytes),
-      });
+  const loads = new Map<string, NodeLoad>();
+  for (const replica of replicas) {
+    const current = loads.get(replica.nodeId) ?? { cpuMillis: 0, memoryBytes: 0, applications: [] };
+    const replaced =
+      replacing !== undefined &&
+      replica.applicationId === replacing.applicationId &&
+      replica.releaseId !== replacing.releaseId;
+    loads.set(replica.nodeId, {
+      cpuMillis: current.cpuMillis + (replaced ? 0 : replica.cpuMillis),
+      memoryBytes: current.memoryBytes + (replaced ? 0 : replica.memoryBytes),
+      applications: current.applications.includes(replica.applicationId)
+        ? current.applications
+        : [...current.applications, replica.applicationId],
+    });
   }
-  return result;
+  return loads;
 }
 
 /**

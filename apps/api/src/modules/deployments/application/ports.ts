@@ -5,7 +5,7 @@ import type { Application } from '../../apps/domain/application';
 import type { AgentActionView } from '../../fleet/domain/agent-action';
 import type { ObservationChange, ObservedAllocation, ReplicaStatus } from '../domain/observations';
 import type { Allocation, StepOutcome } from '../domain/pipeline';
-import type { NodeLoad, NodeView } from '../domain/placement';
+import type { NodeLoad, NodeView, ReplacingRelease } from '../domain/placement';
 import type { DeploymentRecord, DeploymentTrigger, Release, ReleaseDraft } from '../domain/release';
 
 export const DEPLOYMENT_STORE = Symbol('DeploymentStore');
@@ -72,8 +72,11 @@ export interface PipelineStore {
   /** Outcomes of the deployment's agent actions, by idempotency key. */
   steps(deploymentId: string): Promise<Map<string, StepOutcome>>;
   nodes(organizationId: string): Promise<NodeView[]>;
-  /** Placed replicas summed per node id. */
-  load(organizationId: string): Promise<Map<string, NodeLoad>>;
+  /**
+   * Placed replicas summed per node id, read in one query. With `replacing`, the replicas that
+   * release's deployment replaces reserve nothing (SPEC 6).
+   */
+  load(organizationId: string, replacing?: ReplacingRelease): Promise<Map<string, NodeLoad>>;
   application(applicationId: string): Promise<PipelineApplication | undefined>;
 }
 

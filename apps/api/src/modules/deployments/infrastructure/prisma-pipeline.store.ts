@@ -5,7 +5,12 @@ import { v7 as uuidv7 } from 'uuid';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { PipelineApplication, PipelineStore, StoredAllocation } from '../application/ports';
 import type { StepOutcome, StepState } from '../domain/pipeline';
-import type { NodeLoad, NodeView } from '../domain/placement';
+import {
+  type NodeLoad,
+  nodeLoads,
+  type NodeView,
+  type ReplacingRelease,
+} from '../domain/placement';
 import type { Release } from '../domain/release';
 
 const STEP_STATES: readonly StepState[] = [
@@ -142,23 +147,22 @@ export class PrismaPipelineStore implements PipelineStore {
     return row ?? undefined;
   }
 
-  async load(organizationId: string): Promise<Map<string, NodeLoad>> {
+  async load(organizationId: string, replacing?: ReplacingRelease): Promise<Map<string, NodeLoad>> {
+    // One query, so the replaced replicas and the load come from the same snapshot.
     const rows = await this.database.client.allocation.findMany({
       where: { organizationId, state: 'placed' },
-      select: { nodeId: true, applicationId: true, cpuMillis: true, memoryBytes: true },
+      select: {
+        nodeId: true,
+        applicationId: true,
+        releaseId: true,
+        cpuMillis: true,
+        memoryBytes: true,
+      },
     });
-    const load = new Map<string, NodeLoad>();
-    for (const row of rows) {
-      const current = load.get(row.nodeId) ?? { cpuMillis: 0, memoryBytes: 0, applications: [] };
-      load.set(row.nodeId, {
-        cpuMillis: current.cpuMillis + row.cpuMillis,
-        memoryBytes: current.memoryBytes + Number(row.memoryBytes),
-        applications: current.applications.includes(row.applicationId)
-          ? current.applications
-          : [...current.applications, row.applicationId],
-      });
-    }
-    return load;
+    return nodeLoads(
+      rows.map((row) => ({ ...row, memoryBytes: Number(row.memoryBytes) })),
+      replacing,
+    );
   }
 }
 
