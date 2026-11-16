@@ -15,6 +15,11 @@ export interface SectionData {
 }
 
 const YML = 'shipkeep.yml';
+/**
+ * What a limit left out of `resources` means (SPEC 2.2). Fixed texts, so that they can be
+ * translated; the test compares them with `DEFAULT_RESOURCES`.
+ */
+export const DEFAULT_LIMIT_TEXT = { cpu: '1 CPU (default)', memory: '512Mi (default)' } as const;
 const field = (l: string, v: string | undefined, extra: Partial<FieldItem> = {}): FieldItem => ({
   l,
   v: v === undefined || v === '' ? '—' : v,
@@ -256,8 +261,8 @@ export function configSection(key: string, data: SectionData): SectionCopy | nul
           {
             type: 'fields',
             items: [
-              field('CPU', config.resources?.cpu ?? 'no limit'),
-              field('Memory', config.resources?.memory ?? 'no limit'),
+              field('CPU', config.resources?.cpu ?? DEFAULT_LIMIT_TEXT.cpu),
+              field('Memory', config.resources?.memory ?? DEFAULT_LIMIT_TEXT.memory),
               field('Replicas', String(config.scale?.replicas ?? 1)),
             ],
           },
