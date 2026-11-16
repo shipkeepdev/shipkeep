@@ -179,4 +179,100 @@ describe('deployment pipeline with PostgreSQL and pg-boss', () => {
       await admin.end();
     }
   });
+
+  it('fails a deployment whose release cannot be planned, and frees the application', async () => {
+    const application = await fixture
+      .post(`${fixture.environment}/applications`, 'owner', {
+        config: {
+          version: 1,
+          name: 'unplannable-api',
+          build: { type: 'image', image: `ghcr.io/acme/billing@sha256:${'c'.repeat(64)}` },
+          run: { port: 3000 },
+          // Sixteen digits pass the schema and overflow the planner (issue #314).
+          resources: { cpu: '9999999999999999' },
+        },
+      })
+      .expect(201);
+    const applicationId = (application.body as { id: string }).id;
+    const deployments = `${fixture.environment}/applications/${applicationId}/deployments`;
+    const queued = await fixture.post(deployments, 'owner', {}).expect(201);
+    const deploymentId = (queued.body as { deployment: { id: string } }).deployment.id;
+
+    // The run used to throw, which only retried the job and left the deployment queued.
+    expect(
+      await fixture.app.get(DeploymentPipeline).run(fixture.organizationId, deploymentId),
+    ).toBe('done');
+    const admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+    try {
+      const state = await admin.query<{ state: string; error: string }>(
+        'SELECT state, error FROM deployments WHERE id = $1',
+        [deploymentId],
+      );
+      expect(state.rows).toEqual([{ state: 'failed', error: 'The cpu value is invalid.' }]);
+      const placed = await admin.query('SELECT 1 FROM allocations WHERE application_id = $1', [
+        applicationId,
+      ]);
+      expect(placed.rowCount).toBe(0);
+    } finally {
+      await admin.end();
+    }
+    const events = await auditLog().findMany({
+      where: { targetId: deploymentId },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(events.at(-1)?.action).toBe('deployment.failed');
+    // The application's single active deployment is released: another one can be queued.
+    await fixture.post(deployments, 'owner', {}).expect(201);
+  });
+
+  it('places on the ready node when another node has reported no capacity', async () => {
+    const token = await fixture.app.get(IssueJoinToken).execute({
+      organizationId: fixture.organizationId,
+      actor: { kind: 'user', id: fixture.actors.owner.id },
+    });
+    const silent = await fixture.app.get(EnrollNode).execute({
+      joinToken: token.value,
+      csrPem: await agentCsr(),
+      name: 'edge-silent',
+      facts: {},
+      agentVersion: '0.1.0',
+    });
+    await fixture.app.get(NodeLiveness).heartbeat({
+      organizationId: fixture.organizationId,
+      nodeId: silent.nodeId,
+      serial: '',
+    });
+    const application = await fixture
+      .post(`${fixture.environment}/applications`, 'owner', {
+        config: {
+          version: 1,
+          name: 'placed-api',
+          build: { type: 'image', image: `ghcr.io/acme/billing@sha256:${'c'.repeat(64)}` },
+          run: { port: 3000 },
+        },
+      })
+      .expect(201);
+    const applicationId = (application.body as { id: string }).id;
+    const queued = await fixture
+      .post(`${fixture.environment}/applications/${applicationId}/deployments`, 'owner', {})
+      .expect(201);
+    const deploymentId = (queued.body as { deployment: { id: string } }).deployment.id;
+
+    // One node without facts used to make placement throw for the whole organization.
+    expect(
+      await fixture.app.get(DeploymentPipeline).run(fixture.organizationId, deploymentId),
+    ).toBe('wait');
+    const admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+    try {
+      const placed = await admin.query<{ node_id: string }>(
+        'SELECT node_id FROM allocations WHERE application_id = $1',
+        [applicationId],
+      );
+      expect(placed.rows).toEqual([{ node_id: nodeId }]);
+    } finally {
+      await admin.end();
+    }
+  });
 });

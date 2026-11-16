@@ -124,8 +124,17 @@ function reject(
   if (request.nodes.length > 0 && !request.nodes.includes(node.name)) return 'not_allowed';
   if (pinned && request.volume !== undefined && !node.volumes.includes(request.volume))
     return 'volume';
-  if (node.reserved.cpuMillis + request.resources.cpuMillis > node.capacity.cpuMillis) return 'cpu';
-  if (node.reserved.memoryBytes + request.resources.memoryBytes > node.capacity.memoryBytes)
+  // A capacity of zero means the node reported none: it has no room, even for a replica that
+  // reserves nothing. It is a reason to skip the node, never to refuse the others.
+  if (
+    node.capacity.cpuMillis === 0 ||
+    node.reserved.cpuMillis + request.resources.cpuMillis > node.capacity.cpuMillis
+  )
+    return 'cpu';
+  if (
+    node.capacity.memoryBytes === 0 ||
+    node.reserved.memoryBytes + request.resources.memoryBytes > node.capacity.memoryBytes
+  )
     return 'memory';
   if (request.ports.some((port) => node.usedPorts.includes(port))) return 'ports';
   return undefined;
@@ -173,8 +182,6 @@ function assertNode(node: SchedulableNode): void {
     !node.name ||
     !validResources(node.capacity) ||
     !validResources(node.reserved) ||
-    node.capacity.cpuMillis === 0 ||
-    node.capacity.memoryBytes === 0 ||
     !node.usedPorts.every(validPort)
   )
     throw invalid(`Invalid scheduling state for node ${node.name || '(unnamed)'}.`);

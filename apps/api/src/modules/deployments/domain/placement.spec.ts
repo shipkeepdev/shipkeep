@@ -1,4 +1,4 @@
-import { placeReplicas } from '@shipkeep/domain';
+import { placeReplica, placeReplicas } from '@shipkeep/domain';
 
 import { nodeLoads, type NodeView, placementRequest, schedulableNodes } from './placement';
 
@@ -41,6 +41,34 @@ describe('schedulableNodes', () => {
     expect(nodes[2]).toMatchObject({
       architecture: '',
       capacity: { cpuMillis: 0, memoryBytes: 0 },
+    });
+  });
+});
+
+describe('nodes without capacity facts', () => {
+  const request = placementRequest('app-a', {
+    version: 1,
+    name: 'billing-api',
+    build: { type: 'image', image: 'nginx' },
+    run: { port: 80 },
+  });
+
+  it('places on the ready node and says why the others were skipped', () => {
+    const nodes = schedulableNodes(
+      [
+        node('edge-1', { facts: {} }),
+        node('edge-2', { facts: { architecture: 'amd64', memory_bytes: 4 * 2 ** 30 } }),
+        node('edge-3', { facts: { architecture: 'amd64', cpu_count: 2 } }),
+        node('edge-4'),
+      ],
+      new Map(),
+      NOW,
+    );
+    // One node without facts used to make placement throw for the whole organization (#314).
+    expect(placeReplicas(request, 1, nodes)).toEqual({ nodes: ['edge-4'], unplaced: 0 });
+    expect(placeReplica(request, nodes.slice(0, 3))).toEqual({
+      placed: false,
+      rejections: { 'edge-1': 'architecture', 'edge-2': 'cpu', 'edge-3': 'memory' },
     });
   });
 });

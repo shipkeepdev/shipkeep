@@ -27,6 +27,8 @@ const NOW = new Date('2026-11-05T12:00:00Z');
 /** One CPU and 512 MiB: what an application without `resources` runs under (#301). */
 const DEFAULT_LIMITS = { cpuMillis: 1000, memoryBytes: 536_870_912 };
 
+const READY_FACTS = { architecture: 'amd64', cpu_count: 2, memory_bytes: 2 ** 32 };
+
 const config: ShipkeepConfig = {
   version: 1,
   name: 'billing-api',
@@ -42,6 +44,8 @@ function world(
     secrets?: string[];
     resolve?: () => Promise<string>;
     trigger?: DeploymentRecord['trigger'];
+    /** The configuration of the release, when the default one does not fit the case. */
+    config?: ShipkeepConfig;
     /** Replicas of the release that serves when the deployment starts. */
     serving?: StoredAllocation[];
     /** Replicas of other applications, counted in the load of their node. */
@@ -68,7 +72,7 @@ function world(
     number: 1,
     image: 'ghcr.io/acme/billing:1.4.2',
     imageDigest: null,
-    config,
+    config: options.config ?? config,
     configSha: 'a'.repeat(64),
     createdBy: null,
     createdAt: NOW,
@@ -91,7 +95,7 @@ function world(
       status: 'ready',
       lastHeartbeatAt: NOW,
       labels: {},
-      facts: { architecture: 'amd64', cpu_count: 2, memory_bytes: 2 ** 32 },
+      facts: READY_FACTS,
     },
   ];
 
@@ -218,6 +222,7 @@ function world(
   return {
     subject,
     calls,
+    pipelineStore: pipeline,
     events,
     superseded,
     queued,
@@ -382,6 +387,83 @@ describe('DeploymentPipeline', () => {
     expect(w.allocations).toHaveLength(1);
     // Read first and lock second would let two deployments count the same room (#315).
     expect(w.calls).toEqual([`lock:${ORG}`, 'nodes', 'load']);
+  });
+
+  describe('a release that cannot be planned (#314)', () => {
+    it('fails the deployment when a value cannot be read, instead of throwing', async () => {
+      // Sixteen digits pass the schema and overflow the planner.
+      const w = world({ config: { ...config, resources: { cpu: '9999999999999999' } } });
+      expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
+      expect(w.deployment).toMatchObject({ state: 'failed', error: 'The cpu value is invalid.' });
+      expect(w.events.at(-1)).toMatchObject({
+        type: 'deployment.failed',
+        payload: { routing: 'untouched' },
+      });
+      expect(w.allocations).toEqual([]);
+      // Nothing is left to retry: the next run finds a finished deployment.
+      expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
+    });
+
+    it('fails and cleans up when the value is only read after the replicas started', async () => {
+      const w = world({
+        config: {
+          ...config,
+          run: {
+            port: 3000,
+            healthcheck: { path: '/health', interval: `${'9'.repeat(29)}h` },
+          },
+        },
+      });
+      let outcome = 'wait';
+      for (let round = 0; round < 10 && outcome === 'wait'; round++) {
+        outcome = await w.subject.run(ORG, w.deployment.id, () => NOW);
+        w.agentsFinish();
+      }
+      expect(outcome).toBe('done');
+      expect(w.deployment).toMatchObject({
+        state: 'failed',
+        error: 'The duration value is invalid.',
+      });
+      // The replica that was created never served: it is removed and its reservation freed.
+      expect([...w.queued.values()].map((a) => a.kind)).toContain('removeContainer');
+      expect(w.allocations.every((a) => a.stopped)).toBe(true);
+    });
+
+    it('still throws what is not about the release, so that the run is retried', async () => {
+      const w = world();
+      const broken = new Error('connection lost');
+      (w.pipelineStore as { nodes: unknown }).nodes = () => Promise.reject(broken);
+      await expect(w.subject.run(ORG, w.deployment.id, () => NOW)).rejects.toBe(broken);
+      expect(w.deployment.state).not.toBe('failed');
+    });
+  });
+
+  describe('a node without capacity facts (#314)', () => {
+    const silent: NodeView = {
+      id: '0190f5a8-7b1c-7e2d-8f3a-00000000000b',
+      name: 'edge-0',
+      status: 'ready',
+      lastHeartbeatAt: NOW,
+      labels: {},
+      facts: {},
+    };
+    const ready: NodeView = { ...silent, id: NODE, name: 'edge-1', facts: READY_FACTS };
+
+    it('does not stop a deployment that fits on another node', async () => {
+      const w = world({ nodes: [silent, ready] });
+      await w.subject.run(ORG, w.deployment.id, () => NOW);
+      expect(w.deployment.state).toBe('starting');
+      expect(w.allocations).toMatchObject([{ nodeId: NODE }]);
+    });
+
+    it('is named in the reason when it is the only node', async () => {
+      const w = world({ nodes: [silent] });
+      expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
+      expect(w.deployment).toMatchObject({
+        state: 'failed',
+        error: 'No node can run replica 1 of 1 (edge-0: architecture).',
+      });
+    });
   });
 
   it('fails cleanly when the image cannot be resolved', async () => {
