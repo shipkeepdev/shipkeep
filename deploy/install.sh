@@ -2,9 +2,25 @@
 # Fresh Ubuntu 24.04 nodes only. Run the checksum-verified copy shown by the control plane.
 set +ax
 set -euo pipefail
+fail() { printf 'shipkeep-install: %s\n' "$1" >&2; exit 1; }
+# Writes to $2 a keyring that holds the key with fingerprint $3 and nothing else, taken from the
+# downloaded file $1. It fails unless that file holds exactly this one key: apt trusts every key
+# of the keyring a repository names, so a second key in the download would be trusted too.
+# (deploy/control-plane/install.sh carries the same function: each installer is a single file.)
+single_signing_key() {
+  local home listed status=1
+  home=$(mktemp -d)
+  if gpg --homedir "$home" --batch --quiet --import "$1" 2>/dev/null; then
+    listed=$(gpg --homedir "$home" --batch --quiet --with-colons --list-keys 2>/dev/null | awk -F: '$1=="pub" {keys++} $1=="fpr" && !first {first=$10} END {print keys ":" first}')
+    if [[ $listed == "1:$3" ]] && gpg --homedir "$home" --batch --quiet --export "$3" >"$2" 2>/dev/null && [[ -s $2 ]]; then status=0; fi
+  fi
+  rm -rf -- "$home"
+  return "$status"
+}
+# The checks source this file for the functions above, and stop here.
+[[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
 umask 077
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-fail() { printf 'shipkeep-install: %s\n' "$1" >&2; exit 1; }
 control_plane='' fingerprint='' origin='' amd64='' arm64=''
 while (($#)); do
   (($# >= 2)) || fail 'Missing option value.'
@@ -41,7 +57,7 @@ listeners=$(ss -H -ltn '( sport = :80 or sport = :443 )') || fail 'Cannot inspec
 [[ -z $listeners ]] || fail 'Ports 80/443 are occupied.'
 listeners=$(ss -H -lun 'sport = :443') || fail 'Cannot inspect UDP ports.'
 [[ -z $listeners ]] || fail 'Port 443 is occupied.'
-[[ ! -e /usr/bin/caddy && ! -e /etc/apt/sources.list.d/shipkeep-caddy.sources && ! -e /etc/apt/keyrings/shipkeep-caddy.asc ]] || fail 'Caddy is already installed; reconcile it manually.'
+[[ ! -e /usr/bin/caddy && ! -e /etc/apt/sources.list.d/shipkeep-caddy.sources && ! -e /etc/apt/keyrings/shipkeep-caddy.gpg && ! -e /etc/apt/keyrings/shipkeep-caddy.asc ]] || fail 'Caddy is already installed; reconcile it manually.'
 for service in caddy.service caddy-api.service; do
   if systemctl is-active --quiet "$service" || systemctl is-enabled --quiet "$service"; then fail 'Existing Caddy service; reconcile it manually.'; fi
 done
@@ -56,19 +72,18 @@ if ! command -v docker >/dev/null; then
   for package in docker.io podman-docker containerd runc; do
     ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q 'install ok installed' || fail 'Conflicting Docker packages; reconcile them manually.'
   done
-  [[ ! -e /etc/apt/sources.list.d/shipkeep-docker.sources && ! -e /etc/apt/keyrings/shipkeep-docker.asc ]] || fail 'Docker repository files already exist.'
+  [[ ! -e /etc/apt/sources.list.d/shipkeep-docker.sources && ! -e /etc/apt/keyrings/shipkeep-docker.gpg && ! -e /etc/apt/keyrings/shipkeep-docker.asc ]] || fail 'Docker repository files already exist.'
   curl --fail --silent --show-error --proto '=https' --max-time 60 https://download.docker.com/linux/ubuntu/gpg -o "$work/docker.asc"
-  key=$(gpg --batch --show-keys --with-colons "$work/docker.asc" | awk -F: '$1=="fpr" {print $10; exit}')
-  [[ $key == 9DC858229FC7DD38854AE2D88D81803C0EBFCD88 ]] || fail 'Docker signing key mismatch.'
+  single_signing_key "$work/docker.asc" "$work/docker.gpg" 9DC858229FC7DD38854AE2D88D81803C0EBFCD88 || fail 'Docker signing key mismatch.'
   install -d -m 0755 /etc/apt/keyrings
-  install -m 0644 "$work/docker.asc" /etc/apt/keyrings/shipkeep-docker.asc
+  install -m 0644 "$work/docker.gpg" /etc/apt/keyrings/shipkeep-docker.gpg
   cat > /etc/apt/sources.list.d/shipkeep-docker.sources <<REPO
 Types: deb
 URIs: https://download.docker.com/linux/ubuntu
 Suites: noble
 Components: stable
 Architectures: $(dpkg --print-architecture)
-Signed-By: /etc/apt/keyrings/shipkeep-docker.asc
+Signed-By: /etc/apt/keyrings/shipkeep-docker.gpg
 REPO
   chmod 0644 /etc/apt/sources.list.d/shipkeep-docker.sources
   apt-get update -qq </dev/null
@@ -80,16 +95,15 @@ curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/v1.47/i
 # Upstream's signed repository: the edge proxy needs security updates, and Ubuntu's universe build
 # (2.6.2) neither guarantees them nor supports the socket mode used below.
 curl --fail --silent --show-error --proto '=https' --max-time 60 https://dl.cloudsmith.io/public/caddy/stable/gpg.key -o "$work/caddy.asc"
-key=$(gpg --batch --show-keys --with-colons "$work/caddy.asc" | awk -F: '$1=="fpr" {print $10; exit}')
-[[ $key == 65760C51EDEA2017CEA2CA15155B6D79CA56EA34 ]] || fail 'Caddy signing key mismatch.' # gitleaks:allow (public signing-key fingerprint)
+single_signing_key "$work/caddy.asc" "$work/caddy.gpg" 65760C51EDEA2017CEA2CA15155B6D79CA56EA34 || fail 'Caddy signing key mismatch.' # gitleaks:allow (public signing-key fingerprint)
 install -d -m 0755 /etc/apt/keyrings
-install -m 0644 "$work/caddy.asc" /etc/apt/keyrings/shipkeep-caddy.asc
+install -m 0644 "$work/caddy.gpg" /etc/apt/keyrings/shipkeep-caddy.gpg
 cat > /etc/apt/sources.list.d/shipkeep-caddy.sources <<REPO
 Types: deb
 URIs: https://dl.cloudsmith.io/public/caddy/stable/deb/debian
 Suites: any-version
 Components: main
-Signed-By: /etc/apt/keyrings/shipkeep-caddy.asc
+Signed-By: /etc/apt/keyrings/shipkeep-caddy.gpg
 REPO
 chmod 0644 /etc/apt/sources.list.d/shipkeep-caddy.sources
 apt-get update -qq </dev/null
