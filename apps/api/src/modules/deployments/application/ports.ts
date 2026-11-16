@@ -73,6 +73,12 @@ export interface PipelineStore {
   steps(deploymentId: string): Promise<Map<string, StepOutcome>>;
   nodes(organizationId: string): Promise<NodeView[]>;
   /**
+   * Serializes the placements of one organization until the transaction ends. Taken before the
+   * nodes and their load are read, so that two deployments placed at the same moment cannot
+   * both count the same room as free (SPEC 6).
+   */
+  lockPlacement(organizationId: string): Promise<void>;
+  /**
    * Placed replicas summed per node id, read in one query. With `replacing`, the replicas that
    * release's deployment replaces reserve nothing (SPEC 6).
    */

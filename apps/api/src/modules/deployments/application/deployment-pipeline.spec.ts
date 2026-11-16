@@ -81,6 +81,8 @@ function world(
     { nodeId: string; kind: string | undefined; origin: ActionOrigin }
   >();
   const outcomes = new Map<string, StepOutcome>();
+  /** Store calls that matter for the order of a placement. */
+  const calls: string[] = [];
   const events: DomainEvent[] = [];
   const nodes = options.nodes ?? [
     {
@@ -139,10 +141,18 @@ function world(
       release = { ...release, imageDigest: digest };
       return Promise.resolve(true);
     },
-    nodes: () => Promise.resolve(nodes),
+    lockPlacement: (organizationId) => {
+      calls.push(`lock:${organizationId}`);
+      return Promise.resolve();
+    },
+    nodes: () => {
+      calls.push('nodes');
+      return Promise.resolve(nodes);
+    },
     // Like the store: every placed replica of the organization, from one read.
-    load: (_org, replacing) =>
-      Promise.resolve(
+    load: (_org, replacing) => {
+      calls.push('load');
+      return Promise.resolve(
         nodeLoads(
           [
             ...allocations.filter((a) => !a.stopped).map((a) => ({ ...a, applicationId: APP })),
@@ -154,7 +164,8 @@ function world(
           ],
           replacing,
         ),
-      ),
+      );
+    },
   };
   const secretStore = {
     values: (_target: unknown, names: readonly string[]) =>
@@ -206,6 +217,7 @@ function world(
   };
   return {
     subject,
+    calls,
     events,
     superseded,
     queued,
@@ -362,6 +374,14 @@ describe('DeploymentPipeline', () => {
       });
       expect(w.allocations).toEqual([]);
     });
+  });
+
+  it('takes the placement lock of the organization before it reads nodes and load', async () => {
+    const w = world();
+    await w.subject.run(ORG, w.deployment.id, () => NOW);
+    expect(w.allocations).toHaveLength(1);
+    // Read first and lock second would let two deployments count the same room (#315).
+    expect(w.calls).toEqual([`lock:${ORG}`, 'nodes', 'load']);
   });
 
   it('fails cleanly when the image cannot be resolved', async () => {

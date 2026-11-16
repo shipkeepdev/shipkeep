@@ -189,6 +189,9 @@ export class DeploymentPipeline {
     const { context, application } = loaded;
     const config = context.release.config;
     return this.tenant(application, async () => {
+      // One placement at a time per organization: the next one reads the load only after this
+      // transaction has stored its replicas, or has given up (SPEC 6).
+      await this.pipeline.lockPlacement(application.organizationId);
       const nodes = await this.pipeline.nodes(application.organizationId);
       // The replicas this deployment replaces give their room to the new release (SPEC 6).
       const scheduler = schedulableNodes(

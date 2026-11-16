@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
 import type { ShipkeepConfig } from '@shipkeep/config-schema';
 import { v7 as uuidv7 } from 'uuid';
@@ -145,6 +147,14 @@ export class PrismaPipelineStore implements PipelineStore {
       select: { id: true, organizationId: true, projectId: true, environmentId: true, name: true },
     });
     return row ?? undefined;
+  }
+
+  async lockPlacement(organizationId: string): Promise<void> {
+    // A transaction-level advisory lock: PostgreSQL releases it on commit and on rollback. A hash
+    // collision would only make two organizations wait for each other.
+    const hash = createHash('sha256').update(`shipkeep:placement:${organizationId}`).digest('hex');
+    const lock = BigInt.asIntN(64, BigInt(`0x${hash.slice(0, 16)}`));
+    await this.database.client.$queryRaw`SELECT pg_advisory_xact_lock(${lock})::text`;
   }
 
   async load(organizationId: string, replacing?: ReplacingRelease): Promise<Map<string, NodeLoad>> {
