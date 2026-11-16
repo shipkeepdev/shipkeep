@@ -4,7 +4,7 @@ import { type DomainEvent, InvalidInputError, Secret } from '@shipkeep/domain';
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import type { SecretStore } from '../../secrets/application/ports';
 import type { StepOutcome } from '../domain/pipeline';
-import type { NodeView } from '../domain/placement';
+import type { NodeLoad, NodeView } from '../domain/placement';
 import type { DeploymentRecord, Release } from '../domain/release';
 
 import { DeploymentPipeline } from './deployment-pipeline';
@@ -24,6 +24,8 @@ const APP = '0190f5a8-7b1c-7e2d-8f3a-0123456789ab';
 const NODE = '0190f5a8-7b1c-7e2d-8f3a-00000000000a';
 const DIGEST = `sha256:${'c'.repeat(64)}`;
 const NOW = new Date('2026-11-05T12:00:00Z');
+/** One CPU and 512 MiB: what an application without `resources` runs under (#301). */
+const DEFAULT_LIMITS = { cpuMillis: 1000, memoryBytes: 536_870_912 };
 
 const config: ShipkeepConfig = {
   version: 1,
@@ -40,6 +42,10 @@ function world(
     secrets?: string[];
     resolve?: () => Promise<string>;
     trigger?: DeploymentRecord['trigger'];
+    /** Replicas of the release that serves when the deployment starts. */
+    serving?: StoredAllocation[];
+    /** Replicas of other applications, counted in the load of their node. */
+    neighbours?: Pick<StoredAllocation, 'nodeId' | 'cpuMillis' | 'memoryBytes'>[];
   } = {},
 ) {
   let deployment: DeploymentRecord = {
@@ -67,7 +73,9 @@ function world(
     createdBy: null,
     createdAt: NOW,
   };
-  let allocations: (StoredAllocation & { stopped: boolean })[] = [];
+  let allocations: (StoredAllocation & { stopped: boolean })[] = (options.serving ?? []).map(
+    (allocation) => ({ ...allocation, stopped: false }),
+  );
   const queued = new Map<
     string,
     { nodeId: string; kind: string | undefined; origin: ActionOrigin }
@@ -114,12 +122,10 @@ function world(
     steps: () => Promise.resolve(new Map(outcomes)),
     place: (_org, _app, releaseId, replicas) => {
       if (allocations.some((a) => a.releaseId === releaseId)) return Promise.resolve(false);
-      allocations = replicas.map((r, i) => ({
-        ...r,
-        id: `alloc-${String(i)}`,
-        releaseId,
-        stopped: false,
-      }));
+      allocations = [
+        ...allocations,
+        ...replicas.map((r, i) => ({ ...r, id: `alloc-${String(i)}`, releaseId, stopped: false })),
+      ];
       return Promise.resolve(true);
     },
     stop: (_app, releaseIds) => {
@@ -134,7 +140,23 @@ function world(
       return Promise.resolve(true);
     },
     nodes: () => Promise.resolve(nodes),
-    load: () => Promise.resolve(new Map()),
+    // Like the store: every placed replica of the organization, whatever its release.
+    load: () => {
+      const load = new Map<string, NodeLoad>();
+      const placed = [
+        ...allocations.filter((a) => !a.stopped).map((a) => ({ ...a, applicationId: APP })),
+        ...(options.neighbours ?? []).map((a) => ({ ...a, applicationId: 'other' })),
+      ];
+      for (const a of placed) {
+        const current = load.get(a.nodeId) ?? { cpuMillis: 0, memoryBytes: 0, applications: [] };
+        load.set(a.nodeId, {
+          cpuMillis: current.cpuMillis + a.cpuMillis,
+          memoryBytes: current.memoryBytes + a.memoryBytes,
+          applications: [...new Set([...current.applications, a.applicationId])],
+        });
+      }
+      return Promise.resolve(load);
+    },
   };
   const secretStore = {
     values: (_target: unknown, names: readonly string[]) =>
@@ -289,6 +311,58 @@ describe('DeploymentPipeline', () => {
     expect(w.events.at(-1)).toMatchObject({
       type: 'deployment.failed',
       payload: { routing: 'untouched' },
+    });
+  });
+
+  it('gives an application without resources the default limits, reserved and enforced', async () => {
+    const w = world();
+    await w.subject.run(ORG, w.deployment.id, () => NOW);
+    // The allocation reserves what the container will be limited to (#301).
+    expect(w.allocations).toMatchObject([{ nodeId: NODE, ...DEFAULT_LIMITS }]);
+  });
+
+  describe('on a node the serving release fills', () => {
+    const oneCore: NodeView = {
+      id: NODE,
+      name: 'edge-1',
+      status: 'ready',
+      lastHeartbeatAt: NOW,
+      labels: {},
+      facts: { architecture: 'amd64', cpu_count: 1, memory_bytes: 2 ** 30 },
+    };
+    const serving: StoredAllocation = {
+      id: 'alloc-serving',
+      releaseId: '0190f5a8-7b1c-7e2d-8f3a-00000000000e',
+      index: 0,
+      nodeId: NODE,
+      container: 'sk-billing-api-0123456789ab-r0-0',
+      port: 3000,
+      ...DEFAULT_LIMITS,
+    };
+
+    it('deploys the next release in the room of the one it replaces', async () => {
+      const w = world({ nodes: [oneCore], serving: [serving] });
+      for (
+        let round = 0;
+        round < 10 && (await w.subject.run(ORG, w.deployment.id, () => NOW)) === 'wait';
+        round++
+      )
+        w.agentsFinish();
+      expect(w.deployment).toMatchObject({ state: 'succeeded', error: null });
+      // Only the new release keeps a reservation: the node is exactly full again.
+      expect(w.allocations.filter((a) => !a.stopped)).toMatchObject([
+        { releaseId: w.deployment.releaseId, ...DEFAULT_LIMITS },
+      ]);
+    });
+
+    it('still refuses a release when another application holds the room', async () => {
+      const w = world({ nodes: [oneCore], neighbours: [{ nodeId: NODE, ...DEFAULT_LIMITS }] });
+      await w.subject.run(ORG, w.deployment.id, () => NOW);
+      expect(w.deployment).toMatchObject({
+        state: 'failed',
+        error: 'No node can run replica 1 of 1 (edge-1: cpu).',
+      });
+      expect(w.allocations).toEqual([]);
     });
   });
 

@@ -148,7 +148,18 @@ describe('agent compatibility vectors', () => {
   it('matches the vectors the Go agent validates (agent/internal/actions)', async () => {
     // A full pipeline run, with a fixture secret: the Go test checks every action passes the
     // agent's own validation, so planner and agent cannot drift apart silently.
-    const lines = plannedActions().map(
+    const planned = plannedActions();
+    // The application declares no `resources`: both containers carry the default limits, which
+    // the agent requires (#301).
+    const specs = planned.flatMap((action) =>
+      action.case === 'createContainer' || action.case === 'runReleaseTask'
+        ? [action.value.spec?.resources]
+        : [],
+    );
+    expect(specs).toHaveLength(2);
+    for (const resources of specs)
+      expect(resources).toMatchObject({ cpuMillis: 1000, memoryBytes: 536_870_912n });
+    const lines = planned.map(
       (action) =>
         `${action.case ?? ''} ${Buffer.from(
           toBinary(ActionRequestSchema, create(ActionRequestSchema, { action })),

@@ -64,7 +64,7 @@ export function plannedActions(): ActionRequest['action'][] {
           build: { type: 'image', image: 'ghcr.io/acme/billing:1.4.2' },
           run: { port: 3000, command: ['node', 'main.js'], healthcheck: { path: '/health' } },
           release: { command: ['node', 'migrate.js'] },
-          resources: { cpu: '0.5', memory: '512Mi' },
+          // No `resources`: the vectors carry the default limits, which the agent must accept.
           domains: ['api.acme.example.com'],
           env: { LOG_LEVEL: 'info' },
           secrets: ['DATABASE_URL'],

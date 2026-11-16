@@ -21,11 +21,11 @@ export type Command = string[];
  */
 export type Duration = string;
 /**
- * CPU limit in cores ("0.5") or millicores ("500m").
+ * CPU limit in cores ("0.5") or millicores ("500m"), greater than zero.
  */
 export type Cpu = string;
 /**
- * Kubernetes-style size, for example 512Mi or 2Gi. A bare number is bytes.
+ * Kubernetes-style size, for example 512Mi or 2Gi. A bare number is bytes. Zero is not a size.
  */
 export type Size = string;
 /**
@@ -154,6 +154,9 @@ export interface Release {
   command: Command;
   timeout?: Duration;
 }
+/**
+ * CPU and memory limit of each container, which is also what placement reserves on the node. A limit left out is 1 CPU, or 512Mi of memory.
+ */
 export interface Resources {
   cpu?: Cpu;
   memory?: Size;

@@ -1,0 +1,9 @@
+version: 1
+name: api
+build:
+  type: dockerfile
+run:
+  port: 3000
+resources:
+  cpu: '0.05'
+  memory: 10Mi

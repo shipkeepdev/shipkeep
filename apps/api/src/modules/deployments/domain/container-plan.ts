@@ -1,5 +1,5 @@
-import type { ShipkeepConfig } from '@shipkeep/config-schema';
-import { InvalidInputError } from '@shipkeep/domain';
+import { DEFAULT_RESOURCES, type ShipkeepConfig } from '@shipkeep/config-schema';
+import { InvalidInputError, type Resources } from '@shipkeep/domain';
 
 /** What the pipeline asks an agent to run; the worker turns it into a proto `ContainerSpec`. */
 export interface ContainerPlan {
@@ -49,25 +49,33 @@ const DURATION_UNITS: ReadonlyMap<string, number> = new Map([
   ['h', 3.6e6],
 ]);
 
-/** `0.5` or `500m` (SPEC 2) as whole millicores. */
-export function cpuMillis(value: string | undefined): number {
-  if (value === undefined) return 0;
+/** `0.5` or `500m` (SPEC 2) as whole millicores, at least one. Zero is refused, not unlimited. */
+export function cpuMillis(value: string): number {
   const millis = /^([0-9]+)m$/.exec(value);
   const cores = /^([0-9]+(?:\.[0-9]+)?)$/.exec(value);
-  const result = millis?.[1]
-    ? Number(millis[1])
-    : cores?.[1]
-      ? Math.round(Number(cores[1]) * 1000)
-      : NaN;
-  return bounded(result, 'cpu');
+  const amount = millis?.[1] ? Number(millis[1]) : cores?.[1] ? Number(cores[1]) * 1000 : NaN;
+  // A positive amount below one millicore is one millicore: rounding must not remove the limit.
+  return positive(amount > 0 ? Math.max(1, Math.round(amount)) : amount, 'cpu');
 }
 
-/** Kubernetes-style size (`512Mi`, `2G`, bare bytes) as bytes. */
-export function sizeBytes(value: string | undefined): number {
-  if (value === undefined) return 0;
+/** Kubernetes-style size (`512Mi`, `2G`, bare bytes) as bytes. Zero is refused, not unlimited. */
+export function sizeBytes(value: string): number {
   const match = /^([0-9]+)(Ki|Mi|Gi|Ti|K|M|G|T)?$/.exec(value);
   const unit = SIZE_UNITS[match?.[2] ?? ''];
-  return bounded(match?.[1] && unit ? Number(match[1]) * unit : NaN, 'memory');
+  return positive(match?.[1] && unit ? Number(match[1]) * unit : NaN, 'memory');
+}
+
+/**
+ * The CPU and memory limit of each container of the application: what `resources` declares, and
+ * `DEFAULT_RESOURCES` (one CPU, 512 MiB) for what it leaves out. A container never runs without
+ * both, so one application cannot starve the others on its node. Placement reserves exactly
+ * these values, the allocation records them and the agent enforces them.
+ */
+export function resourceLimits(config: ShipkeepConfig): Resources {
+  return {
+    cpuMillis: cpuMillis(config.resources?.cpu ?? DEFAULT_RESOURCES.cpu),
+    memoryBytes: sizeBytes(config.resources?.memory ?? DEFAULT_RESOURCES.memory),
+  };
 }
 
 /** Go-style duration (`30s`, `1m30s`, `500ms`) in milliseconds. */
@@ -118,8 +126,7 @@ export function containerPlan(input: {
     port: input.task ? null : (config.run?.port ?? null),
     network: input.network,
     labels: input.labels,
-    cpuMillis: cpuMillis(config.resources?.cpu),
-    memoryBytes: sizeBytes(config.resources?.memory),
+    ...resourceLimits(config),
     restart: input.task ? 'never' : 'always',
   };
 }
@@ -142,5 +149,14 @@ export function healthPlan(config: ShipkeepConfig): HealthPlan | null {
 function bounded(value: number, what: string): number {
   if (!Number.isSafeInteger(value) || value < 0)
     throw new InvalidInputError('invalid_application_config', `The ${what} value is invalid.`);
+  return value;
+}
+
+function positive(value: number, what: string): number {
+  if (bounded(value, what) === 0)
+    throw new InvalidInputError(
+      'invalid_application_config',
+      `The ${what} limit must be greater than zero.`,
+    );
   return value;
 }

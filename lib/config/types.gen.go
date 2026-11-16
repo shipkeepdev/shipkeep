@@ -52,7 +52,7 @@ type ComposeExposeElem struct {
 // /proc, /sys, /dev, /etc or /var/run.
 type ContainerPath string
 
-// CPU limit in cores ("0.5") or millicores ("500m").
+// CPU limit in cores ("0.5") or millicores ("500m"), greater than zero.
 type Cpu string
 
 // Five-field cron expression.
@@ -153,6 +153,8 @@ type Release struct {
 // Name of a volume, database or node.
 type ResourceName string
 
+// CPU and memory limit of each container, which is also what placement reserves on
+// the node. A limit left out is 1 CPU, or 512Mi of memory.
 type Resources struct {
 	// Cpu corresponds to the JSON schema field "cpu".
 	Cpu *Cpu `json:"cpu,omitempty,omitzero" yaml:"cpu,omitempty" mapstructure:"cpu,omitempty"`
@@ -250,7 +252,8 @@ type ShipkeepConfig struct {
 	Volumes Volumes `json:"volumes,omitempty,omitzero" yaml:"volumes,omitempty" mapstructure:"volumes,omitempty"`
 }
 
-// Kubernetes-style size, for example 512Mi or 2Gi. A bare number is bytes.
+// Kubernetes-style size, for example 512Mi or 2Gi. A bare number is bytes. Zero is
+// not a size.
 type Size string
 
 type Volumes []struct {

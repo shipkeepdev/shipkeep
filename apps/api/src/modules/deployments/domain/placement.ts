@@ -3,7 +3,7 @@ import type { PlacementRequest, SchedulableNode } from '@shipkeep/domain';
 
 import { observedStatus } from '../../fleet/domain/node';
 
-import { cpuMillis, sizeBytes } from './container-plan';
+import { resourceLimits } from './container-plan';
 
 /** What placement needs from a node record. */
 export interface NodeView {
@@ -67,15 +67,42 @@ export function schedulableNodes(
     });
 }
 
-/** The placement request of an image application's replicas (SPEC 2 `scale`, `resources`). */
+/**
+ * The load of the nodes without the replicas a deployment replaces (SPEC 6). Those replicas stop
+ * when it succeeds, and its own replicas are removed when it fails, so only one of the two
+ * releases keeps its reservation. Counting both would refuse every new release of an application
+ * on a node that the application fills. `applications` is kept: it only ranks nodes for spread.
+ */
+export function withoutReplaced(
+  load: ReadonlyMap<string, NodeLoad>,
+  replaced: readonly {
+    readonly nodeId: string;
+    readonly cpuMillis: number;
+    readonly memoryBytes: number;
+  }[],
+): Map<string, NodeLoad> {
+  const result = new Map(load);
+  for (const replica of replaced) {
+    const current = result.get(replica.nodeId);
+    if (current)
+      result.set(replica.nodeId, {
+        ...current,
+        cpuMillis: Math.max(0, current.cpuMillis - replica.cpuMillis),
+        memoryBytes: Math.max(0, current.memoryBytes - replica.memoryBytes),
+      });
+  }
+  return result;
+}
+
+/**
+ * The placement request of an image application's replicas (SPEC 2 `scale`, `resources`). It
+ * reserves the limits the containers run under, defaults included.
+ */
 export function placementRequest(applicationId: string, config: ShipkeepConfig): PlacementRequest {
   return {
     app: applicationId,
     architectures: ARCHITECTURES,
-    resources: {
-      cpuMillis: cpuMillis(config.resources?.cpu),
-      memoryBytes: sizeBytes(config.resources?.memory),
-    },
+    resources: resourceLimits(config),
     labels: Object.fromEntries(
       Object.entries(config.scale?.placement?.labels ?? {}).filter(
         (entry): entry is [string, string] => typeof entry[1] === 'string',

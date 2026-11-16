@@ -117,10 +117,13 @@ describe('deployment pipeline with PostgreSQL and pg-boss', () => {
           deployment_id: deploymentId,
         },
       ]);
-      const placed = await admin.query('SELECT replica FROM allocations WHERE node_id = $1', [
-        nodeId,
-      ]);
-      expect(placed.rowCount).toBe(1);
+      const placed = await admin.query<{
+        replica: number;
+        cpu_millis: number;
+        memory_bytes: string;
+      }>('SELECT replica, cpu_millis, memory_bytes FROM allocations WHERE node_id = $1', [nodeId]);
+      // No `resources` in the configuration: the replica reserves the default limits (#301).
+      expect(placed.rows).toEqual([{ replica: 0, cpu_millis: 1000, memory_bytes: '536870912' }]);
     } finally {
       await admin.end();
     }

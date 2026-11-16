@@ -14,7 +14,7 @@ import {
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { SECRET_STORE, type SecretStore } from '../../secrets/application/ports';
-import { containerName, cpuMillis, sizeBytes } from '../domain/container-plan';
+import { containerName } from '../domain/container-plan';
 import { parseImageReference, pinnedReference } from '../domain/image-reference';
 import {
   type PipelineContext,
@@ -23,7 +23,7 @@ import {
   plan,
   recovery,
 } from '../domain/pipeline';
-import { placementRequest, schedulableNodes } from '../domain/placement';
+import { placementRequest, schedulableNodes, withoutReplaced } from '../domain/placement';
 import type { DeploymentRecord } from '../domain/release';
 import { agentAction, type SecretValues } from '../infrastructure/agent-steps';
 
@@ -39,6 +39,7 @@ import {
   PIPELINE_STORE,
   type PipelineApplication,
   type PipelineStore,
+  type StoredAllocation,
 } from './ports';
 
 /** Agent actions get an hour: release tasks and health probes are bounded well below it. */
@@ -51,6 +52,8 @@ interface Loaded {
   readonly application: PipelineApplication;
   /** Releases whose replicas this deployment replaces. */
   readonly previousReleases: readonly string[];
+  /** Those replicas with what they reserve: room the new release takes over (SPEC 6). */
+  readonly replaced: readonly StoredAllocation[];
 }
 
 /**
@@ -163,6 +166,7 @@ export class DeploymentPipeline {
     return {
       application,
       previousReleases: [...new Set(previous.map((a) => a.releaseId))],
+      replaced: previous,
       context: {
         deployment,
         application: {
@@ -190,9 +194,10 @@ export class DeploymentPipeline {
     const config = context.release.config;
     return this.tenant(application, async () => {
       const nodes = await this.pipeline.nodes(application.organizationId);
+      // The replicas this deployment replaces give their room to the new release (SPEC 6).
       const scheduler = schedulableNodes(
         nodes,
-        await this.pipeline.load(application.organizationId),
+        withoutReplaced(await this.pipeline.load(application.organizationId), loaded.replaced),
         now,
       );
       const request = placementRequest(application.id, config);
@@ -216,8 +221,8 @@ export class DeploymentPipeline {
         nodeId: ids.get(name) ?? '',
         container: containerName(application, context.release.number, index),
         port: config.run?.port ?? 0,
-        cpuMillis: cpuMillis(config.resources?.cpu),
-        memoryBytes: sizeBytes(config.resources?.memory),
+        // What placement reserved, which is also what the container plan enforces.
+        ...request.resources,
       }));
       if (
         await this.pipeline.place(

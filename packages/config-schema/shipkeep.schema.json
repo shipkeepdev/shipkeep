@@ -58,15 +58,17 @@
       "maxLength": 32
     },
     "size": {
-      "description": "Kubernetes-style size, for example 512Mi or 2Gi. A bare number is bytes.",
+      "description": "Kubernetes-style size, for example 512Mi or 2Gi. A bare number is bytes. Zero is not a size.",
       "type": "string",
       "pattern": "^[0-9]+(Ki|Mi|Gi|Ti|K|M|G|T)?$",
+      "not": { "pattern": "^0+[A-Za-z]*$" },
       "maxLength": 32
     },
     "cpu": {
-      "description": "CPU limit in cores (\"0.5\") or millicores (\"500m\").",
+      "description": "CPU limit in cores (\"0.5\") or millicores (\"500m\"), greater than zero.",
       "type": "string",
       "pattern": "^([0-9]+(\\.[0-9]+)?|[0-9]+m)$",
+      "not": { "pattern": "^0+(\\.0+)?m?$" },
       "maxLength": 16
     },
     "hostname": {
@@ -214,6 +216,7 @@
       }
     },
     "resources": {
+      "description": "CPU and memory limit of each container, which is also what placement reserves on the node. A limit left out is 1 CPU, or 512Mi of memory.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
