@@ -135,9 +135,17 @@ describe('withoutReplaced', () => {
     expect(
       placeReplicas(other, 1, schedulableNodes([oneCore], withoutReplaced(load, []), NOW)),
     ).toEqual({ nodes: [], unplaced: 1 });
+    // A replica on a node missing from the load frees nothing anywhere.
+    expect(withoutReplaced(load, [{ nodeId: 'id-edge-3', ...DEFAULT_LIMITS }])).toEqual(load);
+    // A replica on edge-2 frees room on edge-2 only.
     expect(
-      withoutReplaced(load, [{ nodeId: 'id-edge-3', ...DEFAULT_LIMITS }]).get('id-edge-2'),
-    ).toEqual(load.get('id-edge-2'));
+      withoutReplaced(load, [{ nodeId: 'id-edge-2', cpuMillis: 500, memoryBytes: 2 ** 20 }]),
+    ).toEqual(
+      new Map([
+        ['id-edge-1', single],
+        ['id-edge-2', { cpuMillis: 0, memoryBytes: 0, applications: ['app-b'] }],
+      ]),
+    );
   });
 
   it('never reports a negative load', () => {
