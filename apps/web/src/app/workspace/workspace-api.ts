@@ -13,6 +13,7 @@ export type Schema<T extends keyof components['schemas']> = components['schemas'
 export type Organization = Schema<'OrganizationDto'>;
 export type Project = Schema<'ProjectDto'>;
 export type Environment = Schema<'EnvironmentDto'>;
+export type RegistryCredentials = Schema<'RegistryCredentialsDto'>;
 type Result<T> = { data?: T; error?: unknown; response: Response };
 
 /** Session-cookie client for organizations, projects and environments (same origin only). */
@@ -150,6 +151,36 @@ export class WorkspaceApi {
           params: { ...this.mutation(key), path: { organizationId, projectId, environmentId } },
         },
       ),
+    );
+  }
+
+  /** Registry credentials of the organization (ADR 0019). The password is never returned. */
+  async registries(organizationId: string): Promise<readonly RegistryCredentials[]> {
+    return (
+      await this.required(() =>
+        this.client.GET('/api/v1/organizations/{organizationId}/registries', {
+          params: { path: { organizationId } },
+        }),
+      )
+    ).items;
+  }
+  /** Stores the credentials of one registry, or replaces them. */
+  setRegistry(
+    organizationId: string,
+    body: Schema<'SetRegistryCredentialsDto'>,
+  ): Promise<RegistryCredentials> {
+    return this.required(() =>
+      this.client.POST('/api/v1/organizations/{organizationId}/registries', {
+        body,
+        params: { path: { organizationId } },
+      }),
+    );
+  }
+  async removeRegistry(organizationId: string, registryId: string): Promise<void> {
+    await this.execute(() =>
+      this.client.POST('/api/v1/organizations/{organizationId}/registries/{registryId}/remove', {
+        params: { path: { organizationId, registryId } },
+      }),
     );
   }
 

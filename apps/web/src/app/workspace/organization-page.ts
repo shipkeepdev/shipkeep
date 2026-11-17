@@ -19,6 +19,7 @@ import { type IconName } from '../shell/icons';
 import { ShellContext } from '../shell/shell-context';
 import { T } from '../ui/i18n';
 import { OrganizationSettings } from './organization-settings';
+import { RegistryCredentials } from './registry-credentials';
 import { type Organization, WorkspaceApi } from './workspace-api';
 
 interface OrgSection {
@@ -30,6 +31,7 @@ const SECTIONS: readonly OrgSection[] = [
   { k: 'general', label: 'General', icon: 'building' },
   { k: 'members', label: 'Members', icon: 'users' },
   { k: 'invites', label: 'Invitations', icon: 'mail-forward' },
+  { k: 'registries', label: 'Registries', icon: 'packages' },
   { k: 'audit', label: 'Audit log', icon: 'history' },
   { k: 'danger', label: 'Danger zone', icon: 'alert-triangle' },
 ];
@@ -44,7 +46,7 @@ const DANGER: Block = {
 /** 20 Organization: its name and identifier, members, and what can end it. */
 @Component({
   selector: 'sk-organization-page',
-  imports: [BlockView, Icon, OrganizationSettings, RouterLink, T],
+  imports: [BlockView, Icon, OrganizationSettings, RegistryCredentials, RouterLink, T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-[18px]">
@@ -111,6 +113,9 @@ const DANGER: Block = {
                     | t
                 }}</span>
               </div>
+            }
+            @case ('registries') {
+              <sk-registry-credentials [organizationId]="organizationId()" />
             }
             @case ('audit') {
               <div class="note">
