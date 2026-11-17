@@ -102,7 +102,7 @@ export class PrismaRegistryCredentialStore implements RegistryCredentialStore {
   /** Serializes additions for one organization until the transaction ends. */
   private async lock(organizationId: string): Promise<void> {
     await this.database.client
-      .$queryRaw`SELECT pg_advisory_xact_lock(${lockKey(organizationId)})::text`;
+      .$queryRaw`SELECT pg_advisory_xact_lock(${registryLockKey(organizationId)})::text`;
   }
 
   async remove(
@@ -186,8 +186,11 @@ function metadata(row: {
     updatedAt: row.updatedAt,
   };
 }
-/** A transaction-level advisory lock; a hash collision only makes two organizations wait. */
-function lockKey(organizationId: string): bigint {
+/**
+ * The key of the transaction-level advisory lock that serializes additions for an organization.
+ * A hash collision only makes two organizations wait for each other.
+ */
+export function registryLockKey(organizationId: string): bigint {
   const hash = createHash('sha256').update(`shipkeep:registries:${organizationId}`).digest('hex');
   return BigInt.asIntN(64, BigInt(`0x${hash.slice(0, 16)}`));
 }
