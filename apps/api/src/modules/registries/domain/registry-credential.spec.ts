@@ -61,7 +61,15 @@ describe('registry username and password', () => {
   });
 
   it('refuses empty, oversized and control-character values, without echoing them', () => {
-    for (const name of ['', ' ', 'x'.repeat(257), 'de\nploy', 'de\u0000ploy', 'dé ploy\u007f'])
+    for (const name of [
+      '',
+      ' ',
+      'x'.repeat(257),
+      'de\nploy',
+      'de\u0000ploy',
+      'dé ploy\u007f',
+      'deploy:extra',
+    ])
       expect(() => {
         assertRegistryUsername(name);
       }).toThrow(expect.objectContaining({ code: 'invalid_registry_username' }));

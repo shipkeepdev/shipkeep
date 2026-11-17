@@ -2,8 +2,10 @@ import { createHash } from 'node:crypto';
 
 import { InvalidInputError, Secret } from '@shipkeep/domain';
 
+import type { RegistryLogin } from '../../../registries/domain/registry-credential';
 import type { ImageResolver } from '../../application/ports';
 import {
+  credentialServer,
   type ImageReference,
   parseImageReference,
   pinnedReference,
@@ -31,9 +33,10 @@ const DIGEST = /^sha256:[a-f0-9]{64}$/;
 const MAX_TOKEN = 8192;
 
 /**
- * Resolves image tags to digests with the registry HTTP API v2 (ADR 0012), anonymously: public
- * images only until registry credentials exist. Every request goes through the SSRF-guarded
- * transport, and a reference already pinned by digest passes the same address policy. Errors name the registry and the status, never tokens.
+ * Resolves image tags to digests with the registry HTTP API v2 (ADR 0012): anonymously, or with
+ * the credentials the organization stored for the image's registry (ADR 0019). Every request
+ * goes through the SSRF-guarded transport, and a reference already pinned by digest passes the
+ * same address policy. Errors name the registry and the status, never tokens or passwords.
  */
 export class RegistryResolver implements ImageResolver {
   private readonly transport: RegistryTransport;
@@ -45,8 +48,10 @@ export class RegistryResolver implements ImageResolver {
     this.checkHost = checkHost ?? publicRegistryHost();
   }
 
-  async resolve(reference: string): Promise<string> {
+  async resolve(reference: string, login?: RegistryLogin): Promise<string> {
     const image = parseImageReference(reference);
+    // Credentials of another registry are never used, whatever the caller passed.
+    const account = login && login.server === credentialServer(image) ? login : undefined;
     try {
       if (image.digest) {
         // Nothing to look up, but the node will pull from this registry: a digest must not be a
@@ -54,7 +59,7 @@ export class RegistryResolver implements ImageResolver {
         await this.checkHost(image.registry);
         return pinnedReference(image, image.digest);
       }
-      return pinnedReference(image, await this.digestOf(image));
+      return pinnedReference(image, await this.digestOf(image, account));
     } catch (error: unknown) {
       if (error instanceof InvalidInputError) throw error;
       throw failure(
@@ -64,17 +69,26 @@ export class RegistryResolver implements ImageResolver {
     }
   }
 
-  private async digestOf(image: ImageReference): Promise<string> {
+  private async digestOf(image: ImageReference, login: RegistryLogin | undefined): Promise<string> {
     const url = new URL(
       `https://${image.registry}/v2/${image.repository}/manifests/${image.tag ?? 'latest'}`,
     );
     const headers: Record<string, string> = { Accept: ACCEPT };
+    // The first request carries nothing: credentials are sent only once the registry asks.
     let response = await this.request(url, { method: 'HEAD', headers });
     if (response.status === 401) {
-      const token = await this.token(image, response.headers['www-authenticate']);
-      headers['Authorization'] = `Bearer ${token.expose()}`;
+      const challenge = response.headers['www-authenticate'];
+      if (/^Basic(\s|$)/i.test(challenge ?? '')) {
+        if (!login) throw failure(image, PRIVATE);
+        headers['Authorization'] = basic(login);
+      } else {
+        const token = await this.token(image, challenge, login);
+        headers['Authorization'] = `Bearer ${token.expose()}`;
+      }
       response = await this.request(url, { method: 'HEAD', headers });
     }
+    if (response.status === 401 || response.status === 403)
+      throw failure(image, login ? REFUSED : PRIVATE);
     if (response.status === 404) throw failure(image, 'the image or tag does not exist');
     if (response.status !== 200)
       throw failure(image, `the registry answered ${String(response.status)}`);
@@ -96,8 +110,16 @@ export class RegistryResolver implements ImageResolver {
     return this.transport.request(url, init);
   }
 
-  /** Anonymous pull token from the realm the registry names (Docker token protocol). */
-  private async token(image: ImageReference, challenge: string | undefined): Promise<Secret> {
+  /**
+   * Pull token from the realm the registry names (Docker token protocol): anonymous, or asked
+   * with the stored credentials. The realm is the registry's own choice, as for `docker login`,
+   * and it goes through the same guarded transport: HTTPS, public addresses, no redirect.
+   */
+  private async token(
+    image: ImageReference,
+    challenge: string | undefined,
+    login: RegistryLogin | undefined,
+  ): Promise<Secret> {
     const parameters = bearerChallenge(challenge);
     const realm = parameters?.get('realm');
     if (!realm) throw failure(image, 'the registry requires an unsupported authentication');
@@ -112,8 +134,10 @@ export class RegistryResolver implements ImageResolver {
     url.searchParams.set('scope', `repository:${image.repository}:pull`);
     const response = await this.request(url, {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', ...(login ? { Authorization: basic(login) } : {}) },
     });
+    if (login && (response.status === 401 || response.status === 403))
+      throw failure(image, REFUSED);
     if (response.status !== 200)
       throw failure(image, `the token service answered ${String(response.status)}`);
     let body: unknown;
@@ -131,6 +155,15 @@ export class RegistryResolver implements ImageResolver {
       throw failure(image, 'the token service sent no usable token');
     return new Secret(value);
   }
+}
+
+const REFUSED = 'the registry refused the stored credentials';
+const PRIVATE =
+  'the registry refused anonymous access; store credentials for this registry if the image is private';
+
+/** HTTP Basic credentials, built at the point of use and never logged. */
+function basic(login: RegistryLogin): string {
+  return `Basic ${Buffer.from(`${login.username}:${login.password.expose()}`, 'utf8').toString('base64')}`;
 }
 
 /** Parses `Bearer realm="…",service="…",scope="…"`; undefined for other schemes. */

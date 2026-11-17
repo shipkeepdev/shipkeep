@@ -62,11 +62,13 @@ export function assertRegistryUsername(username: string): void {
   if (
     username.trim().length === 0 ||
     new TextEncoder().encode(username).length > MAX_USERNAME_BYTES ||
-    CONTROL.test(username)
+    CONTROL.test(username) ||
+    // HTTP Basic authentication separates the user name from the password with a colon.
+    username.includes(':')
   )
     throw new InvalidInputError(
       'invalid_registry_username',
-      'The user name must have 1 to 256 bytes and no control character.',
+      'The user name must have 1 to 256 bytes, no control character and no colon.',
     );
 }
 

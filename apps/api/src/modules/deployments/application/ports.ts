@@ -1,5 +1,6 @@
 import type { Actor, DeploymentState } from '@shipkeep/domain';
 import type { ActionRequest } from '@shipkeep/proto-ts';
+import type { RegistryLogin } from '../../registries/domain/registry-credential';
 
 import type { Application } from '../../apps/domain/application';
 import type { AgentActionView } from '../../fleet/domain/agent-action';
@@ -146,8 +147,12 @@ export interface ActionHistory {
 export const IMAGE_RESOLVER = Symbol('ImageResolver');
 /** Turns an image reference into the digest-pinned form agents accept (ADR 0012). */
 export interface ImageResolver {
-  /** Returns `<name>@sha256:…`; throws `image_resolution_failed` or `invalid_image_reference`. */
-  resolve(reference: string): Promise<string>;
+  /**
+   * Returns `<name>@sha256:…`; throws `image_resolution_failed` or `invalid_image_reference`.
+   * `login` is what the organization stored for the image's registry (ADR 0019); it is used only
+   * for that registry and only when the registry asks.
+   */
+  resolve(reference: string, login?: RegistryLogin): Promise<string>;
 }
 
 export const DEPLOYMENT_TRANSACTION = Symbol('DeploymentTransaction');

@@ -1,5 +1,7 @@
 import { InvalidInputError } from '@shipkeep/domain';
 
+import { DOCKER_HUB_SERVER } from '../../registries/domain/registry-credential';
+
 /** Docker Hub serves its registry API from this host. */
 export const DOCKER_HUB_REGISTRY = 'registry-1.docker.io';
 /** Names people write for Docker Hub. None of them serves the registry API. */
@@ -91,6 +93,15 @@ function looksLikeHost(component: string): boolean {
 /** Docker Hub repositories are recorded without a host, and official images without `library/`. */
 function familiarHubName(path: readonly string[]): string {
   return path.length === 2 && path[0] === 'library' ? (path[1] ?? '') : path.join('/');
+}
+
+/**
+ * The name an organization stores this image's registry credentials under (ADR 0019): the
+ * registry host and port as the reference names it, and `docker.io` for Docker Hub, whose API
+ * host nobody writes.
+ */
+export function credentialServer(image: Pick<ImageReference, 'registry'>): string {
+  return image.registry === DOCKER_HUB_REGISTRY ? DOCKER_HUB_SERVER : image.registry;
 }
 
 /** The digest-pinned reference the agent accepts (`PullImage`, `ContainerSpec.image_ref`). */
