@@ -101,6 +101,9 @@ func TestPullNamesItsCauseWithoutTheDaemonText(t *testing.T) {
 		{`failed to resolve reference "registry.example.com/acme/app@` + digest + `": pull access denied, repository does not exist or may require authorization: authorization failed: no basic auth credentials`, CauseRegistryDenied},
 		{`failed to resolve reference "docker.io/acme/app@` + digest + `": failed to authorize: failed to fetch oauth token: unexpected status from GET request to https://auth.docker.io/token?scope=repository%3Aacme%2Fapp%3Apull&service=registry.docker.io: 401 Unauthorized`, CauseRegistryDenied},
 		{`failed to resolve reference "ghcr.io/acme/app@` + digest + `": ghcr.io/acme/app@` + digest + `: not found`, CauseImageNotFound},
+		// A registry that will not say whether the repository is missing or private: a refusal first,
+		// because the credentials are what the reader can check.
+		{`unauthorized: repository acme/app not found or access denied`, CauseRegistryDenied},
 		// classic image store
 		{`unauthorized: incorrect username or password`, CauseRegistryDenied},
 		{`pull access denied for acme/app, repository does not exist or may require 'docker login': denied: requested access to the resource is denied`, CauseRegistryDenied},
@@ -112,8 +115,10 @@ func TestPullNamesItsCauseWithoutTheDaemonText(t *testing.T) {
 		{`Get "https://registry.example.com/v2/": net/http: request canceled while waiting for connection (Client.Timeout exceeded while awaiting headers)`, CauseRegistryUnreachable},
 		{`Get "https://registry.example.com/v2/": tls: failed to verify certificate: x509: certificate signed by unknown authority`, CauseRegistryUntrusted},
 		{`failed to register layer: write /var/lib/docker/overlay2/abc/diff/app: no space left on device`, CauseDiskFull},
-		// A registry that answers "denied" while its disk is full is still a full disk on the server.
-		{`write /var/lib/containerd/io.containerd.content.v1.content/ingest/x: no space left on device: denied`, CauseDiskFull},
+		// A full disk also cuts the download short: it is still a full disk, not a network failure.
+		{`failed to copy: write /var/lib/containerd/io.containerd.content.v1.content/ingest/x/data: no space left on device: unexpected EOF`, CauseDiskFull},
+		// And an untrusted certificate is not a registry that cannot be reached.
+		{`Get "https://registry.example.com/v2/": tls: failed to verify certificate: x509: certificate has expired or is not yet valid: connection reset by peer`, CauseRegistryUntrusted},
 		{`something nobody has seen yet, with https://deploy:sk_test_fake_registry_password@registry.example.com/v2/ in it`, ""},
 		{strings.Repeat("x", 1<<20), ""},
 	}
