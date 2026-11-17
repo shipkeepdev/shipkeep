@@ -135,7 +135,7 @@ func pullImage(engine Engine, action *agentv1.PullImage) (journal.Plan, error) {
 	if len(ref) > maxImageRef || match == nil {
 		return journal.Plan{}, errInput
 	}
-	registry := strings.TrimSuffix(match[1], "/")
+	registry := registryOf(strings.TrimSuffix(match[1], "/"))
 	repository, digest := strings.TrimSuffix(ref, "@"+match[3]), match[3]
 	auth, err := registryAuth(action.GetRegistryCredentials(), registry)
 	if err != nil {
@@ -164,6 +164,19 @@ func pullImage(engine Engine, action *agentv1.PullImage) (journal.Plan, error) {
 func present(ctx context.Context, engine Engine, ref string) bool {
 	image, err := engine.Image(ctx, ref)
 	return err == nil && slices.Contains(image.RepoDigests, ref)
+}
+
+// dockerHub is the name Docker Hub credentials are stored and sent under (ADR 0019).
+const dockerHub = "docker.io"
+
+// registryOf names the registry a reference is pulled from, the way the Docker daemon reads it:
+// the first path component is a host only when it holds a dot or a port, or is localhost.
+// Anything else is a Docker Hub namespace, so credentials named "acme" never match "acme/app".
+func registryOf(first string) string {
+	if strings.ContainsAny(first, ".:") || first == "localhost" {
+		return first
+	}
+	return dockerHub
 }
 
 // registryAuth accepts only short-lived credentials for the image's own registry.

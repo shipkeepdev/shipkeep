@@ -156,7 +156,8 @@ message ContainerSpec {
 
 // Short-lived credentials for a registry pull or push.
 message RegistryCredentials {
-  // Registry host, for example `registry.internal:5000`.
+  // Registry host, for example `registry.internal:5000`, and `docker.io` for Docker Hub. For a
+  // pull it must be the registry the image reference names (ADR 0019).
   string server = 1;
   string username = 2;
   string password = 3 [debug_redact = true];

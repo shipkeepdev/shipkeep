@@ -1096,7 +1096,8 @@ func (x *ContainerSpec) GetStopTimeout() *durationpb.Duration {
 // Short-lived credentials for a registry pull or push.
 type RegistryCredentials struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// Registry host, for example `registry.internal:5000`.
+	// Registry host, for example `registry.internal:5000`, and `docker.io` for Docker Hub. For a
+	// pull it must be the registry the image reference names (ADR 0019).
 	Server        string                 `protobuf:"bytes,1,opt,name=server,proto3" json:"server,omitempty"`
 	Username      string                 `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
 	Password      string                 `protobuf:"bytes,3,opt,name=password,proto3" json:"password,omitempty"`

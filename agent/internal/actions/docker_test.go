@@ -190,6 +190,28 @@ func TestPullImageRequiresDigestsAndScopedCredentials(t *testing.T) {
 	}
 }
 
+// Docker reads the first path component as a registry only when it holds a dot or a port, or is
+// localhost. Every other reference lives on Docker Hub, whose credentials are named docker.io.
+func TestPullImageSendsDockerHubCredentialsToDockerHubOnly(t *testing.T) {
+	hub := func() *agentv1.RegistryCredentials {
+		return &agentv1.RegistryCredentials{Server: "docker.io", Username: "deploy", Password: "short-lived", ExpiresAt: timestamppb.New(time.Now().Add(time.Minute))}
+	}
+	for _, ref := range []string{"nginx@" + digest, "acme/api@" + digest, "acme/team/api@" + digest, "docker.io/acme/api@" + digest} {
+		engine := newFakeEngine()
+		update := run(t, engine, &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: ref, RegistryCredentials: hub()}}})
+		if !succeeded(update) || engine.auth == nil || engine.auth.Server != "docker.io" || engine.auth.Password.Expose() != "short-lived" {
+			t.Fatalf("%s: Docker Hub credentials not used: %v", ref, update)
+		}
+	}
+	for _, ref := range []string{"ghcr.io/acme/api@" + digest, "localhost/api@" + digest, "registry:5000/api@" + digest, "docker.io.example.com/acme/api@" + digest, "index.docker.io/acme/api@" + digest} {
+		engine := newFakeEngine()
+		update := run(t, engine, &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: ref, RegistryCredentials: hub()}}})
+		if update.GetState() != agentv1.OperationState_OPERATION_STATE_FAILED || update.GetError() != errInvalid || len(engine.pulls) != 0 {
+			t.Fatalf("%s: Docker Hub credentials reached another registry: %v", ref, update)
+		}
+	}
+}
+
 func TestDockerHandlersRejectMaliciousInput(t *testing.T) {
 	expired := &agentv1.RegistryCredentials{Server: "registry.internal", Username: "u", Password: "p", ExpiresAt: timestamppb.New(time.Now().Add(-time.Minute))}
 	foreign := &agentv1.RegistryCredentials{Server: "evil.example.com", Username: "u", Password: "p", ExpiresAt: timestamppb.New(time.Now().Add(time.Minute))}
@@ -204,6 +226,11 @@ func TestDockerHandlersRejectMaliciousInput(t *testing.T) {
 	cases["expired credentials"] = &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: "registry.internal/app@" + digest, RegistryCredentials: expired}}}
 	cases["credentials for another registry"] = &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: "registry.internal/app@" + digest, RegistryCredentials: foreign}}}
 	cases["credentials for docker hub"] = &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: "app@" + digest, RegistryCredentials: foreign}}}
+	// A Docker Hub namespace is not a registry: credentials named after it would go to Docker Hub.
+	for _, server := range []string{"acme", "registry-1.docker.io", "index.docker.io", "docker.io:443", "DOCKER.IO", "docker.io/", " docker.io", ""} {
+		namespace := &agentv1.RegistryCredentials{Server: server, Username: "u", Password: "p", ExpiresAt: timestamppb.New(time.Now().Add(time.Minute))}
+		cases["docker hub image with credentials for "+server] = &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: "acme/app@" + digest, RegistryCredentials: namespace}}}
+	}
 	for name, token := range map[string]string{"empty": "", "garbage": "not-a-token", "bad shape": "a.b.c"} {
 		cases["remove volume token "+name] = &agentv1.ActionRequest{Action: &agentv1.ActionRequest_RemoveVolume{RemoveVolume: &agentv1.RemoveVolume{Name: "sk-data", ConfirmationToken: token}}}
 	}

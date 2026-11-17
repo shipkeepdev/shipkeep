@@ -510,7 +510,8 @@ export const ContainerSpecSchema: GenMessage<ContainerSpec> = /*@__PURE__*/
  */
 export type RegistryCredentials = Message<"shipkeep.agent.v1.RegistryCredentials"> & {
   /**
-   * Registry host, for example `registry.internal:5000`.
+   * Registry host, for example `registry.internal:5000`, and `docker.io` for Docker Hub. For a
+   * pull it must be the registry the image reference names (ADR 0019).
    *
    * @generated from field: string server = 1;
    */
