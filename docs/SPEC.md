@@ -656,7 +656,8 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - Registry credentials (`modules/registries`, ADR 0019), write-only like secrets and managed with `organization.update`:
   - `GET …/organizations/{organizationId}/registries` lists the registry host, the user name, the version, the author and the dates.
   - `POST …/registries` with `{server, username, password}` stores the credentials of one registry, or replaces them (200). `server` is a host and an optional port; a URL, a path or embedded credentials answer 400 `invalid_registry_server`. `docker.io`, `index.docker.io` and `registry-1.docker.io` are stored as `docker.io`.
-  - `POST …/registries/{registryId}/remove` removes them (204).
+  - `POST …/registries/{registryId}/remove` removes them (204). A removal that meets a concurrent removal or replacement answers 409 `registry_credentials_changed` and removes nothing.
+  - An organization stores credentials for at most 100 registries; one more answers 409 `registry_limit_reached`. The list returns them all.
   - The password is encrypted with the organization's data key, bound to the host and the version. Audit events `registry.credentials_set` and `registry.credentials_removed` carry the host, the user name and the version.
 
 ## 10. Backups

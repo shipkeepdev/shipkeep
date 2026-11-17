@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
 import { ConflictError, Secret } from '@shipkeep/domain';
 import { v7 as uuidv7 } from 'uuid';
@@ -5,7 +7,11 @@ import { v7 as uuidv7 } from 'uuid';
 import { EnvelopeService } from '../../../platform/crypto/envelope.service';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { RegistryCredentialStore } from '../application/ports';
-import type { RegistryCredentialMetadata, RegistryLogin } from '../domain/registry-credential';
+import {
+  MAX_REGISTRIES,
+  type RegistryCredentialMetadata,
+  type RegistryLogin,
+} from '../domain/registry-credential';
 
 /**
  * Passwords are encrypted with the organization's data key and bound to the registry and the
@@ -56,6 +62,16 @@ export class PrismaRegistryCredentialStore implements RegistryCredentialStore {
         updatedAt: now,
       });
     }
+    // One more registry: counted under a lock, so that the list never holds more than it returns.
+    await this.lock(organizationId);
+    const stored = await this.database.client.registryCredential.count({
+      where: { organizationId },
+    });
+    if (stored >= MAX_REGISTRIES)
+      throw new ConflictError(
+        'registry_limit_reached',
+        `An organization stores credentials for at most ${String(MAX_REGISTRIES)} registries; remove one first.`,
+      );
     const id = uuidv7();
     const inserted = await this.database.client.registryCredential.createMany({
       data: {
@@ -83,6 +99,12 @@ export class PrismaRegistryCredentialStore implements RegistryCredentialStore {
     };
   }
 
+  /** Serializes additions for one organization until the transaction ends. */
+  private async lock(organizationId: string): Promise<void> {
+    await this.database.client
+      .$queryRaw`SELECT pg_advisory_xact_lock(${lockKey(organizationId)})::text`;
+  }
+
   async remove(
     organizationId: string,
     id: string,
@@ -91,9 +113,12 @@ export class PrismaRegistryCredentialStore implements RegistryCredentialStore {
       where: { organizationId, id },
     });
     if (!existing) return undefined;
-    await this.database.client.registryCredential.deleteMany({
-      where: { organizationId, id: existing.id },
+    // Only the version that was read: a concurrent removal or replacement wins, and is the one
+    // that gets audited.
+    const deleted = await this.database.client.registryCredential.deleteMany({
+      where: { organizationId, id: existing.id, version: existing.version },
     });
+    if (deleted.count !== 1) throw changed();
     return metadata(existing);
   }
 
@@ -110,7 +135,7 @@ export class PrismaRegistryCredentialStore implements RegistryCredentialStore {
         createdAt: true,
         updatedAt: true,
       },
-      take: 200,
+      take: MAX_REGISTRIES,
     });
     return rows.map(metadata);
   }
@@ -152,6 +177,12 @@ function metadata(row: {
     updatedAt: row.updatedAt,
   };
 }
+/** A transaction-level advisory lock; a hash collision only makes two organizations wait. */
+function lockKey(organizationId: string): bigint {
+  const hash = createHash('sha256').update(`shipkeep:registries:${organizationId}`).digest('hex');
+  return BigInt.asIntN(64, BigInt(`0x${hash.slice(0, 16)}`));
+}
+
 function changed(): ConflictError {
   return new ConflictError(
     'registry_credentials_changed',

@@ -22,6 +22,8 @@ export interface RegistryLogin {
 
 /** The one name credentials for Docker Hub are stored under. */
 export const DOCKER_HUB_SERVER = 'docker.io';
+/** How many registries an organization stores credentials for. The list returns them all. */
+export const MAX_REGISTRIES = 100;
 /** Names people write for Docker Hub, and the host that serves its registry API. */
 const DOCKER_HUB_NAMES = new Set(['docker.io', 'index.docker.io', 'registry-1.docker.io']);
 
