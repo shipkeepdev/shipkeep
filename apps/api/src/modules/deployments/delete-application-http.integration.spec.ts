@@ -206,4 +206,44 @@ describe('deleting an application over HTTP', () => {
       .expect(204);
     await fixture.get(`${fixture.environment}/applications/${id}`, 'owner').expect(404);
   });
+
+  it('lets who may deploy stop an application, and never delete it', async () => {
+    // In an unprotected environment a developer may deploy, and so stop. Deleting stays with
+    // who administers the environment, whatever confirmation the developer holds.
+    const environmentId = fixture.environment.split('/').at(-1);
+    await admin.query('UPDATE environments SET protected = false WHERE id = $1', [environmentId]);
+    try {
+      const { id } = await create('shared-api', 'shared.example.com');
+      const application = `${fixture.environment}/applications/${id}`;
+      const deployed = (
+        await fixture.post(`${application}/deployments`, 'environmentDeveloper', {}).expect(201)
+      ).body as { deployment: { id: string } };
+      await fixture.app
+        .get(DeploymentPipeline)
+        .run(fixture.organizationId, deployed.deployment.id, () => NOW);
+      await admin.query(
+        "UPDATE deployments SET state='succeeded', finished_at=$2, updated_at=$2 WHERE id=$1",
+        [deployed.deployment.id, new Date(NOW.getTime() - 1000)],
+      );
+      const stopping = (
+        await fixture.post(`${application}/stop`, 'environmentDeveloper', {}).expect(201)
+      ).body as { id: string };
+      await runToTheEnd(stopping.id);
+
+      await confirmation('environmentDeveloper', id, 'shared-api').expect(404);
+      const issued = (await confirmation('owner', id, 'shared-api').expect(201)).body as {
+        token: string;
+      };
+      // Refused for the permission, before the confirmation is even looked at.
+      await fixture
+        .post(`${application}/delete`, 'environmentDeveloper', { confirmation: issued.token })
+        .expect(404);
+      await fixture.get(application, 'owner').expect(200);
+      await fixture
+        .post(`${application}/delete`, 'owner', { confirmation: issued.token })
+        .expect(204);
+    } finally {
+      await admin.query('UPDATE environments SET protected = true WHERE id = $1', [environmentId]);
+    }
+  });
 });
