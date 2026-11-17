@@ -719,6 +719,8 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
   - health check and release durations outside what the agent accepts, for example a release timeout above one hour, pass validation and fail when that step runs;
   - containers created before the limits became mandatory keep running without them, with a reservation of zero, until their application is deployed again.
 
+- Deleting an application (issue #256) needs `environment.update`, because the permission catalog has no `application.delete`. A dedicated permission would let a role delete applications without changing environment settings, at the cost of a change to the role model and to API token scopes.
+
 - Private registries: credentials for private images, and an explicit allow-list for registries on private networks (the resolver refuses non-public addresses by default, SSRF).
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).
 - Wildcard certificates: which DNS providers to support first for DNS-01 (proposal: Cloudflare, Route 53, Hetzner DNS, OVH).
