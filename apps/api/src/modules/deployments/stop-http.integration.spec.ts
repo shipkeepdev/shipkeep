@@ -96,12 +96,15 @@ describe('stopping an application over HTTP', () => {
         .run(fixture.organizationId, first.deployment.id, () => NOW),
     ).toBe('wait');
     expect(await reserved()).toBe('1000');
-    // Its replica is placed, but the deployment still runs.
+    // Its replica is placed, but the deployment still runs: the answer says where it is.
     await fixture
       .post(`${application}/stop`, 'owner', {})
       .expect(409)
       .expect((response) => {
-        expect(response.body).toMatchObject({ code: 'deployment_in_progress' });
+        expect(response.body).toMatchObject({
+          code: 'deployment_in_progress',
+          details: { state: 'starting' },
+        });
       });
     // It succeeded just before the fixed test clock, which stamps what the pipeline does next.
     await admin.query(
