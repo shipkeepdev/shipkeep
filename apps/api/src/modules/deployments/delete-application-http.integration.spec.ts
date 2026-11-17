@@ -1,0 +1,209 @@
+import { Client } from 'pg';
+
+import { auditLog } from '../../testing/audit-log';
+import { enrollTestNode } from '../../testing/enroll-test-node';
+import { tenantHttpFixture } from '../../testing/tenant-http';
+import type { TenantActor } from '../../testing/tenant-personas';
+
+import { DeploymentPipeline } from './application/deployment-pipeline';
+
+/** Issue #256: deleting an application over HTTP, with the real pipeline and PostgreSQL. */
+describe('deleting an application over HTTP', () => {
+  // The node's heartbeat and the pipeline's clock: the node stays ready however long this takes.
+  const NOW = new Date();
+  let fixture: Awaited<ReturnType<typeof tenantHttpFixture>>;
+  let nodeId: string;
+  let admin: Client;
+
+  beforeAll(async () => {
+    fixture = await tenantHttpFixture();
+    nodeId = await enrollTestNode(fixture, {
+      facts: {
+        hostname: 'edge-delete.example.com',
+        architecture: 'amd64',
+        cpu_count: 2,
+        memory_bytes: 2 ** 32,
+      },
+      heartbeatAt: NOW,
+    });
+    admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+  });
+  afterAll(async () => {
+    await admin.end();
+    await fixture.close();
+  });
+
+  const create = async (name: string, hostname: string) =>
+    (
+      await fixture
+        .post(`${fixture.environment}/applications`, 'owner', {
+          config: {
+            version: 1,
+            name,
+            // Already pinned: no registry request in tests.
+            build: { type: 'image', image: `ghcr.io/acme/billing@sha256:${'c'.repeat(64)}` },
+            run: { port: 3000 },
+            domains: [hostname],
+          },
+        })
+        .expect(201)
+    ).body as { id: string };
+  /** Runs the pipeline, letting the agents succeed at every action it queues. */
+  async function runToTheEnd(deploymentId: string): Promise<void> {
+    const pipeline = fixture.app.get(DeploymentPipeline);
+    for (let round = 0; round < 10; round++) {
+      if ((await pipeline.run(fixture.organizationId, deploymentId, () => NOW)) === 'done') return;
+      await admin.query(
+        `UPDATE agent_actions SET state = 'succeeded', completed_at = now(), updated_at = now()
+         WHERE deployment_id = $1 AND state = 'queued'`,
+        [deploymentId],
+      );
+    }
+    throw new Error('the deployment did not finish');
+  }
+  const confirmation = (actor: TenantActor, target: string, name: string) =>
+    fixture.post(`${fixture.root}/confirmations`, actor, {
+      action: 'application.delete',
+      target,
+      name,
+    });
+  const count = async (table: string, applicationId: string) =>
+    Number(
+      (
+        await admin.query<{ rows: string }>(
+          `SELECT count(*) AS rows FROM ${table} WHERE application_id = $1`,
+          [applicationId],
+        )
+      ).rows[0]?.rows,
+    );
+
+  it('needs a stopped application, the right to administer it and its typed name', async () => {
+    const { id } = await create('doomed-api', 'doomed.example.com');
+    const application = `${fixture.environment}/applications/${id}`;
+    const deployed = (await fixture.post(`${application}/deployments`, 'owner', {}).expect(201))
+      .body as { deployment: { id: string } };
+    expect(
+      await fixture.app
+        .get(DeploymentPipeline)
+        .run(fixture.organizationId, deployed.deployment.id, () => NOW),
+    ).toBe('wait');
+    await admin.query(
+      "UPDATE deployments SET state='succeeded', finished_at=$2, updated_at=$2 WHERE id=$1",
+      [deployed.deployment.id, new Date(NOW.getTime() - 1000)],
+    );
+
+    // Only who administers the environment may ask for the confirmation, with the exact name.
+    for (const actor of ['environmentDeveloper', 'environmentViewer', 'outsider'] as const)
+      await confirmation(actor, id, 'doomed-api').expect(404);
+    await confirmation('environmentAdmin', id, 'doomed')
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toMatchObject({ code: 'confirmation_name_mismatch' });
+      });
+    const issued = (await confirmation('environmentAdmin', id, 'doomed-api').expect(201)).body as {
+      id: string;
+      token: string;
+    };
+
+    // It still runs: refused, and the confirmation is not spent by the refusal.
+    await fixture
+      .post(`${application}/delete`, 'environmentAdmin', { confirmation: issued.token })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body).toMatchObject({ code: 'application_running' });
+      });
+    const stopping = (await fixture.post(`${application}/stop`, 'owner', {}).expect(201)).body as {
+      id: string;
+    };
+    // While the stop runs, nothing may be deleted under it.
+    await fixture
+      .post(`${application}/delete`, 'environmentAdmin', { confirmation: issued.token })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body).toMatchObject({ code: 'deployment_in_progress' });
+      });
+    await runToTheEnd(stopping.id);
+
+    // A confirmation belongs to one account and one application.
+    const other = await create('survivor-api', 'survivor.example.com');
+    const forOther = (await confirmation('environmentAdmin', other.id, 'survivor-api').expect(201))
+      .body as { token: string };
+    for (const [actor, token] of [
+      ['environmentAdmin', forOther.token],
+      ['environmentAdmin', 'not-a-token'],
+      ['owner', issued.token],
+    ] as const)
+      await fixture
+        .post(`${application}/delete`, actor, { confirmation: token })
+        .expect(400)
+        .expect((response) => {
+          expect(response.body).toMatchObject({ code: 'confirmation_rejected' });
+        });
+    for (const actor of ['environmentDeveloper', 'environmentViewer', 'outsider'] as const)
+      await fixture
+        .post(`${application}/delete`, actor, { confirmation: issued.token })
+        .expect(404);
+    expect(await count('deployments', id)).toBe(2);
+
+    await fixture
+      .post(`${application}/delete`, 'environmentAdmin', { confirmation: issued.token })
+      .expect(204);
+
+    // The application and everything that belonged to it are gone...
+    await fixture.get(application, 'owner').expect(404);
+    for (const table of ['deployments', 'releases', 'allocations', 'domains'])
+      expect(await count(table, id)).toBe(0);
+    // ...the servers' action history and the audit log are not.
+    const history = await admin.query(
+      'SELECT 1 FROM agent_actions WHERE node_id = $1 AND application_id IS NULL',
+      [nodeId],
+    );
+    expect(history.rowCount).toBeGreaterThan(0);
+    const events = await auditLog().findMany({ where: { targetId: id } });
+    expect(events.map((event) => event.action).sort()).toEqual([
+      'application.created',
+      'application.deleted',
+    ]);
+    expect(events.find((event) => event.action === 'application.deleted')?.metadata).toMatchObject({
+      name: 'doomed-api',
+      confirmationId: issued.id,
+    });
+    // Its name and its domain are free again; the other application was not touched.
+    await create('doomed-api', 'doomed.example.com');
+    await fixture.get(`${fixture.environment}/applications/${other.id}`, 'owner').expect(200);
+    // The confirmation is spent, and its target no longer exists.
+    await fixture
+      .post(`${application}/delete`, 'environmentAdmin', { confirmation: issued.token })
+      .expect(404);
+  });
+
+  it('refuses an application whose first deployment is still queued', async () => {
+    const { id } = await create('queued-api', 'queued.example.com');
+    const application = `${fixture.environment}/applications/${id}`;
+    await fixture.post(`${application}/deployments`, 'owner', {}).expect(201);
+    const issued = (await confirmation('owner', id, 'queued-api').expect(201)).body as {
+      token: string;
+    };
+    await fixture
+      .post(`${application}/delete`, 'owner', { confirmation: issued.token })
+      .expect(409)
+      .expect((response) => {
+        expect(response.body).toMatchObject({ code: 'deployment_in_progress' });
+      });
+    await fixture.get(application, 'owner').expect(200);
+  });
+
+  it('deletes an application that never ran', async () => {
+    const { id } = await create('idle-api', 'idle.example.com');
+    const issued = (await confirmation('owner', id, 'idle-api').expect(201)).body as {
+      token: string;
+    };
+    await fixture
+      .post(`${fixture.environment}/applications/${id}/delete`, 'owner', {
+        confirmation: issued.token,
+      })
+      .expect(204);
+    await fixture.get(`${fixture.environment}/applications/${id}`, 'owner').expect(404);
+  });
+});

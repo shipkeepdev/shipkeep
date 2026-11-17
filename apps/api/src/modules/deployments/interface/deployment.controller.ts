@@ -1,11 +1,14 @@
-import { Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCookieAuth,
   ApiCreatedResponse,
+  ApiNoContentResponse,
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
+
+import { Secret } from '@shipkeep/domain';
 
 import type { ApplicationTarget } from '../../apps/domain/application';
 import { ApplicationPathDto } from '../../apps/interface/application.dto';
@@ -17,6 +20,7 @@ import { DeploymentCommands } from '../application/deployment-commands';
 
 import { agentActionDto, AgentActionPageDto, AgentActionPageQueryDto } from './agent-action.dto';
 import {
+  DeleteApplicationDto,
   DeploymentDto,
   deploymentDto,
   DeploymentListDto,
@@ -121,6 +125,25 @@ export class DeploymentController {
   ): Promise<DeploymentDto> {
     return deploymentDto(
       await this.deployments.stop(resourceContext(request), target(path), path.applicationId),
+    );
+  }
+
+  /** Destructive: requires a confirmation token for this application (SPEC 3.6, rule 7). */
+  @Post(`${APPLICATION}/delete`)
+  @HttpCode(204)
+  @RequireTenant('environment.update', 'environment')
+  @AllowApiToken('environment.update')
+  @ApiNoContentResponse()
+  async deleteApplication(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+    @Body() body: DeleteApplicationDto,
+  ): Promise<void> {
+    await this.deployments.remove(
+      resourceContext(request),
+      target(path),
+      path.applicationId,
+      new Secret(body.confirmation),
     );
   }
 

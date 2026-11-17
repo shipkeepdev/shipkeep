@@ -85,6 +85,13 @@ export function applicationNotRunning(): ConflictError {
   );
 }
 
+export function applicationRunning(): ConflictError {
+  return new ConflictError(
+    'application_running',
+    'Stop the application before deleting it: it still has running replicas.',
+  );
+}
+
 export function deploymentInProgress(state?: DeploymentState): ConflictError {
   return new ConflictError(
     'deployment_in_progress',

@@ -13,7 +13,12 @@ const MAX_TOKEN_LENGTH = 2048;
  */
 export const CONFIRMABLE_ACTIONS = {
   'node.remove': { permission: 'node.manage', scope: 'organization' },
-} as const satisfies Record<string, { permission: Permission; scope: 'organization' }>;
+  // The target is the application id; the permission is checked on its environment.
+  'application.delete': { permission: 'environment.update', scope: 'environment' },
+} as const satisfies Record<
+  string,
+  { permission: Permission; scope: 'organization' | 'environment' }
+>;
 export type ConfirmableAction = keyof typeof CONFIRMABLE_ACTIONS;
 
 export function isConfirmableAction(value: unknown): value is ConfirmableAction {

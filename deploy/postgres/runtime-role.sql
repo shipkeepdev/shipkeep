@@ -23,8 +23,10 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON
   nodes,node_certificates,join_tokens,secrets,domains TO shipkeep_runtime;
 -- Single-use state only moves forward; rows are never deleted by the API.
 GRANT SELECT,INSERT,UPDATE ON confirmation_tokens,agent_actions TO shipkeep_runtime;
--- Applications and their deployments are removed only with their environment (cascade).
-GRANT SELECT,INSERT,UPDATE ON applications,deployments,allocations,allocation_observations TO shipkeep_runtime;
+-- An application is deleted by its own confirmed command (SPEC 3.6) or with its environment. Its
+-- deployments, allocations and observations go by cascade only: the API never deletes them itself.
+GRANT SELECT,INSERT,UPDATE,DELETE ON applications TO shipkeep_runtime;
+GRANT SELECT,INSERT,UPDATE ON deployments,allocations,allocation_observations TO shipkeep_runtime;
 -- Releases are immutable: the image digest is the only column ever written after insert (once).
 GRANT SELECT,INSERT ON releases TO shipkeep_runtime;
 GRANT UPDATE (image_digest) ON releases TO shipkeep_runtime;

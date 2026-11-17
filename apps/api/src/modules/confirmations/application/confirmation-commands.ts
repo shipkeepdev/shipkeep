@@ -60,8 +60,18 @@ export class ConfirmationCommands {
       action: input.action,
       target: input.target,
     };
-    const permission = CONFIRMABLE_ACTIONS[request.action].permission;
-    const scope = { organizationId: request.organizationId };
+    const { permission, scope: level } = CONFIRMABLE_ACTIONS[request.action];
+    // An environment-scoped action is authorized where its target lives, so the target is read
+    // first. Nothing is answered from this read: an unknown target and a target the requester
+    // may not act on both end as the same missing resource.
+    const located =
+      level === 'environment'
+        ? await this.transaction.runTenant(request.organizationId, () =>
+            this.targets.resolve(request),
+          )
+        : null;
+    if (level === 'environment' && !located?.environment) throw new NotFoundError('resource');
+    const scope = { organizationId: request.organizationId, ...located?.environment };
     return this.accounts.run(
       context,
       async () => {

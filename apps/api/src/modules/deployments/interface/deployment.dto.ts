@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { DEPLOYMENT_STATES } from '@shipkeep/domain';
-import { Length, Matches } from 'class-validator';
+import { IsString, Length, Matches } from 'class-validator';
 
 import { ApplicationPathDto } from '../../apps/interface/application.dto';
 import { OBSERVED_STATES, type ReplicaStatus } from '../domain/observations';
@@ -10,6 +10,16 @@ const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{1
 
 export class DeploymentPathDto extends ApplicationPathDto {
   @ApiProperty({ format: 'uuid' }) @Length(36, 36) @Matches(UUID) deploymentId!: string;
+}
+
+export class DeleteApplicationDto {
+  @ApiProperty({
+    maxLength: 2048,
+    description: 'Confirmation token for `application.delete` on this application (SPEC 3.6).',
+  })
+  @IsString()
+  @Length(1, 2048)
+  confirmation!: string;
 }
 
 export class DeploymentDto {

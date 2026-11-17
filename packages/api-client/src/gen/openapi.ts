@@ -644,6 +644,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/delete": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["deleteApplication"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments": {
         readonly parameters: {
             readonly query?: never;
@@ -1196,6 +1212,10 @@ export type components = {
             /** Format: password */
             readonly password: string;
         };
+        readonly DeleteApplicationDto: {
+            /** @description Confirmation token for `application.delete` on this application (SPEC 3.6). */
+            readonly confirmation: string;
+        };
         readonly DeploymentDto: {
             readonly actorId: string | null;
             /** @description False for image sources: nothing is built. */
@@ -1581,7 +1601,7 @@ export type components = {
         };
         readonly RequestConfirmationDto: {
             /** @enum {string} */
-            readonly action: "node.remove";
+            readonly action: "node.remove" | "application.delete";
             /** @description The resource's exact current name, typed by the user. */
             readonly name: string;
             readonly target: string;
@@ -2912,6 +2932,32 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["ApplicationDto"];
                 };
+            };
+        };
+    };
+    readonly deleteApplication: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["DeleteApplicationDto"];
+            };
+        };
+        readonly responses: {
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

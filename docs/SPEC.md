@@ -256,7 +256,9 @@ The agent only adopts or changes resources that carry its `sk.managed=true` labe
   - It records the `jti` in its journal until `exp`.
   - A test vector signed by Node.js checks that the TypeScript and Go implementations agree.
   - `RemoveVolume` needs a token with action `volume.remove` and the volume name as target. The token is spent in a non-retryable first step; the volume is then removed only if it carries `sk.managed=true`. The control plane will issue `volume.remove` confirmations once volumes are resources (M5).
-- Actions come from a closed catalog (`modules/confirmations/domain/confirmation-token.ts`), each with the permission its requester needs. The first is `node.remove` (`node.manage`, target = node id).
+- Actions come from a closed catalog (`modules/confirmations/domain/confirmation-token.ts`), each with the permission its requester needs and the level it is checked on:
+  - `node.remove`: `node.manage` on the organization, target = node id.
+  - `application.delete`: `environment.update` on the environment the application lives in, target = application id. The control plane reads the application first to learn where it lives; an unknown application and one the requester may not administer both answer 404.
 - Issuance requires the live permission and the resource's exact current name, typed by the user. The control plane stores only the token id, binding, expiry and use time (`confirmation_tokens`, tenant RLS, no DELETE grant), and audits `confirmation.issued`. A destructive command consumes the token inside its own tenant transaction, through one conditional update, so the token is spent only if the command commits.
 
 ### 3.4 Operation journal
@@ -459,6 +461,7 @@ Org roles: `owner`, `admin`, `member`. Project or environment roles for members:
 | Read secret values            | no (write-only)    | no                 | no                 | no               | no     |
 | Set secrets                   | yes                | yes                | yes                | unprotected only | no     |
 | Exec into containers          | yes                | yes                | yes                | unprotected only | no     |
+| Delete applications           | yes (confirmation) | yes (confirmation) | yes (confirmation) | no               | no     |
 | Delete volumes or databases   | yes (confirmation) | yes (confirmation) | yes (confirmation) | no               | no     |
 | View logs and metrics         | yes                | yes                | yes                | yes              | yes    |
 | View audit log                | yes                | yes                | project only       | no               | no     |
@@ -595,6 +598,11 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - The release command does not run again, because migrations of an older version must not be replayed over newer data. Secrets use their current values, and the application's own configuration does not change, so the next deployment uses it again.
     - When the rollback succeeds, the deployment it replaced becomes `rolled_back`, audited as `deployment.rolled_back`.
   - `POST …/applications/{applicationId}/stop` (201, `deploy.run`) queues a stop: a deployment of the release that runs, whose plan has `stop` (section 5.1). It creates no release and needs no secret. `application_not_running` (409) when the application has no placed replica, `deployment_in_progress` (409) while another deployment runs. `stop` is true on that deployment in every deployment answer.
+  - `POST …/applications/{applicationId}/delete` (204, `environment.update`) deletes an application. Destructive: the body carries a `confirmation` token for `application.delete` on this application (section 3.6), spent in the same transaction, and the command is audited as `application.deleted` with the confirmation id.
+    - Refused with 409 `application_running` while a replica is placed and 409 `deployment_in_progress` while a deployment runs, so no container is left on a server: stop the application first. A refusal does not spend the confirmation.
+    - The application's row is locked first, so a deployment queued at the same moment is either seen or refused.
+    - Its releases, deployments, stopped allocations and claimed domains are deleted with it by cascade. The audit log and the servers' action history stay; the history loses only its link to the application.
+    - The runtime database role may delete rows of `applications` for this command, and of no table that depends on it.
   - Database guarantees:
     - a partial unique index keeps one unfinished deployment per application;
     - releases are immutable: a trigger and the runtime grants allow only recording the image digest, once;

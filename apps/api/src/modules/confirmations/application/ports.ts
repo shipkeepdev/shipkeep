@@ -27,6 +27,11 @@ export interface ConfirmationTransaction {
 /** The current name of a confirmable resource, typed back by the user. */
 export interface ConfirmationTarget {
   readonly name: string;
+  /**
+   * Where the resource lives, for an action whose permission is checked on an environment. An
+   * organization-scoped action leaves it out.
+   */
+  readonly environment?: { readonly projectId: string; readonly environmentId: string };
 }
 /** Implemented by the module that owns the resource; runs in the requester's context. */
 export interface ConfirmationTargetResolver {

@@ -111,6 +111,28 @@ export class PrismaApplicationStore implements ApplicationStore {
     return row ? application(row) : undefined;
   }
 
+  async findById(organizationId: string, applicationId: string): Promise<Application | undefined> {
+    const row = await this.database.client.application.findFirst({
+      where: { organizationId, id: applicationId },
+    });
+    return row ? application(row) : undefined;
+  }
+
+  async lock(target: Pick<Application, 'id' | 'organizationId'>): Promise<boolean> {
+    const rows = await this.database.client.$queryRaw<{ id: string }[]>`
+      SELECT id FROM applications
+      WHERE organization_id = ${target.organizationId}::uuid AND id = ${target.id}::uuid
+      FOR UPDATE`;
+    return rows.length === 1;
+  }
+
+  async delete(target: Pick<Application, 'id' | 'organizationId'>): Promise<boolean> {
+    const deleted = await this.database.client.application.deleteMany({
+      where: { organizationId: target.organizationId, id: target.id },
+    });
+    return deleted.count === 1;
+  }
+
   async hosts(application: Pick<Application, 'id' | 'organizationId'>): Promise<ApplicationHost[]> {
     const rows = await this.database.client.node.findMany({
       where: {

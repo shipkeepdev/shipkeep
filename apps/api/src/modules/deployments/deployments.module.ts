@@ -5,6 +5,7 @@ import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { AgentActions } from '../fleet/application/agent-actions';
 import { FleetModule } from '../fleet/fleet.module';
 import { AppsModule } from '../apps/apps.module';
+import { ConfirmationsModule } from '../confirmations/confirmations.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenantAccessModule } from '../organizations/tenant-access.module';
 import { SecretsModule } from '../secrets/secrets.module';
@@ -32,7 +33,15 @@ import { DeploymentController } from './interface/deployment.controller';
 
 /** Releases, deployments and their pipeline (SPEC 4, 5.1; PLAN M3.4b2, M3.4c). */
 @Module({
-  imports: [IdentityModule, TenantAccessModule, AppsModule, SecretsModule, FleetModule, JobsModule],
+  imports: [
+    IdentityModule,
+    TenantAccessModule,
+    AppsModule,
+    SecretsModule,
+    FleetModule,
+    JobsModule,
+    ConfirmationsModule,
+  ],
   controllers: [DeploymentController],
   providers: [
     DeploymentCommands,

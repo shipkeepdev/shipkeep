@@ -25,6 +25,20 @@ export interface ApplicationStore {
     now: Date,
   ): Promise<Application | undefined>;
   find(target: ApplicationTarget, applicationId: string): Promise<Application | undefined>;
+  /** The application by id within its organization, wherever it lives (confirmation targets). */
+  findById(organizationId: string, applicationId: string): Promise<Application | undefined>;
+  /**
+   * Locks the application's row until the transaction ends; false when it no longer exists. A
+   * deployment queued at the same moment references that row, so it either commits before the
+   * lock is granted, and is then seen, or fails once the application is gone.
+   */
+  lock(application: Pick<Application, 'id' | 'organizationId'>): Promise<boolean>;
+  /**
+   * Deletes the application and, by cascade, its releases, deployments, stopped allocations and
+   * claimed domains. False when it no longer exists. The caller locks it and makes sure nothing
+   * runs.
+   */
+  delete(application: Pick<Application, 'id' | 'organizationId'>): Promise<boolean>;
   /**
    * Makes `hostnames` the application's claimed domains. Returns a hostname another application of
    * the organization already claims, in which case the caller must abort the transaction.

@@ -5,12 +5,14 @@ import {
   type DomainEvent,
   NotFoundError,
   type Permission,
+  type Secret,
   stop,
 } from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { APPLICATION_STORE, type ApplicationStore } from '../../apps/application/ports';
 import type { Application, ApplicationTarget } from '../../apps/domain/application';
+import { ConfirmationVerifier } from '../../confirmations/application/confirmation-verifier';
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
 import {
   resourceActor,
@@ -22,6 +24,7 @@ import type { AgentActionView } from '../../fleet/domain/agent-action';
 import type { ReplicaStatus } from '../domain/observations';
 import {
   applicationNotRunning,
+  applicationRunning,
   assertRollbackTarget,
   assertSecretsSet,
   type DeploymentRecord,
@@ -65,6 +68,7 @@ export class DeploymentCommands {
     @Inject(ACTION_HISTORY) private readonly actionHistory: ActionHistory,
     private readonly accounts: AccountMutationAuthority,
     private readonly access: TenantAccess,
+    private readonly confirmations: ConfirmationVerifier,
     private readonly events: DomainEventBus,
   ) {}
 
@@ -199,6 +203,53 @@ export class DeploymentCommands {
     });
   }
 
+  /**
+   * Deletes an application (SPEC 3.6, issue #256). Destructive: it needs `environment.update` on
+   * the application's environment and a confirmation token for this exact application, spent in
+   * the same transaction. Refused while a deployment runs or a replica is placed, so no container
+   * is left behind on a server: stop the application first. Its releases, deployments and
+   * claimed domains go with it; the audit log and the servers' action history stay.
+   */
+  remove(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+    confirmation: Secret,
+    now = new Date(),
+  ): Promise<void> {
+    return this.scoped(
+      context,
+      'environment.update',
+      target,
+      applicationId,
+      async (application) => {
+        // Locked first: a deployment queued at this moment is then either seen or refused.
+        if (!(await this.applications.lock(application))) throw new NotFoundError('application');
+        const running = await this.store.active(application.id);
+        if (running) throw deploymentInProgress(running.state);
+        if ((await this.observations.forApplication(application.id)).length)
+          throw applicationRunning();
+        const confirmationId = await this.confirmations.consume(
+          confirmation,
+          {
+            organizationId: application.organizationId,
+            action: 'application.delete',
+            target: application.id,
+          },
+          context.userId,
+          now,
+        );
+        if (!(await this.applications.delete(application))) throw new NotFoundError('application');
+        await this.events.publish([
+          this.event('application.deleted', context, application, application.id, now, {
+            name: application.name,
+            confirmationId,
+          }),
+        ]);
+      },
+    );
+  }
+
   /** Cancels an unfinished deployment; the pipeline (M3.4c) restores routing if needed. */
   cancel(
     context: SecurityContext,
@@ -325,7 +376,7 @@ export class DeploymentCommands {
   }
 
   private event(
-    type: 'release.created' | 'deployment.queued' | 'deployment.cancelled',
+    type: 'release.created' | 'deployment.queued' | 'deployment.cancelled' | 'application.deleted',
     context: SecurityContext,
     application: Application,
     id: string,
