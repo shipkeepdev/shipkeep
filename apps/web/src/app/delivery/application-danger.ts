@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, inject, input, output, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  inject,
+  input,
+  output,
+  signal,
+  type WritableSignal,
+} from '@angular/core';
 
 import { MutationRunner } from '../identity/mutation-runner';
 import { I18n, T } from '../ui/i18n';
@@ -43,7 +51,7 @@ import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-a
               class="btn"
               type="button"
               [disabled]="runner.busy()"
-              (click)="stopping.set(false)"
+              (click)="ask(stopping, false)"
             >
               {{ 'Keep it running' | t }}
             </button>
@@ -53,7 +61,7 @@ import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-a
             class="btn btn-danger"
             type="button"
             [disabled]="busy() || !running() || deploying()"
-            (click)="stopping.set(true)"
+            (click)="ask(stopping, true)"
           >
             {{ 'Stop' | t }}
           </button>
@@ -77,7 +85,7 @@ import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-a
           class="btn btn-danger"
           type="button"
           [disabled]="busy() || running() || deploying() || deleting()"
-          (click)="deleting.set(true)"
+          (click)="ask(deleting, true)"
         >
           {{ 'Delete' | t }}
         </button>
@@ -95,7 +103,7 @@ import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-a
         [busy]="runner.busy()"
         [blocked]="!!runner.cooldown()"
         (confirmed)="remove($event)"
-        (cancelled)="deleting.set(false)"
+        (cancelled)="ask(deleting, false)"
       />
     }
   `,
@@ -119,6 +127,16 @@ export class ApplicationDanger {
 
   protected busy(): boolean {
     return this.runner.busy() || !!this.runner.cooldown();
+  }
+
+  /**
+   * Opens or closes one of the two questions. Each time starts a new attempt: a refusal left by
+   * the previous one (a 409 while a deployment ran, for example) would otherwise make every later
+   * click do nothing. A wait the server asked for is kept.
+   */
+  protected ask(question: WritableSignal<boolean>, open: boolean): void {
+    this.runner.reset();
+    question.set(open);
   }
 
   protected async stop(): Promise<void> {

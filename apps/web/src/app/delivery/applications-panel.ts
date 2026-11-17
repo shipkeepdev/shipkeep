@@ -72,7 +72,7 @@ run:
               @default {
                 @for (application of list.items(); track application.id) {
                   @let last = latest().get(application.id);
-                  @let s = last ? status(last.state) : null;
+                  @let s = last ? status(last.state, last.stop) : null;
                   <div
                     [class]="
                       columns +

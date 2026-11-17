@@ -442,6 +442,52 @@ describe('delivery screens', () => {
       );
     });
 
+    it('lists a stopped application as stopped, never as live', async () => {
+      routes = {
+        [`GET ${BASE}`]: () => json(environment),
+        [`GET ${BASE}/applications`]: () => json({ items: [application] }),
+        [`GET ${BASE}/applications/${APP}/deployments`]: () =>
+          json({
+            items: [
+              { ...deployment('succeeded'), id: 'd-stop', releaseId: 'r-new', stop: true },
+              { ...deployment('succeeded'), id: 'd-new', releaseId: 'r-new', stop: false },
+            ],
+          }),
+      };
+      await harness.navigateByUrl(`/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}`);
+      await settle();
+      const row = Array.from(element().querySelectorAll('.grid-table')).find((r) =>
+        r.textContent.includes('billing-api'),
+      );
+      expect(row?.textContent).toContain('stopped');
+      expect(row?.textContent).not.toContain('live');
+    });
+
+    it('lets a stop be asked again after the server refused the first one', async () => {
+      const live = { ...deployment('succeeded'), id: 'd-new', releaseId: 'r-new', stop: false };
+      let refusals = 1;
+      routes = {
+        [`GET ${BASE}/applications/${APP}`]: () => json(application),
+        [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: [live] }),
+        [`GET ${BASE}/applications/${APP}/replicas`]: () => json({ items: [replica] }),
+        [`POST ${BASE}/applications/${APP}/stop`]: () =>
+          refusals-- > 0
+            ? json({ code: 'deployment_in_progress', title: 'Conflict', status: 409 }, 409)
+            : json({ ...deployment('queued'), id: 'd-stop', releaseId: 'r-new', stop: true }, 201),
+      };
+      await harness.navigateByUrl(danger);
+      await settle();
+      await click('Stop');
+      await click('Stop it now');
+      expect(posts()).toHaveLength(1);
+      expect(element().querySelector('#panel-config [role="alert"]')).not.toBeNull();
+      // A refusal must not leave the button dead: asking again starts a new attempt.
+      await click('Stop');
+      expect(element().querySelector('#panel-config [role="alert"]')).toBeNull();
+      await click('Stop it now');
+      expect(posts()).toHaveLength(2);
+    });
+
     it('keeps the application and says why when the server refuses the deletion', async () => {
       routes = {
         [`GET ${BASE}/applications/${APP}`]: () => json(application),
