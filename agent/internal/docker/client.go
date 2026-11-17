@@ -36,6 +36,71 @@ const (
 // ErrNotFound reports a missing network, image or volume.
 var ErrNotFound = errors.New("docker resource not found")
 
+// Causes a failed pull can be given. The list is closed: what the agent reports about a failed
+// pull names one of them, or nothing (SPEC 3.4).
+const (
+	// CauseRegistryDenied: the registry refused the pull. The image is private, the credentials
+	// are wrong, or the repository does not exist (registries answer the same for all three).
+	CauseRegistryDenied = "registry_denied"
+	// CauseImageNotFound: the registry has no image with this name and digest.
+	CauseImageNotFound = "image_not_found"
+	// CauseRegistryUnreachable: no answer from the registry (name, route, timeout).
+	CauseRegistryUnreachable = "registry_unreachable"
+	// CauseRegistryUntrusted: the server does not trust the registry's certificate.
+	CauseRegistryUntrusted = "registry_untrusted"
+	// CauseDiskFull: the server has no room left for the image.
+	CauseDiskFull = "disk_full"
+)
+
+// maxDaemonMessage bounds how much of a daemon message is read to find a cause.
+const maxDaemonMessage = 16 * 1024
+
+// PullError is a pull the daemon refused or could not finish. It carries a cause from the closed
+// list above, or none, and never the daemon's message.
+type PullError struct{ cause string }
+
+func (e *PullError) Error() string {
+	if e.cause == "" {
+		return "docker pull failed"
+	}
+	return "docker pull failed: " + e.cause
+}
+
+// Cause is one of the Cause constants, or empty when the agent cannot name the failure.
+func (e *PullError) Cause() string { return e.cause }
+
+// pullCause reads the daemon's message about a failed pull and names its cause. Only the name
+// leaves this function: the message can hold hosts, paths, tokens or credentials, and is dropped.
+// The order matters: a full disk and an untrusted certificate are named before the broader
+// refusals and network failures whose words their messages also contain.
+func pullCause(message string) string {
+	if len(message) > maxDaemonMessage {
+		message = message[:maxDaemonMessage]
+	}
+	text := strings.ToLower(message)
+	holds := func(parts ...string) bool {
+		for _, part := range parts {
+			if strings.Contains(text, part) {
+				return true
+			}
+		}
+		return false
+	}
+	switch {
+	case holds("no space left on device"):
+		return CauseDiskFull
+	case holds("x509:", "failed to verify certificate", "certificate signed by unknown authority", "certificate has expired", "certificate is not valid"):
+		return CauseRegistryUntrusted
+	case holds("unauthorized", "access denied", "denied:", "authentication required", "authorization fail", "failed to authorize", "forbidden", "no basic auth credentials"):
+		return CauseRegistryDenied
+	case holds("manifest unknown", "name unknown", "not found", "no such image"):
+		return CauseImageNotFound
+	case holds("no such host", "connection refused", "connection reset", "i/o timeout", "timeout exceeded", "deadline exceeded", "network is unreachable", "no route to host", "temporary failure in name resolution", "server misbehaving", "tls handshake timeout", "unexpected eof"):
+		return CauseRegistryUnreachable
+	}
+	return ""
+}
+
 // Client talks to one local Docker daemon.
 type Client struct {
 	http *http.Client
@@ -154,7 +219,8 @@ func (c *Client) Image(ctx context.Context, ref string) (Image, error) {
 }
 
 // PullImage pulls repository@digest. The daemon streams JSON progress; an error object anywhere in
-// the stream fails the pull without echoing the daemon's text.
+// the stream, or an error answer, fails the pull with a *PullError: a cause from a closed list,
+// never the daemon's text.
 func (c *Client) PullImage(ctx context.Context, repository, digest string, auth *Auth) error {
 	query := url.Values{"fromImage": {repository}, "tag": {digest}}
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://docker/"+apiVersion+"/images/create?"+query.Encode(), nil)
@@ -173,11 +239,19 @@ func (c *Client) PullImage(ctx context.Context, repository, digest string, auth 
 		return fmt.Errorf("docker pull: %w", err)
 	}
 	defer response.Body.Close() //nolint:errcheck // read-only body
-	if response.StatusCode == http.StatusNotFound {
-		return ErrNotFound
-	}
 	if response.StatusCode/100 != 2 {
-		return fmt.Errorf("docker pull: status %d", response.StatusCode)
+		var problem struct {
+			Message string `json:"message"`
+		}
+		// A body that is too long or not JSON simply names no cause.
+		body, _ := io.ReadAll(io.LimitReader(response.Body, maxDaemonMessage))
+		_ = json.Unmarshal(body, &problem)
+		cause := pullCause(problem.Message)
+		// The daemon answers 404 for an image the registry does not have, and says nothing more.
+		if cause == "" && response.StatusCode == http.StatusNotFound {
+			cause = CauseImageNotFound
+		}
+		return &PullError{cause: cause}
 	}
 	scanner := bufio.NewScanner(response.Body)
 	scanner.Buffer(make([]byte, 64*1024), 64*1024)
@@ -189,10 +263,14 @@ func (c *Client) PullImage(ctx context.Context, repository, digest string, auth 
 			Error string `json:"error"`
 		}
 		if json.Unmarshal(scanner.Bytes(), &event) == nil && event.Error != "" {
-			return errors.New("docker pull failed")
+			return &PullError{cause: pullCause(event.Error)}
 		}
 	}
 	if err := scanner.Err(); err != nil {
+		// A line longer than the buffer is a daemon message too long to read a cause from.
+		if errors.Is(err, bufio.ErrTooLong) {
+			return &PullError{}
+		}
 		return fmt.Errorf("docker pull stream: %w", err)
 	}
 	return nil

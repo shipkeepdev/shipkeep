@@ -91,3 +91,68 @@ func TestClientRefusesNonUnixHosts(t *testing.T) {
 		}
 	}
 }
+
+// A failed pull is named from a closed list of causes. The daemon's message decides the cause and
+// is then dropped: it can hold hosts, paths, tokens or credentials.
+func TestPullNamesItsCauseWithoutTheDaemonText(t *testing.T) {
+	digest := "sha256:" + strings.Repeat("ab12", 16)
+	cases := []struct{ message, cause string }{
+		// containerd image store
+		{`failed to resolve reference "registry.example.com/acme/app@` + digest + `": pull access denied, repository does not exist or may require authorization: authorization failed: no basic auth credentials`, CauseRegistryDenied},
+		{`failed to resolve reference "docker.io/acme/app@` + digest + `": failed to authorize: failed to fetch oauth token: unexpected status from GET request to https://auth.docker.io/token?scope=repository%3Aacme%2Fapp%3Apull&service=registry.docker.io: 401 Unauthorized`, CauseRegistryDenied},
+		{`failed to resolve reference "ghcr.io/acme/app@` + digest + `": ghcr.io/acme/app@` + digest + `: not found`, CauseImageNotFound},
+		// classic image store
+		{`unauthorized: incorrect username or password`, CauseRegistryDenied},
+		{`pull access denied for acme/app, repository does not exist or may require 'docker login': denied: requested access to the resource is denied`, CauseRegistryDenied},
+		{`manifest for acme/app@` + digest + ` not found: manifest unknown: manifest unknown`, CauseImageNotFound},
+		// A digest is hexadecimal: digits such as 401 or 403 in it say nothing about the cause.
+		{`manifest for acme/app@sha256:` + strings.Repeat("4014", 16) + ` not found: manifest unknown`, CauseImageNotFound},
+		{`Get "https://registry.example.com/v2/": dial tcp: lookup registry.example.com on 127.0.0.53:53: no such host`, CauseRegistryUnreachable},
+		{`Get "https://registry.example.com/v2/": dial tcp 203.0.113.5:443: connect: connection refused`, CauseRegistryUnreachable},
+		{`Get "https://registry.example.com/v2/": net/http: request canceled while waiting for connection (Client.Timeout exceeded while awaiting headers)`, CauseRegistryUnreachable},
+		{`Get "https://registry.example.com/v2/": tls: failed to verify certificate: x509: certificate signed by unknown authority`, CauseRegistryUntrusted},
+		{`failed to register layer: write /var/lib/docker/overlay2/abc/diff/app: no space left on device`, CauseDiskFull},
+		// A registry that answers "denied" while its disk is full is still a full disk on the server.
+		{`write /var/lib/containerd/io.containerd.content.v1.content/ingest/x: no space left on device: denied`, CauseDiskFull},
+		{`something nobody has seen yet, with https://deploy:sk_test_fake_registry_password@registry.example.com/v2/ in it`, ""},
+		{strings.Repeat("x", 1<<20), ""},
+	}
+	leaks := []string{"registry.example.com", "auth.docker.io", "/var/lib", "acme", "sk_test_fake", "sha256", "127.0.0.53", "203.0.113.5", "xxx"}
+	for _, inStream := range []bool{true, false} {
+		for _, tc := range cases {
+			client := fakeDaemon(t, func(w http.ResponseWriter, _ *http.Request) {
+				if inStream {
+					_, _ = w.Write([]byte("{\"status\":\"Pulling\"}\n"))
+					_ = json.NewEncoder(w).Encode(map[string]string{"error": tc.message})
+					return
+				}
+				w.WriteHeader(http.StatusInternalServerError)
+				_ = json.NewEncoder(w).Encode(map[string]string{"message": tc.message})
+			})
+			err := client.PullImage(context.Background(), "registry.example.com/acme/app", digest, nil)
+			var pull *PullError
+			if !errors.As(err, &pull) {
+				t.Fatalf("stream=%t %.60q: not a pull error: %v", inStream, tc.message, err)
+			}
+			if pull.Cause() != tc.cause {
+				t.Fatalf("stream=%t %.60q: cause %q, want %q", inStream, tc.message, pull.Cause(), tc.cause)
+			}
+			for _, leak := range leaks {
+				if strings.Contains(err.Error(), leak) {
+					t.Fatalf("stream=%t %.60q: daemon text leaked into %q", inStream, tc.message, err.Error())
+				}
+			}
+		}
+	}
+}
+
+// The daemon answers 404 both for a missing image and for one it may not see: without a message
+// that says more, it is a missing image.
+func TestPullOfAMissingImageWithoutAMessage(t *testing.T) {
+	client := fakeDaemon(t, func(w http.ResponseWriter, _ *http.Request) { http.NotFound(w, nil) })
+	err := client.PullImage(context.Background(), "acme/app", "sha256:abc", nil)
+	var pull *PullError
+	if !errors.As(err, &pull) || pull.Cause() != CauseImageNotFound {
+		t.Fatalf("got %v", err)
+	}
+}
