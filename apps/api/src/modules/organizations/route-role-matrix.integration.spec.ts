@@ -56,6 +56,8 @@ describe('registered tenant routes for every role', () => {
       .replace(':nodeId', nodeId)
       .replace(':applicationId', route.method === 'POST' ? 'invalid' : applicationId)
       .replace(':deploymentId', route.method === 'POST' ? 'invalid' : deploymentId)
+      // Removing registry credentials accepts no body either: an invalid id stops it at validation.
+      .replace(':registryId', 'invalid')
       .replace(':name', 'INVALID-NAME')
       .replace(':id', tokenId);
     expect(path, route.path).not.toContain(':');
