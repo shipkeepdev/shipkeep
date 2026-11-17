@@ -132,6 +132,54 @@ describe('agentAction', () => {
       expect(pull(`acme/billing@${digest}`, ['acme'])?.registryCredentials).toBeUndefined();
     });
 
+    it('names the registry as the agent reads it when Docker Hub is written by its API host', () => {
+      // Stored as docker.io, but the agent reads `registry-1.docker.io` in this reference and
+      // accepts credentials for that name only.
+      const image = `registry-1.docker.io/acme/private@sha256:${'c'.repeat(64)}`;
+      expect(pull(image, ['docker.io'])?.registryCredentials).toMatchObject({
+        server: 'registry-1.docker.io',
+        username: 'deploy-bot',
+      });
+      expect(pull(image, ['ghcr.io'])?.registryCredentials).toBeUndefined();
+    });
+
+    it('sends no Docker Hub credentials to an agent that would refuse the whole pull', () => {
+      const digest = `sha256:${'c'.repeat(64)}`;
+      const toOldAgent = (image: string, servers: string[]) => {
+        const action = wire(
+          agentAction(step('pull_image', { image }), secrets, {
+            logins: new Map(servers.map((server) => [server, login(server)])),
+            expiresAt: EXPIRES,
+            withoutDockerHub: new Set([NODE]),
+          }),
+        );
+        return action.case === 'pullImage' ? action.value.registryCredentials : undefined;
+      };
+      // Without a registry host: the agents before the rule refuse `docker.io` for these.
+      expect(toOldAgent(`nginx@${digest}`, ['docker.io'])).toBeUndefined();
+      expect(toOldAgent(`acme/billing@${digest}`, ['docker.io'])).toBeUndefined();
+      // A registry named by a host never needed the rule.
+      expect(toOldAgent(IMAGE, ['ghcr.io'])).toMatchObject({ server: 'ghcr.io' });
+      expect(
+        toOldAgent(`registry-1.docker.io/acme/private@${digest}`, ['docker.io']),
+      ).toMatchObject({ server: 'registry-1.docker.io' });
+      // Another node, with a current agent, still gets them.
+      const other = wire(
+        agentAction(
+          { ...step('pull_image', { image: `nginx@${digest}` }), nodeId: 'another-node' },
+          secrets,
+          {
+            logins: new Map([['docker.io', login('docker.io')]]),
+            expiresAt: EXPIRES,
+            withoutDockerHub: new Set([NODE]),
+          },
+        ),
+      );
+      expect(other.case === 'pullImage' && other.value.registryCredentials?.server).toBe(
+        'docker.io',
+      );
+    });
+
     it('sends none when no registry access is given', () => {
       const action = wire(agentAction(step('pull_image', { image: IMAGE }), secrets));
       expect(action.case === 'pullImage' && action.value.registryCredentials).toBeUndefined();

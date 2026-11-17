@@ -19,10 +19,15 @@ import {
   REGISTRY_CREDENTIAL_STORE,
   type RegistryCredentialStore,
 } from '../../registries/application/ports';
-import type { RegistryLogin } from '../../registries/domain/registry-credential';
+import { DOCKER_HUB_SERVER, type RegistryLogin } from '../../registries/domain/registry-credential';
 import { SECRET_STORE, type SecretStore } from '../../secrets/application/ports';
 import { containerName } from '../domain/container-plan';
-import { credentialServer, parseImageReference, pinnedReference } from '../domain/image-reference';
+import {
+  acceptsDockerHubCredentials,
+  credentialServer,
+  parseImageReference,
+  pinnedReference,
+} from '../domain/image-reference';
 import {
   type PipelineContext,
   type PipelineDecision,
@@ -281,8 +286,15 @@ export class DeploymentPipeline {
     const deadline = new Date(now.getTime() + ACTION_LIFETIME_MS);
     let registries: RegistryAccess;
     try {
+      const logins = await this.registryLogins(loaded, steps);
       // Credentials sent to an agent are valid for as long as the action that carries them.
-      registries = { logins: await this.registryLogins(loaded, steps), expiresAt: deadline };
+      registries = {
+        logins,
+        expiresAt: deadline,
+        withoutDockerHub: logins.has(DOCKER_HUB_SERVER)
+          ? await this.agentsBeforeDockerHubRule(loaded.application.organizationId)
+          : new Set(),
+      };
     } catch (error: unknown) {
       if (!isDomainError(error)) throw error;
       return error.message;
@@ -325,6 +337,16 @@ export class DeploymentPipeline {
       if (login) logins.set(server, login);
     }
     return logins;
+  }
+
+  /** Nodes whose agent would refuse a pull that carries Docker Hub credentials (ADR 0019). */
+  private async agentsBeforeDockerHubRule(organizationId: string): Promise<Set<string>> {
+    const nodes = await this.pipeline.nodes(organizationId);
+    return new Set(
+      nodes
+        .filter((node) => !acceptsDockerHubCredentials(node.facts['agent_version']))
+        .map((node) => node.id),
+    );
   }
 
   /**

@@ -22,9 +22,9 @@ import {
   UpsertRouteSchema,
 } from '@shipkeep/proto-ts';
 
-import type { RegistryLogin } from '../../registries/domain/registry-credential';
+import { DOCKER_HUB_SERVER, type RegistryLogin } from '../../registries/domain/registry-credential';
 import type { ContainerPlan } from '../domain/container-plan';
-import { credentialServer, parseImageReference } from '../domain/image-reference';
+import { credentialServer, parseImageReference, pulledRegistry } from '../domain/image-reference';
 import type { PipelineStep } from '../domain/pipeline';
 
 /** Decrypted secret values of the environment, by name (SECRET_STORE.values). */
@@ -40,6 +40,11 @@ export type SecretValues = ReadonlyMap<
 export interface RegistryAccess {
   readonly logins: ReadonlyMap<string, RegistryLogin>;
   readonly expiresAt: Date;
+  /**
+   * Nodes whose agent refuses `docker.io` credentials for a reference without a registry host
+   * (`acceptsDockerHubCredentials`): their Docker Hub pulls carry none.
+   */
+  readonly withoutDockerHub?: ReadonlySet<string>;
 }
 
 /**
@@ -60,7 +65,7 @@ export function agentAction(
         case: 'pullImage',
         value: create(PullImageSchema, {
           imageRef: step.image,
-          ...pullCredentials(step.image, registries),
+          ...pullCredentials(step.image, step.nodeId, registries),
         }),
       };
     case 'run_release_task':
@@ -143,14 +148,18 @@ export function agentAction(
  * for, so a public image is pulled anonymously as before.
  */
 function pullCredentials(
-  image: string,
+  reference: string,
+  nodeId: string,
   registries: RegistryAccess | undefined,
 ): { registryCredentials?: RegistryCredentials } {
   if (!registries) return {};
-  // The agent accepts credentials only for the registry the image itself names.
-  const server = credentialServer(parseImageReference(image));
-  const login = registries.logins.get(server);
-  if (!login) return {};
+  const image = parseImageReference(reference);
+  // Found under the name the organization stored them, sent under the name the agent reads in
+  // the reference: it accepts credentials for that registry only.
+  const login = registries.logins.get(credentialServer(image));
+  const server = pulledRegistry(image);
+  if (!login || (server === DOCKER_HUB_SERVER && registries.withoutDockerHub?.has(nodeId)))
+    return {};
   return {
     registryCredentials: create(RegistryCredentialsSchema, {
       server,

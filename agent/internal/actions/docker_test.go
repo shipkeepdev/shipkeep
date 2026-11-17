@@ -203,7 +203,14 @@ func TestPullImageSendsDockerHubCredentialsToDockerHubOnly(t *testing.T) {
 			t.Fatalf("%s: Docker Hub credentials not used: %v", ref, update)
 		}
 	}
-	for _, ref := range []string{"ghcr.io/acme/api@" + digest, "localhost/api@" + digest, "registry:5000/api@" + digest, "docker.io.example.com/acme/api@" + digest, "index.docker.io/acme/api@" + digest} {
+	// Docker Hub written by its API host is a registry named by a host: its credentials carry that
+	// name, which is what the control plane sends for such a reference.
+	apiHost := &agentv1.RegistryCredentials{Server: "registry-1.docker.io", Username: "deploy", Password: "short-lived", ExpiresAt: timestamppb.New(time.Now().Add(time.Minute))}
+	engine := newFakeEngine()
+	if update := run(t, engine, &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: "registry-1.docker.io/acme/api@" + digest, RegistryCredentials: apiHost}}}); !succeeded(update) || engine.auth == nil || engine.auth.Server != "registry-1.docker.io" {
+		t.Fatalf("credentials named after the API host not used: %v", update)
+	}
+	for _, ref := range []string{"ghcr.io/acme/api@" + digest, "localhost/api@" + digest, "registry:5000/api@" + digest, "docker.io.example.com/acme/api@" + digest, "index.docker.io/acme/api@" + digest, "registry-1.docker.io/acme/api@" + digest} {
 		engine := newFakeEngine()
 		update := run(t, engine, &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: ref, RegistryCredentials: hub()}}})
 		if update.GetState() != agentv1.OperationState_OPERATION_STATE_FAILED || update.GetError() != errInvalid || len(engine.pulls) != 0 {

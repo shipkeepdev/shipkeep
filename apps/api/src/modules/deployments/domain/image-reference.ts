@@ -104,6 +104,34 @@ export function credentialServer(image: Pick<ImageReference, 'registry'>): strin
   return image.registry === DOCKER_HUB_REGISTRY ? DOCKER_HUB_SERVER : image.registry;
 }
 
+/**
+ * The registry the agent reads in the pinned reference, with the same rule (Docker's): the first
+ * component of the name when it is a host, `docker.io` otherwise. `PullImage` credentials must
+ * carry this name, or the agent refuses the action. It differs from `credentialServer` for Docker
+ * Hub written by its API host, `registry-1.docker.io/acme/app`: stored as `docker.io`, pulled as
+ * written.
+ */
+export function pulledRegistry(image: Pick<ImageReference, 'name'>): string {
+  const slash = image.name.indexOf('/');
+  const first = slash === -1 ? '' : image.name.slice(0, slash);
+  return looksLikeHost(first) ? first : DOCKER_HUB_SERVER;
+}
+
+/** Agents released before they read a reference the way Docker does (ADR 0019). */
+const AGENTS_BEFORE_DOCKER_HUB_RULE: ReadonlySet<unknown> = new Set([
+  '0.1.0-alpha.1',
+  '0.1.0-alpha.2',
+]);
+
+/**
+ * Whether an agent of this version accepts `docker.io` credentials for a reference without a
+ * registry host. The two releases before the rule refuse the whole pull instead, so they get
+ * none: public images keep pulling anonymously, as they did before credentials existed.
+ */
+export function acceptsDockerHubCredentials(agentVersion: unknown): boolean {
+  return !AGENTS_BEFORE_DOCKER_HUB_RULE.has(agentVersion);
+}
+
 /** The digest-pinned reference the agent accepts (`PullImage`, `ContainerSpec.image_ref`). */
 export function pinnedReference(image: ImageReference, digest: string): string {
   if (!DIGEST.test(digest))
