@@ -5,7 +5,15 @@ import { v7 as uuidv7 } from 'uuid';
 import { AppConfig } from '../config/app-config';
 
 import { DATA_KEY_STORE, type DataKeyStore } from './data-key-store';
-import { decrypt, encrypt, generateKey, unwrapDataKey, wrapDataKey } from './envelope';
+import {
+  decrypt,
+  DecryptionError,
+  encrypt,
+  generateKey,
+  unwrapDataKey,
+  ValueDecryptionError,
+  wrapDataKey,
+} from './envelope';
 import { KEK_VERSION, loadKek } from './kek';
 
 /**
@@ -36,10 +44,19 @@ export class EnvelopeService implements OnModuleInit {
     return encrypt(dek.expose(), plaintext, aad(scope, purpose));
   }
 
-  /** Decrypts a blob written by `encryptFor` with the same scope and purpose. */
+  /**
+   * Decrypts a blob written by `encryptFor` with the same scope and purpose. A blob that does not
+   * decrypt throws `ValueDecryptionError`; a data key that cannot be read or unwrapped throws
+   * whatever stopped it, so that a caller can tell a bad value from a store that is down.
+   */
   async decryptFor(scope: string, purpose: string, blob: Buffer): Promise<Buffer> {
     const dek = await this.dataKey(scope);
-    return decrypt(dek.expose(), blob, aad(scope, purpose));
+    try {
+      return decrypt(dek.expose(), blob, aad(scope, purpose));
+    } catch (error: unknown) {
+      if (!(error instanceof DecryptionError)) throw error;
+      throw new ValueDecryptionError(error.message.replace(/^decryption failed: /, ''));
+    }
   }
 
   private async dataKey(scope: string): Promise<Secret<Buffer>> {

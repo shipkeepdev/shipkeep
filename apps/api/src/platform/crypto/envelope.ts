@@ -20,6 +20,19 @@ export class DecryptionError extends Error {
   }
 }
 
+/**
+ * The stored value itself does not decrypt under the data key of its scope: it was altered, or
+ * written for another scope or purpose. `EnvelopeService.decryptFor` throws it for that step
+ * only. A data key that cannot be read or unwrapped is another failure, and says nothing about
+ * the value.
+ */
+export class ValueDecryptionError extends DecryptionError {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'ValueDecryptionError';
+  }
+}
+
 /** Generates a fresh 256-bit key (a data-encryption key, DEK). */
 export function generateKey(): Buffer {
   return randomBytes(KEY_BYTES);
