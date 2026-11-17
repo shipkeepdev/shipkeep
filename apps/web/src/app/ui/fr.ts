@@ -1047,8 +1047,11 @@ export const FR: Readonly<Record<string, string>> = {
   'Roll back to 9c41e07': 'Revenir à 9c41e07',
   'Roll back to {release}': 'Revenir à {release}',
   Rollback: 'Retour arrière',
+  "Rolling back deploys that version's image and configuration again, without its release command. Database migrations are not undone.":
+    'Revenir à une version redéploie son image et sa configuration, sans sa commande de release. Les migrations de base de données ne sont pas annulées.',
   'Rootless BuildKit': 'BuildKit rootless',
   'Rootless BuildKit · cache 82%': 'BuildKit rootless · cache 82 %',
+  'Routes and replicas removed': 'Routes et répliques retirées',
   Rules: 'Règles',
   Run: 'Exécution',
   'Run language models locally.': 'Modèles de langage en local.',
@@ -1157,6 +1160,7 @@ export const FR: Readonly<Record<string, string>> = {
   'Stop it first: an application is deleted only when nothing of it runs.':
     "Arrêtez-la d'abord : une application n'est supprimée que lorsque plus rien d'elle ne tourne.",
   'Stop it now': "L'arrêter maintenant",
+  'Stop of {release}': 'Arrêt de {release}',
   'Stop service': 'Arrêter le service',
   'Stop the application': "Arrêter l'application",
   'Stopping frees the servers and keeps everything else. Deleting cannot be undone.':
@@ -1590,6 +1594,7 @@ export const FR: Readonly<Record<string, string>> = {
   standard: 'standard',
   starting: 'démarrage',
   stop: 'arrêt',
+  'stop requested': 'arrêt demandé',
   stopped: 'arrêtée',
   stopping: 'arrêt en cours',
   superseded: 'remplacé',

@@ -391,6 +391,13 @@ describe('delivery screens', () => {
         ),
       ).toHaveLength(1);
       expect(deploymentsText()).toContain('stop');
+      // The deployment card shows the stop as a stop, with its own two steps.
+      const card = element().querySelector('#panel-deployments .card')?.textContent ?? '';
+      expect(card).toContain('Stop of r-new');
+      expect(card).toContain('stop requested');
+      expect(card).toContain('Routes and replicas removed');
+      expect(card).not.toContain('Health check');
+      expect(card).not.toContain('live');
     });
 
     it('deletes a stopped application once its exact name is typed, then leaves the page', async () => {

@@ -68,6 +68,11 @@ const STEPS: readonly { label: string; states: readonly string[] }[] = [
   { label: 'Health check', states: ['health_checking'] },
   { label: 'Switchover', states: ['switching', 'draining'] },
 ];
+/** A stop goes from the queue straight to removing what runs (SPEC 5.1). */
+const STOP_STEPS: typeof STEPS = [
+  { label: 'Queued', states: ['queued'] },
+  { label: 'Routes and replicas removed', states: ['draining'] },
+];
 const SAMPLE_SECTIONS = new Set(['tasks', 'approvals', 'webhooks']);
 /** Sections with their own content instead of configuration blocks. */
 const OWN_SECTIONS = new Set(['yml', 'rollback', 'actions', 'danger']);
@@ -278,12 +283,13 @@ const LIVE_POLL_MS = 15_000;
           class="flex flex-col gap-3.5"
         >
           @if (focus(); as d) {
-            @let st = status(d.state);
+            @let st = status(d.state, d.stop);
             <div class="card p-5">
               <div class="mb-[18px] flex flex-wrap items-center justify-between gap-2.5">
                 <div class="flex items-baseline gap-2.5">
                   <span class="text-[14px] font-medium">{{
-                    'Deployment {release}' | t: { release: d.releaseId.slice(0, 7) }
+                    (d.stop ? 'Stop of {release}' : 'Deployment {release}')
+                      | t: { release: d.releaseId.slice(0, 7) }
                   }}</span>
                   <span class="text-[12.5px]" [style.color]="st.color">{{ st.label | t }}</span>
                 </div>
@@ -314,7 +320,9 @@ const LIVE_POLL_MS = 15_000;
                 <div>
                   <span class="text-dim3">{{ clock(d.startedAt) }} </span
                   ><span class="text-fg3">{{
-                    '{trigger} deployment started' | t: { trigger: (d.trigger | t) }
+                    d.stop
+                      ? ('stop requested' | t)
+                      : ('{trigger} deployment started' | t: { trigger: (d.trigger | t) })
                   }}</span>
                 </div>
                 @if (d.build) {
@@ -360,7 +368,9 @@ const LIVE_POLL_MS = 15_000;
                   <span class="font-mono text-[11.5px] text-fg2">{{
                     d.releaseId.slice(0, 7)
                   }}</span>
-                  <span class="text-fg3">{{ d.error ?? ((d.stop ? 'stop' : d.trigger) | t) }}</span>
+                  <span class="ml-2 text-fg3">{{
+                    d.error ?? ((d.stop ? 'stop' : d.trigger) | t)
+                  }}</span>
                 </div>
                 <span class="flex items-center gap-[7px] text-[12.5px]" [style.color]="st.color"
                   ><span class="dot" [style.background]="st.color"></span>{{ st.label | t }}</span
@@ -646,8 +656,9 @@ export class ApplicationPage {
     const d = this.focus();
     if (!d) return [];
     const done = d.state === 'succeeded' || d.state === 'rolled_back';
-    const at = STEPS.findIndex((step) => step.states.includes(d.state));
-    return STEPS.map((step, i) => {
+    const steps = d.stop ? STOP_STEPS : STEPS;
+    const at = steps.findIndex((step) => step.states.includes(d.state));
+    return steps.map((step, i) => {
       const past = done || (at >= 0 && i < at);
       const now = !done && i === at;
       const color = now ? BLUE : '#D6D6DC';
