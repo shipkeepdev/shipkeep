@@ -1,7 +1,9 @@
 import type { ShipkeepConfig } from '@shipkeep/config-schema';
-import { type DomainEvent, InvalidInputError, Secret } from '@shipkeep/domain';
+import { ConflictError, type DomainEvent, InvalidInputError, Secret } from '@shipkeep/domain';
 
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
+import type { RegistryCredentialStore } from '../../registries/application/ports';
+import type { RegistryLogin } from '../../registries/domain/registry-credential';
 import type { SecretStore } from '../../secrets/application/ports';
 import type { StepOutcome } from '../domain/pipeline';
 import { nodeLoads, type NodeView } from '../domain/placement';
@@ -17,7 +19,8 @@ import type {
   StoredAllocation,
 } from './ports';
 
-type ActionOrigin = Parameters<ActionQueue['enqueue']>[0]['origin'];
+type QueuedAction = Parameters<ActionQueue['enqueue']>[0];
+type ActionOrigin = QueuedAction['origin'];
 
 const ORG = '0190f5a8-7b1c-7e2d-8f3a-0000000000aa';
 const APP = '0190f5a8-7b1c-7e2d-8f3a-0123456789ab';
@@ -42,7 +45,11 @@ function world(
   options: {
     nodes?: NodeView[];
     secrets?: string[];
-    resolve?: () => Promise<string>;
+    resolve?: ImageResolver['resolve'];
+    /** Registry credentials the organization stored, by registry host. */
+    logins?: Record<string, RegistryLogin>;
+    /** Replaces the read of stored credentials, to make it fail. */
+    login?: RegistryCredentialStore['login'];
     trigger?: DeploymentRecord['trigger'];
     /** The configuration of the release, when the default one does not fit the case. */
     config?: ShipkeepConfig;
@@ -74,7 +81,8 @@ function world(
     organizationId: ORG,
     applicationId: APP,
     number: 1,
-    image: 'ghcr.io/acme/billing:1.4.2',
+    // A release is cut from the image its configuration names.
+    image: (options.config ?? config).build?.image ?? '',
     imageDigest: null,
     config: options.config ?? config,
     configSha: 'a'.repeat(64),
@@ -86,7 +94,13 @@ function world(
   );
   const queued = new Map<
     string,
-    { nodeId: string; kind: string | undefined; origin: ActionOrigin }
+    {
+      nodeId: string;
+      kind: string | undefined;
+      origin: ActionOrigin;
+      action: QueuedAction['action'];
+      deadline: Date;
+    }
   >();
   const outcomes = new Map<string, StepOutcome>();
   /** Store calls that matter for the order of a placement. */
@@ -187,12 +201,20 @@ function world(
   const resolver: ImageResolver = {
     resolve: options.resolve ?? (() => Promise.resolve(`ghcr.io/acme/billing@${DIGEST}`)),
   };
+  const registries = {
+    login:
+      options.login ??
+      ((organizationId: string, server: string) =>
+        Promise.resolve(organizationId === ORG ? options.logins?.[server] : undefined)),
+  } as unknown as RegistryCredentialStore;
   const actions: ActionQueue = {
     enqueue: (input) => {
       queued.set(input.idempotencyKey, {
         nodeId: input.nodeId,
         kind: input.action.case,
         origin: input.origin,
+        action: input.action,
+        deadline: input.deadline,
       });
       return Promise.resolve({ id: input.idempotencyKey, created: true });
     },
@@ -210,6 +232,7 @@ function world(
     secretStore,
     resolver,
     actions,
+    registries,
     transaction,
     bus,
   );
@@ -550,6 +573,130 @@ describe('DeploymentPipeline', () => {
       expect(w.deployment.state).toBe('failed');
       // The replica may still run: it keeps its room until a later stop succeeds.
       expect(w.allocations).toMatchObject([{ id: 'alloc-serving-0', stopped: false }]);
+    });
+  });
+
+  describe('images of a private registry (#325, ADR 0019)', () => {
+    const login = (server: string): RegistryLogin => ({
+      server,
+      username: 'deploy-bot',
+      password: new Secret('sk_test_fake_registry_password'),
+    });
+    /** Runs until the image is pulled, and returns what the agent was sent for it. */
+    const pulled = async (w: ReturnType<typeof world>) => {
+      for (let round = 0; round < 10; round++) {
+        await w.subject.run(ORG, w.deployment.id, () => NOW);
+        w.agentsFinish();
+        const pull = [...w.queued.values()].find((a) => a.kind === 'pullImage');
+        if (pull) return pull;
+      }
+      throw new Error('no image was pulled');
+    };
+    const credentialsOf = (pull: Awaited<ReturnType<typeof pulled>>) =>
+      pull.action.case === 'pullImage' ? pull.action.value.registryCredentials : undefined;
+
+    it('asks the registry and the agent with the credentials stored for that registry', async () => {
+      const asked: (RegistryLogin | undefined)[] = [];
+      const w = world({
+        logins: { 'ghcr.io': login('ghcr.io') },
+        resolve: (_reference, used) => {
+          asked.push(used);
+          return Promise.resolve(`ghcr.io/acme/billing@${DIGEST}`);
+        },
+      });
+      const pull = await pulled(w);
+      expect(asked).toEqual([login('ghcr.io')]);
+      const credentials = credentialsOf(pull);
+      expect(credentials).toMatchObject({
+        server: 'ghcr.io',
+        username: 'deploy-bot',
+        password: 'sk_test_fake_registry_password',
+      });
+      // The agent refuses credentials that outlive the action that carries them.
+      expect(pull.deadline).toEqual(new Date('2026-11-05T13:00:00Z'));
+      expect(Number(credentials?.expiresAt?.seconds)).toBe(pull.deadline.getTime() / 1000);
+    });
+
+    it('sends nothing to a registry the organization stored no credentials for', async () => {
+      const asked: (RegistryLogin | undefined)[] = [];
+      const w = world({
+        logins: { 'registry.example.com': login('registry.example.com') },
+        resolve: (_reference, used) => {
+          asked.push(used);
+          return Promise.resolve(`ghcr.io/acme/billing@${DIGEST}`);
+        },
+      });
+      const pull = await pulled(w);
+      expect(asked).toEqual([undefined]);
+      expect(credentialsOf(pull)).toBeUndefined();
+    });
+
+    it('reads Docker Hub credentials for an image written without a registry', async () => {
+      const servers: string[] = [];
+      const w = world({
+        config: { ...config, build: { type: 'image', image: 'acme/billing:1.4.2' } },
+        login: (_organizationId, server) => {
+          servers.push(server);
+          return Promise.resolve(login(server));
+        },
+        resolve: () => Promise.resolve(`acme/billing@${DIGEST}`),
+      });
+      const pull = await pulled(w);
+      expect(new Set(servers)).toEqual(new Set(['docker.io']));
+      expect(credentialsOf(pull)).toMatchObject({ server: 'docker.io', username: 'deploy-bot' });
+    });
+
+    it('fails with a reason when the stored credentials cannot be read', async () => {
+      const w = world({
+        login: () =>
+          Promise.reject(
+            new ConflictError(
+              'registry_credentials_unreadable',
+              'The stored credentials for ghcr.io cannot be read; store them again.',
+            ),
+          ),
+        resolve: () => Promise.reject(new Error('the registry must not be asked')),
+      });
+      expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
+      expect(w.deployment).toMatchObject({
+        state: 'failed',
+        error: 'The stored credentials for ghcr.io cannot be read; store them again.',
+      });
+      expect(w.queued.size).toBe(0);
+    });
+
+    it('fails with the same reason when they become unreadable before the pull', async () => {
+      let reads = 0;
+      const w = world({
+        login: () =>
+          ++reads === 1
+            ? Promise.resolve(login('ghcr.io'))
+            : Promise.reject(
+                new ConflictError(
+                  'registry_credentials_unreadable',
+                  'The stored credentials for ghcr.io cannot be read; store them again.',
+                ),
+              ),
+      });
+      for (
+        let round = 0;
+        round < 10 && (await w.subject.run(ORG, w.deployment.id, () => NOW)) === 'wait';
+        round++
+      )
+        w.agentsFinish();
+      expect(w.deployment).toMatchObject({
+        state: 'failed',
+        error: 'The stored credentials for ghcr.io cannot be read; store them again.',
+      });
+      expect([...w.queued.values()].some((a) => a.kind === 'pullImage')).toBe(false);
+    });
+
+    it('lets the run be retried when the credentials cannot be loaded at all', async () => {
+      const w = world({ login: () => Promise.reject(new Error('connection lost')) });
+      await expect(w.subject.run(ORG, w.deployment.id, () => NOW)).rejects.toThrow(
+        'connection lost',
+      );
+      expect(w.deployment.state).toBe('queued');
     });
   });
 

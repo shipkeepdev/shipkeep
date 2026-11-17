@@ -15,9 +15,14 @@ import {
 } from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
+import {
+  REGISTRY_CREDENTIAL_STORE,
+  type RegistryCredentialStore,
+} from '../../registries/application/ports';
+import type { RegistryLogin } from '../../registries/domain/registry-credential';
 import { SECRET_STORE, type SecretStore } from '../../secrets/application/ports';
 import { containerName } from '../domain/container-plan';
-import { parseImageReference, pinnedReference } from '../domain/image-reference';
+import { credentialServer, parseImageReference, pinnedReference } from '../domain/image-reference';
 import {
   type PipelineContext,
   type PipelineDecision,
@@ -27,7 +32,7 @@ import {
 } from '../domain/pipeline';
 import { placementRequest, schedulableNodes } from '../domain/placement';
 import type { DeploymentRecord } from '../domain/release';
-import { agentAction, type SecretValues } from '../infrastructure/agent-steps';
+import { agentAction, type RegistryAccess, type SecretValues } from '../infrastructure/agent-steps';
 
 import {
   ACTION_QUEUE,
@@ -68,6 +73,7 @@ export class DeploymentPipeline {
     @Inject(SECRET_STORE) private readonly secrets: SecretStore,
     @Inject(IMAGE_RESOLVER) private readonly resolver: ImageResolver,
     @Inject(ACTION_QUEUE) private readonly actions: ActionQueue,
+    @Inject(REGISTRY_CREDENTIAL_STORE) private readonly registries: RegistryCredentialStore,
     @Inject(DEPLOYMENT_TRANSACTION) private readonly transaction: DeploymentTransaction,
     private readonly events: DomainEventBus,
   ) {}
@@ -114,10 +120,20 @@ export class DeploymentPipeline {
           );
         return 'done';
       case 'resolve_image': {
+        const image = context.release.config.build?.image ?? '';
+        let login: RegistryLogin | undefined;
+        try {
+          // Read in its own transaction, which ends before the registry is called.
+          login = await this.registryLogin(application, image);
+        } catch (error: unknown) {
+          // Stored credentials that cannot be read fail the deployment; a database error retries.
+          if (!isDomainError(error)) throw error;
+          return this.fail(loaded, error.message, now);
+        }
         // Outside any transaction: a registry call must never hold database locks.
         let pinned: string;
         try {
-          pinned = await this.resolver.resolve(context.release.config.build?.image ?? '');
+          pinned = await this.resolver.resolve(image, login);
         } catch (error: unknown) {
           return this.fail(loaded, reason(error, 'The image could not be resolved.'), now);
         }
@@ -262,10 +278,19 @@ export class DeploymentPipeline {
     now: Date,
   ): Promise<string | undefined> {
     const values = await this.secretValues(loaded, steps);
+    const deadline = new Date(now.getTime() + ACTION_LIFETIME_MS);
+    let registries: RegistryAccess;
+    try {
+      // Credentials sent to an agent are valid for as long as the action that carries them.
+      registries = { logins: await this.registryLogins(loaded, steps), expiresAt: deadline };
+    } catch (error: unknown) {
+      if (!isDomainError(error)) throw error;
+      return error.message;
+    }
     for (const step of steps) {
       let action: ReturnType<typeof agentAction>;
       try {
-        action = agentAction(step, values);
+        action = agentAction(step, values, registries);
       } catch (error: unknown) {
         return reason(error, 'A step could not be prepared.');
       }
@@ -274,7 +299,7 @@ export class DeploymentPipeline {
         nodeId: step.nodeId,
         idempotencyKey: step.key,
         action,
-        deadline: new Date(now.getTime() + ACTION_LIFETIME_MS),
+        deadline,
         actor: SYSTEM_ACTOR,
         origin: {
           applicationId: loaded.application.id,
@@ -283,6 +308,42 @@ export class DeploymentPipeline {
       });
     }
     return undefined;
+  }
+
+  /** What the organization stored for the registries of the images these steps pull (ADR 0019). */
+  private async registryLogins(
+    loaded: Loaded,
+    steps: readonly PipelineStep[],
+  ): Promise<Map<string, RegistryLogin>> {
+    const servers = new Set<string>();
+    for (const step of steps)
+      if (step.kind === 'pull_image')
+        servers.add(credentialServer(parseImageReference(step.image)));
+    const logins = new Map<string, RegistryLogin>();
+    for (const server of servers) {
+      const login = await this.registries.login(loaded.application.organizationId, server);
+      if (login) logins.set(server, login);
+    }
+    return logins;
+  }
+
+  /**
+   * The stored credentials of the registry an image reference names, if any. A reference that
+   * cannot be read gets none: the resolver reports it.
+   */
+  private async registryLogin(
+    application: PipelineApplication,
+    image: string,
+  ): Promise<RegistryLogin | undefined> {
+    let server: string;
+    try {
+      server = credentialServer(parseImageReference(image));
+    } catch {
+      return undefined;
+    }
+    return this.tenant(application, () =>
+      this.registries.login(application.organizationId, server),
+    );
   }
 
   private async secretValues(

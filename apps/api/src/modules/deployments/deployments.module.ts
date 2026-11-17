@@ -8,6 +8,7 @@ import { AppsModule } from '../apps/apps.module';
 import { ConfirmationsModule } from '../confirmations/confirmations.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenantAccessModule } from '../organizations/tenant-access.module';
+import { RegistriesModule } from '../registries/registries.module';
 import { SecretsModule } from '../secrets/secrets.module';
 
 import { AllocationObservations } from './application/allocation-observations';
@@ -41,6 +42,7 @@ import { DeploymentController } from './interface/deployment.controller';
     FleetModule,
     JobsModule,
     ConfirmationsModule,
+    RegistriesModule,
   ],
   controllers: [DeploymentController],
   providers: [

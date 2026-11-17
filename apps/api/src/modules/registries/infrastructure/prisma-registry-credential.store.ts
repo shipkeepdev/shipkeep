@@ -120,11 +120,20 @@ export class PrismaRegistryCredentialStore implements RegistryCredentialStore {
       where: { organizationId, server },
     });
     if (!row) return undefined;
-    const password = await this.envelope.decryptFor(
-      scope(organizationId),
-      purpose(row.server, row.version),
-      Buffer.from(row.passwordEnc),
-    );
+    let password: Buffer;
+    try {
+      password = await this.envelope.decryptFor(
+        scope(organizationId),
+        purpose(row.server, row.version),
+        Buffer.from(row.passwordEnc),
+      );
+    } catch {
+      // A row that was moved or altered. A deployment must fail with a reason it can show.
+      throw new ConflictError(
+        'registry_credentials_unreadable',
+        `The stored credentials for ${row.server} cannot be read; store them again.`,
+      );
+    }
     return {
       server: row.server,
       username: row.username,

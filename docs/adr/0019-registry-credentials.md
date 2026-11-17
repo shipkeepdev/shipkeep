@@ -17,7 +17,12 @@ Three things had to be decided: where the credentials live, how an application r
 - **They are write-only and encrypted.** The password goes through `EnvelopeService.encryptFor` with the organization's data key, bound to the host and the version, so a row moved to another host or organization does not decrypt. No route returns it. The audit log records the host, the user name and the version.
 - **The address policy does not change.** A registry must still be a public HTTPS host. Registries on private networks stay an open question (SPEC 16).
 
-Using the credentials (the resolver's authenticated lookup and the pull) comes with its own change. It needs no new agent action.
+## Using them
+
+- **The digest lookup.** The control plane asks the registry without credentials first. Only after a 401 does it send them, as HTTP Basic: to the token service the registry names in its `Bearer` challenge, or to the registry itself when it asks for `Basic`. The token service is the registry's choice, as for `docker login`, and it goes through the same guards as the registry (HTTPS, public address, no redirect).
+- **The pull.** `PullImage` carries the same credentials with an expiry equal to the action's deadline. The payload is encrypted in the queue like every action.
+- **Docker Hub.** A reference without a registry host (`nginx`, `acme/app`) is on Docker Hub. The agent used to read the first path component as the registry, so it refused `docker.io` credentials for `acme/app` and would have accepted credentials named `acme`. It now reads a reference the way the Docker daemon does: the first component is a host only when it holds a dot or a port, or is `localhost`. This narrows what the agent accepts; it adds no action and no field.
+- **Older agents.** An agent released before this rule refuses `docker.io` credentials for such a reference, and the deployment fails at the pull. Registries named by a host work with older agents.
 
 ## Alternatives considered
 
