@@ -90,7 +90,8 @@ export class PrismaDeploymentStore implements DeploymentStore {
       where: { applicationId, state: 'succeeded' },
       orderBy: [{ finishedAt: 'desc' }, { id: 'desc' }],
     });
-    return row ? deployment(row) : undefined;
+    // After a stop nothing serves, whatever ran before it.
+    return row && !row.planStop ? deployment(row) : undefined;
   }
 
   async succeededOf(
@@ -134,6 +135,7 @@ export class PrismaDeploymentStore implements DeploymentStore {
         state: record.state,
         planBuild: record.plan.build,
         planRelease: record.plan.release,
+        planStop: record.plan.stop === true,
         trigger,
         actorId,
         startedAt: now,
@@ -231,6 +233,7 @@ function deployment(row: {
   state: string;
   planBuild: boolean;
   planRelease: boolean;
+  planStop: boolean;
   trigger: string;
   actorId: string | null;
   error: string | null;
@@ -246,7 +249,11 @@ function deployment(row: {
     applicationId: row.applicationId,
     releaseId: row.releaseId,
     state,
-    plan: { build: row.planBuild, release: row.planRelease },
+    plan: {
+      build: row.planBuild,
+      release: row.planRelease,
+      ...(row.planStop ? { stop: true } : {}),
+    },
     trigger,
     actorId: row.actorId,
     error: row.error,

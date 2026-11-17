@@ -69,6 +69,8 @@ const AUDITED: Readonly<Record<string, readonly string[]>> = {
     ['release.created', 'deployment.queued'],
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/deployments/:deploymentId/cancel':
     ['deployment.cancelled'],
+  'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/stop':
+    ['deployment.queued'],
 };
 
 /** Production sources of the API, without tests and generated code. */

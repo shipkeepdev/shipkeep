@@ -58,7 +58,10 @@ export interface PipelineContext {
   };
   /** Replicas of this release, once placed. */
   readonly allocations: readonly Allocation[];
-  /** Replicas of the release currently serving; drained once the switch succeeded. */
+  /**
+   * Replicas of the release currently serving; drained once the switch succeeded. For a stop
+   * (`deployment.plan.stop`), every placed replica of the application, and `allocations` is empty.
+   */
   readonly previous: readonly Allocation[];
   /** Outcomes of this deployment's agent actions, by idempotency key. */
   readonly steps: ReadonlyMap<string, StepOutcome>;
@@ -129,7 +132,10 @@ export function plan(context: PipelineContext): PipelineDecision {
   if (failure) return { kind: 'fail', reason: failure };
   switch (deployment.state) {
     case 'queued':
-      return release.pinnedImage ? { kind: 'advance' } : { kind: 'resolve_image' };
+      // A stop starts nothing, so it needs no image: it must work when the registry is down.
+      return deployment.plan.stop || release.pinnedImage
+        ? { kind: 'advance' }
+        : { kind: 'resolve_image' };
     case 'building':
     case 'built':
       return { kind: 'fail', reason: 'Builds are not supported yet.' };

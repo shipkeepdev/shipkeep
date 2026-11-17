@@ -21,6 +21,7 @@ import { SECRET_STORE, type SecretStore } from '../../secrets/application/ports'
 import type { AgentActionView } from '../../fleet/domain/agent-action';
 import type { ReplicaStatus } from '../domain/observations';
 import {
+  applicationNotRunning,
   assertRollbackTarget,
   assertSecretsSet,
   type DeploymentRecord,
@@ -28,6 +29,7 @@ import {
   type Release,
   releaseDraft,
   rollbackDraft,
+  stopDraft,
 } from '../domain/release';
 
 import {
@@ -153,6 +155,47 @@ export class DeploymentCommands {
       ]);
       await this.waker.wake(application.organizationId, deployment.id);
       return { release, deployment };
+    });
+  }
+
+  /**
+   * Stops the application (SPEC 5.1, issue #256): queues a deployment that starts nothing and
+   * removes the routes and the placed replicas, which frees what they reserve on their nodes.
+   * The application, its releases and its history stay; deploying again starts it.
+   */
+  stop(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+    now = new Date(),
+  ): Promise<DeploymentRecord> {
+    return this.scoped(context, 'deploy.run', target, applicationId, async (application) => {
+      const running = await this.store.active(application.id);
+      if (running) throw deploymentInProgress(running.state);
+      // Placed replicas, not the last success: a deployment that failed while draining left its
+      // new replicas serving, and they must be stoppable too.
+      const replicas = await this.observations.forApplication(application.id);
+      const placed = replicas.at(0);
+      if (!placed) throw applicationNotRunning();
+      const release = await this.store.release(application.id, placed.releaseId);
+      if (!release) throw new NotFoundError('release');
+      const deployment = await this.store.queue(
+        release,
+        stopDraft(release),
+        'manual',
+        context.userId,
+        now,
+      );
+      if (!deployment) throw deploymentInProgress();
+      await this.events.publish([
+        this.event('deployment.queued', context, application, deployment.id, now, {
+          releaseId: release.id,
+          trigger: deployment.trigger,
+          plan: 'stop',
+        }),
+      ]);
+      await this.waker.wake(application.organizationId, deployment.id);
+      return deployment;
     });
   }
 

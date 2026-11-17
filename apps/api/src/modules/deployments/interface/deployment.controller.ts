@@ -110,6 +110,20 @@ export class DeploymentController {
     );
   }
 
+  @Post(`${APPLICATION}/stop`)
+  @HttpCode(201)
+  @RequireTenant('deploy.run', 'environment')
+  @AllowApiToken('deploy.run')
+  @ApiCreatedResponse({ type: DeploymentDto })
+  async stop(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+  ): Promise<DeploymentDto> {
+    return deploymentDto(
+      await this.deployments.stop(resourceContext(request), target(path), path.applicationId),
+    );
+  }
+
   @Post(`${APPLICATION}/deployments/:deploymentId/rollback`)
   @HttpCode(201)
   @RequireTenant('deploy.run', 'environment')

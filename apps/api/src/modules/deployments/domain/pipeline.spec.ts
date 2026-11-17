@@ -117,6 +117,7 @@ function execute(
 function simulate(
   config: ShipkeepConfig,
   inject?: (step: PipelineStep) => StepOutcome | undefined,
+  planned: DeploymentRecord['plan'] = { build: false, release: config.release !== undefined },
 ) {
   const world: World = {
     deployment: {
@@ -125,7 +126,7 @@ function simulate(
       applicationId: APP.id,
       releaseId: '0190f5a8-7b1c-7e2d-8f3a-0000000000r2',
       state: 'queued',
-      plan: { build: false, release: config.release !== undefined },
+      plan: planned,
       trigger: 'manual',
       actorId: null,
       startedAt: NOW,
@@ -206,6 +207,52 @@ describe('deployment pipeline', () => {
     // Each replaced replica is stopped gracefully before it is removed.
     expect(kinds.filter((kind) => kind === 'remove_container')).toHaveLength(previous.length);
     expect(kinds.indexOf('remove_container')).toBeGreaterThan(kinds.indexOf('stop_container'));
+  });
+
+  describe('stopping an application (#256)', () => {
+    const STOP = { build: false, release: false, stop: true };
+
+    it('removes the routes and the serving replicas, and starts nothing', () => {
+      const world = simulate(full, undefined, STOP);
+      expect(world.states).toEqual(['queued', 'draining', 'succeeded']);
+      expect(Object.fromEntries(world.routes)).toEqual({});
+      expect([...world.stopped].sort()).toEqual(previous.map((p) => p.container).sort());
+      const kinds = world.executed.map((step) => step.kind);
+      expect([...new Set(kinds)].sort()).toEqual([
+        'remove_container',
+        'remove_route',
+        'stop_container',
+      ]);
+      // One route per node that served, and each replica stopped gracefully before removal.
+      expect(kinds.filter((kind) => kind === 'remove_route')).toHaveLength(2);
+      expect(kinds.filter((kind) => kind === 'stop_container')).toHaveLength(previous.length);
+      expect(kinds.indexOf('remove_container')).toBeGreaterThan(kinds.indexOf('stop_container'));
+      // Nothing is resolved or placed: a stop does not need the registry or free capacity.
+      expect(world.pinned).toBeNull();
+      expect(world.allocations).toEqual([]);
+      for (const step of world.executed) expect(step.key).toMatch(AGENT_KEY);
+    });
+
+    it('stops an application without domains the same way', () => {
+      const world = simulate(minimal, undefined, STOP);
+      expect(world.states).toEqual(['queued', 'draining', 'succeeded']);
+      expect([...world.stopped].sort()).toEqual(previous.map((p) => p.container).sort());
+    });
+
+    it('fails when a replica cannot be stopped, and can be asked again', () => {
+      const world = simulate(
+        full,
+        (step) =>
+          step.kind === 'stop_container' && step.nodeId === OLD_NODE
+            ? { state: 'failed' }
+            : undefined,
+        STOP,
+      );
+      expect(world.states).toEqual(['queued', 'draining', 'failed']);
+      // Recovery has nothing to undo: no new replica exists and no route points at one.
+      expect(world.executed.every((step) => step.kind !== 'create_container')).toBe(true);
+      expect(world.executed.every((step) => step.kind !== 'upsert_route')).toBe(true);
+    });
   });
 
   it('builds agent-valid keys, names and container plans', () => {

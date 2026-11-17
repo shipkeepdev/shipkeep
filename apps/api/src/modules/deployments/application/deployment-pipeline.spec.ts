@@ -46,6 +46,8 @@ function world(
     trigger?: DeploymentRecord['trigger'];
     /** The configuration of the release, when the default one does not fit the case. */
     config?: ShipkeepConfig;
+    /** The plan of the deployment; a new release that starts replicas by default. */
+    plan?: DeploymentRecord['plan'];
     /** What happens while this placement waits for another one to finish. */
     whileWaitingForTheLock?: () => void;
     /** Replicas of the release that serves when the deployment starts. */
@@ -60,7 +62,7 @@ function world(
     applicationId: APP,
     releaseId: '0190f5a8-7b1c-7e2d-8f3a-00000000000f',
     state: 'queued',
-    plan: { build: false, release: false },
+    plan: options.plan ?? { build: false, release: false },
     trigger: options.trigger ?? 'manual',
     actorId: null,
     startedAt: NOW,
@@ -493,6 +495,61 @@ describe('DeploymentPipeline', () => {
         state: 'failed',
         error: 'No node can run replica 1 of 1 (edge-0: architecture).',
       });
+    });
+  });
+
+  describe('stopping an application (#256)', () => {
+    const replica = (index: number, nodeId: string): StoredAllocation => ({
+      id: `alloc-serving-${String(index)}`,
+      // The stop names the release that runs: its replicas are the ones to remove.
+      releaseId: '0190f5a8-7b1c-7e2d-8f3a-00000000000f',
+      index,
+      nodeId,
+      container: `sk-billing-api-0123456789ab-r1-${String(index)}`,
+      port: 3000,
+      ...DEFAULT_LIMITS,
+    });
+
+    it('removes routes and replicas, frees their reservation and asks no registry', async () => {
+      const w = world({
+        plan: { build: false, release: false, stop: true },
+        serving: [replica(0, NODE)],
+        resolve: () => Promise.reject(new Error('a stop must not ask the registry')),
+      });
+      let outcome = 'wait';
+      for (let round = 0; round < 10 && outcome === 'wait'; round++) {
+        outcome = await w.subject.run(ORG, w.deployment.id, () => NOW);
+        w.agentsFinish();
+      }
+      expect(w.deployment).toMatchObject({ state: 'succeeded', error: null });
+      expect([...w.queued.values()].map((a) => a.kind)).toEqual([
+        'removeRoute',
+        'stopContainer',
+        'removeContainer',
+      ]);
+      // Nothing is placed, and what was placed no longer reserves anything.
+      expect(w.calls).toEqual([]);
+      expect(w.allocations).toMatchObject([{ id: 'alloc-serving-0', stopped: true }]);
+      expect(w.events.map((e) => [e.type, e.payload['to'] ?? ''])).toEqual([
+        ['deployment.advanced', 'draining'],
+        ['deployment.advanced', 'succeeded'],
+      ]);
+      expect(w.superseded).toEqual([]);
+    });
+
+    it('fails when an agent cannot stop a replica, and keeps the reservation', async () => {
+      const w = world({
+        plan: { build: false, release: false, stop: true },
+        serving: [replica(0, NODE)],
+      });
+      await w.subject.run(ORG, w.deployment.id, () => NOW);
+      for (const key of w.queued.keys())
+        if (key.includes(':stop:')) w.outcomes.set(key, { state: 'failed' });
+      w.agentsFinish();
+      expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
+      expect(w.deployment.state).toBe('failed');
+      // The replica may still run: it keeps its room until a later stop succeeds.
+      expect(w.allocations).toMatchObject([{ id: 'alloc-serving-0', stopped: false }]);
     });
   });
 

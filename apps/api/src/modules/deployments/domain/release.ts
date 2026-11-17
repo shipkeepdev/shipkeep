@@ -70,6 +70,21 @@ export function assertSecretsSet(required: readonly string[], set: readonly stri
     );
 }
 
+/**
+ * A stop is a deployment of the release that runs, with a plan that starts nothing: the pipeline
+ * only removes the routes and the replicas (SPEC 5.1). It needs no secret and no image.
+ */
+export function stopDraft(running: Release): ReleaseDraft {
+  return { image: running.image, plan: { build: false, release: false, stop: true }, secrets: [] };
+}
+
+export function applicationNotRunning(): ConflictError {
+  return new ConflictError(
+    'application_not_running',
+    'The application has no running replica to stop.',
+  );
+}
+
 export function deploymentInProgress(state?: DeploymentState): ConflictError {
   return new ConflictError(
     'deployment_in_progress',

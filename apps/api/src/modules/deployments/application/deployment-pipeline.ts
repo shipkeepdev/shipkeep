@@ -171,7 +171,9 @@ export class DeploymentPipeline {
       this.pipeline.steps(deployment.id),
     ]);
     if (!application || !release) return undefined;
-    const previous = allocations.filter((a) => a.releaseId !== release.id);
+    // A stop places nothing: every placed replica is one it removes, whatever its release.
+    const stopping = deployment.plan.stop === true;
+    const previous = stopping ? allocations : allocations.filter((a) => a.releaseId !== release.id);
     return {
       application,
       previousReleases: [...new Set(previous.map((a) => a.releaseId))],
@@ -190,7 +192,7 @@ export class DeploymentPipeline {
             : null,
           config: release.config,
         },
-        allocations: allocations.filter((a) => a.releaseId === release.id),
+        allocations: stopping ? [] : allocations.filter((a) => a.releaseId === release.id),
         previous,
         steps,
       },

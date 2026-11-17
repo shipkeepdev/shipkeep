@@ -461,6 +461,7 @@ model Deployment {
   state          String      @db.VarChar(16)
   planBuild      Boolean     @map("plan_build")
   planRelease    Boolean     @map("plan_release")
+  planStop       Boolean     @default(false) @map("plan_stop")
   trigger        String      @db.VarChar(16)
   actorId        String?     @map("actor_id") @db.VarChar(128)
   error          String?     @db.VarChar(512)

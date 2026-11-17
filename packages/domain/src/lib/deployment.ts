@@ -44,6 +44,11 @@ export interface DeploymentPlan {
   readonly build: boolean;
   /** False when no release command is defined: `releasing` is skipped (SPEC 5.1). */
   readonly release: boolean;
+  /**
+   * True for a stop (SPEC 5.1): nothing is built, released, placed or started. The deployment
+   * goes from `queued` to `draining`, where the serving replicas are removed.
+   */
+  readonly stop?: boolean;
 }
 
 export interface Deployment {
@@ -72,6 +77,7 @@ export function nextState(state: DeploymentState, plan: DeploymentPlan): Deploym
   const index = PIPELINE.indexOf(state);
   if (index < 0 || state === 'succeeded') throw invalidTransition(state, 'advance');
   for (const candidate of PIPELINE.slice(index + 1)) {
+    if (plan.stop && candidate !== 'draining' && candidate !== 'succeeded') continue;
     if (!plan.build && (candidate === 'building' || candidate === 'built')) continue;
     if (!plan.release && candidate === 'releasing') continue;
     return candidate;

@@ -370,6 +370,11 @@ succeeded -> rolled_back (when a later rollback targets the previous release)
 ```
 
 - `releasing` is skipped when no release command is defined.
+- A stop is a deployment whose plan has `stop`: `queued -> draining -> succeeded`. It starts nothing, resolves no image and places nothing, so it works when the registry is unreachable or the nodes are full.
+  - `draining` removes the application's route on every node that served, then stops and removes every placed replica of the application, whatever its release.
+  - Success marks those allocations stopped, which frees what they reserved (section 6). The application, its releases and its history stay.
+  - A failed stop leaves the replicas it could not remove placed, with their reservation, and can be asked again.
+  - After a stop nothing serves: any deployment that succeeded can be rolled back to, and deploying starts the application again.
 - A failure before `switching` never changes routing.
 - A failure during `switching` restores the previous upstream set atomically.
 - The aggregate is `packages/domain/src/lib/deployment.ts`. A deployment's plan, fixed when it is queued, records whether it builds (image sources skip `building` and `built`) and whether it runs a release command. Stopping it as failed or cancelled reports whether traffic is untouched (before `switching`), must be restored (during it) or already on the new release (`draining`). Failure reasons are stored bounded to 512 characters, without control characters.
@@ -589,6 +594,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - The target must have succeeded (or been rolled back) and must not be the release serving now; otherwise 409 `rollback_target_invalid` or `release_already_serving`. A release that never resolved its image answers 409 `release_not_deployable`.
     - The release command does not run again, because migrations of an older version must not be replayed over newer data. Secrets use their current values, and the application's own configuration does not change, so the next deployment uses it again.
     - When the rollback succeeds, the deployment it replaced becomes `rolled_back`, audited as `deployment.rolled_back`.
+  - `POST …/applications/{applicationId}/stop` (201, `deploy.run`) queues a stop: a deployment of the release that runs, whose plan has `stop` (section 5.1). It creates no release and needs no secret. `application_not_running` (409) when the application has no placed replica, `deployment_in_progress` (409) while another deployment runs. `stop` is true on that deployment in every deployment answer.
   - Database guarantees:
     - a partial unique index keeps one unfinished deployment per application;
     - releases are immutable: a trigger and the runtime grants allow only recording the image digest, once;

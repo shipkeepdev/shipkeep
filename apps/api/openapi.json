@@ -2378,6 +2378,72 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/stop": {
+      "post": {
+        "operationId": "stop",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/rollback": {
       "post": {
         "operationId": "rollback",
@@ -5571,6 +5637,10 @@
             "type": "boolean",
             "description": "True when a release command runs before the switch."
           },
+          "stop": {
+            "type": "boolean",
+            "description": "True for a stop: nothing is started, and the routes and running replicas are removed."
+          },
           "trigger": {
             "type": "string",
             "enum": [
@@ -5610,6 +5680,7 @@
           "state",
           "build",
           "release",
+          "stop",
           "trigger",
           "actorId",
           "error",

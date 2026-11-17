@@ -19,11 +19,11 @@ const plans = [
 ];
 function deployment(
   state: DeploymentState,
-  plan = plans[0] ?? { build: true, release: true },
+  plan: Deployment['plan'] = plans[0] ?? { build: true, release: true },
 ): Deployment {
   return { id: 'd', state, plan, startedAt: now, finishedAt: null, error: null };
 }
-function walk(plan: { build: boolean; release: boolean }): DeploymentState[] {
+function walk(plan: { build: boolean; release: boolean; stop?: boolean }): DeploymentState[] {
   const states: DeploymentState[] = ['queued'];
   let current = deployment('queued', plan);
   while (current.state !== 'succeeded') {
@@ -60,6 +60,27 @@ describe('SPEC 5.1 deployment state machine', () => {
     expect(walk({ build: false, release: true })).toEqual(
       expect.not.arrayContaining(['building', 'built']),
     );
+  });
+
+  it('only drains for a stop: nothing is built, released, placed or started', () => {
+    expect(walk({ build: false, release: false, stop: true })).toEqual([
+      'queued',
+      'draining',
+      'succeeded',
+    ]);
+    // A stop never builds or runs a release command, whatever the rest of the plan says.
+    expect(walk({ build: true, release: true, stop: true })).toEqual([
+      'queued',
+      'draining',
+      'succeeded',
+    ]);
+    const stopping = deployment('queued', { build: false, release: false, stop: true });
+    // Cancelled before it started draining, a stop has changed nothing.
+    expect(stop(stopping, 'cancelled', null, now).routing).toBe('untouched');
+    expect(advance(advance(stopping, now), now)).toMatchObject({
+      state: 'succeeded',
+      finishedAt: now,
+    });
   });
 
   it('never advances a finished deployment and only rolls back a succeeded one', () => {

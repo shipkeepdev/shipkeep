@@ -19,6 +19,11 @@ export class DeploymentDto {
   @ApiProperty({ description: 'False for image sources: nothing is built.' }) build!: boolean;
   @ApiProperty({ description: 'True when a release command runs before the switch.' })
   release!: boolean;
+  @ApiProperty({
+    description:
+      'True for a stop: nothing is started, and the routes and running replicas are removed.',
+  })
+  stop!: boolean;
   @ApiProperty({ enum: DEPLOYMENT_TRIGGERS }) trigger!: string;
   @ApiProperty({ type: String, nullable: true }) actorId!: string | null;
   @ApiProperty({ type: String, nullable: true, maxLength: 512 }) error!: string | null;
@@ -91,6 +96,7 @@ export function deploymentDto(deployment: DeploymentRecord): DeploymentDto {
     state: deployment.state,
     build: deployment.plan.build,
     release: deployment.plan.release,
+    stop: deployment.plan.stop === true,
     trigger: deployment.trigger,
     actorId: deployment.actorId,
     error: deployment.error,
