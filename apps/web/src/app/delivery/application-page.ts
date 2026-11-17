@@ -368,7 +368,8 @@ const LIVE_POLL_MS = 15_000;
                   <span class="font-mono text-[11.5px] text-fg2">{{
                     d.releaseId.slice(0, 7)
                   }}</span>
-                  <span class="ml-2 text-fg3">{{
+                  <!-- A long cause is cut by the row: the whole of it is in the title. -->
+                  <span class="ml-2 text-fg3" [attr.title]="d.error ? (d.error | t) : null">{{
                     d.error ?? (d.stop ? 'stop' : d.trigger) | t
                   }}</span>
                 </div>
