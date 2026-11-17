@@ -839,6 +839,7 @@ export class ApplicationPage {
   }
 
   protected async deploy(): Promise<void> {
+    this.again();
     const outcome = await this.runner.run({ deploy: this.applicationId() }, () =>
       this.api.deploy(this.environment(), this.applicationId()),
     );
@@ -868,7 +869,17 @@ export class ApplicationPage {
     return latest?.stop === true || deployment.releaseId !== latest?.releaseId;
   }
 
+  /**
+   * A click is a new attempt. The runner stays locked after a refusal (a 409, for a missing
+   * secret or a deployment already running), and would otherwise ignore every later click until
+   * the page is reloaded. A wait the server asked for is kept.
+   */
+  private again(): void {
+    if (this.runner.restartRequired()) this.runner.reset();
+  }
+
   protected async rollback(deploymentId: string): Promise<void> {
+    this.again();
     const outcome = await this.runner.run({ rollback: deploymentId }, () =>
       this.api.rollback(this.environment(), this.applicationId(), deploymentId),
     );
@@ -876,6 +887,7 @@ export class ApplicationPage {
   }
 
   protected async cancel(deploymentId: string): Promise<void> {
+    this.again();
     const outcome = await this.runner.run({ cancel: deploymentId }, () =>
       this.api.cancel(this.environment(), this.applicationId(), deploymentId),
     );

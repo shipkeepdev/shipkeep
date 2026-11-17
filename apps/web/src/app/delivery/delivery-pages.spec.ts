@@ -914,4 +914,39 @@ describe('delivery screens', () => {
     expect(deploymentsText()).toContain('cancelled');
     expect(element().querySelector('[role="status"]')).toBeNull();
   });
+
+  it('deploys again after the server refused for a missing secret', async () => {
+    // The first refusal is the common one: the configuration names a secret that is not set yet.
+    let refusals = 1;
+    let deployments: unknown[] = [];
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: deployments }),
+      [`POST ${BASE}/applications/${APP}/deployments`]: () => {
+        if (refusals-- > 0)
+          return json({ code: 'secrets_missing', title: 'Conflict', status: 409 }, 409);
+        deployments = [deployment('queued')];
+        return json({ release: {}, deployment: deployments[0] }, 201);
+      },
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+    );
+    await settle();
+    const deploy = () =>
+      Array.from(element().querySelectorAll('button')).find((b) =>
+        b.textContent.includes('Deploy'),
+      );
+    const sent = () =>
+      requests.filter((r) => r.method === 'POST' && r.path.endsWith('/deployments')).length;
+    deploy()?.click();
+    await settle();
+    expect(sent()).toBe(1);
+    expect(element().querySelector('[role="alert"]')).not.toBeNull();
+    // Once the secret is set, the same button must work without reloading the page.
+    deploy()?.click();
+    await settle();
+    expect(sent()).toBe(2);
+    expect(element().querySelector('[role="status"]')?.textContent).toContain('queued');
+  });
 });
