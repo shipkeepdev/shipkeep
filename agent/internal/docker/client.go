@@ -71,8 +71,10 @@ func (e *PullError) Cause() string { return e.cause }
 
 // pullCause reads the daemon's message about a failed pull and names its cause. Only the name
 // leaves this function: the message can hold hosts, paths, tokens or credentials, and is dropped.
-// The order matters: a full disk and an untrusted certificate are named before the broader
-// refusals and network failures whose words their messages also contain.
+// The order matters. A full disk and an untrusted certificate are named before the network
+// failures whose words their messages also contain. A network failure is named before a refusal:
+// Docker reports a token service it cannot reach as "failed to authorize", and nothing was
+// refused. A refusal is named before a missing image, for registries that say both.
 func pullCause(message string) string {
 	if len(message) > maxDaemonMessage {
 		message = message[:maxDaemonMessage]
@@ -91,12 +93,12 @@ func pullCause(message string) string {
 		return CauseDiskFull
 	case holds("x509:", "failed to verify certificate", "certificate signed by unknown authority", "certificate has expired", "certificate is not valid"):
 		return CauseRegistryUntrusted
+	case holds("no such host", "connection refused", "connection reset", "i/o timeout", "timeout exceeded", "deadline exceeded", "network is unreachable", "no route to host", "temporary failure in name resolution", "server misbehaving", "tls handshake timeout", "unexpected eof"):
+		return CauseRegistryUnreachable
 	case holds("unauthorized", "access denied", "denied:", "authentication required", "authorization fail", "failed to authorize", "forbidden", "no basic auth credentials"):
 		return CauseRegistryDenied
 	case holds("manifest unknown", "name unknown", "not found", "no such image"):
 		return CauseImageNotFound
-	case holds("no such host", "connection refused", "connection reset", "i/o timeout", "timeout exceeded", "deadline exceeded", "network is unreachable", "no route to host", "temporary failure in name resolution", "server misbehaving", "tls handshake timeout", "unexpected eof"):
-		return CauseRegistryUnreachable
 	}
 	return ""
 }

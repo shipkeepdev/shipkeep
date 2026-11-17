@@ -104,6 +104,14 @@ func TestPullNamesItsCauseWithoutTheDaemonText(t *testing.T) {
 		// A registry that will not say whether the repository is missing or private: a refusal first,
 		// because the credentials are what the reader can check.
 		{`unauthorized: repository acme/app not found or access denied`, CauseRegistryDenied},
+		// Word for word what Docker 29.10 answered on the installation rig (containerd image store).
+		{`failed to resolve reference "registry.example.com/acme/private-whoami@` + digest + `": failed to do request: Head "https://registry.example.com/v2/acme/private-whoami/manifests/` + digest + `": tls: failed to verify certificate: x509: certificate signed by unknown authority`, CauseRegistryUntrusted},
+		{`unknown: failed to resolve reference "registry.example.com/acme/private-whoami@` + digest + `": unexpected status from HEAD request to https://registry.example.com/v2/acme/private-whoami/manifests/` + digest + `: 401 Unauthorized`, CauseRegistryDenied},
+		{`failed to resolve reference "registry.example.com/acme/app@` + digest + `": failed to do request: Head "https://registry.example.com/v2/acme/app/manifests/` + digest + `": dial tcp 203.0.113.5:443: connect: connection refused`, CauseRegistryUnreachable},
+		// The token service of the registry cannot be reached: Docker wraps it in "failed to authorize",
+		// but nothing was refused.
+		{`failed to resolve reference "registry.example.com/acme/app@` + digest + `": failed to authorize: failed to fetch anonymous token: Get "https://auth.example.com/token?scope=repository%3Aacme%2Fapp%3Apull": dial tcp: lookup auth.example.com on 127.0.0.53:53: no such host`, CauseRegistryUnreachable},
+		{`failed to authorize: failed to fetch oauth token: Post "https://auth.example.com/token": dial tcp 203.0.113.5:443: i/o timeout`, CauseRegistryUnreachable},
 		// classic image store
 		{`unauthorized: incorrect username or password`, CauseRegistryDenied},
 		{`pull access denied for acme/app, repository does not exist or may require 'docker login': denied: requested access to the resource is denied`, CauseRegistryDenied},
@@ -122,7 +130,7 @@ func TestPullNamesItsCauseWithoutTheDaemonText(t *testing.T) {
 		{`something nobody has seen yet, with https://deploy:sk_test_fake_registry_password@registry.example.com/v2/ in it`, ""},
 		{strings.Repeat("x", 1<<20), ""},
 	}
-	leaks := []string{"registry.example.com", "auth.docker.io", "/var/lib", "acme", "sk_test_fake", "sha256", "127.0.0.53", "203.0.113.5", "xxx"}
+	leaks := []string{"registry.example.com", "auth.docker.io", "auth.example.com", "/var/lib", "acme", "sk_test_fake", "sha256", "127.0.0.53", "203.0.113.5", "xxx"}
 	for _, inStream := range []bool{true, false} {
 		for _, tc := range cases {
 			client := fakeDaemon(t, func(w http.ResponseWriter, _ *http.Request) {

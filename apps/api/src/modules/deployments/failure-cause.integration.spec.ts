@@ -13,7 +13,12 @@ const HOSTILE = 'pull failed: https://deploy:sk_test_fake_registry_password@regi
 describe('the cause of a failed pull, with PostgreSQL', () => {
   const NOW = new Date();
   let fixture: Awaited<ReturnType<typeof tenantHttpFixture>>;
-  let admin: Client;
+  /** Set last in the setup: undefined when an earlier step of it failed. */
+  let connection: Client | undefined;
+  const admin = (): Client => {
+    if (!connection) throw new Error('the setup did not finish');
+    return connection;
+  };
 
   beforeAll(async () => {
     fixture = await tenantHttpFixture();
@@ -26,12 +31,17 @@ describe('the cause of a failed pull, with PostgreSQL', () => {
       },
       heartbeatAt: NOW,
     });
-    admin = new Client({ connectionString: fixture.databaseUrl });
-    await admin.connect();
+    const client = new Client({ connectionString: fixture.databaseUrl });
+    await client.connect();
+    connection = client;
   });
   afterAll(async () => {
-    await admin.end();
-    await fixture.close();
+    // The fixture is closed whatever happened to the connection, or to the rest of the setup.
+    try {
+      await connection?.end();
+    } finally {
+      await fixture.close();
+    }
   });
 
   /** Deploys an image and lets the agent end the pull as given; returns what the API then shows. */
@@ -56,12 +66,12 @@ describe('the cause of a failed pull, with PostgreSQL', () => {
     for (let round = 0; round < 10; round++) {
       if ((await pipeline.run(fixture.organizationId, deploymentId, () => NOW)) === 'done') break;
       // The agent reports: the pull as the test says, everything else as done.
-      await admin.query(
+      await admin().query(
         `UPDATE agent_actions SET state = $2, error = $3, completed_at = now(), updated_at = now()
          WHERE deployment_id = $1 AND state = 'queued' AND kind = 'pullImage'`,
         [deploymentId, state, error],
       );
-      await admin.query(
+      await admin().query(
         `UPDATE agent_actions SET state = 'succeeded', completed_at = now(), updated_at = now()
          WHERE deployment_id = $1 AND state = 'queued'`,
         [deploymentId],
