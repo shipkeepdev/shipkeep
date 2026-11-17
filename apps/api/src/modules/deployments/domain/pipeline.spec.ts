@@ -305,14 +305,59 @@ describe('deployment pipeline', () => {
     expect(world.routes.size).toBe(0);
   });
 
+  describe('what a failed step says (issue #265)', () => {
+    const failing = (kind: string, outcome: StepOutcome) =>
+      simulate(full, (step) => (step.kind === kind ? outcome : undefined)).deployment.error;
+
+    it('says why the image could not be pulled, in words that tell what to check', () => {
+      expect(failing('pull_image', { state: 'compensated', reason: 'registry_denied' })).toBe(
+        'The server could not pull the image: the registry refused it. The image is private, the stored credentials are wrong, or it does not exist.',
+      );
+      expect(failing('pull_image', { state: 'compensated', reason: 'image_not_found' })).toBe(
+        'The server could not pull the image: the registry does not have it.',
+      );
+      expect(failing('pull_image', { state: 'compensated', reason: 'registry_unreachable' })).toBe(
+        'The server could not pull the image: it could not reach the registry.',
+      );
+      expect(failing('pull_image', { state: 'compensated', reason: 'registry_untrusted' })).toBe(
+        "The server could not pull the image: it does not trust the registry's certificate.",
+      );
+      expect(failing('pull_image', { state: 'failed', reason: 'disk_full' })).toBe(
+        'The server could not pull the image: its disk is full.',
+      );
+    });
+
+    it('keeps the step and its fixed text for the other reasons', () => {
+      expect(failing('pull_image', { state: 'failed', reason: 'invalid_input' })).toBe(
+        'Step pull failed: invalid action input',
+      );
+      expect(failing('pull_image', { state: 'compensated', reason: 'action_failed' })).toBe(
+        'Step pull compensated: action failed',
+      );
+      expect(failing('pull_image', { state: 'expired', reason: null })).toBe('Step pull expired.');
+    });
+
+    it('never repeats a text the agent sent that it does not know', () => {
+      expect(failing('pull_image', { state: 'failed', reason: 'unknown' })).toBe(
+        'Step pull failed.',
+      );
+    });
+
+    it('does not read a pull cause into another step', () => {
+      expect(failing('ensure_network', { state: 'failed', reason: 'registry_denied' })).toBe(
+        'Step net failed: registry refused the pull',
+      );
+    });
+  });
+
   it('leaves the previous release serving when any step before draining fails', () => {
     const keys = simulate(full).executed.map((step) => step);
     for (const target of keys) {
       const world = simulate(full, (step) =>
-        step.key === target.key ? { state: 'failed', error: 'injected failure' } : undefined,
+        step.key === target.key ? { state: 'failed', reason: 'action_failed' } : undefined,
       );
       expect(world.deployment.state, target.key).toBe('failed');
-      expect(world.deployment.error, target.key).toContain('injected failure');
+      expect(world.deployment.error, target.key).toMatch(/^Step [a-z-]+ failed: action failed$/);
       if (
         target.kind === 'stop_container' ||
         target.kind === 'remove_container' ||

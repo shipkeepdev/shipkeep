@@ -10,6 +10,8 @@ import {
   type HealthPlan,
   healthPlan,
 } from './container-plan';
+import { type ActionReason, reasonText } from '../../fleet/domain/agent-action';
+
 import type { DeploymentRecord } from './release';
 
 /** One replica of the release on a node (SPEC 4 `Allocation`), placed before it starts. */
@@ -39,7 +41,11 @@ export interface StepOutcome {
   readonly containerId?: string;
   readonly healthy?: boolean;
   readonly exitCode?: number;
-  readonly error?: string | null;
+  /**
+   * Why an unsuccessful action ended as it did, as a code. The text an agent sent never comes
+   * this far: a deployment's failure message is built from the code.
+   */
+  readonly reason?: ActionReason | null;
 }
 
 export interface PipelineContext {
@@ -375,10 +381,24 @@ function failedStep(context: PipelineContext): string | undefined {
       continue;
     }
     const step = stepKey.slice(prefix.length).split(':')[0] ?? 'step';
-    return `Step ${step} ${outcome.state}${outcome.error ? `: ${outcome.error}` : '.'}`;
+    const pull = step === 'pull' && outcome.reason ? PULL_FAILURES[outcome.reason] : undefined;
+    if (pull) return pull;
+    const text = outcome.reason ? reasonText(outcome.reason) : null;
+    return `Step ${step} ${outcome.state}${text ? `: ${text}` : '.'}`;
   }
   return undefined;
 }
+
+/** What a failed pull says, by cause: what happened, in words that tell what to check. */
+const PULL_FAILURES: Partial<Record<ActionReason, string>> = {
+  registry_denied:
+    'The server could not pull the image: the registry refused it. The image is private, the stored credentials are wrong, or it does not exist.',
+  image_not_found: 'The server could not pull the image: the registry does not have it.',
+  registry_unreachable: 'The server could not pull the image: it could not reach the registry.',
+  registry_untrusted:
+    "The server could not pull the image: it does not trust the registry's certificate.",
+  disk_full: 'The server could not pull the image: its disk is full.',
+};
 
 function prepare(context: PipelineContext, nodeId: string, image: string): PipelineStep[] {
   return [
