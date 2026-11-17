@@ -59,17 +59,14 @@ const LOGOS: Readonly<Record<string, BrandName>> = { 'docker.io': 'docker', 'ghc
         }}</span>
       </div>
     } @else {
-      @if (problem(); as text) {
-        <div class="alert" role="alert">{{ text | t }}</div>
-      }
       @switch (list.state()) {
         @case ('failed') {
           <div class="alert" role="alert">{{ list.problem() | t }}</div>
         }
         @default {
           <div class="card overflow-x-auto">
-            <div class="min-w-[560px]">
-              <div class="grid-table th px-[18px] py-[11px]" [class]="columns">
+            <div class="sm:min-w-[560px]">
+              <div class="grid-table th px-[18px] py-[11px] max-sm:hidden" [class]="columns">
                 <span>{{ 'Registry' | t }}</span>
                 <span>{{ 'Account' | t }}</span>
                 <span>{{ 'Updated' | t }}</span>
@@ -77,7 +74,7 @@ const LOGOS: Readonly<Record<string, BrandName>> = { 'docker.io': 'docker', 'ghc
               </div>
               @for (row of list.items(); track row.id) {
                 <div
-                  class="grid-table border-t border-line2 px-[18px] py-3 text-[12.5px]"
+                  class="grid-table border-t border-line2 px-[18px] py-3 text-[12.5px] max-sm:gap-1.5 max-sm:first:border-t-0"
                   [class]="columns"
                   [attr.aria-label]="row.server"
                   role="group"
@@ -94,7 +91,7 @@ const LOGOS: Readonly<Record<string, BrandName>> = { 'docker.io': 'docker', 'ghc
                   <span class="truncate text-[#7E7E87]">{{
                     '{date} · version {n}' | t: { date: date(row.updatedAt), n: row.version }
                   }}</span>
-                  <span class="flex justify-end gap-2">
+                  <span class="flex justify-end gap-2 max-sm:mt-1.5 max-sm:justify-start">
                     <button
                       class="btn btn-sm"
                       type="button"
@@ -142,6 +139,9 @@ const LOGOS: Readonly<Record<string, BrandName>> = { 'docker.io': 'docker', 'ghc
             </div>
           </div>
         }
+      }
+      @if (problem(); as text) {
+        <div class="alert max-w-[640px]" role="alert">{{ text | t }}</div>
       }
       @if (removing(); as target) {
         <section
@@ -253,9 +253,13 @@ export class RegistryCredentials {
   private readonly api = inject(WorkspaceApi);
   protected readonly runner = inject(MutationRunner);
   readonly organizationId = input.required<string>();
-  /** Registry, account, last change, and the two actions of a row. */
+  /**
+   * Registry, account, last change, and the two actions of a row. The last column has a fixed
+   * width so that the header lines up with the rows; on a phone a row is a stack, with its
+   * actions in view instead of behind a sideways scroll.
+   */
   protected readonly columns =
-    'grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_auto]' as const;
+    'sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_176px]' as const;
   /** The list is hidden from who does not administer the organization (the server answers 404). */
   protected readonly denied = signal(false);
   protected readonly list = new Collection<Stored>(() => this.load());

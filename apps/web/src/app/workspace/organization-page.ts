@@ -1,8 +1,10 @@
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
   effect,
+  ElementRef,
   inject,
   input,
   signal,
@@ -139,6 +141,7 @@ const DANGER: Block = {
 })
 export class OrganizationPage {
   private readonly api = inject(WorkspaceApi);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly shell = inject(ShellContext);
   readonly organizationId = input.required<string>();
   protected readonly sections = SECTIONS;
@@ -158,6 +161,16 @@ export class OrganizationPage {
   constructor() {
     effect(() => {
       void this.load(this.organizationId());
+    });
+    // On a phone the sections scroll sideways: the current one must not stay cut off.
+    afterRenderEffect(() => {
+      this.section();
+      const current = this.host.nativeElement.querySelector<HTMLElement>(
+        'nav [aria-current="page"]',
+      );
+      // Not every environment that renders this page can scroll (the unit tests cannot).
+      if (typeof current?.scrollIntoView === 'function')
+        current.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
   }
 
