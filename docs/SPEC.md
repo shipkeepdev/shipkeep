@@ -617,7 +617,8 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - The same credentials go with `PullImage` to the node that pulls, inside the encrypted action payload, and expire with the action (one hour).
     - A refusal reports `the registry refused the stored credentials`, or, without stored credentials, that the registry refused anonymous access. Neither message carries the user name, the password or a token.
     - Stored credentials that no longer decrypt fail the deployment with `registry_credentials_unreadable`; a database error is retried.
-    - An agent older than this rule refuses `docker.io` credentials for a reference without a registry host: private Docker Hub images need the agent of the same release.
+    - An agent older than this rule (up to `0.1.0-alpha.2`) refuses `docker.io` credentials for a reference without a registry host, with `invalid action input`. Once an organization stores Docker Hub credentials, every Docker Hub pull on such a server fails, public images included, until its agent is updated. Registries named by a host work with older agents.
+    - An image that is already on the server is not pulled again, so removing credentials stops the next pull, not the containers or the images already there.
   - SSRF guards on every request:
     - HTTPS only, no credentials in URLs, no redirects;
     - IP literals and every resolved address must be public: not loopback, private, link-local, CGNAT, multicast, reserved or documentation ranges, including IPv4-mapped and NAT64 forms;
