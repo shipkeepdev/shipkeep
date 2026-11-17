@@ -349,7 +349,7 @@ const LIVE_POLL_MS = 15_000;
                   </div>
                 }
                 @if (d.error) {
-                  <div class="text-red">{{ d.error }}</div>
+                  <div class="text-red">{{ d.error | t }}</div>
                 }
               </div>
             </div>
@@ -369,7 +369,7 @@ const LIVE_POLL_MS = 15_000;
                     d.releaseId.slice(0, 7)
                   }}</span>
                   <span class="ml-2 text-fg3">{{
-                    d.error ?? ((d.stop ? 'stop' : d.trigger) | t)
+                    d.error ?? (d.stop ? 'stop' : d.trigger) | t
                   }}</span>
                 </div>
                 <span class="flex items-center gap-[7px] text-[12.5px]" [style.color]="st.color"
