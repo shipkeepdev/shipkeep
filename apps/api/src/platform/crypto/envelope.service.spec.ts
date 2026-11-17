@@ -7,7 +7,7 @@ import type { AppConfig } from '../config/app-config';
 
 import { MemoryDataKeyStore } from '../../testing/memory-stores';
 
-import { DecryptionError } from './envelope';
+import { DecryptionError, ValueDecryptionError } from './envelope';
 import { EnvelopeService } from './envelope.service';
 
 async function kekFile(): Promise<string> {
@@ -58,6 +58,44 @@ describe('EnvelopeService', () => {
     await expect(service.decryptFor('environment:env_b', 'secret:A', blob)).rejects.toThrow(
       DecryptionError,
     );
+  });
+
+  it('tells a value that does not decrypt from a data key that cannot be had', async () => {
+    const store = new MemoryDataKeyStore();
+    const service = new EnvelopeService(configWith(await kekFile()), store);
+    await service.onModuleInit();
+    const blob = await service.encryptFor('organization:org_a', 'registry:ghcr.io:1', plaintext);
+
+    // The value itself: another purpose, or an altered byte.
+    await expect(
+      service.decryptFor('organization:org_a', 'registry:ghcr.io:2', blob),
+    ).rejects.toThrow(ValueDecryptionError);
+    const altered = Buffer.from(blob);
+    altered[altered.length - 1] = (altered[altered.length - 1] ?? 0) ^ 1;
+    await expect(
+      service.decryptFor('organization:org_a', 'registry:ghcr.io:1', altered),
+    ).rejects.toThrow(ValueDecryptionError);
+
+    // The data key: another installation's KEK cannot unwrap it. Nothing is wrong with the value.
+    const other = new EnvelopeService(configWith(await kekFile()), store);
+    await other.onModuleInit();
+    const unwrap = await other
+      .decryptFor('organization:org_a', 'registry:ghcr.io:1', blob)
+      .catch((error: unknown) => error);
+    expect(unwrap).toBeInstanceOf(DecryptionError);
+    expect(unwrap).not.toBeInstanceOf(ValueDecryptionError);
+
+    // The data key again: the store that holds it does not answer.
+    const down = new EnvelopeService(configWith(await kekFile()), {
+      find: () => Promise.reject(new Error('connection lost')),
+      insert: () => Promise.reject(new Error('connection lost')),
+    });
+    await down.onModuleInit();
+    const lost = await down
+      .decryptFor('organization:org_a', 'registry:ghcr.io:1', blob)
+      .catch((error: unknown) => error);
+    expect(lost).toMatchObject({ message: 'connection lost' });
+    expect(lost).not.toBeInstanceOf(DecryptionError);
   });
 
   it('cannot decrypt with another installation KEK', async () => {

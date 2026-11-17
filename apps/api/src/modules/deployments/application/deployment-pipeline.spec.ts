@@ -646,6 +646,45 @@ describe('DeploymentPipeline', () => {
       expect(credentialsOf(pull)).toMatchObject({ server: 'docker.io', username: 'deploy-bot' });
     });
 
+    describe('on a server whose agent predates the Docker Hub rule', () => {
+      const node = (agentVersion: string): NodeView => ({
+        id: NODE,
+        name: 'edge-1',
+        status: 'ready',
+        lastHeartbeatAt: NOW,
+        labels: {},
+        facts: { ...READY_FACTS, agent_version: agentVersion },
+      });
+      const hub = { ...config, build: { type: 'image' as const, image: 'acme/billing:1.4.2' } };
+
+      it('pulls a Docker Hub image without the stored credentials, as before they existed', async () => {
+        for (const version of ['0.1.0-alpha.1', '0.1.0-alpha.2']) {
+          const w = world({
+            nodes: [node(version)],
+            config: hub,
+            logins: { 'docker.io': login('docker.io') },
+            resolve: () => Promise.resolve(`acme/billing@${DIGEST}`),
+          });
+          expect(credentialsOf(await pulled(w)), version).toBeUndefined();
+        }
+      });
+
+      it('still sends them to a current agent, and for a registry named by a host', async () => {
+        const current = world({
+          nodes: [node('0.1.0-alpha.3')],
+          config: hub,
+          logins: { 'docker.io': login('docker.io') },
+          resolve: () => Promise.resolve(`acme/billing@${DIGEST}`),
+        });
+        expect(credentialsOf(await pulled(current))).toMatchObject({ server: 'docker.io' });
+        const named = world({
+          nodes: [node('0.1.0-alpha.2')],
+          logins: { 'ghcr.io': login('ghcr.io') },
+        });
+        expect(credentialsOf(await pulled(named))).toMatchObject({ server: 'ghcr.io' });
+      });
+    });
+
     it('fails with a reason when the stored credentials cannot be read', async () => {
       const w = world({
         login: () =>

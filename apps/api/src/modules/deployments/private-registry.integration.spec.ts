@@ -128,11 +128,16 @@ describe('deploying an image of a private registry', () => {
   });
 
   it('pulls anonymously again once the credentials are removed', async () => {
-    const listed = await fixture.get(`${fixture.root}/registries`, 'owner').expect(200);
-    const items = (listed.body as { items: { id: string; server: string }[] }).items;
-    const stored = items.find((item) => item.server === 'ghcr.io');
+    // Stored here, so that this case does not depend on another one having run.
+    const stored = await fixture
+      .post(`${fixture.root}/registries`, 'owner', {
+        server: 'ghcr.io',
+        username: 'deploy-bot',
+        password: PASSWORD,
+      })
+      .expect(200);
     await fixture
-      .post(`${fixture.root}/registries/${stored?.id ?? ''}/remove`, 'owner', {})
+      .post(`${fixture.root}/registries/${(stored.body as { id: string }).id}/remove`, 'owner', {})
       .expect(204);
     const { pull } = await pullOf('public-again-api', `ghcr.io/acme/public@${DIGEST}`);
     expect(pull.registryCredentials).toBeUndefined();

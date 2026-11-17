@@ -1,4 +1,9 @@
-import { parseImageReference, pinnedReference } from './image-reference';
+import {
+  credentialServer,
+  parseImageReference,
+  pinnedReference,
+  pulledRegistry,
+} from './image-reference';
 
 const DIGEST = `sha256:${'a'.repeat(64)}`;
 
@@ -127,5 +132,31 @@ describe('pinnedReference', () => {
     expect(() => pinnedReference(parseImageReference('nginx'), 'sha256:nope')).toThrow(
       expect.objectContaining({ code: 'invalid_image_digest' }),
     );
+  });
+});
+
+describe("the two names of an image's registry (ADR 0019)", () => {
+  // [reference, the name its credentials are stored under, the registry the agent reads in it]
+  const cases: [string, string, string][] = [
+    ['nginx', 'docker.io', 'docker.io'],
+    ['acme/api:1.0', 'docker.io', 'docker.io'],
+    ['acme/team/api', 'docker.io', 'docker.io'],
+    ['docker.io/acme/api', 'docker.io', 'docker.io'],
+    ['index.docker.io/acme/api', 'docker.io', 'docker.io'],
+    // Docker Hub written by its API host: stored once, but the agent reads the host as written.
+    ['registry-1.docker.io/acme/api', 'docker.io', 'registry-1.docker.io'],
+    ['ghcr.io/acme/api', 'ghcr.io', 'ghcr.io'],
+    ['localhost/api', 'localhost', 'localhost'],
+    [
+      'registry.example.com:5000/acme/api',
+      'registry.example.com:5000',
+      'registry.example.com:5000',
+    ],
+  ];
+  it.each(cases)('%s', (reference, stored, pulled) => {
+    const image = parseImageReference(reference);
+    expect(credentialServer(image)).toBe(stored);
+    // The agent reads the pinned reference, which is the name and a digest.
+    expect(pulledRegistry(image)).toBe(pulled);
   });
 });
