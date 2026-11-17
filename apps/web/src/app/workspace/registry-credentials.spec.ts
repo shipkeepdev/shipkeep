@@ -8,7 +8,9 @@ import { IDENTITY_FETCH } from '../identity/identity-api';
 const ORG = '0190f5a8-7b1c-7e2d-8f3a-0000000000aa';
 const GHCR = '0190f5a8-7b1c-7e2d-8f3a-0000000000e1';
 const HUB = '0190f5a8-7b1c-7e2d-8f3a-0000000000e2';
+const OTHER_ORG = '0190f5a8-7b1c-7e2d-8f3a-0000000000ab';
 const ORG_PATH = `/api/v1/organizations/${ORG}`;
+const OTHER_PATH = `/api/v1/organizations/${OTHER_ORG}`;
 /** Obviously fake: no real token has this shape. */
 const PASSWORD = 'sk_test_fake_registry_password_screen';
 const stamp = { createdAt: '2026-11-05T12:00:00Z', updatedAt: '2026-11-07T09:30:00Z' };
@@ -40,12 +42,15 @@ describe('registry credentials of an organization', () => {
   let stored: (typeof ghcr)[];
   let answers: Response[];
   let listStatus: number;
+  /** Answers to list requests that a test holds back, by path. */
+  let held: Map<string, Promise<Response>>;
 
   beforeEach(async () => {
     posts = [];
     stored = [hub, ghcr];
     answers = [];
     listStatus = 200;
+    held = new Map();
     TestBed.configureTestingModule({
       providers: [
         provideRouter(
@@ -58,11 +63,17 @@ describe('registry credentials of an organization', () => {
           useValue: async (request: Request) => {
             const path = new URL(request.url).pathname;
             if (request.method === 'GET') {
+              const pending = held.get(path);
+              if (pending) return pending;
               if (path === `${ORG_PATH}/registries`)
                 return listStatus === 200
                   ? json({ items: stored })
                   : problem(listStatus, 'not_found');
               if (path === ORG_PATH) return json({ id: ORG, name: 'Acme', slug: 'acme', ...stamp });
+              if (path === OTHER_PATH)
+                return json({ id: OTHER_ORG, name: 'Other', slug: 'other', ...stamp });
+              if (path === `${OTHER_PATH}/registries`)
+                return json({ items: [hub, { ...ghcr, username: 'other-account' }] });
               return json({ items: [], nextCursor: null });
             }
             const text = await request.clone().text();
@@ -293,6 +304,73 @@ describe('registry credentials of an organization', () => {
     const section = element().querySelector('sk-registry-credentials');
     expect(section?.textContent).toContain('Only owners and administrators of the organization');
     expect(section?.querySelectorAll('button, form, [role="alert"]')).toHaveLength(0);
+  });
+
+  describe('when another organization is opened in the same page', () => {
+    /** Holds back the list of an organization until the test answers it. */
+    function hold(path: string): (response: Response) => void {
+      let answer: (response: Response) => void = () => undefined;
+      held.set(
+        `${path}/registries`,
+        new Promise<Response>((resolve) => {
+          answer = resolve;
+        }),
+      );
+      return answer;
+    }
+    const section = () => {
+      const found = element().querySelector('sk-registry-credentials');
+      if (!found) throw new Error('missing section');
+      return found;
+    };
+
+    it('shows and offers nothing of the previous one while the new list loads', async () => {
+      await open();
+      expect(section().querySelectorAll('[role="group"]')).toHaveLength(2);
+      const answer = hold(OTHER_PATH);
+      await harness.navigateByUrl(`/orgs/${OTHER_ORG}/organization?section=registries`);
+      await settle();
+
+      // Rows of the first organization would be replaced or removed in the second one.
+      expect(section().querySelectorAll('[role="group"]')).toHaveLength(0);
+      expect(section().textContent).not.toContain('ghcr.io');
+      const offered = [...section().querySelectorAll<HTMLButtonElement>('button')].filter(
+        (candidate) => !candidate.disabled,
+      );
+      expect(offered).toHaveLength(0);
+      expect(posts).toEqual([]);
+
+      answer(json({ items: [{ ...hub, id: 'other-hub', username: 'other-account' }] }));
+      await settle();
+      expect(section().querySelectorAll('[role="group"]')).toHaveLength(1);
+      expect(section().textContent).toContain('other-account');
+      expect(button('Add a registry').disabled).toBe(false);
+    });
+
+    it('closes a form that was open for the previous one, with what was typed in it', async () => {
+      await open();
+      await click('Replace the credentials of ghcr.io');
+      fill('password', PASSWORD);
+      hold(OTHER_PATH);
+      await harness.navigateByUrl(`/orgs/${OTHER_ORG}/organization?section=registries`);
+      await settle();
+      expect(section().querySelector('form')).toBeNull();
+      expect(section().querySelector('input')).toBeNull();
+    });
+
+    it('keeps the new list when the previous one is refused late', async () => {
+      const late = hold(ORG_PATH);
+      await open();
+      await harness.navigateByUrl(`/orgs/${OTHER_ORG}/organization?section=registries`);
+      await settle();
+      expect(section().textContent).toContain('other-account');
+
+      // The first organization answers now, with a refusal: it must not hide the second one's list.
+      late(problem(404, 'not_found'));
+      await settle();
+      expect(section().querySelectorAll('[role="group"]')).toHaveLength(2);
+      expect(section().textContent).not.toContain('Only owners and administrators');
+    });
   });
 
   it('says so when there is none yet', async () => {

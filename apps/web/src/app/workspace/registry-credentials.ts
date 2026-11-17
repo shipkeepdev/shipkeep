@@ -16,7 +16,6 @@ import { type BrandName } from '../shell/brands';
 import { Icon } from '../shell/icon';
 import { Brand } from '../ui/brand';
 import { T } from '../ui/i18n';
-import { Collection } from './collection';
 import { recoverOnEdit } from './form-recovery';
 import { required } from './validators';
 import { type RegistryCredentials as Stored, WorkspaceApi } from './workspace-api';
@@ -33,6 +32,14 @@ const REFUSALS: Readonly<Record<string, string>> = {
     'These credentials changed in the meantime. The list is up to date: try again.',
 };
 const LOGOS: Readonly<Record<string, BrandName>> = { 'docker.io': 'docker', 'ghcr.io': 'github' };
+
+/** What the last finished read of the list found, and for which organization. */
+interface Loaded {
+  readonly organizationId: string;
+  /** The server hides the list from who does not administer the organization. */
+  readonly denied: boolean;
+  readonly items: readonly Stored[];
+}
 
 /**
  * Registry credentials of an organization (ADR 0019): the hosts and accounts are listed, a
@@ -59,9 +66,9 @@ const LOGOS: Readonly<Record<string, BrandName>> = { 'docker.io': 'docker', 'ghc
         }}</span>
       </div>
     } @else {
-      @switch (list.state()) {
+      @switch (status()) {
         @case ('failed') {
-          <div class="alert" role="alert">{{ list.problem() | t }}</div>
+          <div class="alert" role="alert">{{ failure() | t }}</div>
         }
         @default {
           <div class="card overflow-x-auto">
@@ -72,7 +79,7 @@ const LOGOS: Readonly<Record<string, BrandName>> = { 'docker.io': 'docker', 'ghc
                 <span>{{ 'Updated' | t }}</span>
                 <span class="sr-only">{{ 'Actions' | t }}</span>
               </div>
-              @for (row of list.items(); track row.id) {
+              @for (row of rows(); track row.id) {
                 <div
                   class="grid-table border-t border-line2 px-[18px] py-3 text-[12.5px] max-sm:gap-1.5 max-sm:first:border-t-0"
                   [class]="columns"
@@ -95,7 +102,7 @@ const LOGOS: Readonly<Record<string, BrandName>> = { 'docker.io': 'docker', 'ghc
                     <button
                       class="btn btn-sm"
                       type="button"
-                      [disabled]="runner.busy()"
+                      [disabled]="runner.busy() || !usable()"
                       [attr.aria-label]="
                         'Replace the credentials of {name}' | t: { name: row.server }
                       "
@@ -106,7 +113,7 @@ const LOGOS: Readonly<Record<string, BrandName>> = { 'docker.io': 'docker', 'ghc
                     <button
                       class="btn btn-sm btn-danger"
                       type="button"
-                      [disabled]="runner.busy()"
+                      [disabled]="runner.busy() || !usable()"
                       [attr.aria-label]="
                         'Remove the credentials of {name}' | t: { name: row.server }
                       "
@@ -118,19 +125,14 @@ const LOGOS: Readonly<Record<string, BrandName>> = { 'docker.io': 'docker', 'ghc
                 </div>
               } @empty {
                 <div class="border-t border-line2 px-[18px] py-5 text-[12.5px] text-mute2">
-                  {{
-                    (list.state() === 'loading'
-                      ? 'Loading…'
-                      : 'No registry yet. Public images need none.'
-                    ) | t
-                  }}
+                  {{ (usable() ? 'No registry yet. Public images need none.' : 'Loading…') | t }}
                 </div>
               }
               <div class="border-t border-line2 px-[18px] py-3">
                 <button
                   type="button"
                   class="btn btn-sm"
-                  [disabled]="runner.busy() || list.state() === 'loading'"
+                  [disabled]="runner.busy() || !usable()"
                   (click)="add()"
                 >
                   <sk-icon name="plus" />{{ 'Add a registry' | t }}
@@ -260,9 +262,23 @@ export class RegistryCredentials {
    */
   protected readonly columns =
     'sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,1fr)_176px]' as const;
-  /** The list is hidden from who does not administer the organization (the server answers 404). */
-  protected readonly denied = signal(false);
-  protected readonly list = new Collection<Stored>(() => this.load());
+  #revision = 0;
+  private readonly loaded = signal<Loaded | null>(null);
+  protected readonly status = signal<'loading' | 'ready' | 'failed'>('loading');
+  protected readonly failure = signal<string | null>(null);
+  /**
+   * Only what was loaded for the organization on screen. The page stays open when another
+   * organization is chosen: rows of the previous one must never be shown, replaced or removed
+   * under the new one.
+   */
+  private readonly current = computed(() => {
+    const loaded = this.loaded();
+    return loaded?.organizationId === this.organizationId() ? loaded : null;
+  });
+  protected readonly rows = computed(() => this.current()?.items ?? []);
+  protected readonly denied = computed(() => this.current()?.denied ?? false);
+  /** The list on screen belongs to this organization and is not being read again. */
+  protected readonly usable = computed(() => this.status() === 'ready' && !!this.current());
   /** The form is open: for a new registry, or to replace the credentials of `server`. */
   protected readonly editing = signal<{ readonly server: string | null } | null>(null);
   protected readonly removing = signal<Stored | null>(null);
@@ -291,7 +307,7 @@ export class RegistryCredentials {
       this.organizationId();
       this.close();
       this.removing.set(null);
-      void this.list.refresh();
+      void this.refresh();
     });
   }
 
@@ -325,7 +341,7 @@ export class RegistryCredentials {
     this.form.controls.password.reset();
     if (!outcome) return;
     this.close();
-    await this.list.refresh();
+    await this.refresh();
   }
 
   protected async remove(): Promise<void> {
@@ -336,7 +352,7 @@ export class RegistryCredentials {
     );
     if (done) this.removing.set(null);
     // After a refusal too: another administrator may have changed the list.
-    await this.list.refresh();
+    await this.refresh();
   }
 
   private open(server: string | null, username: string): void {
@@ -369,16 +385,32 @@ export class RegistryCredentials {
     return outcome.ok;
   }
 
-  private async load(): Promise<readonly Stored[]> {
+  /**
+   * Reads the list. The rows, the refusal and the organization they belong to are committed
+   * together, and only by the latest request: an answer that arrives late, for an organization
+   * that is no longer on screen, changes nothing.
+   */
+  private async refresh(): Promise<void> {
+    const organizationId = this.organizationId();
+    const revision = ++this.#revision;
+    this.status.set('loading');
     try {
-      const items = await this.api.registries(this.organizationId());
-      this.denied.set(false);
-      return items;
+      const items = await this.api.registries(organizationId);
+      if (revision !== this.#revision) return;
+      this.loaded.set({ organizationId, denied: false, items });
     } catch (error: unknown) {
-      if (!(error instanceof IdentityRequestError) || ![403, 404].includes(error.status))
-        throw error;
-      this.denied.set(true);
-      return [];
+      if (revision !== this.#revision) return;
+      // The list answers 404 to who does not administer the organization: that is not a failure.
+      if (!(error instanceof IdentityRequestError) || ![403, 404].includes(error.status)) {
+        this.status.set('failed');
+        this.failure.set(
+          error instanceof IdentityRequestError ? error.message : 'This list could not be loaded.',
+        );
+        return;
+      }
+      this.loaded.set({ organizationId, denied: true, items: [] });
     }
+    this.status.set('ready');
+    this.failure.set(null);
   }
 }
