@@ -17,7 +17,7 @@ import { recoverOnEdit } from '../workspace/form-recovery';
 import { OverviewStore } from '../workspace/overview-store';
 import { required, slug } from '../workspace/validators';
 import { type Environment, WorkspaceApi } from '../workspace/workspace-api';
-import { AMBER, GREEN } from './format';
+import { AMBER, GREEN, leftLive } from './format';
 
 /** 09 Projects: one card per project, with its environments and what runs in them. */
 @Component({
@@ -171,7 +171,7 @@ export class ProjectsPage {
         failing,
         badge: failing
           ? '{n} failing'
-          : apps.some((a) => a.deployments.at(0)?.state === 'succeeded')
+          : apps.some((a) => leftLive(a.deployments.at(0)))
             ? 'live'
             : '',
         badgeColor: failing ? AMBER : GREEN,

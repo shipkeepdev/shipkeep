@@ -14,7 +14,19 @@ export interface Status {
   readonly color: string;
 }
 
-export function deploymentStatus(state: Deployment['state']): Status {
+/** True when this deployment left its application serving: it succeeded, and was not a stop. */
+export function leftLive(deployment: Pick<Deployment, 'state' | 'stop'> | undefined): boolean {
+  return deployment?.state === 'succeeded' && !deployment.stop;
+}
+
+/**
+ * The label of a deployment. A stop is a deployment too (it removes the replicas instead of
+ * starting some): once it succeeded, the application is stopped, not live.
+ */
+export function deploymentStatus(state: Deployment['state'], stop = false): Status {
+  if (stop && state === 'succeeded') return { label: 'stopped', color: GREY };
+  if (stop && state !== 'failed' && state !== 'cancelled' && state !== 'rolled_back')
+    return { label: 'stopping', color: BLUE };
   switch (state) {
     case 'succeeded':
       return { label: 'live', color: GREEN };

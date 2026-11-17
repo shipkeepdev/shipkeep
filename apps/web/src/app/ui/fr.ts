@@ -240,8 +240,6 @@ export const FR: Readonly<Record<string, string>> = {
   'All 3 containers are stopped.': 'Les 3 conteneurs sont arrêtés.',
   'All environments': 'Tous les environnements',
   'All projects': 'Tous les projets',
-  'All replicas are stopped. Volumes are kept.':
-    'Toutes les répliques sont arrêtées. Les volumes sont conservés.',
   'All your other sessions will be signed out.': 'Toutes vos autres sessions seront fermées.',
   'Allow a script or tool to act with the permissions you choose, never more than your own. Keep tokens private. You can have up to 50 active tokens.':
     "Permettez à un script ou à un outil d'agir avec les droits que vous choisissez, jamais plus que les vôtres. Gardez vos jetons privés. Vous pouvez avoir jusqu'à 50 jetons actifs.",
@@ -260,6 +258,7 @@ export const FR: Readonly<Record<string, string>> = {
   Application: 'Application',
   'Application identity and build. Fields marked shipkeep.yml are driven by the repository.':
     "Identité et build de l'application. Les champs marqués shipkeep.yml sont pilotés par le dépôt.",
+  'Application name': "Nom de l'application",
   'Application sections': "Sections de l'application",
   'Apply filters': 'Appliquer',
   'Appointment booking.': 'Prise de rendez-vous.',
@@ -322,8 +321,6 @@ export const FR: Readonly<Record<string, string>> = {
   'Caddy 2.9 · live': 'Caddy 2.9 · en ligne',
   'Caddy is driven by the agent over a Unix socket. Routes only point to healthy instances.':
     "Caddy est piloté par l'agent via un socket Unix. Les routes ne pointent que vers des instances saines.",
-  'Caddy serves a maintenance page; containers keep running.':
-    'Caddy sert une page de maintenance, les conteneurs restent actifs.',
   Cancel: 'Annuler',
   'Cancel deployment': 'Annuler le déploiement',
   Capacity: 'Capacité',
@@ -457,20 +454,20 @@ export const FR: Readonly<Record<string, string>> = {
   'Defined once, referenced everywhere with {{ organization.NAME }}, {{ project.NAME }}, {{ environment.NAME }} or {{ server.NAME }}.':
     'Définies une fois, référencées partout avec {{ organisation.NOM }}, {{ projet.NOM }}, {{ environnement.NOM }} ou {{ serveur.NOM }}.',
   Delete: 'Supprimer',
-  'Delete application': "Supprimer l'application",
   'Delete database': 'Supprimer la base',
   'Delete organization': "Supprimer l'organisation",
   'Delete orphaned volumes': 'Supprimer les volumes orphelins',
   'Delete service': 'Supprimer le service',
+  'Delete the application': "Supprimer l'application",
   'Delete the organization': "Supprimer l'organisation",
-  'Deletes containers, images and domains. Backups are kept for 30 days.':
-    'Supprime conteneurs, images et domaines. Les sauvegardes restent 30 jours.',
+  'Delete {name}': 'Supprimer {name}',
   'Deletes linked projects, resources and servers.':
     'Supprime projets, ressources et serveurs liés.',
   'Deletes projects, resources and linked servers.':
     'Supprime projets, ressources et serveurs liés.',
   'Deletes the container and the volume. Backups are kept for 30 days.':
     'Supprime le conteneur et le volume. Les sauvegardes restent 30 jours.',
+  'Deleting…': 'Suppression…',
   Deploy: 'Déployer',
   'Deploy an application': 'Déployer une application',
   'Deploy strategy': 'Stratégie de déploiement',
@@ -525,7 +522,6 @@ export const FR: Readonly<Record<string, string>> = {
   'Enter a valid email address.': 'Entrez une adresse e-mail valide.',
   'Enter at most {n} addresses.': 'Saisissez au plus {n} adresses.',
   'Enter it': 'Le saisir',
-  'Enter maintenance': 'Mettre en maintenance',
   'Enter one complete 32-character recovery code.':
     'Entrez un code de récupération complet de 32 caractères.',
   'Enter the 6-digit code sent to alex@atelier-nord.example.':
@@ -676,20 +672,25 @@ export const FR: Readonly<Record<string, string>> = {
   Invitations: 'Invitations',
   Invite: 'Inviter',
   'Invoices and payments API': 'API des factures et paiements',
-  'Irreversible actions. Each one requires confirmation, and admin approval in production.':
-    "Actions irréversibles. Chacune demande une confirmation et l'accord d'un admin en production.",
   Issuer: 'Émetteur',
+  'It has no running replica.': "Elle n'a aucune réplique en marche.",
   'Its certificates are revoked and its agent is disconnected.':
     'Ses certificats sont révoqués et son agent est déconnecté.',
   'Its certificates are revoked and its agent is disconnected. Its stateless instances are rescheduled elsewhere. Irreversible action: type':
     'Ses certificats sont révoqués et son agent est déconnecté. Ses instances sans état sont replacées ailleurs. Action irréversible : tapez',
   'Its instances are rescheduled, then it leaves the fleet.':
     'Ses instances sont replacées puis il quitte la flotte.',
+  'Its releases, deployments and domains are deleted with it. The audit log is kept.':
+    "Ses versions, ses déploiements et ses domaines sont supprimés avec elle. Le journal d'audit est conservé.",
+  'Its routes and replicas are removed, and their room on the servers is freed. Releases and history are kept; deploying starts it again.':
+    "Ses routes et ses répliques sont retirées, et leur place sur les serveurs est libérée. Les versions et l'historique sont conservés ; un déploiement la redémarre.",
   'JSON documents, flexible schema.': 'Documents JSON, schéma souple.',
   'JWT expired for client 4412': 'jeton JWT expiré pour client 4412',
   'Join token': "Jeton d'adhésion",
   'Keep it': 'Le garder',
   'Keep it out of your shell history.': "Gardez-le hors de l'historique du shell.",
+  'Keep it running': 'La laisser tourner',
+  'Keep the application': "Garder l'application",
   'Keep these somewhere safe outside Shipkeep. They are shown only once and stay here until you confirm you saved them or leave this page.':
     "Gardez-les en lieu sûr, hors de Shipkeep. Ils ne sont affichés qu'une fois et restent ici jusqu'à ce que vous confirmiez les avoir enregistrés ou que vous quittiez cette page.",
   'Key-only SSH, fail2ban, unattended-upgrades':
@@ -1152,9 +1153,15 @@ export const FR: Readonly<Record<string, string>> = {
   State: 'État',
   Status: 'Statut',
   Stop: 'Arrêter',
-  'Stop application': "Arrêter l'application",
   'Stop database': 'Arrêter la base',
+  'Stop it first: an application is deleted only when nothing of it runs.':
+    "Arrêtez-la d'abord : une application n'est supprimée que lorsque plus rien d'elle ne tourne.",
+  'Stop it now': "L'arrêter maintenant",
   'Stop service': 'Arrêter le service',
+  'Stop the application': "Arrêter l'application",
+  'Stopping frees the servers and keeps everything else. Deleting cannot be undone.':
+    'Arrêter libère les serveurs et conserve tout le reste. Supprimer est irréversible.',
+  'Stopping…': 'Arrêt…',
   Storage: 'Stockage',
   'Stored SSH keys': 'Clés SSH stockées',
   Stream: 'Flux',
@@ -1582,6 +1589,9 @@ export const FR: Readonly<Record<string, string>> = {
   'stable channel': 'canal stable',
   standard: 'standard',
   starting: 'démarrage',
+  stop: 'arrêt',
+  stopped: 'arrêtée',
+  stopping: 'arrêt en cours',
   superseded: 'remplacé',
   switching: 'bascule',
   system: 'système',

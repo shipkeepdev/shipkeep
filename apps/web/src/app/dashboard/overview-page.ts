@@ -8,13 +8,14 @@ import { ShellContext } from '../shell/shell-context';
 import { I18n, T } from '../ui/i18n';
 import { OverviewStore } from '../workspace/overview-store';
 import {
-  AMBER,
   ageSeconds,
+  AMBER,
   bytes,
   clock,
   deploymentStatus,
   duration,
   GREEN,
+  leftLive,
   nodeStatus,
   percent,
   RED,
@@ -64,7 +65,7 @@ export class OverviewPage {
 
   protected readonly kpis = computed((): readonly Kpi[] => {
     const apps = this.store.applications();
-    const live = apps.filter((a) => a.deployments.at(0)?.state === 'succeeded').length;
+    const live = apps.filter((a) => leftLive(a.deployments.at(0))).length;
     const failing = apps.filter((a) => a.deployments.at(0)?.state === 'failed');
     const visible = this.store.nodes() !== null || this.store.loading();
     const nodes = this.store.nodes() ?? [];
@@ -128,7 +129,7 @@ export class OverviewPage {
         deltaColor: '#8B8B93',
         sub: '{live} live · {failed} failed · {cancelled} cancelled',
         subValues: {
-          live: count('succeeded'),
+          live: today.filter((d) => leftLive(d)).length,
           failed: count('failed'),
           cancelled: count('cancelled'),
         },

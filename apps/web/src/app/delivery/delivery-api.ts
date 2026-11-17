@@ -173,6 +173,46 @@ export class DeliveryApi extends WorkspaceApi {
       ),
     );
   }
+  /** Queues a stop: the routes and replicas are removed, the application and its history stay. */
+  stop(environment: EnvironmentRef, applicationId: string): Promise<Deployment> {
+    return this.required(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/stop',
+        { params: { path: { ...environment, applicationId } } },
+      ),
+    );
+  }
+  /** Single-use token proving the user typed the application's exact name (SPEC 3.6). */
+  async confirmDeletion(
+    organizationId: string,
+    application: Pick<Application, 'id'>,
+    name: string,
+  ): Promise<string> {
+    return (
+      await this.required(() =>
+        this.client.POST('/api/v1/organizations/{organizationId}/confirmations', {
+          body: { action: 'application.delete', target: application.id, name },
+          // Values the browser request filter replaces; required by the generated types.
+          params: {
+            path: { organizationId },
+            header: { Origin: this.origin, 'X-Shipkeep-CSRF': '' },
+          },
+        }),
+      )
+    ).token;
+  }
+  async deleteApplication(
+    environment: EnvironmentRef,
+    applicationId: string,
+    confirmation: string,
+  ): Promise<void> {
+    await this.execute(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/delete',
+        { body: { confirmation }, params: { path: { ...environment, applicationId } } },
+      ),
+    );
+  }
   async secrets(environment: EnvironmentRef): Promise<readonly SecretMetadata[]> {
     return (
       await this.required(() =>

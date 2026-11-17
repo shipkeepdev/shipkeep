@@ -105,9 +105,7 @@ export interface SectionCopy {
   readonly blocks: readonly Block[];
 }
 
-export const APP_SAMPLES: Readonly<
-  Record<'tasks' | 'approvals' | 'webhooks' | 'danger', SectionCopy>
-> = {
+export const APP_SAMPLES: Readonly<Record<'tasks' | 'approvals' | 'webhooks', SectionCopy>> = {
   tasks: {
     title: 'Scheduled tasks',
     desc: 'Commands run in an app container on a cron schedule.',
@@ -240,28 +238,6 @@ export const APP_SAMPLES: Readonly<
             v: 'Slack #prod · e-mail',
             mono: false,
           },
-        ],
-      },
-    ],
-  },
-  danger: {
-    title: 'Danger zone',
-    desc: 'Irreversible actions. Each one requires confirmation, and admin approval in production.',
-    blocks: [
-      {
-        type: 'danger',
-        items: [
-          [
-            'Enter maintenance',
-            'Caddy serves a maintenance page; containers keep running.',
-            'Enable',
-          ],
-          ['Stop application', 'All replicas are stopped. Volumes are kept.', 'Stop'],
-          [
-            'Delete application',
-            'Deletes containers, images and domains. Backups are kept for 30 days.',
-            'Delete',
-          ],
         ],
       },
     ],
