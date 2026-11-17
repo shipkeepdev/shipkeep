@@ -1587,6 +1587,133 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/registries": {
+      "get": {
+        "operationId": "listRegistryCredentials",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryCredentialsListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "registries"
+        ]
+      },
+      "post": {
+        "operationId": "setRegistryCredentials",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetRegistryCredentialsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryCredentialsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "registries"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/registries/{registryId}/remove": {
+      "post": {
+        "operationId": "removeRegistryCredentials",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "registryId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "registries"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/secrets": {
       "get": {
         "operationId": "listSecrets",
@@ -5400,6 +5527,92 @@
           "id",
           "token",
           "expiresAt"
+        ]
+      },
+      "RegistryCredentialsDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "server": {
+            "type": "string",
+            "example": "ghcr.io"
+          },
+          "username": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "description": "Incremented each time they are replaced."
+          },
+          "updatedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Account that set this version."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "server",
+          "username",
+          "version",
+          "updatedBy",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "RegistryCredentialsListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RegistryCredentialsDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "SetRegistryCredentialsDto": {
+        "type": "object",
+        "properties": {
+          "server": {
+            "type": "string",
+            "maxLength": 255,
+            "example": "ghcr.io",
+            "description": "Registry host and optional port, as image references name it. `docker.io` for Docker Hub."
+          },
+          "username": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096,
+            "writeOnly": true,
+            "description": "Password or access token. Never returned."
+          }
+        },
+        "required": [
+          "server",
+          "username",
+          "password"
         ]
       },
       "SecretDto": {

@@ -900,6 +900,38 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/registries": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listRegistryCredentials"];
+        readonly put?: never;
+        readonly post: operations["setRegistryCredentials"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/registries/{registryId}/remove": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["removeRegistryCredentials"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/settings": {
         readonly parameters: {
             readonly query?: never;
@@ -1543,6 +1575,24 @@ export type components = {
             readonly recovery?: string;
             readonly totp?: string;
         };
+        readonly RegistryCredentialsDto: {
+            /** Format: date-time */
+            readonly createdAt: string;
+            /** Format: uuid */
+            readonly id: string;
+            /** @example ghcr.io */
+            readonly server: string;
+            /** Format: date-time */
+            readonly updatedAt: string;
+            /** @description Account that set this version. */
+            readonly updatedBy: string | null;
+            readonly username: string;
+            /** @description Incremented each time they are replaced. */
+            readonly version: number;
+        };
+        readonly RegistryCredentialsListDto: {
+            readonly items: readonly components["schemas"]["RegistryCredentialsDto"][];
+        };
         readonly ReleaseDto: {
             readonly config: {
                 readonly [key: string]: unknown;
@@ -1635,6 +1685,16 @@ export type components = {
         readonly SetNodePublicAddressesDto: {
             /** @description The public IPv4 and IPv6 addresses of the node, replacing the current list. Each must be a bare, globally routable address; duplicates are merged and values stored canonical. An empty list clears them. */
             readonly publicAddresses: readonly string[];
+        };
+        readonly SetRegistryCredentialsDto: {
+            /** @description Password or access token. Never returned. */
+            readonly password: string;
+            /**
+             * @description Registry host and optional port, as image references name it. `docker.io` for Docker Hub.
+             * @example ghcr.io
+             */
+            readonly server: string;
+            readonly username: string;
         };
         readonly SetSecretDto: {
             readonly name: string;
@@ -3436,6 +3496,72 @@ export interface operations {
                 content: {
                     readonly "application/json": components["schemas"]["ProjectDto"];
                 };
+            };
+        };
+    };
+    readonly listRegistryCredentials: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RegistryCredentialsListDto"];
+                };
+            };
+        };
+    };
+    readonly setRegistryCredentials: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["SetRegistryCredentialsDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RegistryCredentialsDto"];
+                };
+            };
+        };
+    };
+    readonly removeRegistryCredentials: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+                readonly registryId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 204: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
             };
         };
     };

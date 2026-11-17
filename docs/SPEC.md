@@ -342,6 +342,7 @@ Membership writes serialize on the organization through a no-op row update, prod
 | `Application`           | environment_id, name, source (git, image, compose), repo, branch, config_path, config (jsonb), config_sha    | name unique per environment                                                              |
 | `Domain`                | application_id, hostname (TLS mode and certificate status with M3.6b)                                        | hostname unique per org; synced from the configuration                                   |
 | `Secret`                | environment_id, name, value_enc, version                                                                     | value never returned by the API after creation, only masked                              |
+| `RegistryCredential`    | organization_id, server, username, password_enc, version                                                     | one per organization and registry host; password never returned (ADR 0019)               |
 | `Release`               | application_id, number, image, image_digest, config, config_sha (commit_sha with git sources)                | immutable; the image digest is recorded once                                             |
 | `Deployment`            | application_id, release_id, state, plan (build, release), trigger, actor_id, started_at, finished_at, error  | one active deployment per application                                                    |
 | `Allocation`            | release_id (database_id later), node_id, replica, container, port, cpu_millis, memory_bytes, state           | stateful allocations bound to one node; (release, replica) and (node, container) unique  |
@@ -652,6 +653,11 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
   - concurrent writers are serialized by a version compare-and-swap;
   - `secret.set` and `secret.removed` audit events carry the name and version only.
 - Rotation of the KEK is a documented admin command that re-encrypts DEKs.
+- Registry credentials (`modules/registries`, ADR 0019), write-only like secrets and managed with `organization.update`:
+  - `GET …/organizations/{organizationId}/registries` lists the registry host, the user name, the version, the author and the dates.
+  - `POST …/registries` with `{server, username, password}` stores the credentials of one registry, or replaces them (200). `server` is a host and an optional port; a URL, a path or embedded credentials answer 400 `invalid_registry_server`. `docker.io`, `index.docker.io` and `registry-1.docker.io` are stored as `docker.io`.
+  - `POST …/registries/{registryId}/remove` removes them (204).
+  - The password is encrypted with the organization's data key, bound to the host and the version. Audit events `registry.credentials_set` and `registry.credentials_removed` carry the host, the user name and the version.
 
 ## 10. Backups
 
@@ -721,7 +727,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 
 - Deleting an application (issue #256) needs `environment.update`, because the permission catalog has no `application.delete`. A dedicated permission would let a role delete applications without changing environment settings, at the cost of a change to the role model and to API token scopes.
 
-- Private registries: credentials for private images, and an explicit allow-list for registries on private networks (the resolver refuses non-public addresses by default, SSRF).
+- Private registries: an organization can store credentials (ADR 0019). Still open: an explicit allow-list for registries on private networks (the resolver refuses non-public addresses by default, SSRF), and credentials scoped to a project.
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).
 - Wildcard certificates: which DNS providers to support first for DNS-01 (proposal: Cloudflare, Route 53, Hetzner DNS, OVH).
 - Node public addresses (PLAN M3.6b1) are declared by an administrator only. The gateway sees the source address of each agent connection, but behind NAT, a proxy or a private link that is not the address visitors reach, so it is not used. A later step could show the observed address as a suggestion that an administrator confirms, never as a stored value.

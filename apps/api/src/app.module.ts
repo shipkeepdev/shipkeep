@@ -5,6 +5,7 @@ import { AuditModule } from './modules/audit/audit.module';
 import { ConfirmationsModule } from './modules/confirmations/confirmations.module';
 import { DeploymentsModule } from './modules/deployments/deployments.module';
 import { FleetModule } from './modules/fleet/fleet.module';
+import { RegistriesModule } from './modules/registries/registries.module';
 import { SecretsModule } from './modules/secrets/secrets.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { TenantAccessModule } from './modules/organizations/tenant-access.module';
@@ -31,6 +32,7 @@ import { PrismaModule } from './platform/prisma/prisma.module';
     AuditModule,
     FleetModule,
     ConfirmationsModule,
+    RegistriesModule,
     SecretsModule,
     AppsModule,
     DeploymentsModule,

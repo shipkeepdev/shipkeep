@@ -74,5 +74,8 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/secrets/:name/remove` | secret.write @ environment | secret.write | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/settings` | environment.update @ environment | environment.update | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | POST | `/organizations/:organizationId/projects/:projectId/settings` | project.update @ project | project.update | yes | yes | no | yes | no | no | no | no | no | yes | no |
+| GET | `/organizations/:organizationId/registries` | organization.update @ organization | organization.update | yes | yes | no | no | no | no | no | no | no | no | no |
+| POST | `/organizations/:organizationId/registries` | organization.update @ organization | organization.update | yes | yes | no | no | no | no | no | no | no | no | no |
+| POST | `/organizations/:organizationId/registries/:registryId/remove` | organization.update @ organization | organization.update | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/settings` | organization.update @ organization | organization.update | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/ready` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |

@@ -43,6 +43,7 @@ model Organization {
   nodes         Node[]
   joinTokens    JoinToken[]
   confirmations ConfirmationToken[]
+  registries    RegistryCredential[]
 
   @@map("organizations")
 }
@@ -354,6 +355,23 @@ model ConfirmationToken {
 
   @@index([organizationId, issuedAt])
   @@map("confirmation_tokens")
+}
+
+/// Credentials for one container registry of an organization (ADR 0019); the password is encrypted.
+model RegistryCredential {
+  id             String       @id @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  server         String       @db.VarChar(255)
+  username       String       @db.VarChar(256)
+  passwordEnc    Bytes        @map("password_enc")
+  version        Int
+  updatedBy      String?      @map("updated_by") @db.VarChar(128)
+  createdAt      DateTime     @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime     @map("updated_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@unique([organizationId, server])
+  @@map("registry_credentials")
 }
 
 /// Durable action queued for one node (PLAN M1.4a2); the action message is encrypted.

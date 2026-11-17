@@ -54,6 +54,10 @@ const AUDITED: Readonly<Record<string, readonly string[]>> = {
   ],
   'POST /organizations/:organizationId/projects/:projectId/settings': ['project.updated'],
   'POST /organizations/:organizationId/settings': ['organization.updated'],
+  'POST /organizations/:organizationId/registries': ['registry.credentials_set'],
+  'POST /organizations/:organizationId/registries/:registryId/remove': [
+    'registry.credentials_removed',
+  ],
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/secrets': [
     'secret.set',
   ],
