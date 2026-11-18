@@ -18,6 +18,7 @@ import { PrismaApiTokenStore } from './infrastructure/prisma-api-token.store';
 import { IDENTITY_MAILER, IDENTITY_SECRETS, PASSWORD_HASHER } from './application/identity-ports';
 import { IDENTITY_STORE } from './application/identity-store';
 import { IDENTITY_THROTTLE } from './application/identity-throttle';
+import { OperatorAccountCommands } from './application/operator-account-commands';
 import { SessionCommands } from './application/session-commands';
 import { MFA_CRYPTO } from './application/mfa-crypto';
 import { MfaCommands } from './application/mfa-commands';
@@ -63,6 +64,7 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
     IdentityReplayInterceptor,
     IdentityMailWorker,
     { provide: IDENTITY_STORE, useClass: PrismaIdentityStore },
+    OperatorAccountCommands,
     { provide: PASSWORD_HASHER, useClass: PasswordHasher },
     {
       provide: IDENTITY_SECRETS,
