@@ -1,11 +1,12 @@
 import { FocusMonitor } from '@angular/cdk/a11y';
-import { NgTemplateOutlet } from '@angular/common';
+import { DOCUMENT, NgTemplateOutlet } from '@angular/common';
 import {
   afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
   DestroyRef,
+  effect,
   type ElementRef,
   inject,
   Injector,
@@ -28,6 +29,7 @@ import {
   type LoginStep,
   passwordScore,
 } from './auth-form-store';
+import { AuthOptions } from './auth-options';
 import { MutationRunner } from './mutation-runner';
 
 type Screen = Exclude<AuthMode, 'login'> | LoginStep;
@@ -116,6 +118,41 @@ const COPY: Record<Screen, Copy> = {
   },
 };
 
+/**
+ * The screens that send a message: sign-up, a new confirmation code and a reset link. The screens
+ * that redeem a code stay: a code sent before email was turned off still works until it expires,
+ * and only the link of that message leads there.
+ */
+const MAIL_SCREENS: ReadonlySet<Screen> = new Set<Screen>([
+  'register',
+  'request-verification',
+  'forgot-password',
+]);
+/** Shown in place of those screens on an installation that sends no email (ADR 0020). */
+const NO_EMAIL: Copy = {
+  icon: 'mail-off',
+  title: 'This installation sends no email',
+  sub: 'Its administrator creates accounts and resets passwords, on the server that runs Shipkeep.',
+  cta: 'Continue to sign in',
+  foot: '',
+  footLink: '',
+  footRoute: null,
+};
+/** Sign-in on such an installation: it offers neither sign-up nor a reset, and says who does them. */
+const NO_EMAIL_SIGN_IN: Copy = {
+  ...COPY.password,
+  foot: 'No account, or a lost password? Ask the administrator of this installation.',
+  footLink: '',
+  footRoute: null,
+};
+/** The confirmation of an address, without the offer to send another code. */
+const NO_EMAIL_VERIFY: Copy = {
+  ...COPY['verify-email'],
+  foot: '',
+  footLink: 'Back to sign in',
+  footRoute: '/auth/login',
+};
+
 const METER = ['', 'weak', 'fair', 'good', 'strong'];
 
 /** Sign-in, sign-up, email verification and password reset, as in the design's auth screens. */
@@ -134,7 +171,18 @@ export class AuthPage {
   protected readonly screen = computed<Screen>(() =>
     this.store.mode() === 'login' ? this.store.step() : (this.store.mode() as Screen),
   );
-  protected readonly copy = computed(() => COPY[this.screen()]);
+  /** Whether this installation sends email; the screens offer only what can work without it. */
+  private readonly options = inject(AuthOptions);
+  protected readonly sendsEmail = this.options.email;
+  protected readonly unavailable = computed(
+    () => !this.sendsEmail() && MAIL_SCREENS.has(this.screen()),
+  );
+  protected readonly copy = computed(() => {
+    if (this.unavailable()) return NO_EMAIL;
+    if (this.sendsEmail()) return COPY[this.screen()];
+    if (this.screen() === 'password') return NO_EMAIL_SIGN_IN;
+    return this.screen() === 'verify-email' ? NO_EMAIL_VERIFY : COPY[this.screen()];
+  });
   protected readonly score = computed(() => passwordScore(this.store.password()));
   protected readonly meter = computed(() =>
     [0, 1, 2, 3].map((i) => {
@@ -156,6 +204,7 @@ export class AuthPage {
   private readonly focus = inject(FocusMonitor);
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly document = inject(DOCUMENT);
   private readonly feedback = viewChild<ElementRef<HTMLElement>>('feedback');
   private readonly heading = viewChild<ElementRef<HTMLElement>>('heading');
   private readonly codeInput = viewChild<ElementRef<HTMLInputElement>>('codeInput');
@@ -167,6 +216,25 @@ export class AuthPage {
         if (isAuthMode(data['mode'])) this.store.configure(data['mode']);
         this.focusHeading();
       });
+    this.options.shown();
+    // A late answer can remove what someone was using: the form of a screen that sends a message,
+    // or the links to sign-up and to the reset on sign-in. Focus that fell back to the page then
+    // goes to the heading; focus that was elsewhere stays where it was.
+    let answer = this.sendsEmail();
+    effect(() => {
+      const now = this.sendsEmail();
+      if (now === answer) return;
+      answer = now;
+      afterNextRender(
+        () => {
+          const active = this.document.activeElement;
+          const element = this.heading()?.nativeElement;
+          if ((active === null || active === this.document.body) && element)
+            this.focus.focusVia(element, 'program');
+        },
+        { injector: this.injector },
+      );
+    });
   }
 
   protected footClick(event: Event): void {

@@ -579,6 +579,37 @@
         ]
       }
     },
+    "/api/v1/auth/options": {
+      "get": {
+        "operationId": "options",
+        "parameters": [
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API_PUBLIC_URL origin; required for browser mutations.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthOptionsDto"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/api/v1/auth/session": {
       "get": {
         "operationId": "session",
@@ -4801,6 +4832,18 @@
           "expiresAt"
         ]
       },
+      "AuthOptionsDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "boolean",
+            "description": "Whether this installation sends email. Without it nobody signs up or asks for a reset link: its administrator creates accounts and resets passwords on the server (ADR 0020)."
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
       "MfaStatusDto": {
         "type": "object",
         "properties": {
@@ -6228,6 +6271,11 @@
               "idempotency_conflict",
               "deadline_exceeded",
               "action_failed",
+              "registry_denied",
+              "image_not_found",
+              "registry_unreachable",
+              "registry_untrusted",
+              "disk_full",
               "unknown",
               null
             ]

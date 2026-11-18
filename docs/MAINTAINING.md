@@ -38,6 +38,8 @@ gh api -X POST "repos/$OWNER/$REPO/rulesets" --input - <<'JSON'
           { "context": "gosec" },
           { "context": "Secret scanning" },
           { "context": "Trivy filesystem scan" },
+          { "context": "Trivy control plane image" },
+          { "context": "Licenses" },
           { "context": "actionlint" },
           { "context": "CodeQL (javascript-typescript)" },
           { "context": "CodeQL (go)" }
@@ -46,6 +48,8 @@ gh api -X POST "repos/$OWNER/$REPO/rulesets" --input - <<'JSON'
 }
 JSON
 ```
+
+The scans of the pinned PostgreSQL and Caddy images (`Trivy pinned images (postgres, linux/amd64)` and the same for `caddy` and `linux/arm64`) are left out of the required checks on purpose: a flaw disclosed upstream would block every pull request until a new image exists. Their weekly run reports it instead.
 
 Zero required approvals: with one maintainer, GitHub does not let an author approve their own pull request. When a second maintainer joins, raise the count to 1 and enable code owner review.
 

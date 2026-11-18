@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
+	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
 	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
 	"github.com/shipkeepdev/shipkeep/lib/agentproto"
 	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
@@ -30,6 +31,25 @@ const (
 	errFailed      = "action failed"
 	errConflict    = "idempotency key reused for a different action"
 )
+
+// What a failed step tells the control plane about its cause. The journal keeps a cause code;
+// only the codes listed here become a text, each text is fixed, and anything else is errFailed.
+// The control plane knows the same texts (SPEC 3.4).
+var failureTexts = map[string]string{
+	docker.CauseRegistryDenied:      "registry refused the pull",
+	docker.CauseImageNotFound:       "image not found in the registry",
+	docker.CauseRegistryUnreachable: "registry unreachable from the server",
+	docker.CauseRegistryUntrusted:   "registry certificate not trusted by the server",
+	docker.CauseDiskFull:            "no space left on the server",
+}
+
+// failureText is the fixed text for a failed operation: its cause when the agent lists it.
+func failureText(cause string) string {
+	if text, listed := failureTexts[cause]; listed {
+		return text
+	}
+	return errFailed
+}
 
 var (
 	actionID       = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
@@ -113,7 +133,7 @@ func (d *Dispatcher) Handle(ctx context.Context, req *agentv1.ActionRequest, sen
 				next.Result = handler.Result(op.Result)
 			}
 		case journal.Failed, journal.Compensated:
-			next.Error = errFailed
+			next.Error = failureText(op.Cause)
 		case journal.Pending, journal.Running, journal.Compensating, journal.Cancelled:
 		}
 		return next

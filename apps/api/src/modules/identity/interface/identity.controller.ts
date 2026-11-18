@@ -23,11 +23,13 @@ import type { Response } from 'express';
 
 import { AppConfig } from '../../../platform/config/app-config';
 import { AccountCommands } from '../application/account-commands';
+import { IDENTITY_MAILER, type IdentityMailer } from '../application/identity-ports';
 import { IDENTITY_THROTTLE, type IdentityThrottle } from '../application/identity-throttle';
 import { SessionCommands } from '../application/session-commands';
 import { AuthenticationError, normalizeEmail } from '../domain/identity-policy';
 
 import {
+  AuthOptionsDto,
   CredentialsDto,
   EmailDto,
   ResetPasswordDto,
@@ -66,6 +68,7 @@ export class IdentityController {
     private readonly sessions: SessionCommands,
     private readonly config: AppConfig,
     @Inject(IDENTITY_THROTTLE) private readonly throttle: IdentityThrottle,
+    @Inject(IDENTITY_MAILER) private readonly mailer: IdentityMailer,
   ) {}
 
   @ApiHeader({
@@ -172,6 +175,14 @@ export class IdentityController {
     await this.throttle.succeeded(normalizeEmail(body.email), clientIp(request));
     setSessionCookies(response, grant, policy);
     return { userId: grant.userId, email: grant.email, expiresAt: grant.expiresAt.toISOString() };
+  }
+
+  /** Public: what the sign-in screens may offer. It says nothing about any account. */
+  @Get('options')
+  @AllowAnonymous()
+  @ApiOkResponse({ type: AuthOptionsDto })
+  options(): AuthOptionsDto {
+    return { email: this.mailer.enabled };
   }
 
   @Get('session')

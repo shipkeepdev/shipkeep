@@ -90,7 +90,23 @@ function firstLine(input: Input, terminal: boolean): Promise<string> {
       input.off('end', onEnd);
       input.off('error', onError);
       if (error) reject(error);
-      else resolve(bytes.toString('utf8').replace(/\r$/, ''));
+      else {
+        // Strict: a decoder that replaces what it cannot read with U+FFFD would set a password
+        // other than the one typed, which no browser would ever send (a Latin-1 terminal sends
+        // é as one byte). A leading U+FEFF is a character of the line, not a marker to drop.
+        let line: string;
+        try {
+          line = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(bytes);
+        } catch {
+          reject(
+            new OperatorUsageError(
+              'The password is not UTF-8 text: set the terminal or the file to UTF-8.',
+            ),
+          );
+          return;
+        }
+        resolve(line.replace(/\r$/, ''));
+      }
     };
     const onEnd = () => {
       finish();

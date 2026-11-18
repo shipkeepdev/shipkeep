@@ -87,6 +87,114 @@ jobs:
           ignore-unfixed: true
           exit-code: '1'
 
+  # The image the release workflow publishes, built here for amd64. It accepts no exception: a
+  # fixable HIGH or CRITICAL vulnerability, or a secret, in what Shipkeep ships fails the job.
+  trivy-image:
+    name: Trivy control plane image
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the image
+        run: docker build --file deploy/control-plane.Dockerfile --tag shipkeep-control-plane:scan .
+      - name: Scan for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: shipkeep-control-plane:scan
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: '1'
+      # Every secret fails, whatever severity Trivy gives it (some tokens are rated MEDIUM), in the
+      # files and in the image configuration (ENV values, labels, history).
+      - name: Scan for secrets
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_IMAGE_CONFIG_SCANNERS: secret
+        with:
+          image-ref: shipkeep-control-plane:scan
+          scanners: secret
+          exit-code: '1'
+
+  # The third-party images that deploy/control-plane/compose.yml pins. Their flaws are only fixed
+  # by a new upstream image: .trivyignore.yaml lists the ones not fixed upstream yet, each with a
+  # reason and an expiry. The weekly run reports what was disclosed since the pin was set.
+  trivy-pinned-images:
+    name: Trivy pinned images (${{ matrix.service }}, ${{ matrix.platform }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [postgres, caddy]
+        # A server installed on arm64 pulls the arm64 variant of the same digest.
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # From the service's image field as Compose reads it, whatever quoting the file uses.
+      - name: Read the pinned image
+        id: image
+        env:
+          SERVICE: ${{ matrix.service }}
+        run: |
+          reference=$(SERVICE="$SERVICE" yq -r '.services[strenv(SERVICE)].image // ""' deploy/control-plane/compose.yml)
+          # The whole value, on one line: a tag and a digest.
+          if ! [[ $reference =~ ^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$ ]]; then
+            echo "The ${SERVICE} service of deploy/control-plane/compose.yml has no image pinned by tag and digest." >&2
+            exit 1
+          fi
+          echo "reference=$reference" >> "$GITHUB_OUTPUT"
+      # Vulnerabilities only: a secret baked into an upstream image is not ours to fix (the postgres
+      # image ships a snakeoil TLS key; PostgreSQL TLS is off and the database listens only on the
+      # private Compose network).
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: ${{ matrix.platform }}
+        with:
+          image-ref: ${{ steps.image.outputs.reference }}
+          scanners: vuln
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          trivyignores: .trivyignore.yaml
+          exit-code: '1'
+
+  # Licenses of the production dependencies (npm and Go) against tools/ci/licenses.json: the list of
+  # CLAUDE.md and the exceptions of ADR 0014. Trivy reads them from node_modules and the Go module
+  # cache, not from the lockfiles, so both are populated first.
+  licenses:
+    name: Licenses
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # No restored Go cache: Trivy reads the license of each version a go.mod names from the
+      # module cache, so the cache is filled below from this checkout alone. A go.mod that names a
+      # version no build downloads (one that is not tidy) then shows as a missing license.
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: agent/go.mod
+          cache: false
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      # No install scripts: only the package files are read.
+      - run: pnpm install --frozen-lockfile --ignore-scripts
+      - name: Download the Go modules
+        run: for module in agent cli lib; do (cd "$module" && go mod download); done
+      - name: Test the license check
+        run: node --test tools/ci/check-licenses.test.mjs
+      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: fs
+          scanners: license
+          format: json
+          output: trivy-licenses.json
+          exit-code: '0'
+      - name: Check the licenses
+        run: node tools/ci/check-licenses.mjs trivy-licenses.json tools/ci/licenses.json
+
   actionlint:
     name: actionlint
     runs-on: ubuntu-latest

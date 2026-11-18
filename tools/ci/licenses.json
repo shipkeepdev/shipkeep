@@ -1,0 +1,61 @@
+{
+  "$comment": "Licenses the production dependencies may carry (CLAUDE.md), and the exceptions of ADR 0014. tools/ci/check-licenses.mjs applies it to Trivy's license report. Every exception names its package and license, and is approved in ADR 0014. targets are the inventories the report must hold; undetected lists package versions whose license was read by hand.",
+  "allowed": ["MIT", "Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MPL-2.0"],
+  "targets": ["pnpm-lock.yaml", "agent/go.mod", "cli/go.mod", "lib/go.mod"],
+  "exceptions": [
+    {
+      "package": "argparse",
+      "license": "PSF-2.0",
+      "status": "approved"
+    },
+    {
+      "package": "@fontsource-variable/outfit",
+      "license": "OFL-1.1",
+      "status": "approved"
+    },
+    {
+      "package": "@fontsource-variable/geist",
+      "license": "OFL-1.1",
+      "status": "approved"
+    },
+    {
+      "package": "@fontsource-variable/geist-mono",
+      "license": "OFL-1.1",
+      "status": "approved"
+    },
+    {
+      "package": "tslib",
+      "license": "0BSD",
+      "status": "approved"
+    },
+    {
+      "package": "postgres",
+      "license": "Unlicense",
+      "status": "approved"
+    },
+    {
+      "package": "robust-predicates",
+      "license": "Unlicense",
+      "status": "approved"
+    },
+    {
+      "package": "elkjs",
+      "license": "EPL-2.0",
+      "status": "approved"
+    }
+  ],
+  "undetected": [
+    {
+      "package": "busboy",
+      "version": "1.6.0",
+      "license": "MIT",
+      "reason": "package.json declares it in the old \"licenses\" array, which Trivy does not read"
+    },
+    {
+      "package": "streamsearch",
+      "version": "1.1.0",
+      "license": "MIT",
+      "reason": "package.json declares it in the old \"licenses\" array, which Trivy does not read"
+    }
+  ]
+}

@@ -2,6 +2,7 @@ import { type Route } from '@angular/router';
 
 import { type PreviewView } from './dashboard/preview-screens';
 import { AUTH_MODES } from './identity/auth-form-store';
+import { authOptions } from './identity/auth-options';
 
 const titles = {
   login: 'Sign in',
@@ -161,6 +162,7 @@ export const appRoutes: Route[] = [
   ...[...AUTH_MODES, 'mfa' as const, 'recovery' as const].map((mode): Route => ({
     path: `auth/${mode}`,
     data: { mode },
+    resolve: { offered: authOptions },
     title: `${titles[mode]} · Shipkeep`,
     loadComponent: () => import('./identity/auth-page').then((module) => module.AuthPage),
   })),

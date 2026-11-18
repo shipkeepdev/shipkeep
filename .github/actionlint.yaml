@@ -1,0 +1,8 @@
+# actionlint settings. Keep every exception narrow: one file, one message, with the reason.
+paths:
+  .github/workflows/release.yml:
+    ignore:
+      # GitHub Actions supports concurrency.queue (docs: "Control the concurrency of workflows and
+      # jobs"); actionlint 1.7.12, the latest release, does not know the key yet. Remove this
+      # once it does.
+      - 'unexpected key "queue" for "concurrency" section'

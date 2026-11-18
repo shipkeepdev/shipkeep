@@ -23,12 +23,46 @@ valid_smtp_host() {
 valid_port() {
   [[ $1 =~ ^[0-9]{1,5}$ ]] && ((10#$1 > 0 && 10#$1 <= 65535))
 }
+# An email address the control plane accepts too (its rule is wider: more punctuation in the
+# name). A name of words joined by single dots, then a domain of at least two labels.
 valid_address() {
-  ((${#1} <= 254)) && [[ $1 =~ ^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]]
+  local word='[A-Za-z0-9_%+-]+' label='[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?'
+  ((${#1} <= 254)) && [[ $1 =~ ^($word(\.$word)*)@$label(\.$label)+$ ]] && ((${#BASH_REMATCH[1]} <= 64))
 }
 # A login or a password: one line of at most $2 bytes, without control characters.
 valid_credential() {
   ((${#1} <= $2)) && [[ $1 != *[[:cntrl:]]* ]]
+}
+# Well-formed UTF-8 (RFC 3629): no overlong form, no surrogate, nothing above U+10FFFF, no
+# sequence cut short. This script runs in the C locale, where these brackets match bytes.
+valid_utf8() {
+  local tail=$'[\x80-\xbf]'
+  local one=$'[\x01-\x7f]' two=$'[\xc2-\xdf]'"$tail"
+  local three=$'(\xe0[\xa0-\xbf]|[\xe1-\xec\xee\xef][\x80-\xbf]|\xed[\x80-\x9f])'"$tail"
+  local four=$'(\xf0[\x90-\xbf]|[\xf1-\xf3][\x80-\xbf]|\xf4[\x80-\x8f])'"$tail$tail"
+  [[ $1 =~ ^($one|$two|$three|$four)*$ ]]
+}
+
+# The password of the first account: one line of UTF-8 text, 15 to 128 characters counted as the
+# control plane counts them (Unicode code points), so that it is not refused once the stack is
+# started. In valid UTF-8 a code point is one byte that is not a continuation byte (10xxxxxx).
+valid_owner_password() {
+  [[ $1 != *[[:cntrl:]]* ]] || return 1
+  valid_utf8 "$1" || return 1
+  local leading=${1//[$'\x80'-$'\xbf']/}
+  ((${#leading} >= 15 && ${#leading} <= 128))
+}
+
+# Starts from this script's own variables. A name inherited from the environment stays exported
+# when it is assigned: every child, Docker included, would receive the passwords kept under these
+# names. And Docker Compose prefers a variable of the environment to the settings file and to the
+# bundled compose file, which alone must decide what the installation runs with.
+own_variables() {
+  unset -v owner_password smtp_password admin_password app_password
+  unset -v SHIPKEEP_IMAGE SHIPKEEP_DOMAIN POSTGRES_ADMIN_PASSWORD POSTGRES_APP_PASSWORD
+  unset -v SMTP_HOST SMTP_PORT SMTP_FROM SMTP_USER SMTP_PASSWORD
+  # Every COMPOSE_* setting: COMPOSE_DISABLE_ENV_FILE alone would make Compose ignore .env.
+  unset -v "${!COMPOSE_@}"
 }
 
 # One line of the settings file. Docker Compose reads a double-quoted value literally once
@@ -141,6 +175,67 @@ ask() {
   done
 }
 
+# One line of a standard input that is not a terminal, into the variable named by $1, and not a
+# byte more. It is read byte by byte because `read` drops a NUL byte without a word: the secret
+# kept would then differ from the one given. A CR just before the line end belongs to that end
+# (a file saved with CRLF), as the control plane reads it; a CR anywhere else stays, and is
+# refused as a control character. Returns 2 for a NUL byte, 3 for a line too long.
+read_piped_line() {
+  local byte line=''
+  while IFS= read -r -s -d '' -n 1 byte; do
+    [[ -n $byte ]] || return 2
+    [[ $byte != $'\n' ]] || break
+    line+=$byte
+    ((${#line} <= 4096)) || return 3
+  done
+  printf -v "$1" '%s' "${line%$'\r'}"
+}
+
+# One secret line into the variable named by $1, never shown: typed on a terminal, or the next
+# line of a pipe.
+read_hidden() {
+  if [[ -t 0 ]]; then
+    IFS= read -r -s "$1" || true
+  else
+    read_piped_line "$1"
+  fi
+}
+
+# Sets owner_password from stdin, never shown. A terminal is asked twice, and again after a
+# mistake; a pipe gives its line once.
+ask_owner_password() {
+  local again status
+  while :; do
+    status=0
+    printf 'Password of this account, 15 characters or more (input hidden): ' >&2
+    read_hidden owner_password || status=$?
+    printf '\n' >&2
+    ((status != 2)) || fail 'The password holds a NUL byte: give it as one line of plain UTF-8 text.'
+    if ((!status)) && [[ $owner_password != *[[:cntrl:]]* ]] && ! valid_utf8 "$owner_password"; then
+      [[ -t 0 ]] || fail 'The password is not UTF-8 text: set the terminal or the file to UTF-8.'
+      printf 'This is not UTF-8 text: set the terminal to UTF-8, then type the password again.\n' >&2
+      continue
+    fi
+    if ((status)) || ! valid_owner_password "$owner_password"; then
+      [[ -t 0 ]] || fail 'The first account needs a password of 15 to 128 characters, on one line, without tabs or other control characters.'
+      printf 'Use between 15 and 128 characters, without tabs or other control characters.\n' >&2
+      continue
+    fi
+    [[ -t 0 ]] || return 0
+    printf 'The same password again (input hidden): ' >&2
+    read_hidden again || true
+    printf '\n' >&2
+    [[ $again != "$owner_password" ]] || return 0
+    printf 'The two passwords differ.\n' >&2
+  done
+}
+
+# Creates the first account with the command line of the control plane (ADR 0020). The password
+# goes on standard input: an argument or a variable could be read by other processes.
+create_first_account() {
+  printf '%s\n' "$owner_password" | compose run --rm --no-deps -T control-plane node main.js account create --email "$owner_email"
+}
+
 # Ubuntu 24.04 only, from Docker's own repository, with its signing key pinned (as the server
 # installer does). Elsewhere the operator installs Docker.
 install_docker() {
@@ -200,27 +295,33 @@ main() {
   umask 077
   export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
   local here file port listeners attempt=0 user_given=0
+  own_variables
   directory=/opt/shipkeep writing=0
-  domain='' smtp_host='' smtp_port='' smtp_from='' smtp_user='' smtp_password=''
+  domain='' owner_email='' owner_password=''
+  smtp_host='' smtp_port='' smtp_from='' smtp_user='' smtp_password=''
   while (($#)); do
     (($# >= 2)) || fail 'Missing option value.'
     case "$1" in
       --dir) directory=$2 ;;
       --domain) domain=$2 ;;
+      --email) owner_email=$2 ;;
       --smtp-host) smtp_host=$2 ;;
       --smtp-port) smtp_port=$2 ;;
       --smtp-from) smtp_from=$2 ;;
       --smtp-user) smtp_user=$2 user_given=1 ;;
-      *) fail 'Unknown option. Options: --dir, --domain, --smtp-host, --smtp-port, --smtp-from, --smtp-user.' ;;
+      *) fail 'Unknown option. Options: --dir, --domain, --email, and for an installation that sends email --smtp-host, --smtp-port, --smtp-from, --smtp-user.' ;;
     esac
     shift 2
   done
   valid_directory "$directory" || fail 'Invalid directory: an absolute path is required.'
   [[ -z $domain ]] || valid_domain "$domain" || fail 'Invalid domain: a lowercase DNS name is required, for example shipkeep.example.com.'
+  [[ -z $owner_email ]] || valid_address "$owner_email" || fail 'Invalid email address.'
   [[ -z $smtp_host ]] || valid_smtp_host "$smtp_host" || fail 'Invalid SMTP host.'
   [[ -z $smtp_port ]] || valid_port "$smtp_port" || fail 'Invalid SMTP port.'
   [[ -z $smtp_from ]] || valid_address "$smtp_from" || fail 'Invalid sender address.'
   valid_credential "$smtp_user" 254 || fail 'Invalid SMTP user.'
+  # Email is optional (ADR 0020): its other settings mean nothing without the host.
+  [[ -n $smtp_host || (-z $smtp_port && -z $smtp_from && $user_given == 0) ]] || fail 'Give --smtp-host with the other SMTP options, or none of them.'
 
   # Everything up to the questions only reads: a refusal leaves the machine as it was.
   ((EUID == 0)) || fail 'Run with sudo.'
@@ -251,24 +352,28 @@ main() {
   if command -v getent >/dev/null; then
     getent ahosts "$domain" >/dev/null || fail "$domain does not resolve. Create its DNS record pointing at this machine, then run this installer again: nothing was changed."
   fi
-  printf 'Accounts are confirmed by email: an SMTP account with implicit TLS (port 465 unless --smtp-port says otherwise) is required.\n' >&2
-  ask smtp_host 'SMTP host' valid_smtp_host 'An SMTP host name is required.'
-  [[ -n $smtp_port ]] || smtp_port=465
-  ask smtp_from 'Sender address, for example shipkeep@example.com' valid_address 'A sender address is required.'
-  if ((!user_given)); then
-    printf 'SMTP user (empty when the server asks for no login): ' >&2
-    if ! IFS= read -r smtp_user && [[ -z $smtp_user ]]; then
-      printf '\n' >&2
-      fail 'Missing SMTP user: pass --smtp-user, empty when the server asks for no login.'
+  # The first account is created here, on the server: no email is needed to start (ADR 0020).
+  ask owner_email 'Email address of the first account (it is the sign-in name; nothing is sent to it)' valid_address 'An email address is required, for example you@example.com.'
+  ask_owner_password
+  # Email is only asked for when --smtp-host says the installation sends some.
+  if [[ -n $smtp_host ]]; then
+    [[ -n $smtp_port ]] || smtp_port=465
+    ask smtp_from 'Sender address, for example shipkeep@example.com' valid_address 'A sender address is required.'
+    if ((!user_given)); then
+      printf 'SMTP user (empty when the server asks for no login): ' >&2
+      if ! IFS= read -r smtp_user && [[ -z $smtp_user ]]; then
+        printf '\n' >&2
+        fail 'Missing SMTP user: pass --smtp-user, empty when the server asks for no login.'
+      fi
+      valid_credential "$smtp_user" 254 || fail 'Invalid SMTP user.'
     fi
-    valid_credential "$smtp_user" 254 || fail 'Invalid SMTP user.'
-  fi
-  if [[ -n $smtp_user ]]; then
-    printf 'SMTP password (input hidden): ' >&2
-    IFS= read -r -s smtp_password || true
-    printf '\n' >&2
-    [[ -n $smtp_password ]] || fail 'An SMTP user needs a password.'
-    valid_credential "$smtp_password" 4096 || fail 'Invalid SMTP password: a single line is required.'
+    if [[ -n $smtp_user ]]; then
+      printf 'SMTP password (input hidden): ' >&2
+      read_hidden smtp_password || fail 'Invalid SMTP password: a single line of text is required.'
+      printf '\n' >&2
+      [[ -n $smtp_password ]] || fail 'An SMTP user needs a password.'
+      valid_credential "$smtp_password" 4096 || fail 'Invalid SMTP password: a single line is required.'
+    fi
   fi
 
   if ! command -v docker >/dev/null; then
@@ -295,6 +400,15 @@ main() {
   compose up -d
   writing=0
 
+  printf 'Creating the account %s...\n' "$owner_email"
+  if ! create_first_account; then
+    unset owner_password
+    printf 'shipkeep-install: the control plane is running, but the first account was not created. Create it with:\n' >&2
+    printf '  cd %s && sudo docker compose -f compose.yml run --rm --no-deps control-plane node main.js account create --email %s\n' "$directory" "$owner_email" >&2
+    exit 1
+  fi
+  unset owner_password
+
   printf 'Waiting for the HTTPS certificate of %s...\n' "$domain"
   until https_answers "$domain"; do
     attempt=$((attempt + 1))
@@ -307,7 +421,13 @@ main() {
     sleep 5
   done
   printf '\nShipkeep is running at https://%s\n' "$domain"
-  printf 'Open it and create your account: the confirmation code arrives by email.\n'
+  printf 'Sign in with %s and the password you chose.\n' "$owner_email"
+  if [[ -n $smtp_host ]]; then
+    printf 'Other people sign up by themselves: their confirmation code arrives by email.\n'
+  else
+    printf 'This installation sends no email: more accounts and lost passwords are handled on this server.\n'
+    printf 'See https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md#accounts-without-email\n'
+  fi
   printf 'The compose file and its settings are in %s. Keep .env private: it holds the database passwords.\n' "$directory"
   printf 'Back up the key-encryption key now: https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md#back-up-the-key-encryption-key\n'
 }

@@ -21,7 +21,7 @@ Two things had to be decided: how the first account, and the next ones, come to 
   node main.js account reset-password --email <address>
   ```
 
-  The account is active at once. The installer will run the first command for the first account; until that change lands, it still asks for an SMTP account, and the command is run by hand.
+  The account is active at once. The installer asks for the address and the password of the first account and runs the first command itself, the password on standard input.
 
 - **The authority is the server.** No route reaches these commands. Whoever can run them already holds the database administrator password and the key-encryption key, which is more than any account has.
 - **The password never travels in an argument or a variable**, where other processes could read it. It is typed without echo on a terminal, or is the first line of a pipe.
@@ -41,6 +41,6 @@ Two things had to be decided: how the first account, and the next ones, come to 
 ## Consequences
 
 - Without SMTP there is no self-service: the operator creates each account and resets each password on the server. An organization then adds those accounts as members, as it does today.
-- The web screens still offer sign-up and "forgot password"; they must say that the administrator does it when the installation sends no email. That is a change of its own.
+- The sign-in screens ask the control plane whether it sends email (`GET /auth/options`, public, no account data). Without email they offer neither sign-up nor "forgot password", and say that the administrator of the installation creates accounts and resets passwords. A screen that gets no answer offers everything, and the refusal of the server says the same.
 - SMTP can be added later: the same accounts keep working, and the email flows come back.
 - An installation that loses both its password and its server access has no recovery, which is also true of its database.

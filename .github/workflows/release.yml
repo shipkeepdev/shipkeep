@@ -10,6 +10,14 @@ on:
 permissions:
   contents: read
 
+# One release at a time: two runs would move the shared major.minor tag under each other.
+concurrency:
+  group: release
+  cancel-in-progress: false
+  # Every run that waits keeps its place: by default a new run would cancel the one pending, and a
+  # dry run started by hand could drop a tagged release before it publishes anything.
+  queue: max
+
 # Only a pushed version tag publishes. A manual run stays a dry run even when it is started on a tag.
 env:
   PUBLISH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
@@ -86,12 +94,58 @@ jobs:
           build-args: |
             SHIPKEEP_VERSION=${{ steps.meta.outputs.version }}
             SHIPKEEP_COMMIT=${{ github.sha }}
-          push: ${{ env.PUBLISH == 'true' }}
-          tags: ${{ steps.meta.outputs.tags }}
+          # Pushed by digest only, under no tag: the version tags are set below, once both platforms
+          # have passed the scan and the digest is signed. A dry run pushes nothing.
+          outputs: ${{ env.PUBLISH == 'true' && format('type=image,name=ghcr.io/{0}/shipkeep,push-by-digest=true,name-canonical=true,push=true', github.repository_owner) || '' }}
           sbom: true
           provenance: mode=max
+      # The image that was pushed, for both platforms, before it is signed and tagged: a fixable HIGH
+      # or CRITICAL vulnerability, or any secret, stops the release here. The pinned Trivy image is
+      # the version that trivy-action v0.36.0 installs in the security workflow.
+      - name: Scan the pushed image
+        if: env.PUBLISH == 'true'
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/shipkeep@${{ steps.build.outputs.digest }}
+        run: |
+          trivy() {
+            docker run --rm -v "$HOME/.docker/config.json:/root/.docker/config.json:ro" \
+              aquasec/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e \
+              image --no-progress --exit-code 1 "$@" "$IMAGE"
+          }
+          for platform in linux/amd64 linux/arm64; do
+            trivy --platform "$platform" --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed
+            # Every secret fails, whatever severity Trivy gives it, in the files and in the image
+            # configuration (ENV values, labels, history).
+            trivy --platform "$platform" --scanners secret --image-config-scanners secret
+          done
       - if: env.PUBLISH == 'true'
         run: cosign sign --yes "ghcr.io/${{ github.repository_owner }}/shipkeep@${{ steps.build.outputs.digest }}"
+      # Only now do the public tags (version, major.minor) move, to the digest that was scanned and
+      # signed, and each is read back to check that it names that digest.
+      - name: Publish the version tags
+        if: env.PUBLISH == 'true'
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          IMAGE: ghcr.io/${{ github.repository_owner }}/shipkeep
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          args=()
+          while IFS= read -r tag; do
+            if [ -n "$tag" ]; then args+=(--tag "$tag"); fi
+          done <<< "$TAGS"
+          if [ "${#args[@]}" -eq 0 ]; then
+            echo "No version tag to publish." >&2
+            exit 1
+          fi
+          docker buildx imagetools create "${args[@]}" "${IMAGE}@${DIGEST}"
+          while IFS= read -r tag; do
+            if [ -z "$tag" ]; then continue; fi
+            published=$(docker buildx imagetools inspect "$tag" --format '{{json .Manifest}}' | jq -r .digest)
+            if [ "$published" != "$DIGEST" ]; then
+              echo "$tag names $published, not the scanned and signed $DIGEST." >&2
+              exit 1
+            fi
+          done <<< "$TAGS"
       # The installer, the files it installs and the image reference by tag and digest. It is built
       # here because it pins the digest of the image that was just pushed.
       - name: Build the control plane bundle
