@@ -11,6 +11,7 @@ import { TenantAccess } from '../../organizations/application/tenant-access';
 import { AppConfig } from '../../../platform/config/app-config';
 import { parseConfig, type ParsedConfig } from '../../../platform/config/config.schema';
 import { ProblemDetailsFilter } from '../../../platform/http/problem-details.filter';
+import { IDENTITY_MAILER } from '../application/identity-ports';
 import { IDENTITY_THROTTLE, type IdentityThrottle } from '../application/identity-throttle';
 import { SessionCommands } from '../application/session-commands';
 import { ApiTokenAuthentication } from '../application/api-token-authentication';
@@ -55,6 +56,12 @@ class FixtureController {
   @Post('public') @AllowAnonymous() @IdentityAttemptLimit('login') publicWrite() {
     return { ok: true };
   }
+  @Post('sign-up') @AllowAnonymous() @IdentityAttemptLimit('register') signUp() {
+    return { ok: true };
+  }
+  @Post('reset-link') @AllowAnonymous() @IdentityAttemptLimit('email') resetLink() {
+    return { ok: true };
+  }
   @Get('private') @AllowAccount() privateRead(@Req() input: IdentityRequest) {
     return { id: principal(input).userId };
   }
@@ -82,6 +89,8 @@ describe('identity HTTP guards', () => {
   const authenticateToken = vi.fn<ApiTokenAuthentication['authenticate']>();
   const requireTenant = vi.fn<TenantAccess['require']>();
   const acquire = vi.fn<IdentityThrottle['acquire']>();
+  /** Whether the installation sends email; a test turns it off. */
+  const mail = { enabled: true, send: () => Promise.resolve() };
   const http = () => request(app.getHttpServer() as Server);
 
   beforeAll(async () => {
@@ -93,6 +102,7 @@ describe('identity HTTP guards', () => {
         { provide: SessionCommands, useValue: { authenticate } },
         { provide: ApiTokenAuthentication, useValue: { authenticate: authenticateToken } },
         { provide: IDENTITY_THROTTLE, useValue: { acquire } },
+        { provide: IDENTITY_MAILER, useValue: mail },
         { provide: APP_GUARD, useClass: IdentityGuard },
         { provide: APP_GUARD, useClass: IdentityRateGuard },
       ],
@@ -106,6 +116,7 @@ describe('identity HTTP guards', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+    mail.enabled = true;
     requireTenant.mockResolvedValue(undefined);
     authenticate.mockImplementation((token, supplied) => {
       if (token.expose() !== value || (supplied && supplied.expose() !== csrf))
@@ -337,5 +348,28 @@ describe('identity HTTP guards', () => {
     expect(held.headers['retry-after']).toBeDefined();
     // Turned away before the session lookup.
     expect(authenticate.mock.calls.length).toBe(lookups);
+  });
+  it('refuses what needs a message before the attempt limit when no email is sent (ADR 0020)', async () => {
+    // With email: the attempt is counted, then the route runs.
+    for (const route of ['sign-up', 'reset-link'])
+      await http().post(`/fixture/${route}`).set('Origin', origin).send({}).expect(201);
+    expect(acquire).toHaveBeenCalledTimes(2);
+
+    mail.enabled = false;
+    acquire.mockClear();
+    for (const route of ['sign-up', 'reset-link'])
+      await http()
+        .post(`/fixture/${route}`)
+        .set('Origin', origin)
+        .send({ email: 'owner@example.com' })
+        .expect(409)
+        .expect((response) => {
+          expect(response.body).toMatchObject({ code: 'email_not_configured' });
+        });
+    // Nothing was read to count an attempt: the answer cannot depend on the address.
+    expect(acquire).not.toHaveBeenCalled();
+    // What needs no message is not affected.
+    await http().post('/fixture/public').set('Origin', origin).send({}).expect(201);
+    expect(acquire).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,4 +1,4 @@
-import { DomainError, InvalidInputError } from '@shipkeep/domain';
+import { ConflictError, DomainError, InvalidInputError } from '@shipkeep/domain';
 
 export const SESSION_IDLE_MS = 12 * 60 * 60 * 1000;
 export const SESSION_ABSOLUTE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -34,6 +34,17 @@ export function normalizeEmail(input: string): string {
     throw new InvalidInputError('invalid_email', 'Enter a valid email address.');
   }
   return email;
+}
+
+/**
+ * The refusal of an installation that sends no email (ADR 0020), for what needs a message:
+ * sign-up, a new confirmation code and a reset link.
+ */
+export function emailNotConfigured(): ConflictError {
+  return new ConflictError(
+    'email_not_configured',
+    'This installation sends no email: its administrator creates accounts and resets passwords.',
+  );
 }
 
 export function assertPassword(password: string): void {

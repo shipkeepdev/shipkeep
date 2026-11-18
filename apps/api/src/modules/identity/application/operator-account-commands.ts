@@ -71,15 +71,16 @@ export class OperatorAccountCommands {
     await this.store.withUserLock(found.id, async (user) => {
       if (user.status === 'disabled')
         throw new ConflictError('account_disabled', 'This account is disabled.');
+      const events = [identityEvent('password_reset_by_operator', user.id, SYSTEM_ACTOR, now)];
       if (user.status === 'pending') {
         await this.store.activateUser(user.id, now);
         await this.store.invalidateTokens(user.id, 'verify', now);
+        // Its own event: the audit log must show that the operator made this account usable.
+        events.unshift(identityEvent('activated_by_operator', user.id, SYSTEM_ACTOR, now));
       }
       // Advances the security version: what was issued before the reset stops working.
       await this.store.changePassword(user.id, passwordHash, now);
-      await this.events.publish([
-        identityEvent('password_reset_by_operator', user.id, SYSTEM_ACTOR, now),
-      ]);
+      await this.events.publish(events);
     });
     return email;
   }

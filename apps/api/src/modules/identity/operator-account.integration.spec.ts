@@ -119,16 +119,24 @@ describe('accounts created on the server, against PostgreSQL', () => {
       'Authentication failed.',
     );
     await expect(sessions.login(login(second))).resolves.toHaveProperty('userId', created.id);
-    expect((await events(created.id)).map(([action]) => action)).toContain(
-      'identity.password_reset_by_operator',
-    );
+    const recorded = (await events(created.id)).map(([action]) => action);
+    expect(recorded).toContain('identity.password_reset_by_operator');
+    expect(recorded).not.toContain('identity.activated_by_operator');
   });
 
   it('activates an account that never confirmed its address when its password is reset', async () => {
     await withMail.register('owner@example.com', first);
     await expect(sessions.login(login(first))).rejects.toThrow('Authentication failed.');
     await operator.resetPassword('owner@example.com', second);
-    await expect(sessions.login(login(second))).resolves.toHaveProperty('userId');
+    const grant = await sessions.login(login(second));
+    // The audit log says that the operator made this account usable, not only that a password
+    // changed. An account that was already active gets the reset event alone.
+    expect((await events(grant.userId)).map(([action]) => action)).toEqual([
+      'identity.registered',
+      'identity.activated_by_operator',
+      'identity.password_reset_by_operator',
+      'identity.logged_in',
+    ]);
     // The confirmation link that was sent no longer activates anything.
     const link = sent.find((mail) => mail.purpose === 'verify');
     if (!link) throw new Error('missing verification fixture');

@@ -26,6 +26,7 @@ import {
   parseOperatorCommand,
   readPassword,
   runOperatorCommand,
+  writeLine,
 } from './operator';
 
 async function main(): Promise<void> {
@@ -82,14 +83,22 @@ async function operate(argv: readonly string[]): Promise<void> {
 const operatorArguments = process.argv.slice(2);
 if (operatorArguments.length > 0) {
   operate(operatorArguments).then(
-    // Standard input may still be open: leave now that the one command is done.
+    // Standard input may still be open: leave now that the one command is done. Its line was
+    // handed over before this runs.
     () => process.exit(0),
     (error: unknown) => {
       // A refusal says why in words meant for people. Anything else stays short: the cause may
-      // hold connection details.
+      // hold connection details or settings.
       const refused = error instanceof OperatorUsageError || isDomainError(error);
-      console.error(refused ? error.message : 'The command failed. Is the database running?');
-      process.exit(error instanceof OperatorUsageError ? 2 : 1);
+      const message = refused
+        ? error.message
+        : 'The command failed. Run it with the settings of the control plane, and check that the database answers.';
+      const code = error instanceof OperatorUsageError ? 2 : 1;
+      // Leave only once the message is handed over: a pipe may take it later than this line.
+      void writeLine(process.stderr, message).then(
+        () => process.exit(code),
+        () => process.exit(code),
+      );
     },
   );
 } else {

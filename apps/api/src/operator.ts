@@ -84,7 +84,7 @@ export async function readPassword(input: Input, prompt: Writable): Promise<Secr
 /** The bytes up to the first line end, or to the end of the stream. */
 function firstLine(input: Input, terminal: boolean): Promise<string> {
   return new Promise((resolve, reject) => {
-    let bytes = Buffer.alloc(0);
+    let bytes: Buffer = Buffer.alloc(0);
     const finish = (error?: Error) => {
       input.off('data', onData);
       input.off('end', onEnd);
@@ -111,7 +111,7 @@ function firstLine(input: Input, terminal: boolean): Promise<string> {
           return;
         }
         if (terminal && (byte === 0x7f || byte === 0x08)) {
-          bytes = bytes.subarray(0, Math.max(0, bytes.length - 1));
+          bytes = withoutLastCharacter(bytes);
           continue;
         }
         if (bytes.length >= MAX_PASSWORD_BYTES) {
@@ -127,6 +127,27 @@ function firstLine(input: Input, terminal: boolean): Promise<string> {
   });
 }
 
+/**
+ * The bytes without their last character. In UTF-8 a character is one leading byte and up to
+ * three continuation bytes (10xxxxxx): removing a single byte would leave a broken character,
+ * and so a password other than the one typed.
+ */
+function withoutLastCharacter(bytes: Buffer): Buffer {
+  let end = bytes.length;
+  while (end > 0 && ((bytes[end - 1] ?? 0) & 0xc0) === 0x80) end--;
+  return bytes.subarray(0, Math.max(0, end - 1));
+}
+
+/** Writes a line and waits until it is handed over: the process exits right after. */
+export function writeLine(output: Writable, line: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    output.write(`${line}\n`, (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
 /** Runs one command and writes one line that says what was done. Never the password. */
 export async function runOperatorCommand(
   app: INestApplicationContext,
@@ -137,9 +158,9 @@ export async function runOperatorCommand(
   const accounts = app.get(OperatorAccountCommands);
   if (command.action === 'create') {
     const created = await accounts.create(command.email, password);
-    output.write(`Account created: ${created.email}\n`);
+    await writeLine(output, `Account created: ${created.email}`);
     return;
   }
   const email = await accounts.resetPassword(command.email, password);
-  output.write(`Password reset: ${email}. Its sessions and API tokens no longer work.\n`);
+  await writeLine(output, `Password reset: ${email}. Its sessions and API tokens no longer work.`);
 }
