@@ -119,9 +119,11 @@ describe('accounts created on the server, against PostgreSQL', () => {
       'Authentication failed.',
     );
     await expect(sessions.login(login(second))).resolves.toHaveProperty('userId', created.id);
-    const recorded = (await events(created.id)).map(([action]) => action);
-    expect(recorded).toContain('identity.password_reset_by_operator');
-    expect(recorded).not.toContain('identity.activated_by_operator');
+    // The operator's commands are the system's acts, never the account's own.
+    const recorded = await events(created.id);
+    expect(recorded).toContainEqual(['identity.created_by_operator', 'system']);
+    expect(recorded).toContainEqual(['identity.password_reset_by_operator', 'system']);
+    expect(recorded.map(([action]) => action)).not.toContain('identity.activated_by_operator');
   });
 
   it('activates an account that never confirmed its address when its password is reset', async () => {
@@ -131,11 +133,11 @@ describe('accounts created on the server, against PostgreSQL', () => {
     const grant = await sessions.login(login(second));
     // The audit log says that the operator made this account usable, not only that a password
     // changed. An account that was already active gets the reset event alone.
-    expect((await events(grant.userId)).map(([action]) => action)).toEqual([
-      'identity.registered',
-      'identity.activated_by_operator',
-      'identity.password_reset_by_operator',
-      'identity.logged_in',
+    expect(await events(grant.userId)).toEqual([
+      ['identity.registered', 'system'],
+      ['identity.activated_by_operator', 'system'],
+      ['identity.password_reset_by_operator', 'system'],
+      ['identity.logged_in', 'user'],
     ]);
     // The confirmation link that was sent no longer activates anything.
     const link = sent.find((mail) => mail.purpose === 'verify');

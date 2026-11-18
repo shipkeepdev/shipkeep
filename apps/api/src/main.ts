@@ -74,7 +74,7 @@ async function operate(argv: readonly string[]): Promise<void> {
   // one line, which they would bury. Warnings and errors still show.
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
   try {
-    await runOperatorCommand(app, command, password, process.stdout);
+    await runOperatorCommand(app, command, password, process.stdout, process.stderr);
   } finally {
     await app.close();
   }
