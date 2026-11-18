@@ -25,7 +25,7 @@ import {
   OperatorUsageError,
   parseOperatorCommand,
   readPassword,
-  runOperatorCommand,
+  runThenClose,
   writeLine,
 } from './operator';
 
@@ -73,11 +73,7 @@ async function operate(argv: readonly string[]): Promise<void> {
   // The application without its HTTP server, and without its startup lines: the command writes
   // one line, which they would bury. Warnings and errors still show.
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
-  try {
-    await runOperatorCommand(app, command, password, process.stdout, process.stderr);
-  } finally {
-    await app.close();
-  }
+  await runThenClose(app, command, password, process.stdout, process.stderr);
 }
 
 const operatorArguments = process.argv.slice(2);
