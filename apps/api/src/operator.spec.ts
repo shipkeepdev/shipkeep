@@ -141,6 +141,33 @@ describe('operator command line', () => {
     }
   });
 
+  it('refuses a line that is not UTF-8 text instead of changing it', async () => {
+    for (const bytes of [
+      [0x6d, 0x6f, 0x74, 0x20, 0xe9, 0x74, 0xe9, 0x20, 0x6c, 0x61, 0x74, 0x69, 0x6e, 0x2d, 0x31],
+      [...Buffer.from('abcdefghijklmno'), ...new Array<number>(114).fill(0x80)],
+      [...Buffer.from('a long passphrase '), 0xc0, 0xa9],
+      [...Buffer.from('a long passphrase '), 0xed, 0xa0, 0x80],
+      [...Buffer.from('a long passphrase '), 0xe2, 0x82],
+    ]) {
+      const input = new PassThrough();
+      const output = new PassThrough();
+      input.end(Buffer.from([...bytes, 0x0a]));
+      await expect(readPassword(input, output)).rejects.toThrow('The password is not UTF-8 text');
+    }
+    // Typed on a terminal, the same.
+    const input = terminal();
+    const reading = readPassword(input, new PassThrough());
+    input.write(Buffer.from([...Buffer.from('a long passphrase '), 0xe9, 0x0d]));
+    await expect(reading).rejects.toThrow('The password is not UTF-8 text');
+    expect(input.raw).toEqual([true, false]);
+    // UTF-8 text is kept as it is, a leading U+FEFF included.
+    const kept = new PassThrough();
+    kept.end('\ufeffa long passphrase é€😀\n');
+    expect((await readPassword(kept, new PassThrough())).expose()).toBe(
+      '\ufeffa long passphrase é€😀',
+    );
+  });
+
   it('never writes the password back', async () => {
     const input = new PassThrough();
     const output = new PassThrough();

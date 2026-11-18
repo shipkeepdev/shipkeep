@@ -33,13 +33,24 @@ valid_address() {
 valid_credential() {
   ((${#1} <= $2)) && [[ $1 != *[[:cntrl:]]* ]]
 }
-# The password of the first account: one line of 15 to 128 characters, counted as the control
-# plane counts them (Unicode code points), so that it is not refused once the stack is started.
-# This script runs in the C locale, where a length is a number of bytes: a code point is one byte
-# that is not a UTF-8 continuation byte (10xxxxxx).
+# Well-formed UTF-8 (RFC 3629): no overlong form, no surrogate, nothing above U+10FFFF, no
+# sequence cut short. This script runs in the C locale, where these brackets match bytes.
+valid_utf8() {
+  local tail=$'[\x80-\xbf]'
+  local one=$'[\x01-\x7f]' two=$'[\xc2-\xdf]'"$tail"
+  local three=$'(\xe0[\xa0-\xbf]|[\xe1-\xec\xee\xef][\x80-\xbf]|\xed[\x80-\x9f])'"$tail"
+  local four=$'(\xf0[\x90-\xbf]|[\xf1-\xf3][\x80-\xbf]|\xf4[\x80-\x8f])'"$tail$tail"
+  [[ $1 =~ ^($one|$two|$three|$four)*$ ]]
+}
+
+# The password of the first account: one line of UTF-8 text, 15 to 128 characters counted as the
+# control plane counts them (Unicode code points), so that it is not refused once the stack is
+# started. In valid UTF-8 a code point is one byte that is not a continuation byte (10xxxxxx).
 valid_owner_password() {
+  [[ $1 != *[[:cntrl:]]* ]] || return 1
+  valid_utf8 "$1" || return 1
   local leading=${1//[$'\x80'-$'\xbf']/}
-  ((${#leading} >= 15 && ${#leading} <= 128)) && [[ $1 != *[[:cntrl:]]* ]]
+  ((${#leading} >= 15 && ${#leading} <= 128))
 }
 
 # Starts from this script's own variables. A name inherited from the environment stays exported
@@ -50,7 +61,8 @@ own_variables() {
   unset -v owner_password smtp_password admin_password app_password
   unset -v SHIPKEEP_IMAGE SHIPKEEP_DOMAIN POSTGRES_ADMIN_PASSWORD POSTGRES_APP_PASSWORD
   unset -v SMTP_HOST SMTP_PORT SMTP_FROM SMTP_USER SMTP_PASSWORD
-  unset -v COMPOSE_FILE COMPOSE_ENV_FILES COMPOSE_PROJECT_NAME COMPOSE_PROFILES
+  # Every COMPOSE_* setting: COMPOSE_DISABLE_ENV_FILE alone would make Compose ignore .env.
+  unset -v "${!COMPOSE_@}"
 }
 
 # One line of the settings file. Docker Compose reads a double-quoted value literally once
@@ -197,6 +209,11 @@ ask_owner_password() {
     read_hidden owner_password || status=$?
     printf '\n' >&2
     ((status != 2)) || fail 'The password holds a NUL byte: give it as one line of plain UTF-8 text.'
+    if ((!status)) && [[ $owner_password != *[[:cntrl:]]* ]] && ! valid_utf8 "$owner_password"; then
+      [[ -t 0 ]] || fail 'The password is not UTF-8 text: set the terminal or the file to UTF-8.'
+      printf 'This is not UTF-8 text: set the terminal to UTF-8, then type the password again.\n' >&2
+      continue
+    fi
     if ((status)) || ! valid_owner_password "$owner_password"; then
       [[ -t 0 ]] || fail 'The first account needs a password of 15 to 128 characters.'
       printf 'Use between 15 and 128 characters.\n' >&2
