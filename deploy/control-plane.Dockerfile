@@ -52,7 +52,8 @@ WORKDIR /app
 # apps/api/dist holds main.js, a pruned package.json and lockfile, and the workspace packages.
 COPY --from=build /src/apps/api/dist/ ./
 # Native modules (argon2) are installed here, for the platform the image runs on. npm comes with
-# the base image and nothing here runs it: removed, it ships none of its own dependencies' flaws.
+# the base image and nothing here runs it, so it is deleted: it is absent from the filesystem the
+# container runs and that scanners read, though the base layer underneath still carries its files.
 RUN corepack enable \
   && corepack prepare "pnpm@${PNPM_VERSION}" --activate \
   && pnpm install --prod --frozen-lockfile \

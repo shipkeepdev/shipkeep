@@ -97,40 +97,47 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Build the image
         run: docker build --file deploy/control-plane.Dockerfile --tag shipkeep-control-plane:scan .
-      - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+      - name: Scan for vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: shipkeep-control-plane:scan
-          scanners: vuln,secret
+          scanners: vuln
           severity: HIGH,CRITICAL
           ignore-unfixed: true
+          exit-code: '1'
+      # Every secret fails, whatever severity Trivy gives it (some tokens are rated MEDIUM).
+      - name: Scan for secrets
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: shipkeep-control-plane:scan
+          scanners: secret
           exit-code: '1'
 
   # The third-party images that deploy/control-plane/compose.yml pins. Their flaws are only fixed
   # by a new upstream image: .trivyignore.yaml lists the ones not fixed upstream yet, each with a
   # reason and an expiry. The weekly run reports what was disclosed since the pin was set.
   trivy-pinned-images:
-    name: Trivy pinned images (${{ matrix.service }})
+    name: Trivy pinned images (${{ matrix.service }}, ${{ matrix.platform }})
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - service: postgres
-            # gosu only switches to the postgres user when the container starts; it reads no input.
-            skip-files: /usr/local/bin/gosu
-          - service: caddy
-            skip-files: ''
+        service: [postgres, caddy]
+        # A server installed on arm64 pulls the arm64 variant of the same digest.
+        platform: [linux/amd64, linux/arm64]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # From the service's image field as Compose reads it, whatever quoting the file uses.
       - name: Read the pinned image
         id: image
         env:
           SERVICE: ${{ matrix.service }}
         run: |
-          reference=$(sed -n "s/^    image: \(${SERVICE}:[^ ]*@sha256:[0-9a-f]\{64\}\)$/\1/p" deploy/control-plane/compose.yml)
-          if [ "$(printf '%s\n' "$reference" | grep -c .)" != 1 ]; then
-            echo "Expected one ${SERVICE} image pinned by digest in deploy/control-plane/compose.yml." >&2
+          reference=$(SERVICE="$SERVICE" yq -r '.services[strenv(SERVICE)].image // ""' deploy/control-plane/compose.yml)
+          # The whole value, on one line: a tag and a digest.
+          if ! [[ $reference =~ ^[a-z0-9][a-z0-9._/-]*:[A-Za-z0-9._-]+@sha256:[0-9a-f]{64}$ ]]; then
+            echo "The ${SERVICE} service of deploy/control-plane/compose.yml has no image pinned by tag and digest." >&2
             exit 1
           fi
           echo "reference=$reference" >> "$GITHUB_OUTPUT"
@@ -138,12 +145,13 @@ jobs:
       # image ships a snakeoil TLS key; PostgreSQL TLS is off and the database listens only on the
       # private Compose network).
       - uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_PLATFORM: ${{ matrix.platform }}
         with:
           image-ref: ${{ steps.image.outputs.reference }}
           scanners: vuln
           severity: HIGH,CRITICAL
           ignore-unfixed: true
-          skip-files: ${{ matrix.skip-files }}
           trivyignores: .trivyignore.yaml
           exit-code: '1'
 
