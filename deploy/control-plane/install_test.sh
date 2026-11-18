@@ -132,6 +132,14 @@ for character in é € 😀; do
   ! valid_owner_password "$(repeat "$character" 129)" || die "accepted 129 times $character"
 done
 valid_owner_password 'un mot de passe accentué' || die 'a passphrase with an accent was refused'
+# Only UTF-8 text: the control plane refuses anything else, and must not see it after the stack
+# is started. Stray continuation bytes would also make the count above wrong.
+valid_owner_password $'\xef\xbb\xbfa long passphrase \xed\x9f\xbf\xee\x80\x80\xf4\x8f\xbf\xbf' || die 'valid UTF-8 at the edges of its ranges was refused'
+for bad in "abcdefghijklmno$(repeat $'\x80' 114)" $'a passphrase in latin-1: \xe9t\xe9' $'a long passphrase \xc0\xa9' $'a long passphrase \xc1\xbf' \
+  $'a long passphrase \xe0\x9f\xbf' $'a long passphrase \xf0\x8f\xbf\xbf' $'a long passphrase \xed\xa0\x80' $'a long passphrase \xf4\x90\x80\x80' \
+  $'a long passphrase \xf5\x80\x80\x80' $'a long passphrase \xff' $'a long passphrase \xe2\x82' $'a long \xe2\x82passphrase'; do
+  ! valid_owner_password "$bad" || die "accepted a password that is not UTF-8: $(printf '%q' "${bad:0:24}")"
+done
 # From a pipe the line is read once, kept in the variable, and shown nowhere.
 owner_password=''
 ask_owner_password <<<"$passphrase" 2>"$work/output"
@@ -158,6 +166,9 @@ refused ask_owner_password < <(printf 'a passphrase with\0 a NUL byte in it\n') 
 grep -q 'NUL byte' "$work/output" || die 'a password with a NUL byte was refused without saying why'
 ! grep -q 'a passphrase with' "$work/output" || die 'a refused password was shown'
 refused ask_owner_password < <(printf 'p\0a\0s\0s\0p\0h\0r\0a\0s\0e\0 \0l\0o\0n\0g\0 \0e\0n\0o\0u\0g\0h\0\n\0') || die 'a UTF-16 password was accepted'
+# A line that is not UTF-8 is refused with its own reason, not as a length.
+refused ask_owner_password < <(printf 'a passphrase in latin-1: \351t\351\n') || die 'a Latin-1 password was accepted'
+grep -q 'not UTF-8 text' "$work/output" || die 'a Latin-1 password was refused without saying why'
 # A line longer than any secret is refused as soon as it is too long: the reader stops there
 # instead of taking in whatever is sent (5000 bytes here, 4097 read).
 rest=''
@@ -175,6 +186,7 @@ rest=''
   export SHIPKEEP_IMAGE=example.com/other:1 SHIPKEEP_DOMAIN=other.example.com POSTGRES_ADMIN_PASSWORD=x POSTGRES_APP_PASSWORD=x
   export SMTP_HOST=other.example.com SMTP_PORT=25 SMTP_FROM=other@example.com SMTP_USER=other SMTP_PASSWORD=other
   export COMPOSE_FILE=/elsewhere.yml COMPOSE_ENV_FILES=/elsewhere.env COMPOSE_PROJECT_NAME=other COMPOSE_PROFILES=other
+  export COMPOSE_DISABLE_ENV_FILE=1 COMPOSE_REMOVE_ORPHANS=1
   own_variables
   # What the installer then does with these names.
   # shellcheck disable=SC2034
@@ -182,7 +194,7 @@ rest=''
   env >"$work/child-environment"
 )
 ! grep -q -- "$passphrase\|$secret" "$work/child-environment" || die 'a password reached the environment of child processes'
-! grep -Eq '^(owner_password|smtp_password|admin_password|app_password|SHIPKEEP_IMAGE|SHIPKEEP_DOMAIN|POSTGRES_ADMIN_PASSWORD|POSTGRES_APP_PASSWORD|SMTP_HOST|SMTP_PORT|SMTP_FROM|SMTP_USER|SMTP_PASSWORD|COMPOSE_FILE|COMPOSE_ENV_FILES|COMPOSE_PROJECT_NAME|COMPOSE_PROFILES)=' "$work/child-environment" || die 'an inherited variable would override the settings of the installation'
+! grep -Eq '^(owner_password|smtp_password|admin_password|app_password|SHIPKEEP_IMAGE|SHIPKEEP_DOMAIN|POSTGRES_ADMIN_PASSWORD|POSTGRES_APP_PASSWORD|SMTP_HOST|SMTP_PORT|SMTP_FROM|SMTP_USER|SMTP_PASSWORD|COMPOSE_[A-Z_]*)=' "$work/child-environment" || die 'an inherited variable would override the settings of the installation'
 
 # The account is created by the control plane's command line: the address is an argument, the
 # password is not. It goes on standard input, where no other process can read it.
