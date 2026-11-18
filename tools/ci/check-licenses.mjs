@@ -88,11 +88,18 @@ export function checkLicenses(report, policy) {
   const exceptions = new Map(
     policy.exceptions.map((entry) => [`${entry.package}\u0000${entry.license}`, entry]),
   );
-  const undetected = new Set(
-    policy.undetected.map((entry) => `${entry.package}\u0000${entry.version}`),
+  const undetected = new Map(
+    policy.undetected.map((entry) => [`${entry.package}\u0000${entry.version}`, entry.license]),
   );
   const problems = [];
   const results = Array.isArray(report?.Results) ? report.Results : [];
+
+  // An exception the maintainer has not approved blocks the check, used by the report or not.
+  for (const entry of policy.exceptions)
+    if (entry.status !== 'approved')
+      problems.push(
+        `exception pending the maintainer's approval in ADR 0014: package ${quoted(entry.package)} license ${quoted(entry.license)}`,
+      );
 
   // Every expected inventory must be there and hold packages: a report without them proves
   // nothing, whatever licenses it holds.
@@ -109,22 +116,23 @@ export function checkLicenses(report, policy) {
     for (const pkg of result.Packages ?? []) {
       if (pkg.Relationship === 'root') continue;
       const where = `package ${quoted(pkg.Name)} version ${quoted(pkg.Version ?? '')} in ${quoted(result.Target)}`;
-      const licenses = Array.isArray(pkg.Licenses) ? pkg.Licenses : [];
+      let licenses = Array.isArray(pkg.Licenses) ? pkg.Licenses : [];
       if (licenses.length === 0) {
-        // Found nowhere: a gap, not a pass, unless that exact version was read by hand.
-        if (!undetected.has(`${pkg.Name}\u0000${pkg.Version}`))
+        // Found nowhere: a gap, not a pass, unless that exact version was read by hand. The license
+        // read by hand then goes through the same rules.
+        const read = undetected.get(`${pkg.Name}\u0000${pkg.Version}`);
+        if (read === undefined) {
           problems.push(`no license found: ${where}`);
-        continue;
+          continue;
+        }
+        licenses = [read];
       }
       for (const license of licenses) {
         if (expressionAllowed(license, allowed)) continue;
         const exception = exceptions.get(`${pkg.Name}\u0000${license}`);
-        if (exception?.status === 'approved') continue;
-        problems.push(
-          exception
-            ? `exception pending the maintainer's approval in ADR 0014: ${where} license ${quoted(license)}`
-            : `license not allowed: ${where} license ${quoted(license)}`,
-        );
+        // A pending exception is reported once, above.
+        if (exception) continue;
+        problems.push(`license not allowed: ${where} license ${quoted(license)}`);
       }
     }
   }

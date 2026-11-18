@@ -9,10 +9,7 @@ const allowed = new Set(['MIT', 'Apache-2.0', 'BSD-3-Clause', 'ISC']);
 const policy = {
   allowed: [...allowed],
   targets: ['pnpm-lock.yaml'],
-  exceptions: [
-    { package: 'argparse', license: 'PSF-2.0', status: 'approved' },
-    { package: 'elkjs', license: 'EPL-2.0', status: 'pending' },
-  ],
+  exceptions: [{ package: 'argparse', license: 'PSF-2.0', status: 'approved' }],
   undetected: [{ package: 'busboy', version: '1.6.0', license: 'MIT', reason: 'old field' }],
 };
 /** An inventory as Trivy writes it: one record per package version, with the licenses found. */
@@ -91,9 +88,28 @@ test('refuses a license outside the list, and an exception for another package',
   ]);
 });
 
-test('refuses an exception the maintainer has not approved yet', () => {
-  assert.deepEqual(checkLicenses(report([['elkjs', '0.11.1', ['EPL-2.0']]]), policy), [
-    `exception pending the maintainer's approval in ADR 0014: package "elkjs" version "0.11.1" in "pnpm-lock.yaml" license "EPL-2.0"`,
+test('refuses an exception the maintainer has not approved yet, used by the report or not', () => {
+  const withPending = {
+    ...policy,
+    exceptions: [...policy.exceptions, { package: 'elkjs', license: 'EPL-2.0', status: 'pending' }],
+  };
+  const pending =
+    'exception pending the maintainer\u0027s approval in ADR 0014: package "elkjs" license "EPL-2.0"';
+  assert.deepEqual(checkLicenses(report([['elkjs', '0.11.1', ['EPL-2.0']]]), withPending), [
+    pending,
+  ]);
+  // The package is gone from the report: the entry still waits for its approval.
+  assert.deepEqual(checkLicenses(report([['a', '1.0.0', ['MIT']]]), withPending), [pending]);
+});
+
+test('applies the rules to a license read by hand', () => {
+  const read = (license) => ({
+    ...policy,
+    undetected: [{ package: 'old', version: '1.0.0', license, reason: 'old field' }],
+  });
+  assert.deepEqual(checkLicenses(report([['old', '1.0.0']]), read('MIT')), []);
+  assert.deepEqual(checkLicenses(report([['old', '1.0.0']]), read('GPL-3.0-only')), [
+    'license not allowed: package "old" version "1.0.0" in "pnpm-lock.yaml" license "GPL-3.0-only"',
   ]);
 });
 
@@ -180,6 +196,9 @@ test('the policy lists the allowed licenses of CLAUDE.md and the exceptions of A
       `${entry.package}: status differs from ADR 0014`,
     );
   }
-  for (const entry of file.undetected)
-    assert.match(entry.version, /^\d+\.\d+\.\d+$/, entry.package);
+  for (const entry of file.undetected) {
+    // The version exactly as the report writes it: 1.6.0 for npm, v0.43.0 for Go.
+    assert.equal(typeof entry.version, 'string', entry.package);
+    assert.ok(entry.version.length > 0 && entry.version.trim() === entry.version, entry.package);
+  }
 });

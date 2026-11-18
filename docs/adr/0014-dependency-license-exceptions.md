@@ -13,7 +13,7 @@ CLAUDE.md allows MIT, Apache-2.0, BSD-2/3, ISC and MPL-2.0 and requires approval
 
 - `argparse` under PSF-2.0 is approved as a transitive dependency of `js-yaml`.
 - The approval covers this package only. PSF-2.0 is not added to the general allow-list.
-- PSF-2.0 is a permissive, OSI-approved license. Its only obligation is to keep the copyright and license notice, so it is compatible with Apache-2.0 distribution. The release `NOTICE` and third-party license bundle (M8.3) must include it.
+- PSF-2.0 is a permissive, OSI-approved license. Its only obligation is to keep the copyright and license notice, so it is compatible with Apache-2.0 distribution. The `NOTICE` file, which the control plane image ships, carries that notice, and the third-party license bundle (M8.3) must include it.
 - Every new exception is added to this ADR with the package, the license, the path that pulls it in and the reason, and is approved by the maintainer.
 
 ## Approved exceptions
