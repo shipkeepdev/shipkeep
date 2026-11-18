@@ -156,8 +156,9 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      # No restored Go cache: other jobs leave a module cache that does not match these go.mod
-      # files exactly, and the report must depend on the repository alone.
+      # No restored Go cache: Trivy reads the license of each version a go.mod names from the
+      # module cache, so the cache is filled below from this checkout alone. A go.mod that names a
+      # version no build downloads (one that is not tidy) then shows as a missing license.
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: agent/go.mod
