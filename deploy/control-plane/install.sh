@@ -23,17 +23,34 @@ valid_smtp_host() {
 valid_port() {
   [[ $1 =~ ^[0-9]{1,5}$ ]] && ((10#$1 > 0 && 10#$1 <= 65535))
 }
+# An email address the control plane accepts too (its rule is wider: more punctuation in the
+# name). A name of words joined by single dots, then a domain of at least two labels.
 valid_address() {
-  ((${#1} <= 254)) && [[ $1 =~ ^[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?$ ]]
+  local word='[A-Za-z0-9_%+-]+' label='[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?'
+  ((${#1} <= 254)) && [[ $1 =~ ^($word(\.$word)*)@$label(\.$label)+$ ]] && ((${#BASH_REMATCH[1]} <= 64))
 }
 # A login or a password: one line of at most $2 bytes, without control characters.
 valid_credential() {
   ((${#1} <= $2)) && [[ $1 != *[[:cntrl:]]* ]]
 }
-# The password of the first account: one line of 15 to 128 characters. Bytes are counted here, so
-# 512 is the most 128 characters can take; the control plane counts characters and decides.
+# The password of the first account: one line of 15 to 128 characters, counted as the control
+# plane counts them (Unicode code points), so that it is not refused once the stack is started.
+# This script runs in the C locale, where a length is a number of bytes: a code point is one byte
+# that is not a UTF-8 continuation byte (10xxxxxx).
 valid_owner_password() {
-  ((${#1} >= 15 && ${#1} <= 512)) && [[ $1 != *[[:cntrl:]]* ]]
+  local leading=${1//[$'\x80'-$'\xbf']/}
+  ((${#leading} >= 15 && ${#leading} <= 128)) && [[ $1 != *[[:cntrl:]]* ]]
+}
+
+# Starts from this script's own variables. A name inherited from the environment stays exported
+# when it is assigned: every child, Docker included, would receive the passwords kept under these
+# names. And Docker Compose prefers a variable of the environment to the settings file and to the
+# bundled compose file, which alone must decide what the installation runs with.
+own_variables() {
+  unset -v owner_password smtp_password admin_password app_password
+  unset -v SHIPKEEP_IMAGE SHIPKEEP_DOMAIN POSTGRES_ADMIN_PASSWORD POSTGRES_APP_PASSWORD
+  unset -v SMTP_HOST SMTP_PORT SMTP_FROM SMTP_USER SMTP_PASSWORD
+  unset -v COMPOSE_FILE COMPOSE_ENV_FILES COMPOSE_PROJECT_NAME COMPOSE_PROFILES
 }
 
 # One line of the settings file. Docker Compose reads a double-quoted value literally once
@@ -146,22 +163,48 @@ ask() {
   done
 }
 
+# One line of a standard input that is not a terminal, into the variable named by $1, and not a
+# byte more. It is read byte by byte because `read` drops a NUL byte without a word: the secret
+# kept would then differ from the one given. Returns 2 for a NUL byte, 3 for a line too long.
+read_piped_line() {
+  local byte line=''
+  while IFS= read -r -s -d '' -n 1 byte; do
+    [[ -n $byte ]] || return 2
+    [[ $byte != $'\n' ]] || break
+    line+=$byte
+    ((${#line} <= 4096)) || return 3
+  done
+  printf -v "$1" '%s' "$line"
+}
+
+# One secret line into the variable named by $1, never shown: typed on a terminal, or the next
+# line of a pipe.
+read_hidden() {
+  if [[ -t 0 ]]; then
+    IFS= read -r -s "$1" || true
+  else
+    read_piped_line "$1"
+  fi
+}
+
 # Sets owner_password from stdin, never shown. A terminal is asked twice, and again after a
 # mistake; a pipe gives its line once.
 ask_owner_password() {
-  local again
+  local again status
   while :; do
+    status=0
     printf 'Password of this account, 15 characters or more (input hidden): ' >&2
-    IFS= read -r -s owner_password || true
+    read_hidden owner_password || status=$?
     printf '\n' >&2
-    if ! valid_owner_password "$owner_password"; then
+    ((status != 2)) || fail 'The password holds a NUL byte: give it as one line of plain UTF-8 text.'
+    if ((status)) || ! valid_owner_password "$owner_password"; then
       [[ -t 0 ]] || fail 'The first account needs a password of 15 to 128 characters.'
       printf 'Use between 15 and 128 characters.\n' >&2
       continue
     fi
     [[ -t 0 ]] || return 0
     printf 'The same password again (input hidden): ' >&2
-    IFS= read -r -s again || true
+    read_hidden again || true
     printf '\n' >&2
     [[ $again != "$owner_password" ]] || return 0
     printf 'The two passwords differ.\n' >&2
@@ -233,6 +276,7 @@ main() {
   umask 077
   export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
   local here file port listeners attempt=0 user_given=0
+  own_variables
   directory=/opt/shipkeep writing=0
   domain='' owner_email='' owner_password=''
   smtp_host='' smtp_port='' smtp_from='' smtp_user='' smtp_password=''
@@ -306,7 +350,7 @@ main() {
     fi
     if [[ -n $smtp_user ]]; then
       printf 'SMTP password (input hidden): ' >&2
-      IFS= read -r -s smtp_password || true
+      read_hidden smtp_password || fail 'Invalid SMTP password: a single line of text is required.'
       printf '\n' >&2
       [[ -n $smtp_password ]] || fail 'An SMTP user needs a password.'
       valid_credential "$smtp_password" 4096 || fail 'Invalid SMTP password: a single line is required.'

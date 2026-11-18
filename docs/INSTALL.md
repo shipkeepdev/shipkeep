@@ -45,10 +45,13 @@ What the installer does, in order:
 | Checks   | Ports 80, 443 and 7443 are free, the DNS name resolves, no earlier installation or its Docker volumes exist, and the installation directory and every directory above it belong to root alone. A refusal here leaves the machine as it was. |
 | Docker   | On Ubuntu 24.04, installs Docker from Docker's own repository when it is absent, and gives apt the pinned signing key only. Volumes of an earlier installation that show again with Docker stop the run before anything is written.         |
 | Settings | Writes `compose.yml`, `Caddyfile` and `.env` in `/opt/shipkeep` (`--dir` changes it), with two generated database passwords. `.env` is readable by root only.                                                                               |
-| Start    | Downloads the images, starts the stack (see the steps under [Install by hand](#install-by-hand)) and waits until `https://<name>` answers with a valid certificate.                                                                         |
+| Start    | Downloads the images and starts the stack (see the steps under [Install by hand](#install-by-hand)).                                                                                                                                        |
 | Account  | Creates the first account with the command line of the control plane. The password goes to it on standard input, never as an argument or a variable.                                                                                        |
+| HTTPS    | Waits until `https://<name>` answers with a valid certificate.                                                                                                                                                                              |
 
-It never overwrites an installation: run again, it refuses. If the certificate has not arrived after two minutes, it says so and exits with an error while the control plane keeps running; see [Troubleshooting](#troubleshooting).
+It never overwrites an installation: run again, it refuses. If the certificate has not arrived after two minutes, it says so and exits with an error while the control plane keeps running; see [Troubleshooting](#troubleshooting). The first account exists by then: do not create it again.
+
+The questions are checked before anything is installed, with rules no wider than the control plane's: the password has 15 to 128 characters on one line, and the address is a name of letters, digits and `_ % + -` joined by single dots, then a domain. An address the installer refuses and the control plane accepts (other punctuation in the name) can be given to an account [created afterwards](#accounts-without-email).
 
 Without a terminal, give the answers as options: `--domain` and `--email`. The password of the first account is read from standard input, its first line, never from an option.
 

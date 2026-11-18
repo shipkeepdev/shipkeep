@@ -42,7 +42,7 @@ done
 for address in shipkeep 'a@b c' "a@example.com'" 'a b@example.com' $'a@example.com\nBcc: b@example.com' "$long@example.com" 'a@example.com>'; do
   refuse 'Invalid sender address' --smtp-from "$address"
 done
-for address in owner 'owner@' '@example.com' 'a b@example.com' "owner@example.com'" $'owner@example.com\n--dir' 'owner@example.com;id' "$long@example.com"; do
+for address in owner 'owner@' '@example.com' 'a b@example.com' "owner@example.com'" $'owner@example.com\n--dir' 'owner@example.com;id' "$long@example.com" owner..ops@example.com owner@localhost; do
   refuse 'Invalid email address' --email "$address"
 done
 refuse 'Invalid SMTP user' --smtp-user $'user\nname'
@@ -105,14 +105,33 @@ else
   printf 'Skipped: root does not own / and /usr here.\n' >&2
 fi
 
+# An address the installer accepts is one the control plane accepts: a refusal after the stack
+# is started would leave an installation without its first account.
+for address in owner@example.com First.Last+tag@sub.example.co o_wner%x-y@a-b.example.com "${long:0:64}@example.com"; do
+  valid_address "$address" || die "refused the address $address"
+done
+for address in owner..ops@example.com .owner@example.com owner.@example.com owner@example owner@-a.example.com owner@a-.example.com owner@a..example.com owner@.example.com owner@example.com. "o'hara@example.com" "${long:0:65}@example.com" 'owner@exam ple.com' owner@@example.com; do
+  ! valid_address "$address" || die "accepted the address $address"
+done
+
 # The password of the first account: 15 to 128 characters on one line, asked without echo.
 passphrase='a passphrase with spaces, 15+'
 valid_owner_password "$passphrase" || die 'a passphrase was refused'
 valid_owner_password 'exactly15chars!' || die 'fifteen characters were refused'
 valid_owner_password "${long:0:128}" || die 'the longest password was refused'
-for bad in '' short 'fourteen chars' "$long$long" $'two lines of a\npassword here' $'a tab\tin the password!'; do
+for bad in '' short 'fourteen chars' "${long:0:129}" "$long$long" $'two lines of a\npassword here' $'a tab\tin the password!'; do
   ! valid_owner_password "$bad" || die "accepted the password: ${bad:0:20}"
 done
+# Characters are counted as the control plane counts them, whatever their size in bytes: two
+# bytes (é), three (€), four (an emoji). Fifteen and 128 pass; fourteen and 129 do not.
+repeat() { local out='' i; for ((i = 0; i < $2; i++)); do out+=$1; done; printf '%s' "$out"; }
+for character in é € 😀; do
+  valid_owner_password "$(repeat "$character" 15)" || die "refused fifteen times $character"
+  valid_owner_password "$(repeat "$character" 128)" || die "refused 128 times $character"
+  ! valid_owner_password "$(repeat "$character" 14)" || die "accepted fourteen times $character"
+  ! valid_owner_password "$(repeat "$character" 129)" || die "accepted 129 times $character"
+done
+valid_owner_password 'un mot de passe accentué' || die 'a passphrase with an accent was refused'
 # From a pipe the line is read once, kept in the variable, and shown nowhere.
 owner_password=''
 ask_owner_password <<<"$passphrase" 2>"$work/output"
@@ -122,6 +141,48 @@ grep -q 'input hidden' "$work/output" || die 'the password question does not say
 refused ask_owner_password <<<'short' || die 'a short password from a pipe was accepted'
 grep -q '15 to 128 characters' "$work/output" || die 'a short password was refused without saying why'
 refused ask_owner_password </dev/null || die 'a missing password was accepted'
+# A last line without its line end is read whole, and so are bytes above ASCII.
+owner_password=''
+ask_owner_password < <(printf 'un mot de passe accentué €') 2>/dev/null
+[[ $owner_password == 'un mot de passe accentué €' ]] || die 'a piped password was changed on the way'
+# Only that line is taken: the next one stays for the next question.
+owner_password='' next=''
+{
+  ask_owner_password 2>/dev/null
+  IFS= read -r next
+} < <(printf '%s\nthe next answer\n' "$passphrase")
+[[ $owner_password == "$passphrase" && $next == 'the next answer' ]] || die 'the password question read more than its line'
+# A NUL byte cannot be kept in a variable: the line is refused, never shortened into another
+# password. (Text saved as UTF-16 is full of them.)
+refused ask_owner_password < <(printf 'a passphrase with\0 a NUL byte in it\n') || die 'a password with a NUL byte was accepted'
+grep -q 'NUL byte' "$work/output" || die 'a password with a NUL byte was refused without saying why'
+! grep -q 'a passphrase with' "$work/output" || die 'a refused password was shown'
+refused ask_owner_password < <(printf 'p\0a\0s\0s\0p\0h\0r\0a\0s\0e\0 \0l\0o\0n\0g\0 \0e\0n\0o\0u\0g\0h\0\n\0') || die 'a UTF-16 password was accepted'
+# A line longer than any secret is refused as soon as it is too long: the reader stops there
+# instead of taking in whatever is sent (5000 bytes here, 4097 read).
+rest=''
+{
+  refused ask_owner_password || die 'an endless password line was accepted'
+  IFS= read -r rest || true
+} < <(printf '%s\n' "$(repeat a 5000)")
+[[ ${#rest} == 903 ]] || die "the password question kept reading a line that was already too long (${#rest} bytes left)"
+
+# The installer starts from its own variables. A name inherited from the environment would stay
+# exported once assigned, and reach every child process with the password; and Docker Compose
+# would prefer an inherited variable to the settings file the installer writes.
+(
+  export owner_password=inherited smtp_password=inherited admin_password=inherited app_password=inherited
+  export SHIPKEEP_IMAGE=example.com/other:1 SHIPKEEP_DOMAIN=other.example.com POSTGRES_ADMIN_PASSWORD=x POSTGRES_APP_PASSWORD=x
+  export SMTP_HOST=other.example.com SMTP_PORT=25 SMTP_FROM=other@example.com SMTP_USER=other SMTP_PASSWORD=other
+  export COMPOSE_FILE=/elsewhere.yml COMPOSE_ENV_FILES=/elsewhere.env COMPOSE_PROJECT_NAME=other COMPOSE_PROFILES=other
+  own_variables
+  # What the installer then does with these names.
+  # shellcheck disable=SC2034
+  owner_password=$passphrase smtp_password=$secret admin_password=$secret app_password=$secret
+  env >"$work/child-environment"
+)
+! grep -q -- "$passphrase\|$secret" "$work/child-environment" || die 'a password reached the environment of child processes'
+! grep -Eq '^(owner_password|smtp_password|admin_password|app_password|SHIPKEEP_IMAGE|SHIPKEEP_DOMAIN|POSTGRES_ADMIN_PASSWORD|POSTGRES_APP_PASSWORD|SMTP_HOST|SMTP_PORT|SMTP_FROM|SMTP_USER|SMTP_PASSWORD|COMPOSE_FILE|COMPOSE_ENV_FILES|COMPOSE_PROJECT_NAME|COMPOSE_PROFILES)=' "$work/child-environment" || die 'an inherited variable would override the settings of the installation'
 
 # The account is created by the control plane's command line: the address is an argument, the
 # password is not. It goes on standard input, where no other process can read it.
@@ -241,6 +302,9 @@ docker compose --project-directory "$work/no-email" config --format json >"$work
 grep -q '"SMTP_HOST": ""' "$work/no-email/config.json" || die 'an installation without email does not hand an empty SMTP host'
 grep -q '"SMTP_PORT": "465"' "$work/no-email/config.json" || die 'an installation without email lost the default SMTP port'
 ! grep -q "$secret" "$work/no-email/.env" || die 'a mail password was written for an installation without email'
+for name in SMTP_HOST SMTP_PORT SMTP_FROM SMTP_USER SMTP_PASSWORD; do
+  grep -Fxq -- "$name=\"\"" "$work/no-email/.env" || die "an installation without email does not leave $name empty"
+done
 # The example file stands for that installation too.
 cp deploy/control-plane/.env.example "$work/no-email/.env.example"
 grep -Eq '^SMTP_HOST=$' "$work/no-email/.env.example" || die 'the example settings still require a mail server'
