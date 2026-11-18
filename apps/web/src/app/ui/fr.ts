@@ -90,13 +90,32 @@ export const FR: Readonly<Record<string, string>> = {
   '3 servers': '3 serveurs',
   '3. Start shipkeep-agent. It checks the fingerprint, enrolls, then deletes the token.':
     "3. Démarrez shipkeep-agent. Il vérifie l'empreinte, s'inscrit, puis supprime le jeton.",
+  Actions: 'Actions',
+  'As the image names it, with its port if it has one. Docker Hub is docker.io.':
+    "Tel que l'image le nomme, avec son port s'il en a un. Docker Hub s'écrit docker.io.",
+  'Deployments of this organization pull private images with the credentials stored for the registry of the image. A password is encrypted and never shown again: it can only be replaced.':
+    "Les déploiements de cette organisation récupèrent les images privées avec les identifiants enregistrés pour le registre de l'image. Un mot de passe est chiffré et n'est plus jamais affiché : il peut seulement être remplacé.",
+  'Keep them': 'Les garder',
+  'No registry yet. Public images need none.':
+    "Aucun registre pour l'instant. Les images publiques n'en ont pas besoin.",
   'On a fresh Ubuntu 24.04 server with curl and sudo, run this command, then paste the token when prompted. Docker and Caddy are installed; ports 80 and 443 must be free.':
     'Sur un serveur Ubuntu 24.04 neuf avec curl et sudo, lancez cette commande, puis collez le jeton quand il est demandé. Docker et Caddy sont installés ; les ports 80 et 443 doivent être libres.',
   'Install command': "Commande d'installation",
   'Copy the command': 'Copier la commande',
   'Command copied.': 'Commande copiée.',
+  'Only owners and administrators of the organization manage registry credentials.':
+    "Seuls les propriétaires et les administrateurs de l'organisation gèrent les identifiants de registre.",
+  'Password or access token': "Mot de passe ou jeton d'accès",
+  'Registry host': 'Hôte du registre',
+  'Remove the credentials of {name}': 'Retirer les identifiants de {name}',
+  'Remove them': 'Les retirer',
+  Replace: 'Remplacer',
+  'Replace the credentials of {name}': 'Remplacer les identifiants de {name}',
+  'Save the credentials': 'Enregistrer les identifiants',
   'The command checks the installer and agent checksums. The agent checks the fingerprint, enrolls, then deletes the token.':
     "La commande vérifie les sommes de contrôle de l'installeur et de l'agent. L'agent vérifie l'empreinte, s'enrôle, puis supprime le jeton.",
+  'The next deployment that must pull a private image from this registry will fail. Containers that already run are not affected.':
+    'Le prochain déploiement qui devra récupérer une image privée de ce registre échouera. Les conteneurs déjà en marche ne sont pas touchés.',
   'The one-command installer needs HTTPS and a production build. Set this server up by hand:':
     "L'installeur en une commande demande HTTPS et un build de production. Configurez ce serveur à la main :",
   '3. Start shipkeep-agent. It verifies the fingerprint, enrolls, then deletes the token.':
@@ -1244,6 +1263,8 @@ export const FR: Readonly<Record<string, string>> = {
   'Then create your organization, or join one when a member adds you.':
     'Créez ensuite votre organisation, ou rejoignez-en une quand un membre vous ajoute.',
   'There are no more tokens on this page.': "Il n'y a plus de jetons sur cette page.",
+  'These credentials changed in the meantime. The list is up to date: try again.':
+    'Ces identifiants ont changé entre-temps. La liste est à jour : réessayez.',
   'They keep the role {role} they inherit.': 'La personne garde le rôle {role} dont elle hérite.',
   'They lose access here.': "La personne perd l'accès ici.",
   'They must already be a member of the organization.':
@@ -1258,9 +1279,13 @@ export const FR: Readonly<Record<string, string>> = {
   'This environment could not be loaded.': "Cet environnement n'a pas pu être chargé.",
   'This expiry is too close. Cancel and start a new token request.':
     'Cette expiration est trop proche. Annulez et recommencez la demande de jeton.',
+  'This is not a registry host. Write a host and an optional port, like ghcr.io or registry.example.com:5000.':
+    "Ce n'est pas un hôte de registre. Écrivez un hôte et un port facultatif, comme ghcr.io ou registry.example.com:5000.",
   'This item is no longer available.': "Cet élément n'est plus disponible.",
   'This list could not be loaded.': "Cette liste n'a pas pu être chargée.",
   'This must be after the start.': 'Doit être après le début.',
+  'This organization already stores credentials for 100 registries. Remove one first.':
+    "Cette organisation enregistre déjà des identifiants pour 100 registres. Retirez-en un d'abord.",
   'This organization could not be loaded.': "Cette organisation n'a pas pu être chargée.",
   'This organization is not available to your account, or it no longer exists.':
     "Cette organisation n'est pas accessible à votre compte, ou n'existe plus.",
@@ -1313,6 +1338,7 @@ export const FR: Readonly<Record<string, string>> = {
   'Unhealthy after': 'Défaillante après',
   'Unique within the environment': "Unique dans l'environnement",
   'Unique within the project': 'Unique dans le projet',
+  Updated: 'Modifié',
   Updates: 'Mises à jour',
   'Upgrade to Node 22': 'Passe à Node 22',
   'Upgrade to nodemailer 7': 'Passe à nodemailer 7',
@@ -1324,10 +1350,13 @@ export const FR: Readonly<Record<string, string>> = {
   'Use a name between 1 and 64 characters, without invisible characters.':
     'Utilisez un nom de 1 à 64 caractères, sans caractères invisibles.',
   'Use a recovery code': 'Utiliser un code de récupération',
+  'Use an account or a token that can only read the images this organization runs.':
+    'Utilisez un compte ou un jeton qui peut seulement lire les images que cette organisation exécute.',
   Used: 'Utilisé',
   'Used by': 'Utilisé par',
   User: 'Utilisateur',
   'User key': 'Clé utilisateur',
+  'User name': "Nom d'utilisateur",
   Valid: 'Valide',
   Value: 'Valeur',
   'Values are encrypted and can never be read back, only replaced.':
@@ -1646,6 +1675,7 @@ export const FR: Readonly<Record<string, string>> = {
   'yesterday 02:00': 'hier 02:00',
   'yesterday 03:00': 'hier 03:00',
   'you@company.com': 'vous@entreprise.fr',
+  '{date} · version {n}': '{date} · version {n}',
   '{live} live · {failed} failed · {cancelled} cancelled':
     '{live} en ligne · {failed} échecs · {cancelled} annulés',
   '{name} down': '{name} hors service',

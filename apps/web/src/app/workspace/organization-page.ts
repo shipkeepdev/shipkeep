@@ -1,8 +1,10 @@
 import {
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
   computed,
   effect,
+  ElementRef,
   inject,
   input,
   signal,
@@ -19,6 +21,7 @@ import { type IconName } from '../shell/icons';
 import { ShellContext } from '../shell/shell-context';
 import { T } from '../ui/i18n';
 import { OrganizationSettings } from './organization-settings';
+import { RegistryCredentials } from './registry-credentials';
 import { type Organization, WorkspaceApi } from './workspace-api';
 
 interface OrgSection {
@@ -30,6 +33,7 @@ const SECTIONS: readonly OrgSection[] = [
   { k: 'general', label: 'General', icon: 'building' },
   { k: 'members', label: 'Members', icon: 'users' },
   { k: 'invites', label: 'Invitations', icon: 'mail-forward' },
+  { k: 'registries', label: 'Registries', icon: 'packages' },
   { k: 'audit', label: 'Audit log', icon: 'history' },
   { k: 'danger', label: 'Danger zone', icon: 'alert-triangle' },
 ];
@@ -44,7 +48,7 @@ const DANGER: Block = {
 /** 20 Organization: its name and identifier, members, and what can end it. */
 @Component({
   selector: 'sk-organization-page',
-  imports: [BlockView, Icon, OrganizationSettings, RouterLink, T],
+  imports: [BlockView, Icon, OrganizationSettings, RegistryCredentials, RouterLink, T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-[18px]">
@@ -112,6 +116,9 @@ const DANGER: Block = {
                 }}</span>
               </div>
             }
+            @case ('registries') {
+              <sk-registry-credentials [organizationId]="organizationId()" />
+            }
             @case ('audit') {
               <div class="note">
                 <sk-icon name="info-circle" class="text-mute" />
@@ -134,6 +141,7 @@ const DANGER: Block = {
 })
 export class OrganizationPage {
   private readonly api = inject(WorkspaceApi);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly shell = inject(ShellContext);
   readonly organizationId = input.required<string>();
   protected readonly sections = SECTIONS;
@@ -153,6 +161,16 @@ export class OrganizationPage {
   constructor() {
     effect(() => {
       void this.load(this.organizationId());
+    });
+    // On a phone the sections scroll sideways: the current one must not stay cut off.
+    afterRenderEffect(() => {
+      this.section();
+      const current = this.host.nativeElement.querySelector<HTMLElement>(
+        'nav [aria-current="page"]',
+      );
+      // Not every environment that renders this page can scroll (the unit tests cannot).
+      if (typeof current?.scrollIntoView === 'function')
+        current.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     });
   }
 
