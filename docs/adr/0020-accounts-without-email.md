@@ -21,7 +21,7 @@ Two things had to be decided: how the first account, and the next ones, come to 
   node main.js account reset-password --email <address>
   ```
 
-  The account is active at once. The installer will run the first command for the first account; until that change lands, it still asks for an SMTP account, and the command is run by hand.
+  The account is active at once. The installer asks for the address and the password of the first account and runs the first command itself, the password on standard input.
 
 - **The authority is the server.** No route reaches these commands. Whoever can run them already holds the database administrator password and the key-encryption key, which is more than any account has.
 - **The password never travels in an argument or a variable**, where other processes could read it. It is typed without echo on a terminal, or is the first line of a pipe.
