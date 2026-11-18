@@ -1,5 +1,5 @@
 import { Module, type OnModuleInit } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, HttpAdapterHost } from '@nestjs/core';
 
 import { AppConfig } from '../../platform/config/app-config';
 import { JobsModule } from '../../platform/jobs/jobs.module';
@@ -82,10 +82,24 @@ export class IdentityModule implements OnModuleInit {
   constructor(
     private readonly config: AppConfig,
     private readonly worker: IdentityMailWorker,
+    private readonly http: HttpAdapterHost,
   ) {}
 
   async onModuleInit(): Promise<void> {
-    // An installation without SMTP may serve existing sessions, but cannot accept mail commands.
-    if (this.config.get('SMTP_HOST')) await this.worker.start();
+    if (shouldDeliverMail(this.config.get('SMTP_HOST'), this.http)) await this.worker.start();
   }
+}
+
+/**
+ * Whether this process delivers the queued mail. An installation without SMTP sends none
+ * (ADR 0020). And only the control plane that serves requests does: a standalone context, such
+ * as the operator's command line, has no HTTP server. It must not take mail jobs from the
+ * control plane that runs beside it, and a queue that cannot start must not stop its command.
+ */
+export function shouldDeliverMail(
+  smtpHost: string | undefined,
+  http: Pick<HttpAdapterHost, 'httpAdapter'>,
+): boolean {
+  // Not a redundant check: a standalone context has the host and no adapter in it.
+  return Boolean(smtpHost) && Boolean(http.httpAdapter as unknown);
 }

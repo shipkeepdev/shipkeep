@@ -21,14 +21,15 @@ Two things had to be decided: how the first account, and the next ones, come to 
   node main.js account reset-password --email <address>
   ```
 
-  The installer runs the first one for the first account. The account is active at once.
+  The account is active at once. The installer will run the first command for the first account; until that change lands, it still asks for an SMTP account, and the command is run by hand.
 
 - **The authority is the server.** No route reaches these commands. Whoever can run them already holds the database administrator password and the key-encryption key, which is more than any account has.
 - **The password never travels in an argument or a variable**, where other processes could read it. It is typed without echo on a terminal, or is the first line of a pipe.
 - **A reset closes what was open.** It advances the account's security version: its sessions, its API tokens and the links it was sent stop working. An account that never confirmed its address becomes active. A second factor stays as it is; its recovery codes are the way back.
 - **The public requests say why they are refused.** Without SMTP, sign-up, a new confirmation code and a reset link answer `409 email_not_configured`, the same for every address, before anything is read.
 - **The address stays the sign-in name.** Nothing checks that its mailbox exists. `email_verified_at` is set when the account is created: the address is confirmed by the operator of the installation instead of by its mailbox, and the rule that an active account has a confirmed address is unchanged.
-- **Both commands are audited** as `identity.created_by_operator` and `identity.password_reset_by_operator`, with the system as the actor.
+- **Both commands are audited** as `identity.created_by_operator` and `identity.password_reset_by_operator`, with the system as the actor. A reset that activates an account records `identity.activated_by_operator` as well.
+- **A command never does the work of the server.** It starts the application without its HTTP server, takes no mail job, and exits.
 
 ## Alternatives considered
 

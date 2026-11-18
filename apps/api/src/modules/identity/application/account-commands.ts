@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { ConflictError, Secret, SYSTEM_ACTOR } from '@shipkeep/domain';
+import { Secret, SYSTEM_ACTOR } from '@shipkeep/domain';
 import { v7 as uuidv7 } from 'uuid';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
@@ -8,6 +8,7 @@ import {
   assertPassword,
   AuthenticationError,
   EMAIL_TOKEN_MS,
+  emailNotConfigured,
   normalizeEmail,
   RESET_TOKEN_MS,
   TOKEN_PATTERN,
@@ -168,11 +169,7 @@ export class AccountCommands {
    * refusal comes before anything is read, so it is the same for every address.
    */
   private assertMail(): void {
-    if (!this.mailer.enabled)
-      throw new ConflictError(
-        'email_not_configured',
-        'This installation sends no email: its administrator creates accounts and resets passwords.',
-      );
+    if (!this.mailer.enabled) throw emailNotConfigured();
   }
 
   private async credential(value: Secret, purpose: 'verify' | 'reset') {
