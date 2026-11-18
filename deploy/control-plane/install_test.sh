@@ -126,6 +126,8 @@ refused ask_owner_password </dev/null || die 'a missing password was accepted'
 # The account is created by the control plane's command line: the address is an argument, the
 # password is not. It goes on standard input, where no other process can read it.
 (
+  # Stands in for Docker: the installer's compose function calls it.
+  # shellcheck disable=SC2329
   docker() {
     printf '%s\n' "$@" >"$work/account-arguments"
     cat >"$work/account-input"
@@ -143,6 +145,7 @@ grep -Fxq -- '--email' "$work/account-arguments" || die 'the command was not giv
 tr '\n' ' ' <"$work/account-arguments" | grep -q 'compose --file compose.yml run --rm --no-deps -T control-plane node main.js account create --email owner@example.com' || die 'unexpected account command'
 # A refusal by the control plane is the installer's failure too.
 (
+  # shellcheck disable=SC2329
   docker() {
     cat >/dev/null
     return 1
