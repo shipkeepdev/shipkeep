@@ -218,7 +218,7 @@ ask_owner_password() {
     fi
     if ((status)) || ! valid_owner_password "$owner_password"; then
       [[ -t 0 ]] || fail 'The first account needs a password of 15 to 128 characters, on one line, without tabs or other control characters.'
-      printf 'Use between 15 and 128 characters, without tabs.\n' >&2
+      printf 'Use between 15 and 128 characters, without tabs or other control characters.\n' >&2
       continue
     fi
     [[ -t 0 ]] || return 0
