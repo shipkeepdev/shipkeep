@@ -11,7 +11,6 @@ import {
   runThenClose,
   UNCLEAN_CLOSE,
   USAGE,
-  WARNING_PATIENCE_MS,
   writeLine,
 } from './operator';
 
@@ -312,7 +311,9 @@ describe('what the operator command says', () => {
     ).then(() => {
       result = 'done';
     });
-    await vi.advanceTimersByTimeAsync(WARNING_PATIENCE_MS - 1);
+    // Two seconds, as SPEC 8 says: written here as numbers, so that a change of the limit in the
+    // code alone fails this test.
+    await vi.advanceTimersByTimeAsync(1999);
     expect(result).toBe('pending');
     await vi.advanceTimersByTimeAsync(1);
     await running;
