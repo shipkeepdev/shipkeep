@@ -49,11 +49,11 @@
           <h1
             #heading
             tabindex="-1"
-            class="text-[22px] leading-[1.15] font-normal tracking-[-0.02em] uppercase"
+            class="text-[22px] leading-[1.15] font-normal tracking-[-0.02em] text-balance uppercase"
           >
             {{ copy().title | t }}
           </h1>
-          <p class="max-w-[320px] text-[13.5px] leading-[1.55] text-[#B8B8BC]">
+          <p class="max-w-[320px] text-[13.5px] leading-[1.55] text-balance text-[#B8B8BC]">
             {{ copy().sub | t }}
           </p>
         </div>
@@ -295,7 +295,9 @@
         }
 
         @if (copy().foot || copy().footLink) {
-          <div class="flex flex-wrap justify-center gap-1.5 text-center text-[13px] text-mute">
+          <div
+            class="flex flex-wrap justify-center gap-1.5 text-center text-[13px] text-balance text-mute"
+          >
             {{ copy().foot | t }}
             @if (copy().footRoute; as route) {
               <a class="text-white hover:underline" [routerLink]="route">{{
