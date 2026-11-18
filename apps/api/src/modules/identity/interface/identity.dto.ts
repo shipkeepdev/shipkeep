@@ -42,6 +42,13 @@ export class ResetPasswordDto extends EmailCodeDto {
   @MaxLength(128)
   password!: string;
 }
+export class AuthOptionsDto {
+  @ApiProperty({
+    description:
+      'Whether this installation sends email. Without it nobody signs up or asks for a reset link: its administrator creates accounts and resets passwords on the server (ADR 0020).',
+  })
+  email!: boolean;
+}
 export class SessionDto {
   @ApiProperty({ format: 'uuid' })
   userId!: string;

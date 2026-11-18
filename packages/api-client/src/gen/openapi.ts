@@ -148,6 +148,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/auth/options": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["options"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/auth/register": {
         readonly parameters: {
             readonly query?: never;
@@ -1143,6 +1159,10 @@ export type components = {
             /** Format: uuid */
             readonly nextCursor: string | null;
         };
+        readonly AuthOptionsDto: {
+            /** @description Whether this installation sends email. Without it nobody signs up or asks for a reset link: its administrator creates accounts and resets passwords on the server (ADR 0020). */
+            readonly email: boolean;
+        };
         readonly BindingDto: {
             /** Format: date-time */
             readonly createdAt: string;
@@ -1983,6 +2003,28 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["MfaSetupDto"];
+                };
+            };
+        };
+    };
+    readonly options: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Exact API_PUBLIC_URL origin; required for browser mutations. */
+                readonly Origin?: string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AuthOptionsDto"];
                 };
             };
         };
