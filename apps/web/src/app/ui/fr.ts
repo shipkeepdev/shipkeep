@@ -1250,6 +1250,16 @@ export const FR: Readonly<Record<string, string>> = {
     "Le résultat précédent est incertain. Recommencez avant d'envoyer une nouvelle demande.",
   'The repository differs from the control plane. On the next deployment, the repository wins.':
     "Le dépôt diffère du plan de contrôle. Au prochain déploiement, le dépôt l'emporte.",
+  'The server could not pull the image: it could not reach the registry.':
+    "Le serveur n'a pas pu récupérer l'image : il n'a pas pu joindre le registre.",
+  "The server could not pull the image: it does not trust the registry's certificate.":
+    "Le serveur n'a pas pu récupérer l'image : il ne reconnaît pas le certificat du registre.",
+  'The server could not pull the image: its disk is full.':
+    "Le serveur n'a pas pu récupérer l'image : son disque est plein.",
+  'The server could not pull the image: the registry does not have it.':
+    "Le serveur n'a pas pu récupérer l'image : le registre ne l'a pas.",
+  'The server could not pull the image: the registry refused it. The image is private, the stored credentials are wrong, or it does not exist.':
+    "Le serveur n'a pas pu récupérer l'image : le registre l'a refusée. L'image est privée, les identifiants enregistrés sont faux, ou elle n'existe pas.",
   'The service is temporarily unavailable. Try again shortly.':
     'Le service est momentanément indisponible. Réessayez bientôt.',
   'The token has been revoked.': 'Le jeton a été révoqué.',
@@ -1472,6 +1482,7 @@ export const FR: Readonly<Record<string, string>> = {
   developer: 'développeur',
   disabled: 'désactivé',
   'disk > 80%': 'disque > 80 %',
+  'disk full': 'disque plein',
   'docker cleanup · 4.2 GiB freed': 'docker cleanup · 4,2 Gio libérés',
   down: 'hors service',
   draining: 'drainage',
@@ -1510,6 +1521,7 @@ export const FR: Readonly<Record<string, string>> = {
   healthy: 'sain',
   high: 'élevée',
   'if enabled': 'si activée',
+  'image not found': 'image introuvable',
   'image pushed · registry.internal/api-facturation:4f2c1a9':
     'image poussée · registry.internal/api-facturation:4f2c1a9',
   'in 1 image': 'dans 1 image',
@@ -1604,6 +1616,9 @@ export const FR: Readonly<Record<string, string>> = {
   ready: 'prêt',
   refused: 'refusé',
   'refused · lease superseded': 'refusé · bail remplacé',
+  'registry certificate not trusted': 'certificat du registre non reconnu',
+  'registry refused the pull': 'le registre a refusé le pull',
+  'registry unreachable': 'registre injoignable',
   releasing: 'release',
   removed: 'retiré',
   'renews in': 'renouvelé dans',

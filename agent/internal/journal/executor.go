@@ -138,6 +138,7 @@ func (s *Store) Execute(ctx context.Context, request Request, plan Plan, notify 
 			if applyErr != nil {
 				next = op
 				next.State = Compensating
+				next.Cause = causeOf(applyErr)
 				next.Completed = index + 1
 				if err := checkpoint(next); err != nil {
 					return op, err

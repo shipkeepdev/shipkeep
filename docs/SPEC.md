@@ -277,6 +277,20 @@ The agent only adopts or changes resources that carry its `sk.managed=true` labe
   - a lease epoch other than the node's;
   - a missing or past deadline;
   - a handler validation error.
+- A step that fails says why with a fixed text from a closed list, or `action failed` (issue #265). Nothing else about the failure leaves the server.
+  - The Docker client reads the daemon's message about a failed pull, names a cause and drops the message, which can hold hosts, paths, tokens or credentials.
+  - The journal keeps the cause as a short code (`last_error`), through compensation, a replay and a restart. A cause that is not a code is dropped.
+  - The dispatcher sends the text of a cause it lists:
+
+    | Cause                                                                                  | Text sent                                        | Reason on the control plane |
+    | -------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------- |
+    | The registry refused the pull: private image, wrong credentials, or no such repository | `registry refused the pull`                      | `registry_denied`           |
+    | The registry has no image with this name and digest                                    | `image not found in the registry`                | `image_not_found`           |
+    | No answer from the registry (name, route, timeout)                                     | `registry unreachable from the server`           | `registry_unreachable`      |
+    | The server does not trust the registry's certificate                                   | `registry certificate not trusted by the server` | `registry_untrusted`        |
+    | No room left on the server for the image                                               | `no space left on the server`                    | `disk_full`                 |
+
+  - The control plane maps each fixed text to a reason code and never repeats a text it does not know. A deployment's failure message is built from the reason: a failed pull says what happened and what to check, other steps keep `Step <name> <state>: <fixed text>`. An agent that predates the list keeps sending `action failed`.
 - The payload hash covers only the action message, so a redelivery with new ids or a new deadline still matches.
 - Actions run on the agent's lifetime under their deadline, not the stream's. A dropped connection never interrupts them; their updates are dropped, and the control plane receives the journaled outcome when it redelivers with the same key. `CancelAction` cancels the action's context, and the journal compensates per the plan.
 

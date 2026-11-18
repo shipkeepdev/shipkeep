@@ -33,6 +33,8 @@ type fakeEngine struct {
 	exitCode          int
 	hang              bool
 	auth              *docker.Auth
+	// pullErr makes every pull fail with this error.
+	pullErr error
 }
 
 func newFakeEngine() *fakeEngine {
@@ -145,6 +147,9 @@ func (f *fakeEngine) PullImage(_ context.Context, repository, digest string, aut
 	ref := repository + "@" + digest
 	f.pulls = append(f.pulls, ref)
 	f.auth = auth
+	if f.pullErr != nil {
+		return f.pullErr
+	}
 	f.images[ref] = docker.Image{ID: "img", RepoDigests: []string{ref}}
 	return nil
 }
@@ -215,6 +220,43 @@ func TestPullImageSendsDockerHubCredentialsToDockerHubOnly(t *testing.T) {
 		update := run(t, engine, &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: ref, RegistryCredentials: hub()}}})
 		if update.GetState() != agentv1.OperationState_OPERATION_STATE_FAILED || update.GetError() != errInvalid || len(engine.pulls) != 0 {
 			t.Fatalf("%s: Docker Hub credentials reached another registry: %v", ref, update)
+		}
+	}
+}
+
+// causedError is a step error that names its cause, as *docker.PullError does.
+type causedError struct{ cause string }
+
+func (e causedError) Error() string {
+	return "daemon said: https://deploy:sk_test_fake_registry_password@registry.example.com refused"
+}
+func (e causedError) Cause() string { return e.cause }
+
+// A failed pull tells the control plane why with one of a few fixed texts. Nothing else about
+// the failure leaves the server: not the error's text, and not a cause the agent does not list.
+func TestFailedPullReportsItsCauseAsAFixedText(t *testing.T) {
+	texts := map[string]string{
+		docker.CauseRegistryDenied:      "registry refused the pull",
+		docker.CauseImageNotFound:       "image not found in the registry",
+		docker.CauseRegistryUnreachable: "registry unreachable from the server",
+		docker.CauseRegistryUntrusted:   "registry certificate not trusted by the server",
+		docker.CauseDiskFull:            "no space left on the server",
+		// Not a cause this agent lists, or not a code at all: the generic text.
+		"made_up_cause":                  errFailed,
+		"":                               errFailed,
+		"registry refused the pull":      errFailed,
+		"sk_test_fake_registry_password": errFailed,
+		strings.Repeat("a", 200):         errFailed,
+	}
+	for cause, text := range texts {
+		engine := newFakeEngine()
+		engine.pullErr = fmt.Errorf("pull image: %w", causedError{cause: cause})
+		update := run(t, engine, &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: "registry.example.com/acme/api@" + digest}}})
+		if update.GetState() != agentv1.OperationState_OPERATION_STATE_COMPENSATED || update.GetError() != text {
+			t.Fatalf("cause %.40q: state %v, error %q, want %q", cause, update.GetState(), update.GetError(), text)
+		}
+		if update.GetResult() != nil {
+			t.Fatalf("cause %.40q: a failed pull carries a result", cause)
 		}
 	}
 }

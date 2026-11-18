@@ -1,4 +1,4 @@
-import { summarizeAction } from './agent-action';
+import { actionReason, reasonText, summarizeAction } from './agent-action';
 
 const DIGEST = `sha256:${'a'.repeat(64)}`;
 const CONTAINER = 'f'.repeat(64);
@@ -44,6 +44,49 @@ describe('summarizeAction', () => {
       reason: 'action_failed',
       result: null,
     });
+  });
+
+  it('names why a step failed when the agent names it (SPEC 3.4)', () => {
+    const causes = {
+      'registry refused the pull': 'registry_denied',
+      'image not found in the registry': 'image_not_found',
+      'registry unreachable from the server': 'registry_unreachable',
+      'registry certificate not trusted by the server': 'registry_untrusted',
+      'no space left on the server': 'disk_full',
+    } as const;
+    for (const [error, reason] of Object.entries(causes)) {
+      // A failed step is usually undone, so its action ends compensated.
+      expect(summarizeAction({ state: 'compensated', error, result: null })).toEqual({
+        outcome: 'compensated',
+        reason,
+        result: null,
+      });
+      expect(summarizeAction({ state: 'failed', error, result: null })).toEqual({
+        outcome: 'failed',
+        reason,
+        result: null,
+      });
+      expect(actionReason(error)).toBe(reason);
+      expect(reasonText(reason)).toBe(error);
+    }
+  });
+
+  it('gives a compensated action no reason when the agent named none', () => {
+    for (const error of [null, 'action failed', 'password=hunter2', 'constructor'])
+      expect(summarizeAction({ state: 'compensated', error, result: null })).toEqual({
+        outcome: 'compensated',
+        reason: null,
+        result: null,
+      });
+  });
+
+  it('reads a reason from an error text, and a text from a reason, without echoing anything', () => {
+    expect(actionReason(null)).toBe('action_failed');
+    expect(actionReason('invalid action input')).toBe('invalid_input');
+    for (const error of ['pull failed: password=hunter2', 'constructor', '__proto__', ''])
+      expect(actionReason(error)).toBe('unknown');
+    expect(reasonText('invalid_input')).toBe('invalid action input');
+    expect(reasonText('unknown')).toBeNull();
   });
 
   it('never echoes an unknown error text', () => {

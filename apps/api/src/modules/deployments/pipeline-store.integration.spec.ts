@@ -142,7 +142,7 @@ describe('pipeline store', () => {
     });
     const steps = await tenant((s) => s.steps(deploymentId));
     expect([...steps]).toEqual([
-      [`d:${deploymentId}:net:${nodeId}`, { state: 'queued', error: null }],
+      [`d:${deploymentId}:net:${nodeId}`, { state: 'queued', reason: null }],
     ]);
   });
 });

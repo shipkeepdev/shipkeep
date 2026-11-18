@@ -60,6 +60,9 @@ type Operation struct {
 	Step                          string
 	Completed, Attempts, Revision int
 	Result                        Outcome
+	// Cause is a short code for why a step failed, when the step named one (see causeOf). It is
+	// set when compensation starts and kept until the operation ends. Never an error text.
+	Cause string
 }
 
 // Store owns one SQLite connection and an exclusive agent-process lock.
@@ -151,6 +154,27 @@ func (s *Store) Close() error {
 
 var identifier = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9_.:-]{0,127}$`)
 var stepName = regexp.MustCompile(`^[a-z][a-z0-9_-]{0,63}$`)
+
+// causeCode is the shape of a failure cause: a short lower-case code, never a sentence.
+var causeCode = regexp.MustCompile(`^[a-z][a-z0-9_]{0,31}$`)
+
+// stepFailed is what last_error holds for a failure nobody named. It is not a cause.
+const stepFailed = "step_failed"
+
+func validCause(cause string) bool { return cause != stepFailed && causeCode.MatchString(cause) }
+
+// causeOf reads the cause a step gave its error, if it gave one: any error in the chain with a
+// Cause method that returns a well-formed code. The error's text is never kept.
+func causeOf(err error) string {
+	var caused interface{ Cause() string }
+	if errors.As(err, &caused) {
+		if cause := caused.Cause(); validCause(cause) {
+			return cause
+		}
+	}
+	return ""
+}
+
 var digest = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
 // Begin durably records pending intent or returns the existing result for the same key/hash/kind.
@@ -193,6 +217,10 @@ func (s *Store) Advance(ctx context.Context, current, next Operation) (Operation
 	if current.Request != next.Request || !allowed(current.State, next.State) || (next.Step != "" && !stepName.MatchString(next.Step)) || next.Completed < 0 || next.Attempts < current.Attempts || next.Attempts > current.Attempts+1 || !validOutcome(next.Result) {
 		return Operation{}, errors.New("invalid operation checkpoint")
 	}
+	// A cause is a code, given once, when a step fails, and kept as it is afterwards.
+	if (next.Cause != "" && !validCause(next.Cause)) || (current.Cause != "" && next.Cause != current.Cause) {
+		return Operation{}, errors.New("invalid operation checkpoint")
+	}
 	encoded, err := json.Marshal(next.Result)
 	if err != nil {
 		return Operation{}, fmt.Errorf("encode outcome: %w", err)
@@ -203,9 +231,9 @@ func (s *Store) Advance(ctx context.Context, current, next Operation) (Operation
 	}
 	defer tx.Rollback() //nolint:errcheck // rollback is a no-op after commit
 	now := time.Now().UnixMilli()
-	failure := ""
-	if next.State == Failed {
-		failure = "step_failed"
+	failure := next.Cause
+	if failure == "" && next.State == Failed {
+		failure = stepFailed
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE operations SET state=?,step=?,completed=?,attempts=?,revision=revision+1,result_json=?,last_error=?,updated_at=? WHERE action_id=? AND revision=?`, next.State, next.Step, next.Completed, next.Attempts, string(encoded), failure, now, current.ID, current.Revision)
 	if err != nil {
@@ -249,13 +277,16 @@ func (s *Store) Unfinished(ctx context.Context) ([]Operation, error) {
 	return operations, nil
 }
 
-const columns = "action_id,idempotency_key,kind,payload_hash,state,step,completed,attempts,revision,result_json"
+const columns = "action_id,idempotency_key,kind,payload_hash,state,step,completed,attempts,revision,result_json,last_error"
 
 func scan(row interface{ Scan(...any) error }) (Operation, error) {
 	var op Operation
-	var hash, result string
-	if err := row.Scan(&op.ID, &op.Key, &op.Kind, &hash, &op.State, &op.Step, &op.Completed, &op.Attempts, &op.Revision, &result); err != nil {
+	var hash, result, failure string
+	if err := row.Scan(&op.ID, &op.Key, &op.Kind, &hash, &op.State, &op.Step, &op.Completed, &op.Attempts, &op.Revision, &result, &failure); err != nil {
 		return Operation{}, fmt.Errorf("read operation: %w", err)
+	}
+	if validCause(failure) {
+		op.Cause = failure
 	}
 	decoded, err := hex.DecodeString(hash)
 	if err != nil || len(decoded) != sha256.Size {

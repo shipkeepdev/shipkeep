@@ -6271,6 +6271,11 @@
               "idempotency_conflict",
               "deadline_exceeded",
               "action_failed",
+              "registry_denied",
+              "image_not_found",
+              "registry_unreachable",
+              "registry_untrusted",
+              "disk_full",
               "unknown",
               null
             ]
