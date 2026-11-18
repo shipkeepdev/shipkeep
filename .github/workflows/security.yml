@@ -105,9 +105,12 @@ jobs:
           severity: HIGH,CRITICAL
           ignore-unfixed: true
           exit-code: '1'
-      # Every secret fails, whatever severity Trivy gives it (some tokens are rated MEDIUM).
+      # Every secret fails, whatever severity Trivy gives it (some tokens are rated MEDIUM), in the
+      # files and in the image configuration (ENV values, labels, history).
       - name: Scan for secrets
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          TRIVY_IMAGE_CONFIG_SCANNERS: secret
         with:
           image-ref: shipkeep-control-plane:scan
           scanners: secret

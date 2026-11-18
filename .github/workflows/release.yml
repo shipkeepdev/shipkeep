@@ -10,6 +10,11 @@ on:
 permissions:
   contents: read
 
+# One release at a time: two runs would move the shared major.minor tag under each other.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 # Only a pushed version tag publishes. A manual run stays a dry run even when it is started on a tag.
 env:
   PUBLISH: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') }}
@@ -106,8 +111,9 @@ jobs:
           }
           for platform in linux/amd64 linux/arm64; do
             trivy --platform "$platform" --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed
-            # Every secret fails, whatever severity Trivy gives it.
-            trivy --platform "$platform" --scanners secret
+            # Every secret fails, whatever severity Trivy gives it, in the files and in the image
+            # configuration (ENV values, labels, history).
+            trivy --platform "$platform" --scanners secret --image-config-scanners secret
           done
       - if: env.PUBLISH == 'true'
         run: cosign sign --yes "ghcr.io/${{ github.repository_owner }}/shipkeep@${{ steps.build.outputs.digest }}"
