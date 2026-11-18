@@ -8,6 +8,8 @@ import {
   parseOperatorCommand,
   readPassword,
   runOperatorCommand,
+  runThenClose,
+  UNCLEAN_CLOSE,
   USAGE,
   writeLine,
 } from './operator';
@@ -174,11 +176,13 @@ describe('what the operator command says', () => {
     return Buffer.isBuffer(written) ? written.toString() : '';
   }
   const tick = () => new Promise((resolve) => setImmediate(resolve));
-  function application(accounts: {
-    create?: () => Promise<{ id: string; email: string }>;
-    resetPassword?: () => Promise<string>;
-  }): INestApplicationContext {
-    return { get: () => accounts } as unknown as INestApplicationContext;
+  type Create = (email: string, password: Secret) => Promise<{ id: string; email: string }>;
+  type Reset = (email: string, password: Secret) => Promise<string>;
+  function application(
+    accounts: { create?: Create; resetPassword?: Reset },
+    close: () => Promise<void> = () => Promise.resolve(),
+  ): INestApplicationContext {
+    return { get: () => accounts, close } as unknown as INestApplicationContext;
   }
 
   it('hears the failure of a write, which would otherwise end the process', async () => {
@@ -196,25 +200,90 @@ describe('what the operator command says', () => {
   it('writes one line that says what was done, never the password', async () => {
     const output = new PassThrough();
     const errors = new PassThrough();
+    const create = vi.fn<Create>().mockResolvedValue({ id: 'fixture', email: 'owner@example.com' });
+    const resetPassword = vi.fn<Reset>().mockResolvedValue('second@example.com');
     await runOperatorCommand(
-      application({ create: () => Promise.resolve({ id: 'fixture', email: 'owner@example.com' }) }),
+      application({ create }),
       { action: 'create', email: 'Owner@example.com' },
       password,
       output,
       errors,
     );
     await runOperatorCommand(
-      application({ resetPassword: () => Promise.resolve('owner@example.com') }),
-      { action: 'reset-password', email: 'owner@example.com' },
+      application({ resetPassword }),
+      { action: 'reset-password', email: 'second@example.com' },
       password,
       output,
       errors,
     );
+    // Each command reaches the service with its own address, as typed, and the password read.
+    expect(create.mock.calls).toEqual([['Owner@example.com', password]]);
+    expect(create.mock.calls.at(0)?.at(1)).toBe(password);
+    expect(resetPassword.mock.calls).toEqual([['second@example.com', password]]);
+    expect(resetPassword.mock.calls.at(0)?.at(1)).toBe(password);
+    // The line names the account the service changed, not what was typed.
     expect(lines(output)).toBe(
       'Account created: owner@example.com\n' +
-        'Password reset: owner@example.com. Its sessions and API tokens no longer work.\n',
+        'Password reset: second@example.com. Its sessions and API tokens no longer work.\n',
     );
     expect(lines(errors)).toBe('');
+  });
+
+  it('keeps the result of the command when the application does not close cleanly', async () => {
+    const failing = () =>
+      Promise.reject(new Error('disconnect failed: postgres://user:fixture@db'));
+    // A committed change stays a success, with a warning that does not repeat the cause.
+    const output = new PassThrough();
+    const errors = new PassThrough();
+    await expect(
+      runThenClose(
+        application({ resetPassword: () => Promise.resolve('owner@example.com') }, failing),
+        { action: 'reset-password', email: 'owner@example.com' },
+        password,
+        output,
+        errors,
+      ),
+    ).resolves.toBeUndefined();
+    expect(lines(output)).toBe(
+      'Password reset: owner@example.com. Its sessions and API tokens no longer work.\n',
+    );
+    expect(lines(errors)).toBe(`${UNCLEAN_CLOSE}\n`);
+    // A refusal stays that refusal: the close failure does not take its place.
+    const refusal = new ConflictError(
+      'account_exists',
+      'An account with this address already exists.',
+    );
+    await expect(
+      runThenClose(
+        application({ create: () => Promise.reject(refusal) }, failing),
+        { action: 'create', email: 'owner@example.com' },
+        password,
+        new PassThrough(),
+        new PassThrough(),
+      ),
+    ).rejects.toBe(refusal);
+    // The warning itself may have nowhere to go: still the command's result.
+    await expect(
+      runThenClose(
+        application({ resetPassword: () => Promise.resolve('owner@example.com') }, failing),
+        { action: 'reset-password', email: 'owner@example.com' },
+        password,
+        new PassThrough(),
+        closed().stream,
+      ),
+    ).resolves.toBeUndefined();
+    // A clean close is called once and says nothing.
+    const close = vi.fn<() => Promise<void>>().mockResolvedValue(undefined);
+    const quiet = new PassThrough();
+    await runThenClose(
+      application({ resetPassword: () => Promise.resolve('owner@example.com') }, close),
+      { action: 'reset-password', email: 'owner@example.com' },
+      password,
+      new PassThrough(),
+      quiet,
+    );
+    expect(close).toHaveBeenCalledTimes(1);
+    expect(lines(quiet)).toBe('');
   });
 
   it('still says a committed change when its output is closed, and succeeds', async () => {
