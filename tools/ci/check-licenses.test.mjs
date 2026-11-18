@@ -18,7 +18,7 @@ function report(packages, licenses, target = 'pnpm-lock.yaml') {
       {
         Target: target,
         Class: 'lang-pkgs',
-        Packages: packages.map((Name) => ({ Name, Relationship: 'indirect' })),
+        Packages: packages.map((Name) => ({ Name, Version: '1.0.0', Relationship: 'indirect' })),
       },
       {
         Target: target,
@@ -92,7 +92,8 @@ test('refuses a license outside the list, and an exception for another package',
 
 test('refuses a dependency whose license was found nowhere, except the ones verified by hand', () => {
   const problems = checkLicenses(report(['a', 'b', 'busboy'], [['a', 'MIT']]), policy);
-  assert.deepEqual(problems, ['no license found: package "b" in "pnpm-lock.yaml"']);
+  // The version says which copy was looked for: Go reads it from the module cache.
+  assert.deepEqual(problems, ['no license found: package "b" version "1.0.0" in "pnpm-lock.yaml"']);
   // The module itself (root) carries no dependency license.
   const own = report([], []);
   own.Results[0].Packages = [{ Name: 'github.com/example/own', Relationship: 'root' }];

@@ -93,7 +93,7 @@ export function checkLicenses(report, policy) {
       if (licensed.has(`${result.Target}\u0000${pkg.Name}`)) continue;
       if (undetected.has(pkg.Name)) continue;
       problems.push(
-        `no license found: package ${JSON.stringify(pkg.Name)} in ${JSON.stringify(result.Target)}`,
+        `no license found: package ${JSON.stringify(pkg.Name)} version ${JSON.stringify(pkg.Version ?? '')} in ${JSON.stringify(result.Target)}`,
       );
     }
   }
