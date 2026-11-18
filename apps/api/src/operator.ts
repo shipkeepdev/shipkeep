@@ -175,6 +175,29 @@ async function confirm(output: Writable, fallback: Writable, line: string): Prom
   }
 }
 
+/** Said on the error stream when the application does not close cleanly after a command. */
+export const UNCLEAN_CLOSE =
+  'Warning: the command is done, but the control plane did not close its connections cleanly.';
+
+/**
+ * Runs one command, then closes the application. The result is the command's own: a close that
+ * fails turns neither a committed change into a failure nor a refusal into another error. It is
+ * said as a warning, without its cause, which may hold connection details.
+ */
+export async function runThenClose(
+  app: INestApplicationContext,
+  command: OperatorCommand,
+  password: Secret,
+  output: Writable,
+  fallback: Writable,
+): Promise<void> {
+  try {
+    await runOperatorCommand(app, command, password, output, fallback);
+  } finally {
+    await app.close().catch(() => writeLine(fallback, UNCLEAN_CLOSE).catch(() => undefined));
+  }
+}
+
 /**
  * Runs one command and writes one line that says what was done, on `output`, or on `fallback`
  * when `output` cannot take it. Never the password.
