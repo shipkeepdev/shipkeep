@@ -11,6 +11,7 @@ import {
   runThenClose,
   UNCLEAN_CLOSE,
   USAGE,
+  WARNING_PATIENCE_MS,
   writeLine,
 } from './operator';
 
@@ -154,6 +155,10 @@ describe('operator command line', () => {
 
 describe('what the operator command says', () => {
   const password = new Secret('sk_test_fake_operator_password');
+  afterEach(() => {
+    // Also after a test that failed half-way: the next one must not inherit its clock.
+    vi.useRealTimers();
+  });
   /** A stream whose reader is gone: every write fails, as a closed pipe does. */
   function closed(): { stream: Writable; heardBy: number[] } {
     const stream = new Writable({
@@ -248,20 +253,26 @@ describe('what the operator command says', () => {
       'Password reset: owner@example.com. Its sessions and API tokens no longer work.\n',
     );
     expect(lines(errors)).toBe(`${UNCLEAN_CLOSE}\n`);
-    // A refusal stays that refusal: the close failure does not take its place.
+    // A refusal stays that refusal: the application is still closed, the close failure does not
+    // take its place, and no warning is put before the reason the operator needs.
     const refusal = new ConflictError(
       'account_exists',
       'An account with this address already exists.',
     );
+    const closeAfterRefusal = vi.fn(failing);
+    const refusedOutput = new PassThrough();
+    const refusedErrors = new PassThrough();
     await expect(
       runThenClose(
-        application({ create: () => Promise.reject(refusal) }, failing),
+        application({ create: () => Promise.reject(refusal) }, closeAfterRefusal),
         { action: 'create', email: 'owner@example.com' },
         password,
-        new PassThrough(),
-        new PassThrough(),
+        refusedOutput,
+        refusedErrors,
       ),
     ).rejects.toBe(refusal);
+    expect(closeAfterRefusal).toHaveBeenCalledTimes(1);
+    expect(lines(refusedOutput) + lines(refusedErrors)).toBe('');
     // The warning itself may have nowhere to go: still the command's result.
     await expect(
       runThenClose(
@@ -284,6 +295,37 @@ describe('what the operator command says', () => {
     );
     expect(close).toHaveBeenCalledTimes(1);
     expect(lines(quiet)).toBe('');
+  });
+
+  it('never lets the warning hold the result back when its stream does not drain', async () => {
+    vi.useFakeTimers();
+    // A reader that stopped reading: the write is accepted and never completes.
+    const stalled = new Writable({ write: () => undefined });
+    const failing = () => Promise.reject(new Error('disconnect failed'));
+    let result: 'pending' | 'done' = 'pending';
+    const running = runThenClose(
+      application({ resetPassword: () => Promise.resolve('owner@example.com') }, failing),
+      { action: 'reset-password', email: 'owner@example.com' },
+      password,
+      new PassThrough(),
+      stalled,
+    ).then(() => {
+      result = 'done';
+    });
+    await vi.advanceTimersByTimeAsync(WARNING_PATIENCE_MS - 1);
+    expect(result).toBe('pending');
+    await vi.advanceTimersByTimeAsync(1);
+    await running;
+    expect(result).toBe('done');
+    // A warning that leaves at once keeps no timer.
+    await runThenClose(
+      application({ resetPassword: () => Promise.resolve('owner@example.com') }, failing),
+      { action: 'reset-password', email: 'owner@example.com' },
+      password,
+      new PassThrough(),
+      new PassThrough(),
+    );
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('still says a committed change when its output is closed, and succeeds', async () => {
