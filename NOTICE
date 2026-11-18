@@ -6,3 +6,9 @@ This product is licensed under the Apache License, Version 2.0 (see LICENSE).
 Third-party components keep their own licenses. Release artifacts include a bundle of the
 third-party license texts; per-package license exceptions are listed in
 docs/adr/0014-dependency-license-exceptions.md.
+
+The control plane image includes elkjs (https://github.com/kieler/elkjs), unmodified, as a
+dependency of the Prisma CLI. elkjs is made available under the Eclipse Public License 2.0
+(https://www.eclipse.org/legal/epl-2.0/). Its source code is available under that license from
+https://github.com/kieler/elkjs and from the npm registry (https://www.npmjs.com/package/elkjs);
+the copy in the image keeps its own license file under node_modules.

@@ -4,23 +4,27 @@
 //
 // The report comes from `trivy fs --scanners license --format json` on a checkout whose
 // node_modules and Go module cache are populated: Trivy reads licenses from them, not from the
-// lockfiles. Package names and license texts come from third-party metadata: they are printed as
-// JSON strings after a fixed prefix, so that none of them can start a workflow command in the log.
+// lockfiles. Each package record (name, version, licenses) is checked on its own, so the license of
+// one version never stands for another. Package names and license texts are third-party metadata:
+// they are printed escaped, so that none of them can be read as a workflow command.
 import { readFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
+/** An SPDX license identifier, or a LicenseRef. Anything else is not understood. */
+const IDENTIFIER = /^[A-Za-z0-9][A-Za-z0-9.+-]*$/;
+
 /**
  * Whether an SPDX-like expression is acceptable: `A OR B` needs one side allowed, `A AND B` both.
- * Trivy also reports lowercase `and`/`or` copied from package metadata.
+ * Trivy also reports lowercase `and`/`or` copied from package metadata. An expression that does not
+ * parse, or holds an operand that is not an identifier, is refused whatever else it holds.
  */
 export function expressionAllowed(expression, allowed) {
-  const tokens = expression
+  const tokens = String(expression)
     .replace(/[()]/g, (bracket) => ` ${bracket} `)
     .split(/\s+/)
     .filter(Boolean);
   let position = 0;
-  const peek = () => tokens[position];
-  const operator = (name) => peek()?.toUpperCase() === name;
+  const operator = (name) => tokens[position]?.toUpperCase() === name;
   // or := and ('OR' and)* ; and := atom ('AND' atom)* ; atom := '(' or ')' | identifier
   const parseOr = () => {
     let value = parseAnd();
@@ -48,53 +52,80 @@ export function expressionAllowed(expression, allowed) {
       if (tokens[position++] !== ')') throw new Error('missing )');
       return value;
     }
-    if (token === ')' || ['AND', 'OR', 'WITH'].includes(token.toUpperCase()))
-      throw new Error(`unexpected ${token}`);
+    if (['AND', 'OR', 'WITH'].includes(token.toUpperCase()) || !IDENTIFIER.test(token))
+      throw new Error('not an identifier');
     return allowed.has(token);
   };
   try {
+    // The whole expression is parsed before its value counts: a malformed operand on the losing
+    // side of an OR still makes it unreadable.
     const value = parseOr();
-    // Anything left over (an exception clause with WITH, stray words) is not understood.
     return position === tokens.length && value;
   } catch {
     return false;
   }
 }
 
+/**
+ * Third-party text for the log, in double quotes. Letters, digits and a few signs are kept; every
+ * other character (colons, brackets, quotes, control and non-ASCII characters) is written as
+ * \uXXXX, so that no marker the Actions runner reads as a command can appear.
+ */
+export function quoted(text) {
+  let escaped = '';
+  for (let index = 0; index < String(text).length; index++) {
+    const unit = String(text)[index];
+    escaped += /^[A-Za-z0-9 ._+/@-]$/.test(unit)
+      ? unit
+      : `\\u${unit.charCodeAt(0).toString(16).padStart(4, '0')}`;
+  }
+  return `"${escaped}"`;
+}
+
 /** The problems of a report under a policy: one line of text each, empty when all is well. */
 export function checkLicenses(report, policy) {
   const allowed = new Set(policy.allowed);
-  const exceptions = new Set(
-    policy.exceptions.map((entry) => `${entry.package}\u0000${entry.license}`),
+  const exceptions = new Map(
+    policy.exceptions.map((entry) => [`${entry.package}\u0000${entry.license}`, entry]),
   );
-  const undetected = new Set(policy.undetected.map((entry) => entry.package));
+  const undetected = new Set(
+    policy.undetected.map((entry) => `${entry.package}\u0000${entry.version}`),
+  );
   const problems = [];
   const results = Array.isArray(report?.Results) ? report.Results : [];
-  if (results.length === 0) problems.push('the report holds no results: nothing was scanned');
 
-  const licensed = new Map();
-  for (const result of results) {
-    if (result.Class !== 'license') continue;
-    for (const finding of result.Licenses ?? []) {
-      const key = `${result.Target}\u0000${finding.PkgName}`;
-      licensed.set(key, true);
-      if (expressionAllowed(finding.Name, allowed)) continue;
-      if (exceptions.has(`${finding.PkgName}\u0000${finding.Name}`)) continue;
-      problems.push(
-        `license not allowed: package ${JSON.stringify(finding.PkgName)} license ${JSON.stringify(finding.Name)} in ${JSON.stringify(result.Target)}`,
-      );
-    }
+  // Every expected inventory must be there and hold packages: a report without them proves
+  // nothing, whatever licenses it holds.
+  for (const target of policy.targets) {
+    const inventory = results.find(
+      (result) => result.Class === 'lang-pkgs' && result.Target === target,
+    );
+    const packages = (inventory?.Packages ?? []).filter((pkg) => pkg.Relationship !== 'root');
+    if (packages.length === 0) problems.push(`no dependency inventory for ${quoted(target)}`);
   }
-  // A dependency whose license Trivy found nowhere is a gap, not a pass.
+
   for (const result of results) {
     if (result.Class !== 'lang-pkgs') continue;
     for (const pkg of result.Packages ?? []) {
       if (pkg.Relationship === 'root') continue;
-      if (licensed.has(`${result.Target}\u0000${pkg.Name}`)) continue;
-      if (undetected.has(pkg.Name)) continue;
-      problems.push(
-        `no license found: package ${JSON.stringify(pkg.Name)} version ${JSON.stringify(pkg.Version ?? '')} in ${JSON.stringify(result.Target)}`,
-      );
+      const where = `package ${quoted(pkg.Name)} version ${quoted(pkg.Version ?? '')} in ${quoted(result.Target)}`;
+      const licenses = Array.isArray(pkg.Licenses) ? pkg.Licenses : [];
+      if (licenses.length === 0) {
+        // Found nowhere: a gap, not a pass, unless that exact version was read by hand.
+        if (!undetected.has(`${pkg.Name}\u0000${pkg.Version}`))
+          problems.push(`no license found: ${where}`);
+        continue;
+      }
+      for (const license of licenses) {
+        if (expressionAllowed(license, allowed)) continue;
+        const exception = exceptions.get(`${pkg.Name}\u0000${license}`);
+        if (exception?.status === 'approved') continue;
+        problems.push(
+          exception
+            ? `exception pending the maintainer's approval in ADR 0014: ${where} license ${quoted(license)}`
+            : `license not allowed: ${where} license ${quoted(license)}`,
+        );
+      }
     }
   }
   return problems;
@@ -104,22 +135,20 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {
   const [reportPath, policyPath] = process.argv.slice(2);
   if (!reportPath || !policyPath) {
     console.error('usage: check-licenses.mjs <trivy-license-report.json> <licenses.json>');
-    process.exit(2);
+    process.exitCode = 2;
+  } else {
+    const report = JSON.parse(readFileSync(reportPath, 'utf8'));
+    const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
+    const problems = checkLicenses(report, policy);
+    for (const problem of problems) console.log(`license check: ${problem}`);
+    if (problems.length > 0) {
+      console.log(
+        'license check failed. Replace the dependency, or record an exception in docs/adr/0014-dependency-license-exceptions.md and tools/ci/licenses.json, approved by the maintainer.',
+      );
+      // exitCode, not exit(): the lines above may still be on their way through a pipe.
+      process.exitCode = 1;
+    } else {
+      console.log('license check passed.');
+    }
   }
-  const report = JSON.parse(readFileSync(reportPath, 'utf8'));
-  const policy = JSON.parse(readFileSync(policyPath, 'utf8'));
-  const problems = checkLicenses(report, policy);
-  const pending = policy.exceptions.filter((entry) => entry.status !== 'approved');
-  for (const entry of pending)
-    console.log(
-      `pending approval in ADR 0014: package ${JSON.stringify(entry.package)} license ${JSON.stringify(entry.license)}`,
-    );
-  for (const problem of problems) console.log(`license check: ${problem}`);
-  if (problems.length > 0) {
-    console.log(
-      'license check failed. Replace the dependency, or record an exception in docs/adr/0014-dependency-license-exceptions.md and tools/ci/licenses.json, approved by the maintainer.',
-    );
-    process.exit(1);
-  }
-  console.log('license check passed.');
 }
