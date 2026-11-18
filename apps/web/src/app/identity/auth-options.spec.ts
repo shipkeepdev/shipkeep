@@ -67,6 +67,7 @@ describe('what the sign-in screens may offer', () => {
     first.answer(false);
     await waiting;
     expect(options.email()).toBe(false);
+    options.shown();
 
     // Email was turned on since: the next screen is not held, and shows it once the answer is in.
     const second = pending();
@@ -91,7 +92,7 @@ describe('what the sign-in screens may offer', () => {
     expect(api.options).toHaveBeenCalledTimes(3);
   });
 
-  it('waits on the first screen only, even when that first answer never came', async () => {
+  it('waits on the first screen shown only, even when its answer never came', async () => {
     vi.useFakeTimers();
     const stalled = pending();
     let first = 'pending';
@@ -100,6 +101,7 @@ describe('what the sign-in screens may offer', () => {
     });
     await vi.advanceTimersByTimeAsync(2000);
     expect(first).toBe('shown');
+    options.shown();
     // The next screen asks again and that question stalls too: the screen is not held.
     const again = pending();
     let second = 'pending';
@@ -108,10 +110,32 @@ describe('what the sign-in screens may offer', () => {
     });
     await vi.advanceTimersByTimeAsync(0);
     expect(second).toBe('shown');
-    // The newest answer, whenever it comes, is taken; the older one is not.
-    again.answer(false);
-    stalled.answer(true);
+    // The older answer, though it comes first, is not taken; the newest one is.
+    stalled.answer(false);
     await vi.advanceTimersByTimeAsync(0);
+    expect(options.email()).toBe(true);
+    again.answer(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(options.email()).toBe(false);
+  });
+
+  it('keeps the wait for the screen that appears when a navigation is cancelled', async () => {
+    vi.useFakeTimers();
+    // A navigation asks, then is cancelled for another one before any screen is shown.
+    pending();
+    void resolve(authOptions);
+    await vi.advanceTimersByTimeAsync(500);
+    // The navigation that does show a screen still waits for its answer.
+    const answer = pending();
+    let shown = false;
+    void resolve(authOptions).then(() => {
+      shown = true;
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shown).toBe(false);
+    answer.answer(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(shown).toBe(true);
     expect(options.email()).toBe(false);
   });
 

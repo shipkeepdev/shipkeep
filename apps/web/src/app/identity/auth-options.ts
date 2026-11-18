@@ -14,21 +14,27 @@ const PATIENCE_MS = 2000;
 export class AuthOptions {
   private readonly api = inject(IdentityApi);
   private readonly sendsEmail = signal(true);
-  #waited = false;
+  #shown = false;
   #turn = 0;
   /** False only when the server said that this installation sends no email. */
   readonly email = this.sendsEmail.asReadonly();
 
   /**
-   * Asks on every sign-in screen, so that email turned on later shows without a reload. Only the
-   * first screen waits for the answer, and only once, even when that answer never came: the next
-   * screens show what is known and take the answer when it arrives.
+   * Asks on every sign-in screen, so that email turned on later shows without a reload. Until a
+   * sign-in screen has been shown, each navigation waits for the answer (the resolver bounds the
+   * wait): a navigation that is cancelled must not spend the wait of the screen that appears. Once
+   * one is shown, answered or not, the next screens show what is known and take the answer when
+   * it arrives.
    */
   async refresh(): Promise<void> {
     const asked = this.ask();
-    if (this.#waited) return;
-    this.#waited = true;
+    if (this.#shown) return;
     await asked;
+  }
+
+  /** A sign-in screen is on the page: the next ones no longer wait. */
+  shown(): void {
+    this.#shown = true;
   }
 
   private async ask(): Promise<void> {

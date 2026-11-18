@@ -238,6 +238,23 @@ describe('account route presentation', () => {
       expect(document.activeElement).toBe(element().querySelector('h1'));
     });
 
+    it('moves focus to the heading when a late answer removes the link in use on sign-in', async () => {
+      api.options.mockResolvedValue({ email: true });
+      await harness.navigateByUrl('/auth/login');
+      await harness.fixture.whenStable();
+      const link = element().querySelector<HTMLAnchorElement>('a[href="/auth/forgot-password"]');
+      if (!link) throw new Error('missing reset link');
+      link.focus();
+      expect(document.activeElement).toBe(link);
+      api.options.mockResolvedValue({ email: false });
+      await TestBed.inject(AuthOptions).refresh();
+      await vi.waitFor(async () => {
+        await harness.fixture.whenStable();
+        expect(element().querySelector('a[href="/auth/forgot-password"]')).toBeNull();
+      });
+      expect(document.activeElement).toBe(element().querySelector('h1'));
+    });
+
     it('leaves focus alone when it was not in the form that went away', async () => {
       api.options.mockResolvedValue({ email: true });
       await harness.navigateByUrl('/auth/register');

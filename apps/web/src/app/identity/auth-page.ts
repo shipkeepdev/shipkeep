@@ -172,7 +172,8 @@ export class AuthPage {
     this.store.mode() === 'login' ? this.store.step() : (this.store.mode() as Screen),
   );
   /** Whether this installation sends email; the screens offer only what can work without it. */
-  protected readonly sendsEmail = inject(AuthOptions).email;
+  private readonly options = inject(AuthOptions);
+  protected readonly sendsEmail = this.options.email;
   protected readonly unavailable = computed(
     () => !this.sendsEmail() && MAIL_SCREENS.has(this.screen()),
   );
@@ -215,10 +216,15 @@ export class AuthPage {
         if (isAuthMode(data['mode'])) this.store.configure(data['mode']);
         this.focusHeading();
       });
-    // A late answer can replace the form someone was typing in with the explanation. Focus then
-    // goes to the heading that explains why; focus that was elsewhere stays where it was.
+    this.options.shown();
+    // A late answer can remove what someone was using: the form of a screen that sends a message,
+    // or the links to sign-up and to the reset on sign-in. Focus that fell back to the page then
+    // goes to the heading; focus that was elsewhere stays where it was.
+    let answer = this.sendsEmail();
     effect(() => {
-      if (!this.unavailable()) return;
+      const now = this.sendsEmail();
+      if (now === answer) return;
+      answer = now;
       afterNextRender(
         () => {
           const active = this.document.activeElement;
