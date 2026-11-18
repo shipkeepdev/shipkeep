@@ -177,14 +177,38 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
     } finally {
       stop();
     }
+    // Accepted while email is configured: its key must not be replayed once it is not.
+    const replayKey = uuidv7();
+    await post('register', { email: 'replayed@example.com', password })
+      .set('Idempotency-Key', replayKey)
+      .expect(202);
     const config = fixture.app.get(AppConfig);
     const get = config.get.bind(config);
     const spy = vi
       .spyOn(config, 'get')
       .mockImplementation((key) => (key === 'SMTP_HOST' ? undefined : get(key)));
     try {
-      await post('register', { email: 'unconfigured@example.com', password }).expect(503);
+      // An installation without email (ADR 0020): a refusal that says so, the same for sign-up,
+      // confirmation and reset, whatever the address.
+      for (const [route, body] of [
+        ['register', { email: 'unconfigured@example.com', password }],
+        ['verification/request', { email: 'unconfigured@example.com' }],
+        ['reset/request', { email: 'unconfigured@example.com' }],
+        ['reset/request', { email: 'rollback@example.com' }],
+      ] as const)
+        await post(route, body)
+          .expect(409)
+          .expect((response) => {
+            expect(response.body).toMatchObject({ code: 'email_not_configured' });
+          });
       expect(await prisma.user.count({ where: { email: 'unconfigured@example.com' } })).toBe(0);
+      // Before anything is read: a body that is not even valid gets the same answer, and so does
+      // a request whose key was answered 202 while email was still configured.
+      for (const route of ['register', 'verification/request', 'reset/request'])
+        await post(route, { email: 42 }).expect(409);
+      await post('register', { email: 'replayed@example.com', password })
+        .set('Idempotency-Key', replayKey)
+        .expect(409);
     } finally {
       spy.mockRestore();
     }

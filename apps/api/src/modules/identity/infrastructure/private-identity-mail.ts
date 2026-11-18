@@ -2,6 +2,7 @@ import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { fromPrisma } from 'pg-boss';
 import { v7 as uuidv7 } from 'uuid';
 
+import { AppConfig } from '../../../platform/config/app-config';
 import { EnvelopeService } from '../../../platform/crypto/envelope.service';
 import { JobQueue } from '../../../platform/jobs/job-queue';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
@@ -22,7 +23,13 @@ export class PrivateIdentityMail implements IdentityMailer {
     private readonly jobs: JobQueue,
     private readonly database: PrismaUnitOfWork,
     private readonly envelope: EnvelopeService,
+    private readonly config: AppConfig,
   ) {}
+
+  /** Mail leaves through SMTP only: without a host, nothing can be sent. */
+  get enabled(): boolean {
+    return Boolean(this.config.get('SMTP_HOST'));
+  }
 
   initialize(): Promise<void> {
     this.initialized ??= this.jobs

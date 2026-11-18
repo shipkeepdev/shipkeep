@@ -9,6 +9,10 @@ import { resolve } from 'node:path';
 
 import { Logger } from 'nestjs-pino';
 
+import { NestFactory } from '@nestjs/core';
+import { isDomainError } from '@shipkeep/domain';
+
+import { AppModule } from './app.module';
 import { createApp } from './bootstrap';
 import { AgentGateway } from './modules/fleet/interface/agent-gateway';
 import { DeploymentWorker } from './modules/deployments/infrastructure/deployment-worker';
@@ -17,6 +21,13 @@ import { API_VERSION } from './platform/health/health.controller';
 import { API_PREFIX } from './platform/http/constants';
 import { installWebApp } from './platform/http/web-app';
 import { buildOpenApiDocument, OPENAPI_JSON_PATH } from './platform/openapi/openapi';
+import {
+  OperatorUsageError,
+  parseOperatorCommand,
+  readPassword,
+  runThenClose,
+  writeLine,
+} from './operator';
 
 async function main(): Promise<void> {
   const app = await createApp();
@@ -51,8 +62,45 @@ async function main(): Promise<void> {
   );
 }
 
-main().catch((error: unknown) => {
-  // The pino logger may not exist yet (configuration errors), so write plainly.
-  console.error('control plane failed to start:', error instanceof Error ? error.message : error);
-  process.exitCode = 1;
-});
+/**
+ * `node main.js account ...`: one command of the operator, then exit (ADR 0020). Nothing listens:
+ * no HTTP port, no agent gateway, no deployment worker.
+ */
+async function operate(argv: readonly string[]): Promise<void> {
+  // Read before anything starts: a mistyped command opens no database connection.
+  const command = parseOperatorCommand(argv);
+  const password = await readPassword(process.stdin, process.stderr);
+  // The application without its HTTP server, and without its startup lines: the command writes
+  // one line, which they would bury. Warnings and errors still show.
+  const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
+  await runThenClose(app, command, password, process.stdout, process.stderr);
+}
+
+const operatorArguments = process.argv.slice(2);
+if (operatorArguments.length > 0) {
+  operate(operatorArguments).then(
+    // Standard input may still be open: leave now that the one command is done. Its line was
+    // handed over before this runs.
+    () => process.exit(0),
+    (error: unknown) => {
+      // A refusal says why in words meant for people. Anything else stays short: the cause may
+      // hold connection details or settings.
+      const refused = error instanceof OperatorUsageError || isDomainError(error);
+      const message = refused
+        ? error.message
+        : 'The command failed. Run it with the settings of the control plane, and check that the database answers.';
+      const code = error instanceof OperatorUsageError ? 2 : 1;
+      // Leave only once the message is handed over: a pipe may take it later than this line.
+      void writeLine(process.stderr, message).then(
+        () => process.exit(code),
+        () => process.exit(code),
+      );
+    },
+  );
+} else {
+  main().catch((error: unknown) => {
+    // The pino logger may not exist yet (configuration errors), so write plainly.
+    console.error('control plane failed to start:', error instanceof Error ? error.message : error);
+    process.exitCode = 1;
+  });
+}

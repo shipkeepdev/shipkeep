@@ -8,6 +8,7 @@ import {
   assertPassword,
   AuthenticationError,
   EMAIL_TOKEN_MS,
+  emailNotConfigured,
   normalizeEmail,
   RESET_TOKEN_MS,
   TOKEN_PATTERN,
@@ -34,6 +35,7 @@ export class AccountCommands {
   ) {}
 
   async register(emailInput: string, password: Secret, now = new Date()): Promise<void> {
+    this.assertMail();
     const email = normalizeEmail(emailInput);
     // Hash even for duplicates: neither status nor expensive hashing reveals account existence.
     const passwordHash = await this.passwords.hash(password);
@@ -74,6 +76,7 @@ export class AccountCommands {
     purpose: 'verify' | 'reset',
     now = new Date(),
   ): Promise<void> {
+    this.assertMail();
     const email = normalizeEmail(emailInput);
     const user = await this.store.findUserByEmail(email);
     if (!user) return;
@@ -159,6 +162,14 @@ export class AccountCommands {
       await this.store.changePassword(user.id, passwordHash, now);
       await this.events.publish(events);
     });
+  }
+
+  /**
+   * An installation without email cannot confirm an address or send a reset link (ADR 0020). The
+   * refusal comes before anything is read, so it is the same for every address.
+   */
+  private assertMail(): void {
+    if (!this.mailer.enabled) throw emailNotConfigured();
   }
 
   private async credential(value: Secret, purpose: 'verify' | 'reset') {

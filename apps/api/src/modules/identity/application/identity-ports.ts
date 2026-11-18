@@ -22,6 +22,11 @@ export interface IdentitySecrets {
 
 export const IDENTITY_MAILER = Symbol('IdentityMailer');
 export interface IdentityMailer {
+  /**
+   * False when the installation sends no email (ADR 0020): accounts are then created on the
+   * server, and nothing that needs a message can be asked for.
+   */
+  readonly enabled: boolean;
   /** Enqueues encrypted delivery in the current command transaction; never contacts SMTP here. */
   send(input: {
     email: string;

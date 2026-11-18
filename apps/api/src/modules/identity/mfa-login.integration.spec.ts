@@ -40,6 +40,7 @@ describe('second-factor login and session rotation', () => {
       {
         token: IDENTITY_MAILER,
         value: {
+          enabled: true,
           send: (message: Parameters<IdentityMailer['send']>[0]) => {
             sent.push(message);
             return Promise.resolve();

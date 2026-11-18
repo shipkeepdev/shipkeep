@@ -43,6 +43,7 @@ describe('identity commands against PostgreSQL', () => {
       passwords,
       secrets,
       {
+        enabled: true,
         send: (message) => {
           sent.push(message);
           return Promise.resolve();

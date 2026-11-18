@@ -33,7 +33,7 @@ describe('private identity email jobs against PostgreSQL', () => {
     jobs = new JobQueue(fixture.app.get(AppConfig));
     closeJobs = () => jobs.onModuleDestroy();
     await jobs.onModuleInit();
-    mail = new PrivateIdentityMail(jobs, database, envelope);
+    mail = new PrivateIdentityMail(jobs, database, envelope, fixture.app.get(AppConfig));
     await mail.initialize();
   });
   afterAll(async () => {
@@ -70,7 +70,7 @@ describe('private identity email jobs against PostgreSQL', () => {
     await jobs.onModuleDestroy();
     jobs = new JobQueue(fixture.app.get(AppConfig));
     await jobs.onModuleInit();
-    mail = new PrivateIdentityMail(jobs, database, envelope);
+    mail = new PrivateIdentityMail(jobs, database, envelope, fixture.app.get(AppConfig));
     const received: Parameters<IdentityMailer['send']>[0][] = [];
     const worker = new IdentityMailWorker(jobs, mail, envelope, {
       deliver: (input) => {

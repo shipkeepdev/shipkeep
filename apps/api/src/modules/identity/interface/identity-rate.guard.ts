@@ -9,8 +9,9 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { Response } from 'express';
 
+import { IDENTITY_MAILER, type IdentityMailer } from '../application/identity-ports';
 import { IDENTITY_THROTTLE, type IdentityThrottle } from '../application/identity-throttle';
-import { normalizeEmail } from '../domain/identity-policy';
+import { emailNotConfigured, normalizeEmail } from '../domain/identity-policy';
 import type { IdentityAttempt } from '../domain/throttle-policy';
 
 import { clientIp, type IdentityRequest } from './session-http';
@@ -26,6 +27,7 @@ export class IdentityRateGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     @Inject(IDENTITY_THROTTLE) private readonly throttle: IdentityThrottle,
+    @Inject(IDENTITY_MAILER) private readonly mailer: IdentityMailer,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -34,6 +36,11 @@ export class IdentityRateGuard implements CanActivate {
       context.getClass(),
     ]);
     if (!attempt) return true;
+    // Sign-up, a new confirmation code and a reset link need a message. An installation that
+    // sends none (ADR 0020) refuses them here, before the body is read for the attempt limit,
+    // before a stored answer is replayed and before the body is validated: the answer is the
+    // same for every address and every request.
+    if (MAIL_ATTEMPTS.has(attempt) && !this.mailer.enabled) throw emailNotConfigured();
     const request = context.switchToHttp().getRequest<IdentityRequest>();
     // IdentityGuard already consumed the token/IP API quota before credential validation.
     if (attempt === 'api' && request.identity?.kind === 'api_token') return true;
@@ -47,6 +54,9 @@ export class IdentityRateGuard implements CanActivate {
     return true;
   }
 }
+
+/** The attempts whose routes send a message: `register`, and `email` for both requests. */
+const MAIL_ATTEMPTS: ReadonlySet<IdentityAttempt> = new Set(['register', 'email']);
 
 function subject(body: unknown): string | undefined {
   if (!body || typeof body !== 'object') return undefined;
