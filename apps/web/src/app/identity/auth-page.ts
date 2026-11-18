@@ -28,6 +28,7 @@ import {
   type LoginStep,
   passwordScore,
 } from './auth-form-store';
+import { AuthOptions } from './auth-options';
 import { MutationRunner } from './mutation-runner';
 
 type Screen = Exclude<AuthMode, 'login'> | LoginStep;
@@ -116,6 +117,32 @@ const COPY: Record<Screen, Copy> = {
   },
 };
 
+/** The screens that work only by a message: sign-up, its confirmation, and the password reset. */
+const MAIL_SCREENS: ReadonlySet<Screen> = new Set<Screen>([
+  'register',
+  'verify-email',
+  'request-verification',
+  'forgot-password',
+  'reset-password',
+]);
+/** Shown in place of those screens on an installation that sends no email (ADR 0020). */
+const NO_EMAIL: Copy = {
+  icon: 'mail-off',
+  title: 'This installation sends no email',
+  sub: 'Its administrator creates accounts and resets passwords, on the server that runs Shipkeep.',
+  cta: 'Continue to sign in',
+  foot: '',
+  footLink: '',
+  footRoute: null,
+};
+/** Sign-in on such an installation: it offers neither sign-up nor a reset, and says who does them. */
+const NO_EMAIL_SIGN_IN: Copy = {
+  ...COPY.password,
+  foot: 'No account, or a lost password? Ask the administrator of this installation.',
+  footLink: '',
+  footRoute: null,
+};
+
 const METER = ['', 'weak', 'fair', 'good', 'strong'];
 
 /** Sign-in, sign-up, email verification and password reset, as in the design's auth screens. */
@@ -134,7 +161,17 @@ export class AuthPage {
   protected readonly screen = computed<Screen>(() =>
     this.store.mode() === 'login' ? this.store.step() : (this.store.mode() as Screen),
   );
-  protected readonly copy = computed(() => COPY[this.screen()]);
+  /** Whether this installation sends email; the screens offer only what can work without it. */
+  protected readonly sendsEmail = inject(AuthOptions).email;
+  protected readonly unavailable = computed(
+    () => !this.sendsEmail() && MAIL_SCREENS.has(this.screen()),
+  );
+  protected readonly copy = computed(() => {
+    if (this.unavailable()) return NO_EMAIL;
+    return this.sendsEmail() || this.screen() !== 'password'
+      ? COPY[this.screen()]
+      : NO_EMAIL_SIGN_IN;
+  });
   protected readonly score = computed(() => passwordScore(this.store.password()));
   protected readonly meter = computed(() =>
     [0, 1, 2, 3].map((i) => {

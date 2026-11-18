@@ -100,6 +100,17 @@ describe('identity mutation runner', () => {
     expect(runner.restartRequired()).toBe(true);
   });
 
+  it('asks for no restart when the installation sends no email: no retry can change that', async () => {
+    const call = vi.fn<(key: string) => Promise<void>>();
+    call.mockRejectedValue(new IdentityRequestError(409, 0, { code: 'email_not_configured' }));
+    await runner.run({}, call);
+    expect(runner.status()).toBe(409);
+    expect(runner.restartRequired()).toBe(false);
+    expect(runner.problem()).toBe(
+      'This installation sends no email: its administrator creates accounts and resets passwords.',
+    );
+  });
+
   it('bounds and enforces a retry delay, including a client restart', async () => {
     const call = vi.fn<(key: string) => Promise<void>>();
     call.mockRejectedValueOnce(new IdentityRequestError(429, 2));

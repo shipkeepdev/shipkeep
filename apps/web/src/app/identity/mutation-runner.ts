@@ -1,6 +1,6 @@
 import { DestroyRef, inject, Injectable, signal } from '@angular/core';
 
-import { IdentityRequestError, newMutationKey } from './identity-api';
+import { EMAIL_NOT_CONFIGURED, IdentityRequestError, newMutationKey } from './identity-api';
 
 class ExpiredAttemptError extends Error {
   constructor() {
@@ -86,7 +86,8 @@ export class MutationRunner {
       } else if (error instanceof IdentityRequestError) {
         this.lastStatus.set(error.status);
         this.failure.set(error.message);
-        this.restart.set(error.status === 409);
+        // A conflict is settled by starting again, except the one no retry can change.
+        this.restart.set(error.status === 409 && error.problem?.code !== EMAIL_NOT_CONFIGURED);
         // A timeout may follow a commit, and a later retry can be throttled before replay lookup.
         // Keep the original key through 429 too, or the next retry could duplicate that commit.
         if (error.status >= 400 && error.status < 500 && ![408, 409, 429].includes(error.status))

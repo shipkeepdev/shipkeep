@@ -11,7 +11,7 @@ export const IDENTITY_FETCH = new InjectionToken<(input: Request) => Promise<Res
     factory: () => (input) => fetch(input),
   },
 );
-type Result<T> = { data?: T; response: Response };
+type Result<T> = { data?: T; error?: unknown; response: Response };
 
 /**
  * The stable part of a refusal a form may act on: the problem code and, for list inputs, the
@@ -36,6 +36,23 @@ export function requestProblem(body: unknown): RequestProblem | undefined {
     : { code };
 }
 
+/** The refusal of an installation without SMTP (ADR 0020): starting again cannot change it. */
+export const EMAIL_NOT_CONFIGURED = 'email_not_configured';
+
+function refusalText(status: number, problem?: RequestProblem): string {
+  if (problem?.code === EMAIL_NOT_CONFIGURED)
+    return 'This installation sends no email: its administrator creates accounts and resets passwords.';
+  if (status === 0) return 'Connection lost. You can retry this request.';
+  if (status === 401) return 'Your credentials could not be verified.';
+  if (status === 403) return 'This action is not permitted for your account.';
+  if (status === 404) return 'This item is no longer available.';
+  if (status === 409)
+    return 'This request conflicts with the current account state. Reload the page before trying again.';
+  if (status === 429) return 'Too many attempts. Wait before trying again.';
+  if (status >= 500) return 'The service is temporarily unavailable. Try again shortly.';
+  return 'Check your information and try again.';
+}
+
 /** Safe, bounded UI diagnostics. Never forward server details or transport exception strings. */
 export class IdentityRequestError extends Error {
   constructor(
@@ -43,23 +60,7 @@ export class IdentityRequestError extends Error {
     readonly retryAfterSeconds = 0,
     readonly problem?: RequestProblem,
   ) {
-    super(
-      status === 0
-        ? 'Connection lost. You can retry this request.'
-        : status === 401
-          ? 'Your credentials could not be verified.'
-          : status === 403
-            ? 'This action is not permitted for your account.'
-            : status === 404
-              ? 'This item is no longer available.'
-              : status === 409
-                ? 'This request conflicts with the current account state. Reload the page before trying again.'
-                : status === 429
-                  ? 'Too many attempts. Wait before trying again.'
-                  : status >= 500
-                    ? 'The service is temporarily unavailable. Try again shortly.'
-                    : 'Check your information and try again.',
-    );
+    super(refusalText(status, problem));
     this.name = 'IdentityRequestError';
   }
 }
@@ -118,6 +119,10 @@ export class IdentityApi {
   /** Public: the control plane version, shown in the dashboard frame. */
   health(): Promise<IdentitySchema<'HealthDto'>> {
     return this.required(() => this.client.GET('/api/v1/health'));
+  }
+  /** Public: what the sign-in screens may offer on this installation. */
+  options(): Promise<IdentitySchema<'AuthOptionsDto'>> {
+    return this.required(() => this.client.GET('/api/v1/auth/options'));
   }
   session(): Promise<SessionProfile> {
     return this.required(() => this.client.GET('/api/v1/auth/session'));
@@ -233,6 +238,7 @@ export class IdentityApi {
         throw new IdentityRequestError(
           result.response.status,
           Number.isFinite(seconds) ? Math.max(0, Math.min(3600, Math.ceil(seconds))) : 0,
+          requestProblem(result.error),
         );
       }
       return result.data;

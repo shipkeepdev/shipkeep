@@ -15,6 +15,7 @@ describe('account route presentation', () => {
     verifyEmail: vi.fn<IdentityApi['verifyEmail']>(),
     mfaStatus: vi.fn<IdentityApi['mfaStatus']>(),
     listTokens: vi.fn<IdentityApi['listTokens']>(),
+    options: vi.fn<IdentityApi['options']>(),
   };
   let harness: RouterTestingHarness;
   const profile = {
@@ -25,6 +26,7 @@ describe('account route presentation', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
     api.listTokens.mockResolvedValue({ items: [], nextCursor: null });
+    api.options.mockResolvedValue({ email: true });
     api.mfaStatus.mockResolvedValue({
       enabled: false,
       pendingExpiresAt: null,
@@ -142,5 +144,75 @@ describe('account route presentation', () => {
       ?.click();
     await harness.fixture.whenStable();
     expect(TestBed.inject(Router).url).toBe('/auth/login');
+  });
+  describe('on an installation that sends no email (ADR 0020)', () => {
+    const links = () =>
+      [...element().querySelectorAll('a')].map((link) => link.getAttribute('href') ?? '');
+    const text = () => element().textContent.replace(/\s+/g, ' ');
+
+    it('signs in as usual, and says who creates accounts and resets passwords', async () => {
+      api.options.mockResolvedValue({ email: false });
+      await harness.navigateByUrl('/auth/login');
+      await harness.fixture.whenStable();
+      expect(element().querySelector('form')).not.toBeNull();
+      expect(element().querySelector('#email')).not.toBeNull();
+      expect(element().querySelector('#password')).not.toBeNull();
+      // Neither of these could ever work here: they are not offered.
+      expect(links()).not.toContain('/auth/register');
+      expect(links()).not.toContain('/auth/forgot-password');
+      expect(text()).toContain(
+        'No account, or a lost password? Ask the administrator of this installation.',
+      );
+    });
+
+    it('explains, instead of a form that cannot work, on every screen that needs a message', async () => {
+      api.options.mockResolvedValue({ email: false });
+      for (const path of [
+        'register',
+        'forgot-password',
+        'request-verification',
+        'verify-email',
+        'reset-password',
+      ]) {
+        await harness.navigateByUrl(`/auth/${path}`);
+        await harness.fixture.whenStable();
+        expect(element().querySelector('form'), path).toBeNull();
+        expect(element().querySelector('h1')?.textContent, path).toContain(
+          'This installation sends no email',
+        );
+        expect(text(), path).toContain(
+          'Its administrator creates accounts and resets passwords, on the server that runs Shipkeep.',
+        );
+        expect(links(), path).toContain('/auth/login');
+        expect(links(), path).not.toContain('/auth/register');
+      }
+    });
+
+    it('offers everything when the installation sends email, or cannot say', async () => {
+      for (const answer of [
+        () => Promise.resolve({ email: true }),
+        () => Promise.reject(new IdentityRequestError(0)),
+      ]) {
+        api.options.mockImplementation(answer);
+        await harness.navigateByUrl('/auth/login');
+        await harness.fixture.whenStable();
+        expect(links()).toContain('/auth/register');
+        expect(links()).toContain('/auth/forgot-password');
+        await harness.navigateByUrl('/auth/register');
+        await harness.fixture.whenStable();
+        expect(element().querySelector('form')).not.toBeNull();
+        expect(text()).not.toContain('This installation sends no email');
+      }
+    });
+
+    it('says the same when the server refuses a request for that reason', () => {
+      // Seen when the screens could not ask first: the refusal is not a conflict to "start again".
+      expect(new IdentityRequestError(409, 0, { code: 'email_not_configured' }).message).toBe(
+        'This installation sends no email: its administrator creates accounts and resets passwords.',
+      );
+      expect(new IdentityRequestError(409, 0, { code: 'slug_taken' }).message).toContain(
+        'conflicts with the current account state',
+      );
+    });
   });
 });
