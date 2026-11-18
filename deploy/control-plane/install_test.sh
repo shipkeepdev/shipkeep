@@ -149,6 +149,16 @@ grep -q 'input hidden' "$work/output" || die 'the password question does not say
 refused ask_owner_password <<<'short' || die 'a short password from a pipe was accepted'
 grep -q '15 to 128 characters' "$work/output" || die 'a short password was refused without saying why'
 refused ask_owner_password </dev/null || die 'a missing password was accepted'
+# A file saved with CRLF line ends gives the same password; a CR inside the line is refused.
+# (In a subshell: a refusal ends the installer's run, and would end these checks without a word.)
+crlf=$(
+  ask_owner_password < <(printf '%s\r\n' "$passphrase") 2>/dev/null
+  printf '%s' "$owner_password"
+) || die 'a password line ending with CRLF was refused'
+[[ $crlf == "$passphrase" ]] || die 'a password line ending with CRLF was not read as the control plane reads it'
+refused ask_owner_password < <(printf 'a passphrase with\r a CR inside\n') || die 'a password with a CR inside was accepted'
+grep -q 'without tabs or other control characters' "$work/output" || die 'a password with a control character was refused without saying why'
+refused ask_owner_password < <(printf '%s\r\r\n' "$passphrase") || die 'a password ending with two CRs was accepted'
 # A last line without its line end is read whole, and so are bytes above ASCII.
 owner_password=''
 ask_owner_password < <(printf 'un mot de passe accentué €') 2>/dev/null

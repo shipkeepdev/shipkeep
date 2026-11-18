@@ -177,7 +177,9 @@ ask() {
 
 # One line of a standard input that is not a terminal, into the variable named by $1, and not a
 # byte more. It is read byte by byte because `read` drops a NUL byte without a word: the secret
-# kept would then differ from the one given. Returns 2 for a NUL byte, 3 for a line too long.
+# kept would then differ from the one given. A CR just before the line end belongs to that end
+# (a file saved with CRLF), as the control plane reads it; a CR anywhere else stays, and is
+# refused as a control character. Returns 2 for a NUL byte, 3 for a line too long.
 read_piped_line() {
   local byte line=''
   while IFS= read -r -s -d '' -n 1 byte; do
@@ -186,7 +188,7 @@ read_piped_line() {
     line+=$byte
     ((${#line} <= 4096)) || return 3
   done
-  printf -v "$1" '%s' "$line"
+  printf -v "$1" '%s' "${line%$'\r'}"
 }
 
 # One secret line into the variable named by $1, never shown: typed on a terminal, or the next
@@ -215,8 +217,8 @@ ask_owner_password() {
       continue
     fi
     if ((status)) || ! valid_owner_password "$owner_password"; then
-      [[ -t 0 ]] || fail 'The first account needs a password of 15 to 128 characters.'
-      printf 'Use between 15 and 128 characters.\n' >&2
+      [[ -t 0 ]] || fail 'The first account needs a password of 15 to 128 characters, on one line, without tabs or other control characters.'
+      printf 'Use between 15 and 128 characters, without tabs.\n' >&2
       continue
     fi
     [[ -t 0 ]] || return 0
