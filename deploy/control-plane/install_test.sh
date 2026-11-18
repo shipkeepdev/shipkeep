@@ -156,6 +156,13 @@ crlf=$(
   printf '%s' "$owner_password"
 ) || die 'a password line ending with CRLF was refused'
 [[ $crlf == "$passphrase" ]] || die 'a password line ending with CRLF was not read as the control plane reads it'
+# A CR at the very end of the input is a line end too (old Mac files), as the command reads it:
+# a password never holds a CR, so it cannot be cut short. Both sides must agree on the password.
+crlf=$(
+  ask_owner_password < <(printf '%s\r' "$passphrase") 2>/dev/null
+  printf '%s' "$owner_password"
+) || die 'a password line ending with CR and no LF was refused'
+[[ $crlf == "$passphrase" ]] || die 'a password line ending with CR and no LF was not read as the control plane reads it'
 refused ask_owner_password < <(printf 'a passphrase with\r a CR inside\n') || die 'a password with a CR inside was accepted'
 grep -q 'without tabs or other control characters' "$work/output" || die 'a password with a control character was refused without saying why'
 refused ask_owner_password < <(printf '%s\r\r\n' "$passphrase") || die 'a password ending with two CRs was accepted'
