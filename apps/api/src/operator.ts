@@ -179,10 +179,14 @@ async function confirm(output: Writable, fallback: Writable, line: string): Prom
 export const UNCLEAN_CLOSE =
   'Warning: the command is done, but the control plane did not close its connections cleanly.';
 
-/** How long that warning may hold the result back when its stream does not drain. */
-export const WARNING_PATIENCE_MS = 2000;
+/** How long that warning may hold the result back when its stream does not drain (SPEC 8). */
+const WARNING_PATIENCE_MS = 2000;
 
-/** Writes a line nobody waits for: it is given a short time to leave, and never fails. */
+/**
+ * Writes a line nobody waits for: it never fails, and a pipe whose reader stopped reading holds
+ * the result back for a short time only. A terminal takes its writes at once, or holds every
+ * program that writes to it until it is resumed: nothing here changes that.
+ */
 async function warn(output: Writable, line: string): Promise<void> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const patience = new Promise<void>((done) => {
