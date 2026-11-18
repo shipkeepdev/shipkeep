@@ -93,9 +93,11 @@ services:
       SHIPKEEP_KEK_FILE: /var/lib/shipkeep/kek
       AGENT_GATEWAY_ADDR: 0.0.0.0:7443
       AGENT_GATEWAY_SERVER_NAME: ${SHIPKEEP_DOMAIN:?set SHIPKEEP_DOMAIN in .env}
-      SMTP_HOST: ${SMTP_HOST:?set SMTP_HOST in .env}
+      # Email is optional (ADR 0020): without SMTP_HOST the installation sends none, and accounts
+      # are created on this server with `node main.js account create`.
+      SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-465}
-      SMTP_FROM: ${SMTP_FROM:?set SMTP_FROM in .env}
+      SMTP_FROM: ${SMTP_FROM:-}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
     volumes:

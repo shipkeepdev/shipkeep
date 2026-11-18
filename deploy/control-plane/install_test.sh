@@ -42,12 +42,23 @@ done
 for address in shipkeep 'a@b c' "a@example.com'" 'a b@example.com' $'a@example.com\nBcc: b@example.com' "$long@example.com" 'a@example.com>'; do
   refuse 'Invalid sender address' --smtp-from "$address"
 done
+for address in owner 'owner@' '@example.com' 'a b@example.com' "owner@example.com'" $'owner@example.com\n--dir' 'owner@example.com;id' "$long@example.com"; do
+  refuse 'Invalid email address' --email "$address"
+done
 refuse 'Invalid SMTP user' --smtp-user $'user\nname'
 refuse 'Invalid SMTP user' --smtp-user "$long"
 refuse 'Unknown option' --image example.com/other:1
 refuse 'Missing option value' --domain
+# Email is optional, but its settings come together: a port or a sender without a host is a mistake.
+refuse 'Give --smtp-host' --smtp-port 465
+refuse 'Give --smtp-host' --smtp-from shipkeep@example.com
+refuse 'Give --smtp-host' --smtp-user user@example.com
+# The password of the first account is never an option.
+refuse 'Unknown option' --password "$secret-long-enough"
 # Valid options go as far as the sudo check, and no further without root.
-refuse 'Run with sudo' --dir /opt/shipkeep --domain shipkeep.example.com --smtp-host smtp.example.com --smtp-port 465 --smtp-from shipkeep@example.com --smtp-user user@example.com
+refuse 'Run with sudo' --dir /opt/shipkeep --domain shipkeep.example.com --email owner@example.com --smtp-host smtp.example.com --smtp-port 465 --smtp-from shipkeep@example.com --smtp-user user@example.com
+# So does an installation without email, which is the ordinary one.
+refuse 'Run with sudo' --domain shipkeep.example.com --email owner@example.com
 
 # The remaining checks call the installer's own functions.
 # shellcheck source=/dev/null
@@ -93,6 +104,53 @@ if [[ $(stat -c %u / /usr | tr -d '\n') == 00 ]]; then
 else
   printf 'Skipped: root does not own / and /usr here.\n' >&2
 fi
+
+# The password of the first account: 15 to 128 characters on one line, asked without echo.
+passphrase='a passphrase with spaces, 15+'
+valid_owner_password "$passphrase" || die 'a passphrase was refused'
+valid_owner_password 'exactly15chars!' || die 'fifteen characters were refused'
+valid_owner_password "${long:0:128}" || die 'the longest password was refused'
+for bad in '' short 'fourteen chars' "$long$long" $'two lines of a\npassword here' $'a tab\tin the password!'; do
+  ! valid_owner_password "$bad" || die "accepted the password: ${bad:0:20}"
+done
+# From a pipe the line is read once, kept in the variable, and shown nowhere.
+owner_password=''
+ask_owner_password <<<"$passphrase" 2>"$work/output"
+[[ $owner_password == "$passphrase" ]] || die 'the password was not read from the pipe'
+! grep -q -- "$passphrase" "$work/output" || die 'the password was shown while it was asked'
+grep -q 'input hidden' "$work/output" || die 'the password question does not say the input is hidden'
+refused ask_owner_password <<<'short' || die 'a short password from a pipe was accepted'
+grep -q '15 to 128 characters' "$work/output" || die 'a short password was refused without saying why'
+refused ask_owner_password </dev/null || die 'a missing password was accepted'
+
+# The account is created by the control plane's command line: the address is an argument, the
+# password is not. It goes on standard input, where no other process can read it.
+(
+  docker() {
+    printf '%s\n' "$@" >"$work/account-arguments"
+    cat >"$work/account-input"
+  }
+  # The installer's create_first_account reads these.
+  # shellcheck disable=SC2034
+  owner_email=owner@example.com owner_password=$passphrase
+  create_first_account
+)
+grep -Fxq -- 'owner@example.com' "$work/account-arguments" || die 'the address did not reach the command'
+grep -Fxq -- '--email' "$work/account-arguments" || die 'the command was not given --email'
+! grep -q -- "$passphrase" "$work/account-arguments" || die 'the password was passed as an argument'
+! grep -q -- '^-e$\|^--env' "$work/account-arguments" || die 'a variable was passed to the command'
+[[ $(<"$work/account-input") == "$passphrase" ]] || die 'the password did not reach standard input'
+tr '\n' ' ' <"$work/account-arguments" | grep -q 'compose --file compose.yml run --rm --no-deps -T control-plane node main.js account create --email owner@example.com' || die 'unexpected account command'
+# A refusal by the control plane is the installer's failure too.
+(
+  docker() {
+    cat >/dev/null
+    return 1
+  }
+  # shellcheck disable=SC2034
+  owner_email=owner@example.com owner_password=$passphrase
+  ! create_first_account
+) || die 'a refused account creation was reported as done'
 
 # Only the pinned signing key is installed, whatever else the downloaded file holds.
 keys=$work/keys
@@ -169,6 +227,20 @@ refused write_env "$work/settings/.env.new" || die 'the settings were written th
 cp deploy/control-plane/compose.yml deploy/control-plane/Caddyfile "$work/settings/"
 docker compose --project-directory "$work/settings" config --quiet
 [[ $(grep -c '' "$work/settings/.env") == 10 ]] || die 'unexpected settings file'
+# An installation without email (ADR 0020) leaves the mail settings empty: the compose file
+# accepts that, hands the control plane an empty host, and keeps the default port.
+mkdir "$work/no-email"
+# shellcheck disable=SC2034
+smtp_host='' smtp_port='' smtp_from='' smtp_user='' smtp_password=''
+write_env "$work/no-email/.env"
+cp deploy/control-plane/compose.yml deploy/control-plane/Caddyfile "$work/no-email/"
+docker compose --project-directory "$work/no-email" config --format json >"$work/no-email/config.json"
+grep -q '"SMTP_HOST": ""' "$work/no-email/config.json" || die 'an installation without email does not hand an empty SMTP host'
+grep -q '"SMTP_PORT": "465"' "$work/no-email/config.json" || die 'an installation without email lost the default SMTP port'
+! grep -q "$secret" "$work/no-email/.env" || die 'a mail password was written for an installation without email'
+# The example file stands for that installation too.
+cp deploy/control-plane/.env.example "$work/no-email/.env.example"
+grep -Eq '^SMTP_HOST=$' "$work/no-email/.env.example" || die 'the example settings still require a mail server'
 
 # The bundle holds the installer as it is in the repository, and the reference it was given.
 archive=$(bash deploy/control-plane/build-bundle.sh 1.2.3 "$reference" "$work/bundle")

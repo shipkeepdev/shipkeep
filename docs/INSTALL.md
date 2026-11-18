@@ -14,7 +14,9 @@ Use a separate machine for the control plane. It listens on ports 80 and 443, wh
 - A Linux machine, amd64 or arm64, with 2 GB of memory or more. On Ubuntu 24.04 the installer adds Docker when it is absent; on another system, install Docker Engine and its Compose plugin first.
 - A DNS name pointing at that machine, for example `shipkeep.example.com`.
 - Ports **80** and **443** (web UI, HTTPS certificate) and **7443** (agents) reachable from where they are needed.
-- An SMTP account with implicit TLS (port 465). It is required: accounts are confirmed by email, so the first sign-up fails without it.
+- No email account. The installer creates the first account itself. An SMTP account with implicit TLS (port 465) is optional: with it, people sign up and reset their password by email (see [Accounts without email](#accounts-without-email)).
+
+> **`v0.1.0-alpha.2` and earlier need an SMTP account**: their installer asks for one, and the first account is created in the browser and confirmed by email. Follow [the guide of that release](https://github.com/shipkeepdev/shipkeep/blob/v0.1.0-alpha.2/docs/INSTALL.md). What follows describes the releases after it.
 
 ## Install the control plane
 
@@ -28,13 +30,13 @@ Each release since `v0.1.0-alpha.2` carries a bundle, `shipkeep-control-plane_<v
    tar -xzf "shipkeep-control-plane_${VERSION}.tar.gz"
    ```
 
-2. Run the installer and answer its questions: the DNS name, then the SMTP host, the sender address, the SMTP user and its password.
+2. Run the installer and answer its questions: the DNS name, then the email address and the password of the first account. The address is the sign-in name, nothing is sent to it. The password has 15 characters or more and is not shown while you type it.
 
    ```sh
    sudo ./shipkeep-control-plane/install.sh
    ```
 
-3. Open `https://shipkeep.example.com`, create your account and confirm it with the code sent by email. Then [back up the key-encryption key](#back-up-the-key-encryption-key).
+3. Open `https://shipkeep.example.com` and sign in with that address and password. Then [back up the key-encryption key](#back-up-the-key-encryption-key).
 
 What the installer does, in order:
 
@@ -44,10 +46,13 @@ What the installer does, in order:
 | Docker   | On Ubuntu 24.04, installs Docker from Docker's own repository when it is absent, and gives apt the pinned signing key only. Volumes of an earlier installation that show again with Docker stop the run before anything is written.         |
 | Settings | Writes `compose.yml`, `Caddyfile` and `.env` in `/opt/shipkeep` (`--dir` changes it), with two generated database passwords. `.env` is readable by root only.                                                                               |
 | Start    | Downloads the images, starts the stack (see the steps under [Install by hand](#install-by-hand)) and waits until `https://<name>` answers with a valid certificate.                                                                         |
+| Account  | Creates the first account with the command line of the control plane. The password goes to it on standard input, never as an argument or a variable.                                                                                        |
 
 It never overwrites an installation: run again, it refuses. If the certificate has not arrived after two minutes, it says so and exits with an error while the control plane keeps running; see [Troubleshooting](#troubleshooting).
 
-Without a terminal, give the answers as options: `--domain`, `--smtp-host`, `--smtp-port` (465 by default), `--smtp-from` and `--smtp-user` (empty when the server asks for no login). The SMTP password is read from standard input, never from an option.
+Without a terminal, give the answers as options: `--domain` and `--email`. The password of the first account is read from standard input, its first line, never from an option.
+
+For an installation that sends email, add `--smtp-host`, and optionally `--smtp-port` (465 by default), `--smtp-from` and `--smtp-user` (empty when the server asks for no login). The installer then asks for what is missing; the SMTP password is read from standard input too, after the password of the first account.
 
 To check that the bundle was built by this repository's release workflow, download its `.sigstore.json` file from the same release and run:
 
@@ -98,7 +103,34 @@ The installer only automates these steps. They need Docker Engine and the Compos
 
    The three one-shot steps show `Exited (0)`. The first HTTPS request can take a few seconds while Caddy obtains the certificate.
 
-5. Open `https://shipkeep.example.com`, create your account and confirm it with the code sent by email.
+5. Create the first account, then open `https://shipkeep.example.com` and sign in. The command asks for the password without showing it:
+
+   ```sh
+   docker compose -f compose.yml run --rm --no-deps control-plane node main.js account create --email you@example.com
+   ```
+
+## Accounts without email
+
+An installation whose `.env` has no `SMTP_HOST` sends no email. Nobody can sign up or ask for a reset link there: the sign-up and "forgot password" requests are refused, and accounts are handled on the machine that runs the control plane. Whoever can run these commands already holds the database and the key-encryption key.
+
+Create an account for someone else. The command asks for a password of 15 characters or more, without showing it:
+
+```sh
+cd /opt/shipkeep
+sudo docker compose -f compose.yml run --rm --no-deps control-plane node main.js account create --email person@example.com
+```
+
+That person signs in with the address and the password, and can change the password afterwards. To give them access to an organization, add them under Members & access, as for any account.
+
+Give an account a new password when its owner lost it:
+
+```sh
+sudo docker compose -f compose.yml run --rm --no-deps control-plane node main.js account reset-password --email person@example.com
+```
+
+Its sessions and API tokens stop working at once. A second factor stays as it is: the recovery codes of the account are the way back.
+
+To turn email on later, set `SMTP_HOST` and `SMTP_FROM` in `.env`, and `SMTP_USER` and `SMTP_PASSWORD` if the server asks for a login, then run `sudo docker compose -f compose.yml up -d`. The same accounts keep working, and people can then sign up and reset their password by email.
 
 ## Add a server
 
