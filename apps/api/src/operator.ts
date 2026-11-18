@@ -128,9 +128,10 @@ function firstLine(input: Input, terminal: boolean): Promise<string> {
 }
 
 /**
- * The bytes without their last character. In UTF-8 a character is one leading byte and up to
- * three continuation bytes (10xxxxxx): removing a single byte would leave a broken character,
- * and so a password other than the one typed.
+ * The bytes without their last code point. In UTF-8 a code point is one leading byte and up to
+ * three continuation bytes (10xxxxxx): removing a single byte would leave a broken one, and so a
+ * password other than the one typed. A letter typed as a base letter and a combining accent is
+ * two code points: Backspace takes the accent, as the password rule counts them.
  */
 function withoutLastCharacter(bytes: Buffer): Buffer {
   let end = bytes.length;
@@ -138,29 +139,63 @@ function withoutLastCharacter(bytes: Buffer): Buffer {
   return bytes.subarray(0, Math.max(0, end - 1));
 }
 
-/** Writes a line and waits until it is handed over: the process exits right after. */
+/**
+ * Writes a line and waits until it is handed over: the process exits right after. A write that
+ * fails (a reader that closed its pipe) also emits `error` on the stream; unheard, that event ends
+ * the process at once, before the caller decides what to do. It is heard here.
+ */
 export function writeLine(output: Writable, line: string): Promise<void> {
   return new Promise((resolve, reject) => {
+    const failed = (error: Error): void => {
+      reject(error);
+    };
+    output.once('error', failed);
     output.write(`${line}\n`, (error) => {
-      if (error) reject(error);
-      else resolve();
+      if (error) {
+        // The event may come after this callback: the listener stays for it.
+        reject(error);
+        return;
+      }
+      output.off('error', failed);
+      resolve();
     });
   });
 }
 
-/** Runs one command and writes one line that says what was done. Never the password. */
+/**
+ * Says what was done. The change is committed by then: when the line cannot be written where it
+ * belongs, it goes to the other stream and the command still succeeded. Reporting a failure here
+ * would send the operator after a fault that did not happen, with a password already changed.
+ */
+async function confirm(output: Writable, fallback: Writable, line: string): Promise<void> {
+  try {
+    await writeLine(output, line);
+  } catch {
+    await writeLine(fallback, line).catch(() => undefined);
+  }
+}
+
+/**
+ * Runs one command and writes one line that says what was done, on `output`, or on `fallback`
+ * when `output` cannot take it. Never the password.
+ */
 export async function runOperatorCommand(
   app: INestApplicationContext,
   command: OperatorCommand,
   password: Secret,
   output: Writable,
+  fallback: Writable,
 ): Promise<void> {
   const accounts = app.get(OperatorAccountCommands);
   if (command.action === 'create') {
     const created = await accounts.create(command.email, password);
-    await writeLine(output, `Account created: ${created.email}`);
+    await confirm(output, fallback, `Account created: ${created.email}`);
     return;
   }
   const email = await accounts.resetPassword(command.email, password);
-  await writeLine(output, `Password reset: ${email}. Its sessions and API tokens no longer work.`);
+  await confirm(
+    output,
+    fallback,
+    `Password reset: ${email}. Its sessions and API tokens no longer work.`,
+  );
 }

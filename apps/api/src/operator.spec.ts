@@ -1,6 +1,16 @@
-import { PassThrough } from 'node:stream';
+import { PassThrough, Writable } from 'node:stream';
 
-import { OperatorUsageError, parseOperatorCommand, readPassword, USAGE } from './operator';
+import type { INestApplicationContext } from '@nestjs/common';
+import { ConflictError, Secret } from '@shipkeep/domain';
+
+import {
+  OperatorUsageError,
+  parseOperatorCommand,
+  readPassword,
+  runOperatorCommand,
+  USAGE,
+  writeLine,
+} from './operator';
 
 describe('operator command line', () => {
   it('reads the two account commands and their address', () => {
@@ -94,7 +104,7 @@ describe('operator command line', () => {
     expect(prompt).not.toContain('passphrase');
   });
 
-  it('removes a whole character on Backspace, whatever its size in bytes', async () => {
+  it('removes one code point on Backspace, whatever its size in bytes', async () => {
     const typed = async (keys: string[]) => {
       const input = terminal();
       const reading = readPassword(input, new PassThrough());
@@ -112,6 +122,8 @@ describe('operator command line', () => {
     );
     // What was typed and kept is never a broken character.
     expect(await typed(['passphrase é€😀 kept whole', '\r'])).toBe('passphrase é€😀 kept whole');
+    // A base letter and a combining accent are two code points: Backspace takes the accent.
+    expect(await typed(['a long passphrase e\u0301', '\u007f', '\r'])).toBe('a long passphrase e');
   });
 
   it('gives the terminal back when the entry is cancelled', async () => {
@@ -135,5 +147,126 @@ describe('operator command line', () => {
     output.end();
     const written: unknown = output.read();
     expect(Buffer.isBuffer(written) ? written.toString() : '').not.toContain('sk_test_fake');
+  });
+});
+
+describe('what the operator command says', () => {
+  const password = new Secret('sk_test_fake_operator_password');
+  /** A stream whose reader is gone: every write fails, as a closed pipe does. */
+  function closed(): { stream: Writable; heardBy: number[] } {
+    const stream = new Writable({
+      write(_chunk, _encoding, done) {
+        done(new Error('write EPIPE'));
+      },
+    });
+    // How many listeners heard each `error` event: none would be an uncaught exception.
+    const heardBy: number[] = [];
+    const emit = stream.emit.bind(stream);
+    stream.emit = (event: string | symbol, ...values: unknown[]): boolean => {
+      if (event !== 'error') return emit(event, ...values);
+      heardBy.push(stream.listenerCount('error'));
+      return stream.listenerCount('error') > 0 ? emit(event, ...values) : false;
+    };
+    return { stream, heardBy };
+  }
+  function lines(output: PassThrough): string {
+    const written: unknown = output.read();
+    return Buffer.isBuffer(written) ? written.toString() : '';
+  }
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
+  function application(accounts: {
+    create?: () => Promise<{ id: string; email: string }>;
+    resetPassword?: () => Promise<string>;
+  }): INestApplicationContext {
+    return { get: () => accounts } as unknown as INestApplicationContext;
+  }
+
+  it('hears the failure of a write, which would otherwise end the process', async () => {
+    const { stream, heardBy } = closed();
+    await expect(writeLine(stream, 'a line')).rejects.toThrow('write EPIPE');
+    await tick();
+    expect(heardBy).toEqual([1]);
+    // A write that works leaves no listener behind.
+    const open = new PassThrough();
+    await writeLine(open, 'a line');
+    expect(open.listenerCount('error')).toBe(0);
+    expect(lines(open)).toBe('a line\n');
+  });
+
+  it('writes one line that says what was done, never the password', async () => {
+    const output = new PassThrough();
+    const errors = new PassThrough();
+    await runOperatorCommand(
+      application({ create: () => Promise.resolve({ id: 'fixture', email: 'owner@example.com' }) }),
+      { action: 'create', email: 'Owner@example.com' },
+      password,
+      output,
+      errors,
+    );
+    await runOperatorCommand(
+      application({ resetPassword: () => Promise.resolve('owner@example.com') }),
+      { action: 'reset-password', email: 'owner@example.com' },
+      password,
+      output,
+      errors,
+    );
+    expect(lines(output)).toBe(
+      'Account created: owner@example.com\n' +
+        'Password reset: owner@example.com. Its sessions and API tokens no longer work.\n',
+    );
+    expect(lines(errors)).toBe('');
+  });
+
+  it('still says a committed change when its output is closed, and succeeds', async () => {
+    // The password is changed by the time the line is written: a failure here would be a lie.
+    const { stream, heardBy } = closed();
+    const errors = new PassThrough();
+    await expect(
+      runOperatorCommand(
+        application({ resetPassword: () => Promise.resolve('owner@example.com') }),
+        { action: 'reset-password', email: 'owner@example.com' },
+        password,
+        stream,
+        errors,
+      ),
+    ).resolves.toBeUndefined();
+    await tick();
+    expect(lines(errors)).toBe(
+      'Password reset: owner@example.com. Its sessions and API tokens no longer work.\n',
+    );
+    expect(heardBy).toEqual([1]);
+    // Both streams closed: nothing can be said, and the change is still not a failure.
+    const other = closed();
+    await expect(
+      runOperatorCommand(
+        application({ create: () => Promise.resolve({ id: 'fixture', email: 'o@example.com' }) }),
+        { action: 'create', email: 'o@example.com' },
+        password,
+        closed().stream,
+        other.stream,
+      ),
+    ).resolves.toBeUndefined();
+    await tick();
+    expect(other.heardBy).toEqual([1]);
+  });
+
+  it('writes nothing when the command is refused: the refusal is the result', async () => {
+    const output = new PassThrough();
+    const errors = new PassThrough();
+    await expect(
+      runOperatorCommand(
+        application({
+          create: () =>
+            Promise.reject(
+              new ConflictError('account_exists', 'An account with this address already exists.'),
+            ),
+        }),
+        { action: 'create', email: 'owner@example.com' },
+        password,
+        output,
+        errors,
+      ),
+    ).rejects.toThrow('An account with this address already exists.');
+    expect(lines(output) + lines(errors)).toBe('');
   });
 });
