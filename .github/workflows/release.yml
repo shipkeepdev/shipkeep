@@ -14,6 +14,9 @@ permissions:
 concurrency:
   group: release
   cancel-in-progress: false
+  # Every run that waits keeps its place: by default a new run would cancel the one pending, and a
+  # dry run started by hand could drop a tagged release before it publishes anything.
+  queue: max
 
 # Only a pushed version tag publishes. A manual run stays a dry run even when it is started on a tag.
 env:
