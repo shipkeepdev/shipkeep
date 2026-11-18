@@ -157,6 +157,7 @@ crlf=$(
 ) || die 'a password line ending with CRLF was refused'
 [[ $crlf == "$passphrase" ]] || die 'a password line ending with CRLF was not read as the control plane reads it'
 refused ask_owner_password < <(printf 'a passphrase with\r a CR inside\n') || die 'a password with a CR inside was accepted'
+grep -q 'without tabs or other control characters' "$work/output" || die 'a password with a control character was refused without saying why'
 refused ask_owner_password < <(printf '%s\r\r\n' "$passphrase") || die 'a password ending with two CRs was accepted'
 # A last line without its line end is read whole, and so are bytes above ASCII.
 owner_password=''
