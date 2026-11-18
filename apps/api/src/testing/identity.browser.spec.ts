@@ -121,10 +121,8 @@ describe('production identity in Chromium', () => {
       await fits();
       for (const path of [
         '/auth/register',
-        '/verify-email',
         '/auth/request-verification',
         '/auth/forgot-password',
-        '/reset-password',
       ]) {
         await page.goto(path);
         await page.getByRole('heading', { name: 'This installation sends no email' }).waitFor();
@@ -133,6 +131,14 @@ describe('production identity in Chromium', () => {
         await fits();
         await page.getByRole('link', { name: 'Continue to sign in' }).click();
         await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
+      }
+      // The screens that redeem a code sent before keep their form.
+      for (const path of ['/verify-email', '/reset-password']) {
+        await page.goto(path);
+        await page.getByRole('button', { name: /^(Verify|Save)$/ }).waitFor();
+        expect(await page.getByRole('link', { name: 'Resend code' }).count()).toBe(0);
+        await accessible(page);
+        await fits();
       }
       expect(errors).toBe(0);
       expect(violations).toBe(0);

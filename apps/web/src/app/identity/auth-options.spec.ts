@@ -91,6 +91,30 @@ describe('what the sign-in screens may offer', () => {
     expect(api.options).toHaveBeenCalledTimes(3);
   });
 
+  it('waits on the first screen only, even when that first answer never came', async () => {
+    vi.useFakeTimers();
+    const stalled = pending();
+    let first = 'pending';
+    void resolve(authOptions).then(() => {
+      first = 'shown';
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(first).toBe('shown');
+    // The next screen asks again and that question stalls too: the screen is not held.
+    const again = pending();
+    let second = 'pending';
+    void resolve(authOptions).then(() => {
+      second = 'shown';
+    });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(second).toBe('shown');
+    // The newest answer, whenever it comes, is taken; the older one is not.
+    again.answer(false);
+    stalled.answer(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(options.email()).toBe(false);
+  });
+
   it('ignores an answer that arrives after a newer question', async () => {
     const slow = pending();
     const first = options.refresh();

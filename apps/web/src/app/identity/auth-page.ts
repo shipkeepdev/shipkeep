@@ -1,11 +1,12 @@
 import { FocusMonitor } from '@angular/cdk/a11y';
-import { NgTemplateOutlet } from '@angular/common';
+import { DOCUMENT, NgTemplateOutlet } from '@angular/common';
 import {
   afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
   DestroyRef,
+  effect,
   type ElementRef,
   inject,
   Injector,
@@ -117,13 +118,15 @@ const COPY: Record<Screen, Copy> = {
   },
 };
 
-/** The screens that work only by a message: sign-up, its confirmation, and the password reset. */
+/**
+ * The screens that send a message: sign-up, a new confirmation code and a reset link. The screens
+ * that redeem a code stay: a code sent before email was turned off still works until it expires,
+ * and only the link of that message leads there.
+ */
 const MAIL_SCREENS: ReadonlySet<Screen> = new Set<Screen>([
   'register',
-  'verify-email',
   'request-verification',
   'forgot-password',
-  'reset-password',
 ]);
 /** Shown in place of those screens on an installation that sends no email (ADR 0020). */
 const NO_EMAIL: Copy = {
@@ -141,6 +144,13 @@ const NO_EMAIL_SIGN_IN: Copy = {
   foot: 'No account, or a lost password? Ask the administrator of this installation.',
   footLink: '',
   footRoute: null,
+};
+/** The confirmation of an address, without the offer to send another code. */
+const NO_EMAIL_VERIFY: Copy = {
+  ...COPY['verify-email'],
+  foot: '',
+  footLink: 'Back to sign in',
+  footRoute: '/auth/login',
 };
 
 const METER = ['', 'weak', 'fair', 'good', 'strong'];
@@ -168,9 +178,9 @@ export class AuthPage {
   );
   protected readonly copy = computed(() => {
     if (this.unavailable()) return NO_EMAIL;
-    return this.sendsEmail() || this.screen() !== 'password'
-      ? COPY[this.screen()]
-      : NO_EMAIL_SIGN_IN;
+    if (this.sendsEmail()) return COPY[this.screen()];
+    if (this.screen() === 'password') return NO_EMAIL_SIGN_IN;
+    return this.screen() === 'verify-email' ? NO_EMAIL_VERIFY : COPY[this.screen()];
   });
   protected readonly score = computed(() => passwordScore(this.store.password()));
   protected readonly meter = computed(() =>
@@ -193,6 +203,7 @@ export class AuthPage {
   private readonly focus = inject(FocusMonitor);
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly document = inject(DOCUMENT);
   private readonly feedback = viewChild<ElementRef<HTMLElement>>('feedback');
   private readonly heading = viewChild<ElementRef<HTMLElement>>('heading');
   private readonly codeInput = viewChild<ElementRef<HTMLInputElement>>('codeInput');
@@ -204,6 +215,20 @@ export class AuthPage {
         if (isAuthMode(data['mode'])) this.store.configure(data['mode']);
         this.focusHeading();
       });
+    // A late answer can replace the form someone was typing in with the explanation. Focus then
+    // goes to the heading that explains why; focus that was elsewhere stays where it was.
+    effect(() => {
+      if (!this.unavailable()) return;
+      afterNextRender(
+        () => {
+          const active = this.document.activeElement;
+          const element = this.heading()?.nativeElement;
+          if ((active === null || active === this.document.body) && element)
+            this.focus.focusVia(element, 'program');
+        },
+        { injector: this.injector },
+      );
+    });
   }
 
   protected footClick(event: Event): void {

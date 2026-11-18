@@ -109,6 +109,12 @@ describe('identity mutation runner', () => {
     expect(runner.problem()).toBe(
       'This installation sends no email: its administrator creates accounts and resets passwords.',
     );
+    // That refusal is certain: a try minutes later is a new request, never a local refusal.
+    call.mockResolvedValue(undefined);
+    vi.advanceTimersByTime(241000);
+    expect(await runner.run({}, call)).toEqual({ ok: true, value: undefined });
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(new Set(call.mock.calls.map(([key]) => key)).size).toBe(2);
   });
 
   it('bounds and enforces a retry delay, including a client restart', async () => {

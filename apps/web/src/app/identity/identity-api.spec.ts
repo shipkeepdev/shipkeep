@@ -137,7 +137,8 @@ describe('browser identity transport', () => {
       .register({ email: 'person@example.com', password: 'a passphrase long enough' }, 'key')
       .catch((error: unknown) => error);
     expect(refusal).toBeInstanceOf(IdentityRequestError);
-    expect(refusal).toMatchObject({ status: 409, problem: { code: 'email_not_configured' } });
+    expect(refusal).toMatchObject({ status: 409 });
+    expect((refusal as IdentityRequestError).problem).toEqual({ code: 'email_not_configured' });
     expect((refusal as Error).message).not.toContain('written by the server');
   });
   it('handles empty successful responses without parsing a credential into state', async () => {
