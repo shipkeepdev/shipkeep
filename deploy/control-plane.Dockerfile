@@ -51,11 +51,13 @@ ENV NODE_ENV=production \
 WORKDIR /app
 # apps/api/dist holds main.js, a pruned package.json and lockfile, and the workspace packages.
 COPY --from=build /src/apps/api/dist/ ./
-# Native modules (argon2) are installed here, for the platform the image runs on.
+# Native modules (argon2) are installed here, for the platform the image runs on. npm comes with
+# the base image and nothing here runs it: removed, it ships none of its own dependencies' flaws.
 RUN corepack enable \
   && corepack prepare "pnpm@${PNPM_VERSION}" --activate \
   && pnpm install --prod --frozen-lockfile \
-  && rm -rf /root/.local/share/pnpm /root/.cache
+  && rm -rf /root/.local/share/pnpm /root/.cache \
+    /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
 COPY --from=build /src/dist/apps/web/browser ./web/browser
 COPY apps/api/prisma ./prisma
 COPY apps/api/prisma.config.ts ./

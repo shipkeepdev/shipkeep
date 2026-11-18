@@ -19,7 +19,7 @@ x-app-url: &app-url postgresql://shipkeep_app:${POSTGRES_APP_PASSWORD:?set POSTG
 
 services:
   postgres:
-    image: postgres:17@sha256:3b0cda93be7c8dba2ed484d19393d93845dc3dafb88973e248ba8e6d99d784e1
+    image: postgres:17@sha256:0d938e975177bef9f1f61f3f9dbcf2e0aa0a139568f66d3415ed8892eb97f6ac
     environment:
       POSTGRES_USER: shipkeep_admin
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD in .env}
@@ -113,7 +113,7 @@ services:
     restart: unless-stopped
 
   caddy:
-    image: caddy:2.11.9-alpine@sha256:0bbb055bda6793c999bde78b1b5ce3e89f829fb031af2cf50056ea1246559fee
+    image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     network_mode: service:net
     environment:
       SHIPKEEP_DOMAIN: ${SHIPKEEP_DOMAIN:?set SHIPKEEP_DOMAIN in .env}
