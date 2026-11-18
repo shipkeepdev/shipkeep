@@ -184,10 +184,17 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
       .expect(202);
     const config = fixture.app.get(AppConfig);
     const get = config.get.bind(config);
+    // The sign-in screens ask what they may offer; anybody may read it.
+    expect((await http().get('/api/v1/auth/options').expect(200)).body).toEqual({
+      email: true,
+    });
     const spy = vi
       .spyOn(config, 'get')
       .mockImplementation((key) => (key === 'SMTP_HOST' ? undefined : get(key)));
     try {
+      expect((await http().get('/api/v1/auth/options').expect(200)).body).toEqual({
+        email: false,
+      });
       // An installation without email (ADR 0020): a refusal that says so, the same for sign-up,
       // confirmation and reset, whatever the address.
       for (const [route, body] of [

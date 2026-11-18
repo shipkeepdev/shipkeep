@@ -100,6 +100,23 @@ describe('identity mutation runner', () => {
     expect(runner.restartRequired()).toBe(true);
   });
 
+  it('asks for no restart when the installation sends no email: no retry can change that', async () => {
+    const call = vi.fn<(key: string) => Promise<void>>();
+    call.mockRejectedValue(new IdentityRequestError(409, 0, { code: 'email_not_configured' }));
+    await runner.run({}, call);
+    expect(runner.status()).toBe(409);
+    expect(runner.restartRequired()).toBe(false);
+    expect(runner.problem()).toBe(
+      'This installation sends no email: its administrator creates accounts and resets passwords.',
+    );
+    // That refusal is certain: a try minutes later is a new request, never a local refusal.
+    call.mockResolvedValue(undefined);
+    vi.advanceTimersByTime(241000);
+    expect(await runner.run({}, call)).toEqual({ ok: true, value: undefined });
+    expect(call).toHaveBeenCalledTimes(2);
+    expect(new Set(call.mock.calls.map(([key]) => key)).size).toBe(2);
+  });
+
   it('bounds and enforces a retry delay, including a client restart', async () => {
     const call = vi.fn<(key: string) => Promise<void>>();
     call.mockRejectedValueOnce(new IdentityRequestError(429, 2));

@@ -95,7 +95,11 @@ export const FR: Readonly<Record<string, string>> = {
     "Tel que l'image le nomme, avec son port s'il en a un. Docker Hub s'écrit docker.io.",
   'Deployments of this organization pull private images with the credentials stored for the registry of the image. A password is encrypted and never shown again: it can only be replaced.':
     "Les déploiements de cette organisation récupèrent les images privées avec les identifiants enregistrés pour le registre de l'image. Un mot de passe est chiffré et n'est plus jamais affiché : il peut seulement être remplacé.",
+  'Its administrator creates accounts and resets passwords, on the server that runs Shipkeep.':
+    'Son administrateur crée les comptes et réinitialise les mots de passe, sur le serveur qui exécute Shipkeep.',
   'Keep them': 'Les garder',
+  'No account, or a lost password? Ask the administrator of this installation.':
+    "Pas de compte, ou mot de passe perdu ? Demandez à l'administrateur de cette installation.",
   'No registry yet. Public images need none.':
     "Aucun registre pour l'instant. Les images publiques n'en ont pas besoin.",
   'On a fresh Ubuntu 24.04 server with curl and sudo, run this command, then paste the token when prompted. Docker and Caddy are installed; ports 80 and 443 must be free.':
@@ -1246,6 +1250,16 @@ export const FR: Readonly<Record<string, string>> = {
     "Le résultat précédent est incertain. Recommencez avant d'envoyer une nouvelle demande.",
   'The repository differs from the control plane. On the next deployment, the repository wins.':
     "Le dépôt diffère du plan de contrôle. Au prochain déploiement, le dépôt l'emporte.",
+  'The server could not pull the image: it could not reach the registry.':
+    "Le serveur n'a pas pu récupérer l'image : il n'a pas pu joindre le registre.",
+  "The server could not pull the image: it does not trust the registry's certificate.":
+    "Le serveur n'a pas pu récupérer l'image : il ne reconnaît pas le certificat du registre.",
+  'The server could not pull the image: its disk is full.':
+    "Le serveur n'a pas pu récupérer l'image : son disque est plein.",
+  'The server could not pull the image: the registry does not have it.':
+    "Le serveur n'a pas pu récupérer l'image : le registre ne l'a pas.",
+  'The server could not pull the image: the registry refused it. The image is private, the stored credentials are wrong, or it does not exist.':
+    "Le serveur n'a pas pu récupérer l'image : le registre l'a refusée. L'image est privée, les identifiants enregistrés sont faux, ou elle n'existe pas.",
   'The service is temporarily unavailable. Try again shortly.':
     'Le service est momentanément indisponible. Réessayez bientôt.',
   'The token has been revoked.': 'Le jeton a été révoqué.',
@@ -1269,6 +1283,9 @@ export const FR: Readonly<Record<string, string>> = {
   'This environment could not be loaded.': "Cet environnement n'a pas pu être chargé.",
   'This expiry is too close. Cancel and start a new token request.':
     'Cette expiration est trop proche. Annulez et recommencez la demande de jeton.',
+  'This installation sends no email': "Cette installation n'envoie pas d'e-mail",
+  'This installation sends no email: its administrator creates accounts and resets passwords.':
+    "Cette installation n'envoie pas d'e-mail : son administrateur crée les comptes et réinitialise les mots de passe.",
   'This is not a registry host. Write a host and an optional port, like ghcr.io or registry.example.com:5000.':
     "Ce n'est pas un hôte de registre. Écrivez un hôte et un port facultatif, comme ghcr.io ou registry.example.com:5000.",
   'This item is no longer available.': "Cet élément n'est plus disponible.",
@@ -1465,6 +1482,7 @@ export const FR: Readonly<Record<string, string>> = {
   developer: 'développeur',
   disabled: 'désactivé',
   'disk > 80%': 'disque > 80 %',
+  'disk full': 'disque plein',
   'docker cleanup · 4.2 GiB freed': 'docker cleanup · 4,2 Gio libérés',
   down: 'hors service',
   draining: 'drainage',
@@ -1503,6 +1521,7 @@ export const FR: Readonly<Record<string, string>> = {
   healthy: 'sain',
   high: 'élevée',
   'if enabled': 'si activée',
+  'image not found': 'image introuvable',
   'image pushed · registry.internal/api-facturation:4f2c1a9':
     'image poussée · registry.internal/api-facturation:4f2c1a9',
   'in 1 image': 'dans 1 image',
@@ -1597,6 +1616,9 @@ export const FR: Readonly<Record<string, string>> = {
   ready: 'prêt',
   refused: 'refusé',
   'refused · lease superseded': 'refusé · bail remplacé',
+  'registry certificate not trusted': 'certificat du registre non reconnu',
+  'registry refused the pull': 'le registre a refusé le pull',
+  'registry unreachable': 'registre injoignable',
   releasing: 'release',
   removed: 'retiré',
   'renews in': 'renouvelé dans',

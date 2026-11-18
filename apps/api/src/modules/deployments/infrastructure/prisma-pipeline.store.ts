@@ -5,6 +5,7 @@ import type { ShipkeepConfig } from '@shipkeep/config-schema';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
+import { actionReason } from '../../fleet/domain/agent-action';
 import type { PipelineApplication, PipelineStore, StoredAllocation } from '../application/ports';
 import type { StepOutcome, StepState } from '../domain/pipeline';
 import {
@@ -180,6 +181,9 @@ export class PrismaPipelineStore implements PipelineStore {
  * An action row as the planner sees it. Results are proto JSON, which omits default values: a
  * release task without `exitCode` exited 0, and a health check without `healthy` was unhealthy.
  */
+/** The final states that are not a success: the ones a reason explains. */
+const UNSUCCESSFUL: ReadonlySet<string> = new Set(['failed', 'compensated']);
+
 export function outcome(row: {
   state: string;
   result: unknown;
@@ -200,7 +204,8 @@ export function outcome(row: {
   const task = nested('releaseTask');
   return {
     state,
-    error: row.error,
+    // A code, never the text: an action that did not end well has a reason, the others none.
+    reason: UNSUCCESSFUL.has(state) ? actionReason(row.error) : null,
     ...(typeof result['containerId'] === 'string' ? { containerId: result['containerId'] } : {}),
     ...(health ? { healthy: health['healthy'] === true } : {}),
     ...(task ? { exitCode: typeof task['exitCode'] === 'number' ? task['exitCode'] : 0 } : {}),

@@ -5,6 +5,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { appRoutes } from '../app.routes';
 
 import { AuthFormStore } from './auth-form-store';
+import { AuthOptions } from './auth-options';
 import { IdentityApi, IdentityRequestError } from './identity-api';
 import { SessionStore } from './session-store';
 
@@ -15,6 +16,7 @@ describe('account route presentation', () => {
     verifyEmail: vi.fn<IdentityApi['verifyEmail']>(),
     mfaStatus: vi.fn<IdentityApi['mfaStatus']>(),
     listTokens: vi.fn<IdentityApi['listTokens']>(),
+    options: vi.fn<IdentityApi['options']>(),
   };
   let harness: RouterTestingHarness;
   const profile = {
@@ -25,6 +27,7 @@ describe('account route presentation', () => {
   beforeEach(async () => {
     vi.resetAllMocks();
     api.listTokens.mockResolvedValue({ items: [], nextCursor: null });
+    api.options.mockResolvedValue({ email: true });
     api.mfaStatus.mockResolvedValue({
       enabled: false,
       pendingExpiresAt: null,
@@ -142,5 +145,142 @@ describe('account route presentation', () => {
       ?.click();
     await harness.fixture.whenStable();
     expect(TestBed.inject(Router).url).toBe('/auth/login');
+  });
+  describe('on an installation that sends no email (ADR 0020)', () => {
+    const links = () =>
+      [...element().querySelectorAll('a')].map((link) => link.getAttribute('href') ?? '');
+    const text = () => element().textContent.replace(/\s+/g, ' ');
+
+    it('signs in as usual, and says who creates accounts and resets passwords', async () => {
+      api.options.mockResolvedValue({ email: false });
+      await harness.navigateByUrl('/auth/login');
+      await harness.fixture.whenStable();
+      expect(element().querySelector('form')).not.toBeNull();
+      expect(element().querySelector('#email')).not.toBeNull();
+      expect(element().querySelector('#password')).not.toBeNull();
+      // Neither of these could ever work here: they are not offered.
+      expect(links()).not.toContain('/auth/register');
+      expect(links()).not.toContain('/auth/forgot-password');
+      expect(text()).toContain(
+        'No account, or a lost password? Ask the administrator of this installation.',
+      );
+    });
+
+    it('explains, instead of a form that cannot work, on every screen that sends a message', async () => {
+      api.options.mockResolvedValue({ email: false });
+      for (const path of ['register', 'forgot-password', 'request-verification']) {
+        await harness.navigateByUrl(`/auth/${path}`);
+        await harness.fixture.whenStable();
+        expect(element().querySelector('form'), path).toBeNull();
+        expect(element().querySelector('h1')?.textContent, path).toContain(
+          'This installation sends no email',
+        );
+        expect(text(), path).toContain(
+          'Its administrator creates accounts and resets passwords, on the server that runs Shipkeep.',
+        );
+        expect(links(), path).toContain('/auth/login');
+        expect(links(), path).not.toContain('/auth/register');
+      }
+    });
+
+    it('keeps the screens that redeem a code: a code sent before still works', async () => {
+      api.options.mockResolvedValue({ email: false });
+      for (const path of ['verify-email', 'reset-password']) {
+        await harness.navigateByUrl(`/auth/${path}`);
+        await harness.fixture.whenStable();
+        expect(element().querySelector('form'), path).not.toBeNull();
+        expect(element().querySelector('#code'), path).not.toBeNull();
+        expect(text(), path).not.toContain('This installation sends no email');
+        // No way to ask for another message, and none to the reset either.
+        expect(links(), path).not.toContain('/auth/request-verification');
+        expect(links(), path).not.toContain('/auth/forgot-password');
+        expect(links(), path).toContain('/auth/login');
+      }
+    });
+
+    async function offersEverything(): Promise<void> {
+      await harness.navigateByUrl('/auth/login');
+      await harness.fixture.whenStable();
+      expect(api.options).toHaveBeenCalled();
+      expect(links()).toContain('/auth/register');
+      expect(links()).toContain('/auth/forgot-password');
+      await harness.navigateByUrl('/auth/register');
+      await harness.fixture.whenStable();
+      expect(element().querySelector('form')).not.toBeNull();
+      expect(text()).not.toContain('This installation sends no email');
+    }
+
+    it('offers everything when the installation sends email', async () => {
+      api.options.mockResolvedValue({ email: true });
+      await offersEverything();
+    });
+
+    it('offers everything when the first question gets no answer', async () => {
+      // A fresh application: no earlier answer can stand in for this one.
+      api.options.mockRejectedValue(new IdentityRequestError(0));
+      await offersEverything();
+    });
+
+    it('moves focus to the explanation when a late answer removes the form in use', async () => {
+      api.options.mockResolvedValue({ email: true });
+      await harness.navigateByUrl('/auth/register');
+      await harness.fixture.whenStable();
+      const field = element().querySelector<HTMLInputElement>('#email');
+      if (!field) throw new Error('missing field');
+      field.focus();
+      expect(document.activeElement).toBe(field);
+      api.options.mockResolvedValue({ email: false });
+      await TestBed.inject(AuthOptions).refresh();
+      await vi.waitFor(async () => {
+        await harness.fixture.whenStable();
+        expect(element().querySelector('form')).toBeNull();
+      });
+      expect(document.activeElement).toBe(element().querySelector('h1'));
+    });
+
+    it('moves focus to the heading when a late answer removes the link in use on sign-in', async () => {
+      api.options.mockResolvedValue({ email: true });
+      await harness.navigateByUrl('/auth/login');
+      await harness.fixture.whenStable();
+      const link = element().querySelector<HTMLAnchorElement>('a[href="/auth/forgot-password"]');
+      if (!link) throw new Error('missing reset link');
+      link.focus();
+      expect(document.activeElement).toBe(link);
+      api.options.mockResolvedValue({ email: false });
+      await TestBed.inject(AuthOptions).refresh();
+      await vi.waitFor(async () => {
+        await harness.fixture.whenStable();
+        expect(element().querySelector('a[href="/auth/forgot-password"]')).toBeNull();
+      });
+      expect(document.activeElement).toBe(element().querySelector('h1'));
+    });
+
+    it('leaves focus alone when it was not in the form that went away', async () => {
+      api.options.mockResolvedValue({ email: true });
+      await harness.navigateByUrl('/auth/register');
+      await harness.fixture.whenStable();
+      const language = [...element().querySelectorAll('button')].find(
+        (button) => button.textContent.trim() === 'FR',
+      );
+      if (!language) throw new Error('missing language button');
+      language.focus();
+      api.options.mockResolvedValue({ email: false });
+      await TestBed.inject(AuthOptions).refresh();
+      await vi.waitFor(async () => {
+        await harness.fixture.whenStable();
+        expect(element().querySelector('form')).toBeNull();
+      });
+      expect(document.activeElement).toBe(language);
+    });
+
+    it('says the same when the server refuses a request for that reason', () => {
+      // Seen when the screens could not ask first: the refusal is not a conflict to "start again".
+      expect(new IdentityRequestError(409, 0, { code: 'email_not_configured' }).message).toBe(
+        'This installation sends no email: its administrator creates accounts and resets passwords.',
+      );
+      expect(new IdentityRequestError(409, 0, { code: 'slug_taken' }).message).toContain(
+        'conflicts with the current account state',
+      );
+    });
   });
 });

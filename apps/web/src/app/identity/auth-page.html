@@ -49,16 +49,20 @@
           <h1
             #heading
             tabindex="-1"
-            class="text-[22px] leading-[1.15] font-normal tracking-[-0.02em] uppercase"
+            class="text-[22px] leading-[1.15] font-normal tracking-[-0.02em] text-balance uppercase"
           >
             {{ copy().title | t }}
           </h1>
-          <p class="max-w-[320px] text-[13.5px] leading-[1.55] text-[#B8B8BC]">
+          <p class="max-w-[320px] text-[13.5px] leading-[1.55] text-balance text-[#B8B8BC]">
             {{ copy().sub | t }}
           </p>
         </div>
 
-        @if (store.success(); as success) {
+        @if (unavailable()) {
+          <a class="auth-cta" routerLink="/auth/login"
+            >{{ copy().cta | t }}<sk-icon name="arrow-narrow-right" class="text-[20px]"
+          /></a>
+        } @else if (store.success(); as success) {
           <div #feedback class="alert alert-ok" role="status" tabindex="-1">
             <sk-icon name="mail-check" class="text-[22px] text-silver" />
             <span>{{ success | t }}</span>
@@ -181,7 +185,8 @@
                           ? 'current-password'
                           : 'new-password',
                       link:
-                        store.mode() === 'login' || store.mode() === 'verify-email'
+                        sendsEmail() &&
+                        (store.mode() === 'login' || store.mode() === 'verify-email')
                           ? 'Forgot?'
                           : '',
                       withMeter: store.mode() === 'register' || store.mode() === 'reset-password',
@@ -289,16 +294,22 @@
           }
         }
 
-        <div class="flex flex-wrap justify-center gap-1.5 text-[13px] text-mute">
-          {{ copy().foot | t }}
-          @if (copy().footRoute; as route) {
-            <a class="text-white hover:underline" [routerLink]="route">{{ copy().footLink | t }}</a>
-          } @else {
-            <a class="text-white hover:underline" href="#" (click)="footClick($event)">{{
-              copy().footLink | t
-            }}</a>
-          }
-        </div>
+        @if (copy().foot || copy().footLink) {
+          <div
+            class="flex flex-wrap justify-center gap-1.5 text-center text-[13px] text-balance text-mute"
+          >
+            {{ copy().foot | t }}
+            @if (copy().footRoute; as route) {
+              <a class="text-white hover:underline" [routerLink]="route">{{
+                copy().footLink | t
+              }}</a>
+            } @else if (copy().footLink) {
+              <a class="text-white hover:underline" href="#" (click)="footClick($event)">{{
+                copy().footLink | t
+              }}</a>
+            }
+          </div>
+        }
         @if (screen() === 'totp' || screen() === 'recovery') {
           <a
             routerLink="/auth/login"

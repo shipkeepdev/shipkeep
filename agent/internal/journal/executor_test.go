@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -248,5 +249,70 @@ func TestCompensationGivesUpAfterBoundedAttempts(t *testing.T) {
 	pending, err := store.Unfinished(t.Context())
 	if err != nil || len(pending) != 0 {
 		t.Fatal("terminally failed operation still resumes on every boot")
+	}
+}
+
+type causedError struct{ cause string }
+
+func (e causedError) Error() string { return "step failed for a reason the journal must not keep" }
+func (e causedError) Cause() string { return e.cause }
+
+// A step that fails can name its cause with a short code. The journal keeps the code, not the
+// error text, through compensation, a replay and a restart.
+func TestFailedStepKeepsItsCauseThroughCompensationAndReplay(t *testing.T) {
+	dir := t.TempDir()
+	store, err := Open(t.Context(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := Plan{Version: "v1", Steps: []Step{
+		{Name: "prepare", RetrySafe: true, Apply: func(context.Context) (Outcome, error) { return Outcome{}, nil }, Compensate: func(context.Context) error { return nil }},
+		{Name: "pull", RetrySafe: true, Apply: func(context.Context) (Outcome, error) {
+			return Outcome{}, fmt.Errorf("pull image: %w", causedError{cause: "registry_denied"})
+		}, Compensate: func(context.Context) error { return nil }},
+	}}
+	var seen []Operation
+	result, err := store.Execute(t.Context(), request(), plan, func(_ context.Context, op Operation) error { seen = append(seen, op); return nil })
+	if !errors.Is(err, ErrOperationFailed) || result.State != Compensated || result.Cause != "registry_denied" {
+		t.Fatalf("got %+v, %v", result, err)
+	}
+	for _, op := range seen {
+		if (op.State == Compensating || op.State == Compensated) && op.Cause != "registry_denied" {
+			t.Fatalf("cause lost at %s: %+v", op.State, op)
+		}
+		if op.State == Running && op.Cause != "" {
+			t.Fatalf("cause before any failure: %+v", op)
+		}
+	}
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+	// After a restart the same request replays the stored outcome, cause included.
+	store, err = Open(t.Context(), dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() //nolint:errcheck // test cleanup
+	replayed, err := store.Execute(t.Context(), request(), plan, nil)
+	if !errors.Is(err, ErrOperationFailed) || replayed.Cause != "registry_denied" {
+		t.Fatalf("replay lost the cause: %+v, %v", replayed, err)
+	}
+}
+
+// A cause is a code, never a text: what does not look like one is dropped.
+func TestCauseThatIsNotACodeIsDropped(t *testing.T) {
+	for _, cause := range []string{"", "Registry Denied", "registry-denied", "x' OR 1=1 --", "password=sk_test_fake", strings.Repeat("a", 33), "step_failed", "9lives", "été"} {
+		store, err := Open(t.Context(), t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		plan := Plan{Version: "v1", Steps: []Step{{Name: "only", RetrySafe: true,
+			Apply:      func(context.Context) (Outcome, error) { return Outcome{}, causedError{cause: cause} },
+			Compensate: func(context.Context) error { return nil }}}}
+		result, err := store.Execute(t.Context(), request(), plan, nil)
+		if !errors.Is(err, ErrOperationFailed) || result.State != Compensated || result.Cause != "" {
+			t.Fatalf("%q kept as %q (%v)", cause, result.Cause, err)
+		}
+		_ = store.Close()
 	}
 }

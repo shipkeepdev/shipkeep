@@ -277,6 +277,20 @@ The agent only adopts or changes resources that carry its `sk.managed=true` labe
   - a lease epoch other than the node's;
   - a missing or past deadline;
   - a handler validation error.
+- A step that fails says why with a fixed text from a closed list, or `action failed` (issue #265). Nothing else about the failure leaves the server.
+  - The Docker client reads the daemon's message about a failed pull, names a cause and drops the message, which can hold hosts, paths, tokens or credentials.
+  - The journal keeps the cause as a short code (`last_error`), through compensation, a replay and a restart. A cause that is not a code is dropped.
+  - The dispatcher sends the text of a cause it lists:
+
+    | Cause                                                                                  | Text sent                                        | Reason on the control plane |
+    | -------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------- |
+    | The registry refused the pull: private image, wrong credentials, or no such repository | `registry refused the pull`                      | `registry_denied`           |
+    | The registry has no image with this name and digest                                    | `image not found in the registry`                | `image_not_found`           |
+    | No answer from the registry (name, route, timeout)                                     | `registry unreachable from the server`           | `registry_unreachable`      |
+    | The server does not trust the registry's certificate                                   | `registry certificate not trusted by the server` | `registry_untrusted`        |
+    | No room left on the server for the image                                               | `no space left on the server`                    | `disk_full`                 |
+
+  - The control plane maps each fixed text to a reason code and never repeats a text it does not know. A deployment's failure message is built from the reason: a failed pull says what happened and what to check, other steps keep `Step <name> <state>: <fixed text>`. An agent that predates the list keeps sending `action failed`.
 - The payload hash covers only the action message, so a redelivery with new ids or a new deadline still matches.
 - Actions run on the agent's lifetime under their deadline, not the stream's. A dropped connection never interrupts them; their updates are dropped, and the control plane receives the journaled outcome when it redelivers with the same key. `CancelAction` cancels the action's context, and the journal compensates per the plan.
 
@@ -642,6 +656,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - Identity email requires SMTP with implicit TLS (normally port 465), certificate-chain and hostname verification, and TLS 1.2 or newer. Configure `SMTP_HOST` and `SMTP_FROM`, optionally paired `SMTP_USER`/`SMTP_PASSWORD` and a public `SMTP_CA_FILE` for a private issuer. STARTTLS/plaintext SMTP is not supported in v0.1. Delivery has a ten-second inactivity timeout and a twenty-second total deadline. Emails contain a clean page link and a code to paste; the bearer credential is never embedded in a navigation URL. `API_PUBLIC_URL` is an origin without credentials/query/fragment and must use HTTPS in production.
 - Email is optional (ADR 0020). Without `SMTP_HOST` the installation sends nothing, and:
   - `POST /auth/register`, `/auth/verification/request` and `/auth/reset/request` answer `409 email_not_configured`, the same for every address: the refusal comes after the Origin check and the parsing of the body, and before the attempt limit, the replay of a stored answer and the validation of its fields. A body that is not well-formed JSON is a `400` as everywhere else;
+  - `GET /auth/options` is public and answers `{ "email": false }` (`true` with SMTP). It says nothing about any account. The sign-in screens read it: without email they offer neither sign-up nor a reset link, and say that the administrator of the installation creates accounts and resets passwords;
   - only the control plane that serves requests delivers queued mail; the command line below never takes a mail job;
   - accounts are created on the server that runs the control plane, by its command line: `node main.js account create --email <address>` creates an account that is active at once, and `node main.js account reset-password --email <address>` gives one a new password. The password is typed without echo on a terminal or is the first line of a pipe, never an argument or a variable. The list of commands is closed, and nothing listens while one runs: no HTTP port, no agent gateway, no worker. A command writes one line that says what was done, on standard output, or on standard error when standard output cannot take it (a reader that closed its pipe): the change is committed by then, so the command still succeeds. For the same reason, an application that does not close cleanly changes neither a success nor the reason of a refusal: after a success it is a warning on standard error, and when standard error is a pipe whose reader stopped reading, the command stops waiting for it after two seconds; after a refusal nothing is added to the reason;
   - a reset advances the security version (sessions, API tokens and pending links stop working), activates an account that never confirmed its address, refuses a disabled account, and leaves a second factor as it is. On a terminal, Backspace removes one Unicode code point, whatever its size in bytes (a letter typed as a base letter and a combining accent loses the accent only);

@@ -116,6 +116,31 @@ describe('browser identity transport', () => {
     send.mockRejectedValue(new Error('transport contains private fixture'));
     await expect(api.session()).rejects.toThrow('Connection lost.');
   });
+  it('asks what the sign-in screens may offer, and keeps the code of a refusal', async () => {
+    send.mockResolvedValueOnce(new Response(JSON.stringify({ email: false })));
+    expect(await api.options()).toEqual({ email: false });
+    const asked = send.mock.calls.at(0)?.at(0);
+    expect(asked?.method).toBe('GET');
+    expect(asked?.url).toBe(`${origin}/api/v1/auth/options`);
+    // Only the bounded code of the problem is kept, never the text the server wrote.
+    send.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          code: 'email_not_configured',
+          detail: 'text written by the server',
+          status: 409,
+        }),
+        { status: 409, headers: { 'content-type': 'application/problem+json' } },
+      ),
+    );
+    const refusal = await api
+      .register({ email: 'person@example.com', password: 'a passphrase long enough' }, 'key')
+      .catch((error: unknown) => error);
+    expect(refusal).toBeInstanceOf(IdentityRequestError);
+    expect(refusal).toMatchObject({ status: 409 });
+    expect((refusal as IdentityRequestError).problem).toEqual({ code: 'email_not_configured' });
+    expect((refusal as Error).message).not.toContain('written by the server');
+  });
   it('handles empty successful responses without parsing a credential into state', async () => {
     send.mockResolvedValue(new Response(null, { status: 204 }));
     await expect(

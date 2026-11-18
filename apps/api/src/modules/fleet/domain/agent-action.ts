@@ -111,6 +111,11 @@ export const ACTION_REASONS = [
   'idempotency_conflict',
   'deadline_exceeded',
   'action_failed',
+  'registry_denied',
+  'image_not_found',
+  'registry_unreachable',
+  'registry_untrusted',
+  'disk_full',
   'unknown',
 ] as const;
 export type ActionReason = (typeof ACTION_REASONS)[number];
@@ -123,7 +128,37 @@ const AGENT_ERRORS: Readonly<Record<string, ActionReason>> = {
   'idempotency key reused for a different action': 'idempotency_conflict',
   'action deadline exceeded': 'deadline_exceeded',
   'action failed': 'action_failed',
+  // Why a step failed, when the agent can name it (agent/internal/actions `failureTexts`).
+  'registry refused the pull': 'registry_denied',
+  'image not found in the registry': 'image_not_found',
+  'registry unreachable from the server': 'registry_unreachable',
+  'registry certificate not trusted by the server': 'registry_untrusted',
+  'no space left on the server': 'disk_full',
 };
+/** The causes of a failed step: the only reasons an undone (compensated) action is given. */
+const STEP_CAUSES: ReadonlySet<ActionReason> = new Set([
+  'registry_denied',
+  'image_not_found',
+  'registry_unreachable',
+  'registry_untrusted',
+  'disk_full',
+]);
+
+/**
+ * The reason behind the error text of an unsuccessful action. A text the control plane does not
+ * know is `unknown`: nothing an agent sent is ever repeated. Own-property lookup only, so a text
+ * such as `constructor` is unknown too.
+ */
+export function actionReason(error: string | null): ActionReason {
+  if (error === null) return 'action_failed';
+  return Object.hasOwn(AGENT_ERRORS, error) ? (AGENT_ERRORS[error] ?? 'unknown') : 'unknown';
+}
+
+/** The fixed text of a reason, as agents send it; null for a reason without one. */
+export function reasonText(reason: ActionReason): string | null {
+  for (const [text, known] of Object.entries(AGENT_ERRORS)) if (known === reason) return text;
+  return null;
+}
 /** The agent refused these before journaling anything: nothing ran on the node. */
 const REFUSALS: ReadonlySet<ActionReason> = new Set([
   'malformed_request',
@@ -165,18 +200,20 @@ export function summarizeAction(action: {
     case 'succeeded':
       return { outcome: 'succeeded', reason: null, result: summarizeResult(action.result) };
     case 'failed': {
-      // Own-property lookup only: an error text such as `constructor` maps to `unknown`.
-      const reason =
-        action.error === null
-          ? 'action_failed'
-          : Object.hasOwn(AGENT_ERRORS, action.error)
-            ? (AGENT_ERRORS[action.error] ?? 'unknown')
-            : 'unknown';
+      const reason = actionReason(action.error);
       return { outcome: REFUSALS.has(reason) ? 'refused' : 'failed', reason, result: null };
+    }
+    case 'compensated': {
+      // A step failed and was undone: the reason is its cause, when the agent named one.
+      const reason = actionReason(action.error);
+      return {
+        outcome: 'compensated',
+        reason: STEP_CAUSES.has(reason) ? reason : null,
+        result: null,
+      };
     }
     case 'expired':
     case 'cancelled':
-    case 'compensated':
       return { outcome: action.state, reason: null, result: null };
     default:
       return { outcome: 'in_progress', reason: null, result: null };

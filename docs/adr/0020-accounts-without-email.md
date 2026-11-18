@@ -41,6 +41,6 @@ Two things had to be decided: how the first account, and the next ones, come to 
 ## Consequences
 
 - Without SMTP there is no self-service: the operator creates each account and resets each password on the server. An organization then adds those accounts as members, as it does today.
-- The web screens still offer sign-up and "forgot password"; they must say that the administrator does it when the installation sends no email. That is a change of its own.
+- The sign-in screens ask the control plane whether it sends email (`GET /auth/options`, public, no account data). Without email they offer neither sign-up nor "forgot password", and say that the administrator of the installation creates accounts and resets passwords. A screen that gets no answer offers everything, and the refusal of the server says the same.
 - SMTP can be added later: the same accounts keep working, and the email flows come back.
 - An installation that loses both its password and its server access has no recovery, which is also true of its database.

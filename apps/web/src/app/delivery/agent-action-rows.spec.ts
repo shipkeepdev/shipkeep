@@ -2,6 +2,7 @@ import { AMBER, BLUE, GREEN, GREY, RED } from '../dashboard/format';
 
 import { actionName, agentActionRow, timestamp } from './agent-action-rows';
 import type { AgentAction } from './delivery-api';
+import { FR } from '../ui/fr';
 
 const base: AgentAction = {
   id: '0190f5a8-7b1c-7e2d-8f3a-000000000101',
@@ -81,6 +82,37 @@ describe('agent action rows', () => {
       'idempotency_conflict',
     ] as const)
       expect(failed(reason).reason).toMatch(/^[a-z ]+$/);
+  });
+
+  it('says why a pull was undone, in French too, and why a deployment failed', () => {
+    const undone = (reason: AgentAction['reason']) =>
+      agentActionRow({
+        ...base,
+        kind: 'pullImage',
+        state: 'compensated',
+        outcome: 'compensated',
+        reason,
+      });
+    const labels = {
+      registry_denied: 'registry refused the pull',
+      image_not_found: 'image not found',
+      registry_unreachable: 'registry unreachable',
+      registry_untrusted: 'registry certificate not trusted',
+      disk_full: 'disk full',
+    } as const;
+    for (const [reason, label] of Object.entries(labels)) {
+      expect(undone(reason as keyof typeof labels).reason).toBe(label);
+      expect(FR[label], label).toBeTruthy();
+    }
+    // The sentences the API writes on a failed deployment (deployments/domain/pipeline.ts).
+    for (const sentence of [
+      'The server could not pull the image: the registry refused it. The image is private, the stored credentials are wrong, or it does not exist.',
+      'The server could not pull the image: the registry does not have it.',
+      'The server could not pull the image: it could not reach the registry.',
+      "The server could not pull the image: it does not trust the registry's certificate.",
+      'The server could not pull the image: its disk is full.',
+    ])
+      expect(FR[sentence], sentence).toMatch(/^Le serveur n'a pas pu récupérer l'image : /);
   });
 
   it('reports a probe or a release task that ran but did not pass', () => {

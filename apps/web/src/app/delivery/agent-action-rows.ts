@@ -25,6 +25,11 @@ const REASONS: Readonly<Record<NonNullable<AgentAction['reason']>, string | null
   idempotency_conflict: 'conflicting retry',
   deadline_exceeded: 'deadline exceeded',
   action_failed: null,
+  registry_denied: 'registry refused the pull',
+  image_not_found: 'image not found',
+  registry_unreachable: 'registry unreachable',
+  registry_untrusted: 'registry certificate not trusted',
+  disk_full: 'disk full',
   unknown: 'unknown error',
 };
 
