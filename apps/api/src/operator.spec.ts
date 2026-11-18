@@ -63,6 +63,70 @@ describe('operator command line', () => {
     }
   });
 
+  /** A terminal as Node presents it: raw mode on request, bytes as they are typed. */
+  function terminal() {
+    const input = Object.assign(new PassThrough(), {
+      isTTY: true,
+      raw: [] as boolean[],
+      setRawMode(mode: boolean) {
+        input.raw.push(mode);
+        return input;
+      },
+    });
+    return input;
+  }
+  const shown = (output: PassThrough): string => {
+    output.end();
+    const written: unknown = output.read();
+    return Buffer.isBuffer(written) ? written.toString() : '';
+  };
+
+  it('reads a typed password without echo, and gives the terminal back', async () => {
+    const input = terminal();
+    const output = new PassThrough();
+    const reading = readPassword(input, output);
+    // Typed key by key, ended with Enter (a carriage return in raw mode).
+    for (const key of ['a passphrase ', 'typed at ', 'a terminal', '\r']) input.write(key);
+    expect((await reading).expose()).toBe('a passphrase typed at a terminal');
+    expect(input.raw).toEqual([true, false]);
+    const prompt = shown(output);
+    expect(prompt).toContain('input hidden');
+    expect(prompt).not.toContain('passphrase');
+  });
+
+  it('removes a whole character on Backspace, whatever its size in bytes', async () => {
+    const typed = async (keys: string[]) => {
+      const input = terminal();
+      const reading = readPassword(input, new PassThrough());
+      for (const key of keys) input.write(key);
+      return (await reading).expose();
+    };
+    // One byte, two bytes (é), three (€) and four (an emoji): Backspace takes the character.
+    expect(await typed(['a long passphrase!', '\u007f', '?', '\r'])).toBe('a long passphrase?');
+    expect(await typed(['a long passphrase', 'é', '\u007f', '\r'])).toBe('a long passphrase');
+    expect(await typed(['a long passphrase', '€', '\b', 'x', '\r'])).toBe('a long passphrasex');
+    expect(await typed(['a long passphrase', '😀', '\u007f', '\r'])).toBe('a long passphrase');
+    // Nothing left to remove is not an error, and what follows is kept.
+    expect(await typed(['ab', '\u007f\u007f\u007f', 'a long passphrase', '\r'])).toBe(
+      'a long passphrase',
+    );
+    // What was typed and kept is never a broken character.
+    expect(await typed(['passphrase é€😀 kept whole', '\r'])).toBe('passphrase é€😀 kept whole');
+  });
+
+  it('gives the terminal back when the entry is cancelled', async () => {
+    for (const key of ['\u0003', '\u0004']) {
+      const input = terminal();
+      const output = new PassThrough();
+      const reading = readPassword(input, output);
+      input.write('half a passphrase');
+      input.write(key);
+      await expect(reading).rejects.toThrow(OperatorUsageError);
+      expect(input.raw).toEqual([true, false]);
+      expect(shown(output)).not.toContain('half a passphrase');
+    }
+  });
+
   it('never writes the password back', async () => {
     const input = new PassThrough();
     const output = new PassThrough();
