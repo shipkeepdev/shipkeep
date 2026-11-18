@@ -11,37 +11,37 @@
     {
       "package": "@fontsource-variable/outfit",
       "license": "OFL-1.1",
-      "status": "pending"
+      "status": "approved"
     },
     {
       "package": "@fontsource-variable/geist",
       "license": "OFL-1.1",
-      "status": "pending"
+      "status": "approved"
     },
     {
       "package": "@fontsource-variable/geist-mono",
       "license": "OFL-1.1",
-      "status": "pending"
+      "status": "approved"
     },
     {
       "package": "tslib",
       "license": "0BSD",
-      "status": "pending"
+      "status": "approved"
     },
     {
       "package": "postgres",
       "license": "Unlicense",
-      "status": "pending"
+      "status": "approved"
     },
     {
       "package": "robust-predicates",
       "license": "Unlicense",
-      "status": "pending"
+      "status": "approved"
     },
     {
       "package": "elkjs",
       "license": "EPL-2.0",
-      "status": "pending"
+      "status": "approved"
     }
   ],
   "undetected": [
