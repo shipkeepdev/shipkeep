@@ -179,10 +179,25 @@ async function confirm(output: Writable, fallback: Writable, line: string): Prom
 export const UNCLEAN_CLOSE =
   'Warning: the command is done, but the control plane did not close its connections cleanly.';
 
+/** How long that warning may hold the result back when its stream does not drain. */
+export const WARNING_PATIENCE_MS = 2000;
+
+/** Writes a line nobody waits for: it is given a short time to leave, and never fails. */
+async function warn(output: Writable, line: string): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const patience = new Promise<void>((done) => {
+    timer = setTimeout(done, WARNING_PATIENCE_MS);
+  });
+  await Promise.race([writeLine(output, line).catch(() => undefined), patience]).finally(() => {
+    clearTimeout(timer);
+  });
+}
+
 /**
  * Runs one command, then closes the application. The result is the command's own: a close that
- * fails turns neither a committed change into a failure nor a refusal into another error. It is
- * said as a warning, without its cause, which may hold connection details.
+ * fails turns neither a committed change into a failure nor a refusal into another error. After
+ * a success it is said as a warning, without its cause, which may hold connection details.
+ * After a refusal nothing is added: the reason of the refusal is what the operator needs.
  */
 export async function runThenClose(
   app: INestApplicationContext,
@@ -193,9 +208,11 @@ export async function runThenClose(
 ): Promise<void> {
   try {
     await runOperatorCommand(app, command, password, output, fallback);
-  } finally {
-    await app.close().catch(() => writeLine(fallback, UNCLEAN_CLOSE).catch(() => undefined));
+  } catch (error: unknown) {
+    await app.close().catch(() => undefined);
+    throw error;
   }
+  await app.close().catch(() => warn(fallback, UNCLEAN_CLOSE));
 }
 
 /**
