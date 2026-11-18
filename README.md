@@ -211,3 +211,8 @@ To send real emails instead, change the `SMTP_*` lines in `.env`. To connect an 
 - [Route and role matrix](docs/generated/route-role-matrix.md) (generated)
 - [Rules for AI coding assistants](CLAUDE.md)
 - [Maintaining the repository](docs/MAINTAINING.md)
+
+
+## Supporters
+
+Security tooling supported by [Snyk](https://snyk.io/open-source/).
