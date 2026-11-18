@@ -8,7 +8,7 @@ const port = z.coerce.number().int().min(1).max(65535);
 const httpUrl = z.url({ protocol: /^https?$/ });
 
 /**
- * Optional SMTP credentials: empty counts as unset. A compose file cannot omit a variable, it can
+ * Optional SMTP settings: empty counts as unset. A compose file cannot omit a variable, it can
  * only leave it empty (deploy/control-plane/compose.yml).
  */
 const emptyAsUnset = (value: unknown): unknown => (value === '' ? undefined : value);
@@ -56,14 +56,18 @@ export const configSchema = z
     VICTORIALOGS_URL: httpUrl.default('http://localhost:9428'),
     VICTORIAMETRICS_URL: httpUrl.default('http://localhost:8428'),
     REGISTRY_URL: httpUrl.default('http://localhost:5000'),
-    SMTP_HOST: z
-      .string()
-      .min(1)
-      .max(253)
-      .regex(/^[A-Za-z0-9.:-]+$/)
-      .optional(),
+    // Email is optional (ADR 0020). Without a host, accounts are created on the server.
+    SMTP_HOST: z.preprocess(
+      emptyAsUnset,
+      z
+        .string()
+        .min(1)
+        .max(253)
+        .regex(/^[A-Za-z0-9.:-]+$/)
+        .optional(),
+    ),
     SMTP_PORT: port.default(465),
-    SMTP_FROM: z.email().max(254).optional(),
+    SMTP_FROM: z.preprocess(emptyAsUnset, z.email().max(254).optional()),
     SMTP_USER: z.preprocess(emptyAsUnset, z.string().min(1).max(254).optional()),
     SMTP_PASSWORD: z.preprocess(
       emptyAsUnset,

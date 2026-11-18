@@ -7,7 +7,6 @@ import {
   Post,
   Req,
   Res,
-  ServiceUnavailableException,
   UseInterceptors,
 } from '@nestjs/common';
 import {
@@ -83,7 +82,6 @@ export class IdentityController {
     description: 'Accepted. Existing accounts receive the same response.',
   })
   async register(@Body() body: CredentialsDto): Promise<void> {
-    this.requireMail();
     await this.accounts.register(body.email, new Secret(body.password));
   }
 
@@ -98,7 +96,6 @@ export class IdentityController {
   @IdentityAttemptLimit('email')
   @ApiResponse({ status: 202, description: 'Accepted regardless of account existence or status.' })
   async requestVerification(@Body() body: EmailDto): Promise<void> {
-    this.requireMail();
     await this.accounts.requestEmail(body.email, 'verify');
   }
 
@@ -127,7 +124,6 @@ export class IdentityController {
   @IdentityAttemptLimit('email')
   @ApiResponse({ status: 202, description: 'Accepted regardless of account existence or status.' })
   async requestPasswordReset(@Body() body: EmailDto): Promise<void> {
-    this.requireMail();
     await this.accounts.requestEmail(body.email, 'reset');
   }
 
@@ -221,10 +217,5 @@ export class IdentityController {
     );
     await this.sessions.logout(user.id, token);
     clearSessionCookies(response, cookiePolicy(this.config.get('API_PUBLIC_URL')));
-  }
-
-  private requireMail(): void {
-    if (!this.config.get('SMTP_HOST'))
-      throw new ServiceUnavailableException('Email delivery temporarily unavailable.');
   }
 }

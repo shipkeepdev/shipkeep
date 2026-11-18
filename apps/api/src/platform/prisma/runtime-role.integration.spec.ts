@@ -27,6 +27,7 @@ describe('runtime-role provisioning against PostgreSQL', () => {
   let verify: Secret | undefined;
   const org = uuidv7();
   const mailer: IdentityMailer = {
+    enabled: true,
     send: (message) => {
       verify = message.token;
       return Promise.resolve();

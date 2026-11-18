@@ -22,13 +22,27 @@ describe('parseConfig', () => {
     expect(cfg.DATABASE_URL.expose()).toBe(minimal.DATABASE_URL);
   });
 
-  it('treats empty SMTP credentials as unset, and nothing else', () => {
-    const cfg = parseConfig({ ...minimal, SMTP_USER: '', SMTP_PASSWORD: '' });
+  it('treats empty SMTP settings as unset, and nothing else', () => {
+    // A compose file cannot omit a variable: an installation without email leaves them empty
+    // (ADR 0020).
+    const cfg = parseConfig({
+      ...minimal,
+      SMTP_HOST: '',
+      SMTP_FROM: '',
+      SMTP_USER: '',
+      SMTP_PASSWORD: '',
+    });
+    expect(cfg.SMTP_HOST).toBeUndefined();
+    expect(cfg.SMTP_FROM).toBeUndefined();
     expect(cfg.SMTP_USER).toBeUndefined();
     expect(cfg.SMTP_PASSWORD).toBeUndefined();
     // Other values left empty are still refused.
     expect(() => parseConfig({ ...minimal, DATABASE_URL: '' })).toThrow(/DATABASE_URL/);
-    expect(() => parseConfig({ ...minimal, SMTP_HOST: '' })).toThrow(/SMTP_HOST/);
+    // A host that is set must still be one, and still needs its sender address.
+    expect(() => parseConfig({ ...minimal, SMTP_HOST: 'smtp example' })).toThrow(/SMTP_HOST/);
+    expect(() => parseConfig({ ...minimal, SMTP_HOST: 'smtp.example.com', SMTP_FROM: '' })).toThrow(
+      /SMTP_FROM/,
+    );
     // One half of the SMTP credentials is still refused.
     expect(() =>
       parseConfig({

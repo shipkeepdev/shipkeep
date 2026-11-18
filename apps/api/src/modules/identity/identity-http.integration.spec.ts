@@ -183,7 +183,19 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
       .spyOn(config, 'get')
       .mockImplementation((key) => (key === 'SMTP_HOST' ? undefined : get(key)));
     try {
-      await post('register', { email: 'unconfigured@example.com', password }).expect(503);
+      // An installation without email (ADR 0020): a refusal that says so, the same for sign-up,
+      // confirmation and reset, whatever the address.
+      for (const [route, body] of [
+        ['register', { email: 'unconfigured@example.com', password }],
+        ['verification/request', { email: 'unconfigured@example.com' }],
+        ['reset/request', { email: 'unconfigured@example.com' }],
+        ['reset/request', { email: 'rollback@example.com' }],
+      ] as const)
+        await post(route, body)
+          .expect(409)
+          .expect((response) => {
+            expect(response.body).toMatchObject({ code: 'email_not_configured' });
+          });
       expect(await prisma.user.count({ where: { email: 'unconfigured@example.com' } })).toBe(0);
     } finally {
       spy.mockRestore();
