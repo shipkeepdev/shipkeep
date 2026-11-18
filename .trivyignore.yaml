@@ -1,0 +1,16 @@
+# Vulnerabilities that the image scans of the security workflow accept for a while, because no
+# image published upstream fixes them yet. Each entry says where it is, why it is accepted, and
+# expires: the scan fails again on that date, and the entry is then reviewed, never extended
+# without a reason. Read only by the scans of third-party images pinned in
+# deploy/control-plane/compose.yml; the image of Shipkeep itself accepts nothing.
+vulnerabilities:
+  - id: CVE-2026-85091
+    statement: >-
+      zlib1g in postgres:17 (Debian 13). Fixed in Debian (1:1.3.dfsg+really1.3.1-1+deb13u1), not
+      yet in the official postgres image. PostgreSQL listens only on the private Compose network.
+    expired_at: 2026-12-18
+  - id: CVE-2026-78661
+    statement: >-
+      golang.org/x/net in the Caddy binary (caddy 2.11.9). Fixed in x/net 0.62.0, not yet in a
+      Caddy release.
+    expired_at: 2026-12-18

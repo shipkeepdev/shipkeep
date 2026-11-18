@@ -90,6 +90,20 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           sbom: true
           provenance: mode=max
+      # The image that was pushed, for both platforms, before it is signed and named in a bundle: a
+      # fixable HIGH or CRITICAL vulnerability, or a secret, stops the release here. The pinned Trivy
+      # image is the version that trivy-action v0.36.0 installs in the security workflow.
+      - name: Scan the pushed image
+        if: env.PUBLISH == 'true'
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/shipkeep@${{ steps.build.outputs.digest }}
+        run: |
+          for platform in linux/amd64 linux/arm64; do
+            docker run --rm -v "$HOME/.docker/config.json:/root/.docker/config.json:ro" \
+              aquasec/trivy:0.70.0@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e \
+              image --platform "$platform" --scanners vuln,secret --severity HIGH,CRITICAL \
+              --ignore-unfixed --exit-code 1 --no-progress "$IMAGE"
+          done
       - if: env.PUBLISH == 'true'
         run: cosign sign --yes "ghcr.io/${{ github.repository_owner }}/shipkeep@${{ steps.build.outputs.digest }}"
       # The installer, the files it installs and the image reference by tag and digest. It is built
