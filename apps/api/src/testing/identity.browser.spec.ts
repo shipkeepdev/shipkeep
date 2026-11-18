@@ -86,6 +86,61 @@ describe('production identity in Chromium', () => {
     }
   });
 
+  it('offers only what works on an installation without email, under CSP and on every width', async () => {
+    const page = await fixture.context.newPage();
+    let errors = 0;
+    let violations = 0;
+    page.on('pageerror', () => errors++);
+    await page.exposeFunction('recordCspViolation', () => violations++);
+    await page.addInitScript(() => {
+      document.addEventListener('securitypolicyviolation', () => {
+        const callback = Reflect.get(window, 'recordCspViolation') as () => Promise<void>;
+        void callback();
+      });
+    });
+    // This control plane sends email. The screens get the answer of one that does not; the
+    // route itself is checked without SMTP in identity-http.integration.spec.ts.
+    await page.route('**/api/v1/auth/options', (route) =>
+      route.fulfill({ json: { email: false } }),
+    );
+    const fits = async () => {
+      for (const width of [320, 390, 768, 1024, 1440]) {
+        await page.setViewportSize({ width, height: 1000 });
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+          true,
+        );
+      }
+    };
+    try {
+      await page.goto('/auth/login');
+      await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
+      await page.getByText('Ask the administrator of this installation.').waitFor();
+      expect(await page.getByRole('link', { name: 'Create an account' }).count()).toBe(0);
+      expect(await page.getByRole('link', { name: 'Forgot?' }).count()).toBe(0);
+      await accessible(page);
+      await fits();
+      for (const path of [
+        '/auth/register',
+        '/verify-email',
+        '/auth/request-verification',
+        '/auth/forgot-password',
+        '/reset-password',
+      ]) {
+        await page.goto(path);
+        await page.getByRole('heading', { name: 'This installation sends no email' }).waitFor();
+        expect(await page.locator('form').count()).toBe(0);
+        await accessible(page);
+        await fits();
+        await page.getByRole('link', { name: 'Continue to sign in' }).click();
+        await page.getByRole('button', { name: 'Sign in', exact: true }).waitFor();
+      }
+      expect(errors).toBe(0);
+      expect(violations).toBe(0);
+    } finally {
+      await page.close();
+    }
+  });
+
   it('registers, verifies delivered mail, signs in with secure cookies and signs out', async () => {
     const page = await fixture.context.newPage();
     const password = 'browser fixture passphrase 2026';
