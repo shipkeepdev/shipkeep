@@ -25,7 +25,7 @@
 Shipkeep is a self-hosted platform to deploy applications, databases and services on servers you own: git push to deploy, automatic HTTPS, managed databases with backups, preview environments, logs, metrics and alerts, without Kubernetes.
 
 > [!NOTE]
-> **Shipkeep is in development.** A prerelease, [`v0.1.0-alpha.2`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.2), can be installed to try it, on servers you can afford to lose: it has run end to end on one test machine, not yet on a real server. [What works today](#what-works-today) says where it stands, and the [installation procedure](docs/INSTALL.md) says what was tested. It is built in the open under [Apache-2.0](LICENSE), and [contributions are welcome](CONTRIBUTING.md).
+> **Shipkeep is in development.** A prerelease, [`v0.1.0-alpha.3`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.3), can be installed to try it, on servers you can afford to lose: it has run end to end on one test machine, not yet on a real server. [What works today](#what-works-today) says where it stands, and the [installation procedure](docs/INSTALL.md) says what was tested. It is built in the open under [Apache-2.0](LICENSE), and [contributions are welcome](CONTRIBUTING.md).
 
 ## Why Shipkeep
 
@@ -85,7 +85,7 @@ shipkeep status --org <id> --project <id> --env <id>
 | CLI: `login`, `init`, `deploy`, `rollback`, `status`, `secrets`, `server remove`                           | Built, tested against the real API                                                                                                                                        |
 | Agent, deployment pipeline, rollback, routing through Caddy                                                | Run end to end in containers on one machine: deployments, a rollback and a restart of the server's container succeed. **Not yet run on a real server**                    |
 | Installation: control plane with Docker Compose, servers with one command                                  | Run end to end with the published prerelease on one machine, see the [installation procedure](docs/INSTALL.md). **Not yet on a real server or with a public certificate** |
-| Control plane installer (questions for the DNS name and the SMTP account, then one run)                    | Run from the published prerelease on a test machine. **Not yet with a public certificate**                                                                                |
+| Control plane installer (questions for the DNS name and the first account, email optional, then one run)   | Run from the published prerelease on a test machine. **Not yet with a public certificate**                                                                                |
 | Compose applications                                                                                       | Validator built, not connected yet                                                                                                                                        |
 | Git providers, builds, WireGuard network, failover, managed databases, backups, logs and metrics, previews | Planned, see the [roadmap](docs/PLAN.md)                                                                                                                                  |
 
