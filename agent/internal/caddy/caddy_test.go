@@ -13,6 +13,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 // fakeAdmin keeps the server config and routes by id, enough to exercise the client's calls.
@@ -23,9 +24,16 @@ type fakeAdmin struct {
 	routes   map[string]json.RawMessage
 	skip     []string
 	requests []string
+	// gate, when set, holds the read of the route list until it is closed; listed is closed when
+	// that read arrives.
+	gate, listed chan struct{}
 }
 
 func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method == http.MethodGet && r.URL.Path == "/config/apps/http/servers/"+Server+"/routes" && f.gate != nil {
+		close(f.listed)
+		<-f.gate
+	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.requests = append(f.requests, r.Method+" "+r.URL.Path)
@@ -242,5 +250,45 @@ func TestSecureRoutesCreatesNothingWithoutTheServer(t *testing.T) {
 	}
 	if !strings.Contains(string(fake.routes[RouteID("old")]), `"protocol":"https"`) {
 		t.Fatalf("SecureRoutes did not secure an old route: %s", fake.routes[RouteID("old")])
+	}
+}
+
+func TestSecuringOldRoutesWaitsForNoUpsert(t *testing.T) {
+	// The securing reads a route and patches its match: an upsert of the same route in between
+	// would be overwritten with the old hosts.
+	client, fake := admin(t)
+	ctx := context.Background()
+	fake.mu.Lock()
+	fake.apps, fake.server = true, true
+	fake.routes[RouteID("old")] = json.RawMessage(`{"@id":"sk-route-old","match":[{"host":["old.example.com"]}],"handle":[],"terminal":true}`)
+	fake.gate, fake.listed = make(chan struct{}), make(chan struct{})
+	fake.mu.Unlock()
+	secured := make(chan error, 1)
+	go func() { secured <- client.SecureRoutes(ctx) }()
+	<-fake.listed
+	upserted := make(chan error, 1)
+	go func() {
+		upserted <- client.UpsertRoute(ctx, Route{ID: RouteID("old"), Match: []Match{{Host: []string{"new.example.com"}, Protocol: HTTPS}}, Handle: []Handler{}, Terminal: true})
+	}()
+	select {
+	case err := <-upserted:
+		t.Fatalf("the upsert ran while the securing held the route: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	close(fake.gate)
+	if err := <-secured; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-upserted; err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	var stored Route
+	if err := json.Unmarshal(fake.routes[RouteID("old")], &stored); err != nil {
+		t.Fatal(err)
+	}
+	if len(stored.Match) != 1 || !slices.Equal(stored.Match[0].Host, []string{"new.example.com"}) || stored.Match[0].Protocol != HTTPS {
+		t.Fatalf("the upsert was lost: %s", fake.routes[RouteID("old")])
 	}
 }

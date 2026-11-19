@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,10 @@ var ErrNotFound = errors.New("caddy object not found")
 // Client talks to the local Caddy admin socket.
 type Client struct {
 	http *http.Client
+	// routes serializes the read-then-write sequences on routes and on the hosts without TLS: an
+	// upsert, a removal, a change of those hosts and the securing of old routes each read a value
+	// and write it back, and actions run concurrently.
+	routes sync.Mutex
 }
 
 // New returns a client for the admin socket at path.
@@ -147,6 +152,8 @@ func (c *Client) SecureRoutes(ctx context.Context) error {
 // hosts are all skipped by automatic HTTPS has TLS off and keeps answering on port 80. Only the
 // match of a route with the Shipkeep id prefix changes; other routes are never touched.
 func (c *Client) secureRoutes(ctx context.Context) error {
+	c.routes.Lock()
+	defer c.routes.Unlock()
 	var routes []Route
 	if _, err := c.get(ctx, "/config/apps/http/servers/"+Server+"/routes", &routes); err != nil {
 		return fmt.Errorf("read caddy routes: %w", err)
@@ -179,6 +186,8 @@ func (c *Client) secureRoutes(ctx context.Context) error {
 // UpsertRoute replaces the route with route.ID, or appends it. Caddy applies each change
 // atomically and gracefully: in-flight requests finish on the old configuration.
 func (c *Client) UpsertRoute(ctx context.Context, route Route) error {
+	c.routes.Lock()
+	defer c.routes.Unlock()
 	var stored json.RawMessage
 	present, err := c.get(ctx, "/id/"+route.ID, &stored)
 	if err != nil {
@@ -199,6 +208,8 @@ func (c *Client) Route(ctx context.Context, id string) (Route, bool, error) {
 
 // RemoveRoute deletes a route; a missing route is already removed.
 func (c *Client) RemoveRoute(ctx context.Context, id string) error {
+	c.routes.Lock()
+	defer c.routes.Unlock()
 	err := c.do(ctx, http.MethodDelete, "/id/"+id, nil, nil)
 	if errors.Is(err, ErrNotFound) {
 		return nil
@@ -208,6 +219,8 @@ func (c *Client) RemoveRoute(ctx context.Context, id string) error {
 
 // SetPlainHosts adds or removes hosts from automatic HTTPS (TLS mode off).
 func (c *Client) SetPlainHosts(ctx context.Context, add, remove []string) error {
+	c.routes.Lock()
+	defer c.routes.Unlock()
 	path := "/config/apps/http/servers/" + Server + "/automatic_https"
 	var current automaticHTTPS
 	present, err := c.get(ctx, path, &current)
