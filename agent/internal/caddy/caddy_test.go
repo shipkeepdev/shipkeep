@@ -224,3 +224,23 @@ func TestEnsureServerSecuresRoutesOlderAgentsWrote(t *testing.T) {
 		}
 	}
 }
+
+func TestSecureRoutesCreatesNothingWithoutTheServer(t *testing.T) {
+	client, fake := admin(t)
+	if err := client.SecureRoutes(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range fake.requests {
+		if !strings.HasPrefix(request, "GET") {
+			t.Fatalf("SecureRoutes wrote to Caddy without a Shipkeep server: %v", fake.requests)
+		}
+	}
+	fake.apps, fake.server = true, true
+	fake.routes[RouteID("old")] = json.RawMessage(`{"@id":"sk-route-old","match":[{"host":["a.example.com"]}],"handle":[],"terminal":true}`)
+	if err := client.SecureRoutes(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(fake.routes[RouteID("old")]), `"protocol":"https"`) {
+		t.Fatalf("SecureRoutes did not secure an old route: %s", fake.routes[RouteID("old")])
+	}
+}

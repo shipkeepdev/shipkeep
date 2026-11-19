@@ -132,6 +132,16 @@ func (c *Client) EnsureServer(ctx context.Context) error {
 	return errors.New("caddy has no configuration root; its admin endpoint is not configured by the installer")
 }
 
+// SecureRoutes secures the routes older agents wrote, as EnsureServer does, but creates nothing:
+// without the Shipkeep server there is no route to secure.
+func (c *Client) SecureRoutes(ctx context.Context) error {
+	present, err := c.exists(ctx, "/config/apps/http/servers/"+Server)
+	if err != nil || !present {
+		return err
+	}
+	return c.secureRoutes(ctx)
+}
+
 // secureRoutes adds the HTTPS protocol matcher to the Shipkeep routes that lack it: agents up to
 // 0.1.0-alpha.3 wrote routes that answered on plain HTTP instead of redirecting. A route whose
 // hosts are all skipped by automatic HTTPS has TLS off and keeps answering on port 80. Only the
