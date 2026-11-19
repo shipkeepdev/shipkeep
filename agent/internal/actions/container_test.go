@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"context"
 	"slices"
 	"strings"
 	"testing"
@@ -230,12 +231,73 @@ func TestReadOnlyRootGetsItsTmpfs(t *testing.T) {
 	spec.ReadOnlyRootfs = true
 	spec.Mounts = []*agentv1.Mount{{ContainerPath: "/tmp", Source: &agentv1.Mount_Tmpfs_{Tmpfs: &agentv1.Mount_Tmpfs{SizeBytes: 64 << 20, Mode: 0o1777}}}}
 	engine := newFakeEngine()
+	engine.images[spec.GetImageRef()] = docker.Image{}
 	if update := create(t, engine, spec); update.GetState() != agentv1.OperationState_OPERATION_STATE_SUCCEEDED {
 		t.Fatalf("refused: %v", update)
 	}
 	for _, config := range engine.created {
 		if !config.HostConfig.ReadonlyRootfs || len(config.HostConfig.Mounts) != 1 || config.HostConfig.Mounts[0].Type != "tmpfs" || config.HostConfig.Mounts[0].Target != "/tmp" {
 			t.Fatalf("not a read-only root with /tmp: %+v", config.HostConfig)
+		}
+	}
+}
+
+func TestReadOnlyRootRefusesUndeclaredImageVolumes(t *testing.T) {
+	image := func(paths ...string) docker.Image {
+		var declared docker.Image
+		declared.Config.Volumes = map[string]struct{}{}
+		for _, path := range paths {
+			declared.Config.Volumes[path] = struct{}{}
+		}
+		return declared
+	}
+	for _, test := range []struct {
+		name     string
+		readOnly bool
+		image    docker.Image
+		created  bool
+	}{
+		// The spec mounts /app/uploads (a volume) and /tmp (a tmpfs).
+		{"declared volumes all mounted", true, image("/app/uploads", "/tmp/"), true},
+		{"no declared volume", true, image(), true},
+		{"a volume the spec does not mount", true, image("/var/lib/data"), false},
+		{"one of two not mounted", true, image("/app/uploads", "/data"), false},
+		// Only the exact target counts: neither a path that climbs out of a mount nor one under
+		// it, which Docker would still give its own anonymous volume.
+		{"a path that climbs out of a mount", true, image("/app/uploads/../escape"), false},
+		{"a path under a mount", true, image("/app/uploads/child"), false},
+		{"a mount's name as a prefix", true, image("/app/uploads-extra"), false},
+		{"a relative path", true, image("app/uploads"), false},
+		// Without a read-only root the image volumes are what Docker always did.
+		{"writable root", false, image("/var/lib/data"), true},
+	} {
+		// A release task creates its container under the same rule (SPEC 3.4).
+		run := map[string]func(*fakeEngine, *agentv1.ContainerSpec) *agentv1.ActionUpdate{
+			"container": func(engine *fakeEngine, spec *agentv1.ContainerSpec) *agentv1.ActionUpdate {
+				return create(t, engine, spec)
+			},
+			"release task": func(engine *fakeEngine, spec *agentv1.ContainerSpec) *agentv1.ActionUpdate {
+				d := &Dispatcher{Journal: open(t), Handlers: dockerHandlers(engine, nil, &fakeProber{}, nil), Epoch: func() uint64 { return 3 }}
+				out := &recorder{}
+				d.Handle(context.Background(), &agentv1.ActionRequest{ActionId: testID, IdempotencyKey: "release", LeaseEpoch: 3, DeadlineUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+					Action: &agentv1.ActionRequest_RunReleaseTask{RunReleaseTask: &agentv1.RunReleaseTask{Spec: spec}}}, out.send)
+				return out.last(t)
+			},
+		}
+		for kind, apply := range run {
+			t.Run(test.name+"/"+kind, func(t *testing.T) {
+				spec := validSpec()
+				spec.ReadOnlyRootfs = test.readOnly
+				engine := newFakeEngine()
+				engine.images[spec.GetImageRef()] = test.image
+				update := apply(engine, spec)
+				if test.created != (update.GetState() == agentv1.OperationState_OPERATION_STATE_SUCCEEDED) || test.created != (len(engine.created) == 1) {
+					t.Fatalf("created=%v: %v", test.created, update)
+				}
+				if !test.created && update.GetError() != "the image declares a volume the configuration does not mount" {
+					t.Fatalf("error %q", update.GetError())
+				}
+			})
 		}
 	}
 }
