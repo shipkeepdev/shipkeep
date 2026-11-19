@@ -25,6 +25,7 @@ import { parseNodeSpiffeId } from '../domain/node';
 import { NodeAuthenticationError, type NodeIdentity } from '../domain/node-identity';
 import { CsrError } from '../infrastructure/ca/x509';
 import { X509CertificateAuthority } from '../infrastructure/ca/x509-certificate-authority';
+import { EnrollmentAdmission, enrollmentBusy } from './enrollment-admission';
 import { gatewaySecureContext } from './gateway-tls';
 
 const peer = createContextKey<TLSSocket | undefined>(undefined);
@@ -45,6 +46,7 @@ export class AgentGateway implements OnModuleDestroy {
     private readonly enroll: EnrollNode,
     private readonly renew: RenewNodeCertificate,
     private readonly streams: NodeStream,
+    private readonly admission: EnrollmentAdmission,
   ) {}
 
   /** Called explicitly after Nest initialization; OpenAPI generation never opens this listener. */
@@ -65,13 +67,22 @@ export class AgentGateway implements OnModuleDestroy {
         createContextValues().set(peer, req.socket instanceof TLSSocket ? req.socket : undefined),
       routes: (router) => {
         router.rpc(AgentGatewayService.method.enroll, async (request, context) => {
-          const result = await this.enroll.execute({
+          // Before any database work (#346): the quota of the caller's network, the shape of the
+          // request, then the budget of enrollments at once, shared by every connection.
+          const ip = context.values.get(peer)?.remoteAddress;
+          if (!this.admission.allow(ip)) throw enrollmentBusy();
+          const command = {
             joinToken: new Secret(request.joinToken),
             csrPem: request.csrPem,
             facts: factsFromProto(request.facts),
             agentVersion: request.agentVersion,
-            ip: context.values.get(peer)?.remoteAddress,
-          });
+            ip,
+          };
+          this.enroll.validate(command);
+          const result = await this.admission.run(
+            () => this.enroll.execute(command),
+            context.signal,
+          );
           return {
             certPem: result.certificatePem,
             caPem: result.caPem,

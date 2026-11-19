@@ -12,6 +12,7 @@ describe('parseConfig', () => {
     expect(cfg.API_PORT).toBe(3000);
     expect(cfg.LOG_LEVEL).toBe('info');
     expect(cfg.AGENT_GATEWAY_ADDR).toBe('0.0.0.0:7443');
+    expect(cfg.AGENT_ENROLLMENTS_PER_MINUTE).toBe(20);
     expect(cfg.WEB_DIST_DIR).toBeUndefined();
   });
 
@@ -91,6 +92,15 @@ describe('parseConfig', () => {
     expect(() =>
       parseConfig({ ...minimal, AGENT_GATEWAY_SERVER_NAME: 'https://example.com/path' }),
     ).toThrow(/AGENT_GATEWAY_SERVER_NAME/);
+  });
+  it('bounds the enrollment quota', () => {
+    expect(
+      parseConfig({ ...minimal, AGENT_ENROLLMENTS_PER_MINUTE: '60' }).AGENT_ENROLLMENTS_PER_MINUTE,
+    ).toBe(60);
+    for (const value of ['0', '-1', '1.5', '10001', 'many'])
+      expect(() => parseConfig({ ...minimal, AGENT_ENROLLMENTS_PER_MINUTE: value })).toThrow(
+        /AGENT_ENROLLMENTS_PER_MINUTE/,
+      );
   });
   it('accepts an explicit built web directory and rejects invalid paths without echoing them', () => {
     expect(
