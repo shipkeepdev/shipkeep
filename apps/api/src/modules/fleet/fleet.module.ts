@@ -13,7 +13,9 @@ import { InstallationKeysModule } from './installation-keys.module';
 import { AuthenticateNode } from './application/authenticate-node';
 import { RenewNodeCertificate } from './application/renew-node-certificate';
 import { PrismaNodeCredentialStore } from './infrastructure/prisma-node-credential.store';
+import { AppConfig } from '../../platform/config/app-config';
 import { AgentGateway } from './interface/agent-gateway';
+import { EnrollmentAdmission } from './interface/enrollment-admission';
 import { NodeStream } from './interface/node-stream';
 
 import { EnrollNode } from './application/enroll-node';
@@ -42,6 +44,11 @@ import { StateReports } from './application/state-reports';
     FleetAdministration,
     NodeConfirmationTarget,
     AgentGateway,
+    {
+      provide: EnrollmentAdmission,
+      useFactory: (config: AppConfig) => EnrollmentAdmission.fromConfig(config),
+      inject: [AppConfig],
+    },
     NodeStream,
     AuthenticateNode,
     RenewNodeCertificate,
@@ -58,6 +65,7 @@ import { StateReports } from './application/state-reports';
   ],
   exports: [
     AgentGateway,
+    EnrollmentAdmission,
     IssueJoinToken,
     EnrollNode,
     InstallationKeysModule,
