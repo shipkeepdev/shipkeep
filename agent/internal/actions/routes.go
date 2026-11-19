@@ -21,7 +21,7 @@ import (
 type Router interface {
 	EnsureServer(ctx context.Context) error
 	Route(ctx context.Context, id string) (caddy.Route, bool, error)
-	UpsertRoute(ctx context.Context, route caddy.Route) error
+	ApplyRoute(ctx context.Context, route caddy.Route, plainAdd, plainRemove []string) error
 	RemoveRoute(ctx context.Context, id string) error
 	SetPlainHosts(ctx context.Context, add, remove []string) error
 }
@@ -101,11 +101,9 @@ func upsertRoute(router Router, containers Containers, sleep func(context.Contex
 					remove = append(remove, hosts...)
 				}
 				remove = slices.DeleteFunc(remove, func(host string) bool { return plain && slices.Contains(hosts, host) })
-				if err := router.SetPlainHosts(ctx, add, remove); err != nil {
-					return journal.Outcome{}, fmt.Errorf("set plain hosts: %w", err)
-				}
-				if err := router.UpsertRoute(ctx, desired); err != nil {
-					return journal.Outcome{}, fmt.Errorf("upsert route: %w", err)
+				// One unit, ordered so that a failed write leaves every host reachable (ApplyRoute).
+				if err := router.ApplyRoute(ctx, desired, add, remove); err != nil {
+					return journal.Outcome{}, fmt.Errorf("apply route: %w", err)
 				}
 				return journal.Outcome{ResourceID: desired.ID}, nil
 			},
@@ -238,7 +236,12 @@ func caddyRoute(route *agentv1.Route) (caddy.Route, []localUpstream, bool, time.
 	if weighted {
 		handler.LoadBalancing = &caddy.LoadBalancing{SelectionPolicy: map[string]any{"policy": "weighted_round_robin", "weights": weights}}
 	}
-	return caddy.Route{ID: caddy.RouteID(route.GetRouteId()), Match: []caddy.Match{{Host: hosts}}, Handle: []caddy.Handler{handler}, Terminal: true}, local, plain, drain, nil
+	// Under automatic HTTPS the route answers HTTPS only, so that plain HTTP gets Caddy's redirect.
+	match := caddy.Match{Host: hosts}
+	if !plain {
+		match.Protocol = caddy.HTTPS
+	}
+	return caddy.Route{ID: caddy.RouteID(route.GetRouteId()), Match: []caddy.Match{match}, Handle: []caddy.Handler{handler}, Terminal: true}, local, plain, drain, nil
 }
 
 // resolveUpstreams returns a copy of template with every container upstream resolved to the

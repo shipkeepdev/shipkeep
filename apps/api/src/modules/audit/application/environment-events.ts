@@ -19,6 +19,14 @@ export const HEARTBEAT_MS = 15_000;
 export const STREAM_LIFETIME_MS = 3600_000;
 const MAX_STREAMS_PER_ACCOUNT = 8;
 const BATCH = 100;
+/**
+ * A client that cannot take what was written gets this long to catch up, then the stream ends.
+ * Nothing new is read or written while it waits, and the next poll checks the session again before
+ * anything else is sent, so revocation keeps ending the stream before new data reaches it.
+ */
+export const DRAIN_TIMEOUT_MS = 10_000;
+/** Bytes a stream may leave queued for its client; above it the stream ends at once (#345). */
+export const MAX_PENDING_BYTES = 64 * 1024;
 
 export interface EnvironmentTarget {
   readonly organizationId: string;
@@ -40,41 +48,63 @@ export function serverSentEvent(record: AuditRecord): string {
 }
 
 /**
+ * How a stream ended: `slow` when its client could not keep up, which leaves data queued that the
+ * caller should discard rather than wait for.
+ */
+export type PumpEnd = 'done' | 'slow';
+
+/**
  * Writes new events until the client leaves, access ends or the lifetime is over. A failed poll
  * ends the stream instead of hiding the failure: the client reconnects and is checked again.
+ *
+ * `write` reports whether the client's buffer took the chunk; `pending` counts the bytes still
+ * queued; `drained` waits, at most the given time, for the buffer to empty. A stream whose client
+ * stops reading is paused (no poll, no write) until it drains, and ends as `slow` past the drain
+ * timeout or the byte budget.
  */
 export async function pumpEvents(input: {
   readonly after: string;
   readonly poll: (after: string) => Promise<readonly AuditRecord[]>;
-  readonly write: (chunk: string) => void;
+  readonly write: (chunk: string) => boolean;
+  readonly pending: () => number;
+  readonly drained: (milliseconds: number, signal: AbortSignal) => Promise<boolean>;
   readonly signal: AbortSignal;
   readonly sleep: (milliseconds: number, signal: AbortSignal) => Promise<void>;
   readonly now: () => number;
-}): Promise<void> {
+}): Promise<PumpEnd> {
   let cursor = input.after;
   const started = input.now();
   let wrote = started;
   // Read through a function: the signal changes during the awaits below.
   const left = () => input.signal.aborted;
+  // Whether the client can take more: within the byte budget, and its buffer emptied in time.
+  const keptUp = async (accepted: boolean) => {
+    if (input.pending() > MAX_PENDING_BYTES) return false;
+    return accepted || (await input.drained(DRAIN_TIMEOUT_MS, input.signal));
+  };
   while (!left() && input.now() - started < STREAM_LIFETIME_MS) {
     await input.sleep(POLL_MS, input.signal);
-    if (left()) return;
+    if (left()) return 'done';
     let events: readonly AuditRecord[];
     try {
       events = await input.poll(cursor);
     } catch {
-      return;
+      return 'done';
     }
+    let accepted = true;
     for (const event of events) {
-      input.write(serverSentEvent(event));
+      accepted = input.write(serverSentEvent(event)) && accepted;
       cursor = event.id;
       wrote = input.now();
+      if (input.pending() > MAX_PENDING_BYTES) return 'slow';
     }
     if (input.now() - wrote >= HEARTBEAT_MS) {
-      input.write(': keep-alive\n\n');
+      accepted = input.write(': keep-alive\n\n') && accepted;
       wrote = input.now();
     }
+    if (!(await keptUp(accepted))) return left() ? 'done' : 'slow';
   }
+  return 'done';
 }
 
 /**
