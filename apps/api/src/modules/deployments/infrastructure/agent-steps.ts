@@ -23,7 +23,7 @@ import {
 } from '@shipkeep/proto-ts';
 
 import { DOCKER_HUB_SERVER, type RegistryLogin } from '../../registries/domain/registry-credential';
-import type { ContainerPlan } from '../domain/container-plan';
+import { type ContainerPlan, READ_ONLY_TMP_BYTES } from '../domain/container-plan';
 import { credentialServer, parseImageReference, pulledRegistry } from '../domain/image-reference';
 import type { PipelineStep } from '../domain/pipeline';
 
@@ -193,7 +193,26 @@ function containerSpec(plan: ContainerPlan, secrets: SecretValues): ContainerSpe
       plan.port === null
         ? []
         : [{ containerPort: plan.port, hostPort: 0, protocol: PortMapping_Protocol.TCP }],
-    resources: { cpuMillis: plan.cpuMillis, memoryBytes: BigInt(plan.memoryBytes), pidsLimit: 0 },
+    resources: {
+      cpuMillis: plan.cpuMillis,
+      memoryBytes: BigInt(plan.memoryBytes),
+      pidsLimit: 0,
+      diskBytes: BigInt(plan.diskBytes),
+    },
+    // With a read-only root, /tmp is the only place it writes outside its volumes (ADR 0022).
+    readOnlyRootfs: plan.readOnlyRoot,
+    mounts: plan.readOnlyRoot
+      ? [
+          {
+            containerPath: '/tmp',
+            readOnly: false,
+            source: {
+              case: 'tmpfs',
+              value: { sizeBytes: BigInt(READ_ONLY_TMP_BYTES), mode: 0o1777 },
+            },
+          },
+        ]
+      : [],
     labels: { ...plan.labels },
     network: plan.network,
     restartPolicy: {

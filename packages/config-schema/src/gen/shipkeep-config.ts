@@ -135,6 +135,10 @@ export interface Run {
    */
   port: number;
   healthcheck?: Healthcheck;
+  /**
+   * Run the container with a read-only root filesystem and a 64Mi tmpfs at /tmp, so that it writes only there (counted in its memory) and to its volumes (ADR 0022). Off by default: many images write elsewhere.
+   */
+  read_only_root?: boolean;
 }
 export interface Healthcheck {
   /**
@@ -155,11 +159,12 @@ export interface Release {
   timeout?: Duration;
 }
 /**
- * CPU and memory limit of each container, which is also what placement reserves on the node. A limit left out is 1 CPU, or 512Mi of memory.
+ * Limits of each container. cpu and memory are also what placement reserves on the node; disk bounds what the container writes to its own filesystem (its writable layer), measured by the agent, which stops a container above it (ADR 0022). A limit left out is 1 CPU, 512Mi of memory, or 1Gi of disk.
  */
 export interface Resources {
   cpu?: Cpu;
   memory?: Size;
+  disk?: Size;
 }
 export interface Scale {
   replicas?: number;

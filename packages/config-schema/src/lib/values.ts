@@ -22,13 +22,16 @@ const DURATION_UNITS: ReadonlyMap<string, number> = new Map([
 
 /**
  * What the control plane can deploy (SPEC 2.2). The agent refuses a container above 256 CPUs or
- * 1 TiB, and Docker refuses a memory limit below 6 MiB. `lib/config` holds the same numbers for
+ * 1 TiB, and Docker refuses a memory limit below 6 MiB. A disk budget is between 64 MiB and 1 TiB
+ * (ADR 0022). `lib/config` holds the same numbers for
  * the Go validator; the shared fixtures keep the two in step.
  */
 export const RESOURCE_RANGE = {
   maxCpuMillis: 256_000,
   minMemoryBytes: 6 * 2 ** 20,
   maxMemoryBytes: 2 ** 40,
+  minDiskBytes: 64 * 2 ** 20,
+  maxDiskBytes: 2 ** 40,
 } as const;
 
 /** `0.5` or `500m` as millicores, which may be a fraction; NaN when it is not a CPU amount. */
@@ -61,7 +64,7 @@ export function durationInMs(text: string): number {
  */
 export function valueIssues(config: ShipkeepConfig): ConfigIssue[] {
   const issues: ConfigIssue[] = [];
-  const { cpu, memory } = config.resources ?? {};
+  const { cpu, memory, disk } = config.resources ?? {};
   if (cpu !== undefined) {
     const millis = cpuMillicores(cpu);
     if (!(millis > 0 && millis <= RESOURCE_RANGE.maxCpuMillis))
@@ -71,6 +74,11 @@ export function valueIssues(config: ShipkeepConfig): ConfigIssue[] {
     const bytes = sizeInBytes(memory);
     if (!(bytes >= RESOURCE_RANGE.minMemoryBytes && bytes <= RESOURCE_RANGE.maxMemoryBytes))
       issues.push({ path: '/resources/memory', message: 'must be between 6Mi and 1Ti' });
+  }
+  if (disk !== undefined) {
+    const bytes = sizeInBytes(disk);
+    if (!(bytes >= RESOURCE_RANGE.minDiskBytes && bytes <= RESOURCE_RANGE.maxDiskBytes))
+      issues.push({ path: '/resources/disk', message: 'must be between 64Mi and 1Ti' });
   }
   // Every duration the deployment pipeline reads. A value it cannot count would fail there.
   const check = config.run?.healthcheck;
