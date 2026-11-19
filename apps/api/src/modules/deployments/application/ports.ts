@@ -43,6 +43,11 @@ export interface DeploymentStore {
   byId(deploymentId: string): Promise<DeploymentRecord | undefined>;
   list(applicationId: string): Promise<DeploymentRecord[]>;
   releases(applicationId: string): Promise<Release[]>;
+  /**
+   * Locks the deployment's row until the transaction ends and returns its state, undefined when
+   * it no longer exists. A transition waits for the lock, so the state cannot change meanwhile.
+   */
+  lockState(deploymentId: string): Promise<DeploymentState | undefined>;
   /** Stores the deployment's new state if it is still in `expected`; false when it moved meanwhile. */
   transition(deployment: DeploymentRecord, expected: DeploymentState, now: Date): Promise<boolean>;
 }
