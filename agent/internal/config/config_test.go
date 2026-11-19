@@ -91,6 +91,10 @@ func TestValidateReportsEveryProblem(t *testing.T) {
 		"missing fingerprint":   {"control_plane:\n  address: cp.example.com:7443\n", []string{"ca_fingerprint is required"}},
 		"malformed fingerprint": {"control_plane:\n  address: cp.example.com:7443\n  ca_fingerprint: sha256:ZZ\n", []string{"ca_fingerprint must look like"}},
 		"uppercase fingerprint": {"control_plane:\n  address: cp.example.com:7443\n  ca_fingerprint: " + strings.ToUpper(fingerprint) + "\n", []string{"ca_fingerprint must look like"}},
+		"connect not loopback":  {validYAML() + "  connect: 10.0.0.5:7443\n", []string{"control_plane.connect must be a loopback address"}},
+		"connect by name":       {validYAML() + "  connect: localhost:7443\n", []string{"control_plane.connect must be a loopback address"}},
+		"connect without port":  {validYAML() + "  connect: 127.0.0.1\n", []string{"control_plane.connect must be a loopback address"}},
+		"connect injection":     {validYAML() + "  connect: \"127.0.0.1:7443;id\"\n", []string{"control_plane.connect must be a loopback address"}},
 		"bad node name":         {validYAML() + "node:\n  name: Node_1\n", []string{"node.name"}},
 		"relative state dir":    {validYAML() + "paths:\n  state_dir: var/lib/shipkeep\n", []string{"paths.state_dir: must be an absolute path"}},
 		"traversal state dir":   {validYAML() + "paths:\n  state_dir: /var/lib/../etc\n", []string{"paths.state_dir: must be a clean path"}},
@@ -146,5 +150,21 @@ func TestLoadFromFile(t *testing.T) {
 	cfg, err = config.Load(filepath.Join(dir, "missing.yaml"), config.DevDefault(dir), true)
 	if err != nil || !cfg.Dev {
 		t.Fatalf("optional missing file: cfg=%+v err=%v", cfg, err)
+	}
+}
+
+func TestConnectOnLoopbackIsValid(t *testing.T) {
+	t.Parallel()
+	for _, connect := range []string{"127.0.0.1:7443", "\"[::1]:7443\""} {
+		cfg, err := config.Parse([]byte(validYAML()+"  connect: "+connect+"\n"), config.Default())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Fatalf("%s: %v", connect, err)
+		}
+		if cfg.ControlPlane.Connect == "" {
+			t.Fatalf("%s: not read", connect)
+		}
 	}
 }

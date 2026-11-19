@@ -98,7 +98,7 @@ func TestControlPlaneLifecycle(t *testing.T) {
 	if _, err := os.Stat(cfg.ControlPlane.JoinTokenFile); !os.IsNotExist(err) {
 		t.Fatal("consumed token file remains")
 	}
-	if _, err := gateway.Enroll(ctx, fixture.Address, fixture.Fingerprint, false, fixture.Token, &agentv1.NodeFacts{Hostname: "reuse-node"}, "test"); err == nil {
+	if _, err := gateway.Enroll(ctx, gateway.Endpoint{Address: fixture.Address}, fixture.Fingerprint, false, fixture.Token, &agentv1.NodeFacts{Hostname: "reuse-node"}, "test"); err == nil {
 		t.Fatal("reused token accepted")
 	}
 	if err := os.WriteFile(path+".connected", nil, 0o600); err != nil { // #nosec G703 -- marker beside the harness-owned temporary fixture.

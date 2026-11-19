@@ -16,6 +16,8 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/shipkeepdev/shipkeep/agent/internal/gateway"
 )
 
 // DefaultPath is where the installer writes the configuration.
@@ -48,6 +50,10 @@ type ControlPlane struct {
 	CAFingerprint string `yaml:"ca_fingerprint"`
 	// JoinTokenFile is a private 0600 file consumed only after durable enrollment.
 	JoinTokenFile string `yaml:"join_token_file"`
+	// Connect, optional, is where the TCP connection to the gateway goes instead of Address: a
+	// loopback IP literal with a port, on the machine that hosts the control plane (ADR 0021). The
+	// gateway certificate is still verified against Address's host and the CA fingerprint.
+	Connect string `yaml:"connect"`
 }
 
 // Node holds node-level identity overrides.
@@ -176,6 +182,10 @@ func (c Config) Validate() error {
 		add("control_plane.address is required")
 	} else if err := validateHostPort(c.ControlPlane.Address); err != nil {
 		add("control_plane.address: %v", err)
+	}
+
+	if c.ControlPlane.Connect != "" && !gateway.LoopbackConnect(c.ControlPlane.Connect) {
+		add("control_plane.connect must be a loopback address with a port, such as 127.0.0.1:7443 or [::1]:7443")
 	}
 
 	switch {

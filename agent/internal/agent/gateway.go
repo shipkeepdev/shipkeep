@@ -55,7 +55,7 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		if err != nil {
 			return err
 		}
-		bundle, err = gateway.Enroll(ctx, a.cfg.ControlPlane.Address, a.cfg.ControlPlane.CAFingerprint, a.cfg.Dev, token, facts, buildinfo.Version)
+		bundle, err = gateway.Enroll(ctx, a.endpoint(), a.cfg.ControlPlane.CAFingerprint, a.cfg.Dev, token, facts, buildinfo.Version)
 		if err != nil {
 			return err
 		}
@@ -80,7 +80,7 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine) //nolint:contextcheck // see above
 	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts), Epoch: func() uint64 { return epoch }}
 	runner := gateway.Runner{
-		Address: a.cfg.ControlPlane.Address, StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher,
+		Endpoint: a.endpoint(), StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher,
 		Report: func(ctx context.Context) (*agentv1.StateReport, error) { return reporting.Snapshot(ctx, engine) },
 	}
 	return runner.Run(ctx, bundle)
@@ -113,4 +113,10 @@ func readJoinToken(path string) (secret.String, error) {
 		return secret.String{}, errors.New("join-token file is too large")
 	}
 	return secret.NewString(strings.TrimSuffix(string(data), "\n")), nil
+}
+
+// endpoint is the gateway as the configuration names it: the verified address, and the loopback
+// address to connect to on the machine that hosts the control plane (ADR 0021).
+func (a *Agent) endpoint() gateway.Endpoint {
+	return gateway.Endpoint{Address: a.cfg.ControlPlane.Address, Connect: a.cfg.ControlPlane.Connect}
 }

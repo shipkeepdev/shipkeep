@@ -89,6 +89,7 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 		"version", buildinfo.Version,
 		"commit", buildinfo.Commit,
 		"control_plane", a.cfg.ControlPlane.Address,
+		"control_plane_connect", a.cfg.ControlPlane.Connect,
 		"state_dir", a.cfg.Paths.StateDir,
 		"dev", a.cfg.Dev,
 	)

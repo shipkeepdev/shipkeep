@@ -12,6 +12,11 @@ control_plane:
   # Initial enrollment only: regular 0600 file, removed after credentials are saved.
   join_token_file: /etc/shipkeep/join-token
 
+  # Optional, only on the machine that hosts the control plane (ADR 0021): a loopback address
+  # such as 127.0.0.1:7443 to connect to instead of address. The gateway certificate is still
+  # verified against the host of address and the fingerprint above.
+  # connect: 127.0.0.1:7443
+
 node:
   # Optional. Defaults to the hostname.
   name: ''

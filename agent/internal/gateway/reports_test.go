@@ -110,11 +110,11 @@ func TestStateReportFailuresLogOncePerOutage(t *testing.T) {
 func TestRunnerTransmitsStateReportsAfterWelcome(t *testing.T) {
 	address, server := startGateway(t, true)
 	server.reports = make(chan *agentv1.StateReport, 1)
-	bundle, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	bundle, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	runner := Runner{Address: address, StateDir: t.TempDir(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Report: func(context.Context) (*agentv1.StateReport, error) { return &agentv1.StateReport{}, nil }}
+	runner := Runner{Endpoint: Endpoint{Address: address}, StateDir: t.TempDir(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), Report: func(context.Context) (*agentv1.StateReport, error) { return &agentv1.StateReport{}, nil }}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	done := make(chan error, 1)
