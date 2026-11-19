@@ -1,6 +1,6 @@
 # ADR 0021: The control plane and applications on one machine
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-19
 
 ## Context
