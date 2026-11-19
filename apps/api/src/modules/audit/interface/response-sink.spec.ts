@@ -2,7 +2,12 @@ import { createServer, type ServerResponse } from 'node:http';
 import { connect, type AddressInfo, type Socket } from 'node:net';
 
 import type { AuditRecord } from '../domain/audit-record';
-import { MAX_PENDING_BYTES, type PumpEnd, pumpEvents } from '../application/environment-events';
+import {
+  DRAIN_TIMEOUT_MS,
+  MAX_PENDING_BYTES,
+  type PumpEnd,
+  pumpEvents,
+} from '../application/environment-events';
 
 import { responseSink } from './response-sink';
 
@@ -63,25 +68,31 @@ async function stream(read: boolean, abortAfter?: number) {
   if (!read) client.pause();
   client.write(`GET / HTTP/1.1\r\nHost: test\r\nAccept: text/event-stream\r\n\r\n`);
   // Bounded: a pump that never stops (one that ignores backpressure) fails here instead of hanging.
+  // The watchdog outlasts the pump's own drain wait, so a pump that waits and then ends as slow
+  // is not mistaken for one that never stops.
   let timer: NodeJS.Timeout | undefined;
-  const result = await Promise.race([
-    ended,
-    new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
-        controller.abort();
-        reject(new Error(`the stream did not end: ${String(polls)} polls`));
-      }, 10_000);
-    }),
-  ]).finally(() => {
+  let result: Awaited<typeof ended>;
+  try {
+    result = await Promise.race([
+      ended,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error(`the stream did not end: ${String(polls)} polls`));
+        }, DRAIN_TIMEOUT_MS + 5_000);
+      }),
+    ]);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  } finally {
+    // Released whichever way the wait ended, so that a failure never leaves the server open.
     clearTimeout(timer);
-  });
-  await new Promise((resolve) => setTimeout(resolve, 50));
-  client.destroy();
-  await new Promise<void>((resolve) => {
-    server.close(() => {
-      resolve();
+    client.destroy();
+    await new Promise<void>((resolve) => {
+      server.close(() => {
+        resolve();
+      });
     });
-  });
+  }
   return { ...result, polls, received, closed };
 }
 
@@ -94,12 +105,12 @@ describe('responseSink on a real HTTP response (#345)', () => {
     expect(result.destroyed).toBe(true);
     // The kernel buffers are finite: the pump stopped polling after a bounded number of batches.
     expect(result.polls).toBeLessThan(2000);
-  }, 30_000);
+  }, 40_000);
 
   it('keeps delivering to a client that reads', async () => {
     const result = await stream(true, 20);
     expect(result.end).toBe('done');
     expect(result.polls).toBe(20);
     expect(result.received).toBeGreaterThan(100_000);
-  }, 30_000);
+  }, 40_000);
 });
