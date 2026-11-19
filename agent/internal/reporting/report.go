@@ -23,6 +23,12 @@ var containerName = regexp.MustCompile(`^sk-[a-z0-9-]{1,60}$`)
 // Snapshot never truncates: an incomplete inventory must not mark omitted allocations missing.
 // Only the management label is transmitted; arbitrary Docker labels may contain credentials.
 func Snapshot(ctx context.Context, engine Engine) (*agentv1.StateReport, error) {
+	return SnapshotWithReasons(ctx, engine, nil)
+}
+
+// SnapshotWithReasons also names why the agent stopped a container itself (ADR 0022), from the
+// reasons it recorded by container name.
+func SnapshotWithReasons(ctx context.Context, engine Engine, reasons map[string]string) (*agentv1.StateReport, error) {
 	containers, err := engine.ManagedContainers(ctx)
 	if err != nil {
 		return nil, errors.New("cannot observe managed containers")
@@ -54,7 +60,8 @@ func Snapshot(ctx context.Context, engine Engine) (*agentv1.StateReport, error) 
 		names[name] = true
 		report.Containers = append(report.Containers, &agentv1.ContainerStatus{
 			ContainerId: container.ID, Name: name, State: state,
-			Labels: map[string]string{docker.ManagedLabel: "true"},
+			Labels:     map[string]string{docker.ManagedLabel: "true"},
+			StopReason: reasons[name],
 		})
 	}
 	sort.Slice(report.Containers, func(i, j int) bool { return report.Containers[i].Name < report.Containers[j].Name })

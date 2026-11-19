@@ -22,21 +22,43 @@ Use a separate machine for the control plane. It listens on ports 80 and 443, wh
 
 Each release since `v0.1.0-alpha.2` carries a bundle, `shipkeep-control-plane_<version>.tar.gz`: the installer, the two files it installs and the image it runs, by tag and digest. `v0.1.0-alpha.1` has none: [install it by hand](#install-by-hand).
 
-1. On the machine, download the bundle of a release from the [releases page](https://github.com/shipkeepdev/shipkeep/releases) and unpack it:
+1. On the machine, download the bundle of a release from the [releases page](https://github.com/shipkeepdev/shipkeep/releases), with its signature:
 
    ```sh
    VERSION=<version>
-   curl -fsSLO "https://github.com/shipkeepdev/shipkeep/releases/download/v${VERSION}/shipkeep-control-plane_${VERSION}.tar.gz"
-   tar -xzf "shipkeep-control-plane_${VERSION}.tar.gz"
+   BUNDLE="shipkeep-control-plane_${VERSION}.tar.gz"
+   curl -fsSLO "https://github.com/shipkeepdev/shipkeep/releases/download/v${VERSION}/${BUNDLE}" &&
+   curl -fsSLO "https://github.com/shipkeepdev/shipkeep/releases/download/v${VERSION}/${BUNDLE}.sigstore.json"
    ```
 
-2. Run the installer and answer its questions: the DNS name, then the email address and the password of the first account. The address is the sign-in name, nothing is sent to it. The password has 15 characters or more and is not shown while you type it.
+2. Check that the bundle was built by this repository's release workflow for exactly this version, and unpack it only then. The check uses [cosign](https://github.com/sigstore/cosign); the first command downloads version 3.1.4 and deletes it unless its SHA-256 is the one written here. Skip it if `cosign` 3.1 or newer is already installed, and write `cosign` instead of `./cosign`.
+
+   ```sh
+   case "$(uname -m)" in
+     x86_64) COSIGN=amd64 COSIGN_SHA256=424e2c97d0b45fd7a6b608a87f090f35633f4c23ece5f092d48bba11aaf4bbfa ;;
+     aarch64 | arm64) COSIGN=arm64 COSIGN_SHA256=ade83b7aac62e131cacfe96d958948b2150cc9efec46a570a2649b8e27dedad2 ;;
+   esac
+   curl -fsSLo cosign "https://github.com/sigstore/cosign/releases/download/v3.1.4/cosign-linux-${COSIGN}" &&
+   echo "${COSIGN_SHA256}  cosign" | sha256sum --check --strict &&
+   chmod +x cosign || rm -f cosign
+   ```
+
+   ```sh
+   ./cosign verify-blob "$BUNDLE" --bundle "$BUNDLE.sigstore.json" \
+     --certificate-identity "https://github.com/shipkeepdev/shipkeep/.github/workflows/release.yml@refs/tags/v${VERSION}" \
+     --certificate-oidc-issuer https://token.actions.githubusercontent.com &&
+   tar -xzf "$BUNDLE"
+   ```
+
+   `Verified OK`, then nothing else, means the bundle is unpacked. Any error means it is not: a modified file, a signature for another version or from another workflow, or a missing signature. Do not go on. What this proves: the file is the one that this repository's release workflow signed when it ran for the tag `v<version>`. It relies on GitHub for this page and the SHA-256 of cosign, and on Sigstore for the signature.
+
+3. Run the installer and answer its questions: the DNS name, then the email address and the password of the first account. The address is the sign-in name, nothing is sent to it. The password has 15 characters or more and is not shown while you type it.
 
    ```sh
    sudo ./shipkeep-control-plane/install.sh
    ```
 
-3. Open `https://shipkeep.example.com` and sign in with that address and password. Then [back up the key-encryption key](#back-up-the-key-encryption-key).
+4. Open `https://shipkeep.example.com` and sign in with that address and password. Then [back up the key-encryption key](#back-up-the-key-encryption-key).
 
 What the installer does, in order:
 
@@ -56,15 +78,6 @@ The questions are checked before anything is installed, with rules no wider than
 Without a terminal, give the answers as options: `--domain` and `--email`. The password of the first account is read from standard input, its first line, never from an option.
 
 For an installation that sends email, add `--smtp-host`, and optionally `--smtp-port` (465 by default), `--smtp-from` and `--smtp-user` (empty when the server asks for no login). The installer then asks for what is missing; the SMTP password is read from standard input too, after the password of the first account.
-
-To check that the bundle was built by this repository's release workflow, download its `.sigstore.json` file from the same release and run:
-
-```sh
-cosign verify-blob "shipkeep-control-plane_${VERSION}.tar.gz" \
-  --bundle "shipkeep-control-plane_${VERSION}.tar.gz.sigstore.json" \
-  --certificate-identity-regexp '^https://github.com/shipkeepdev/shipkeep/\.github/workflows/release\.yml@refs/tags/v' \
-  --certificate-oidc-issuer https://token.actions.githubusercontent.com
-```
 
 ### Install by hand
 
@@ -187,6 +200,8 @@ The installer does not upgrade. In the installation directory, replace `compose.
 - **Starting over, on a machine you can afford to lose:** `docker compose down --volumes` in the installation directory, then remove that directory. This deletes the database and the key-encryption key, and with them everything Shipkeep stored.
 
 ## What has been tested
+
+The verification step of [Install the control plane](#install-the-control-plane), on 19 November 2026, with the blocks of this page run as written in fresh Ubuntu 24.04 containers (amd64), on the published `v0.1.0-alpha.3` bundle: cosign 3.1.4 matched its SHA-256, the signature verified and the bundle was unpacked. Each refusal left no installer to run: a bundle with one byte added, a signature for another version (the same bundle under the name and identity of `v0.1.0-alpha.2`), a missing signature, and a cosign whose SHA-256 does not match (the file is deleted, and the check then fails). The arm64 SHA-256 comes from cosign's signed checksum file, verified with cosign; it was not run on arm64.
 
 With the published artifacts of `v0.1.0-alpha.3`, on 19 November 2026, in fresh Ubuntu 24.04 containers with systemd and without Docker, following this page from its first command and without any email account:
 

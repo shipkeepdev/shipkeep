@@ -21,7 +21,8 @@ const localSchema = `CREATE TABLE IF NOT EXISTS desired(resource_id TEXT PRIMARY
  CREATE TABLE IF NOT EXISTS routing(singleton INTEGER PRIMARY KEY CHECK(singleton=1),version INTEGER NOT NULL,table_json TEXT NOT NULL);
  CREATE TABLE IF NOT EXISTS lease(singleton INTEGER PRIMARY KEY CHECK(singleton=1),epoch INTEGER NOT NULL,expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS used_confirmations(jti TEXT PRIMARY KEY,expires_at INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS intent(container TEXT PRIMARY KEY,running INTEGER NOT NULL CHECK(running IN (0,1)),updated_at INTEGER NOT NULL);`
+ CREATE TABLE IF NOT EXISTS intent(container TEXT PRIMARY KEY,running INTEGER NOT NULL CHECK(running IN (0,1)),updated_at INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS stop_reason(container TEXT PRIMARY KEY,reason TEXT NOT NULL,stopped_at INTEGER NOT NULL);`
 
 // PutDesired stores a typed container specification, stripping every debug_redact field recursively.
 func (s *Store) PutDesired(ctx context.Context, id string, version int64, spec *agentv1.ContainerSpec) error {
@@ -263,12 +264,50 @@ func (s *Store) SetIntent(ctx context.Context, container string, running bool, n
 	return nil
 }
 
-// ClearIntent forgets a removed container.
+// ClearIntent forgets a removed container, with the reason it was stopped for, if any.
 func (s *Store) ClearIntent(ctx context.Context, container string) error {
 	if _, err := s.db.ExecContext(ctx, "DELETE FROM intent WHERE container=?", container); err != nil {
 		return fmt.Errorf("clear intent: %w", err)
 	}
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM stop_reason WHERE container=?", container); err != nil {
+		return fmt.Errorf("clear stop reason: %w", err)
+	}
 	return nil
+}
+
+// StopReasons the agent may record: why it stopped a container itself (ADR 0022).
+var stopReasons = map[string]bool{"disk_limit": true}
+
+// RecordStopReason remembers why the agent stopped a container itself, until it is removed.
+func (s *Store) RecordStopReason(ctx context.Context, container, reason string, now time.Time) error {
+	if !identifier.MatchString(container) || !stopReasons[reason] {
+		return errors.New("invalid stop reason")
+	}
+	if _, err := s.db.ExecContext(ctx, "INSERT INTO stop_reason(container,reason,stopped_at) VALUES(?,?,?) ON CONFLICT(container) DO UPDATE SET reason=excluded.reason,stopped_at=excluded.stopped_at", container, reason, now.UnixMilli()); err != nil {
+		return fmt.Errorf("record stop reason: %w", err)
+	}
+	return nil
+}
+
+// StopReasons returns the recorded reasons by container name.
+func (s *Store) StopReasons(ctx context.Context) (map[string]string, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT container,reason FROM stop_reason ORDER BY container")
+	if err != nil {
+		return nil, fmt.Errorf("read stop reasons: %w", err)
+	}
+	defer rows.Close() //nolint:errcheck // read-only cursor
+	reasons := map[string]string{}
+	for rows.Next() {
+		var name, reason string
+		if err := rows.Scan(&name, &reason); err != nil {
+			return nil, fmt.Errorf("scan stop reason: %w", err)
+		}
+		reasons[name] = reason
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("read stop reasons: %w", err)
+	}
+	return reasons, nil
 }
 
 // Intents returns every recorded container intent.

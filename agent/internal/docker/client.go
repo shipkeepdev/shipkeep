@@ -147,6 +147,11 @@ type Volume struct {
 type Image struct {
 	ID          string   `json:"Id"`
 	RepoDigests []string `json:"RepoDigests"`
+	Config      struct {
+		// Volumes are the paths the image declares with VOLUME: Docker gives each one an anonymous
+		// volume unless the container mounts something there.
+		Volumes map[string]struct{} `json:"Volumes"`
+	} `json:"Config"`
 }
 
 // Auth is registry authentication for one pull; the password never leaves this process except

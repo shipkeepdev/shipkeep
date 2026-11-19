@@ -95,7 +95,13 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts), Epoch: func() uint64 { return epoch }}
 	runner := gateway.Runner{
 		Endpoint: a.endpoint(), StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher,
-		Report: func(ctx context.Context) (*agentv1.StateReport, error) { return reporting.Snapshot(ctx, engine) },
+		Report: func(ctx context.Context) (*agentv1.StateReport, error) {
+			reasons, err := store.StopReasons(ctx)
+			if err != nil {
+				return nil, err
+			}
+			return reporting.SnapshotWithReasons(ctx, engine, reasons)
+		},
 	}
 	return runner.Run(ctx, bundle)
 }

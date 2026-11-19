@@ -107,4 +107,70 @@ describe('allocation observations with PostgreSQL', () => {
       [nodeId, expect.objectContaining({ from: 'exited', to: 'missing' })],
     ]);
   });
+
+  it('shows why the agent stopped a replica, while its container exists (ADR 0022)', async () => {
+    const nodeId = await enroll('edge-full.example.com');
+    const name = 'sk-full-api-0123456789ab-r1-0';
+    const application = await fixture
+      .post(`${fixture.environment}/applications`, 'owner', {
+        config: {
+          version: 1,
+          name: 'full-api',
+          build: { type: 'image', image: 'nginx:alpine' },
+          run: { port: 80 },
+        },
+      })
+      .expect(201);
+    const applicationId = (application.body as { id: string }).id;
+    const queued = await fixture
+      .post(`${fixture.environment}/applications/${applicationId}/deployments`, 'owner', {})
+      .expect(201);
+    const releaseId = (queued.body as { release: { id: string } }).release.id;
+    await fixture.app
+      .get(PrismaUnitOfWork)
+      .runTenant(fixture.organizationId, () =>
+        fixture.app
+          .get<PipelineStore>(PIPELINE_STORE)
+          .place(
+            fixture.organizationId,
+            applicationId,
+            releaseId,
+            [{ index: 0, nodeId, container: name, port: 80, cpuMillis: 0, memoryBytes: 0 }],
+            new Date(),
+          ),
+      );
+    const observations = fixture.app.get(AllocationObservations);
+    const as = { organizationId: fixture.organizationId, nodeId, serial: '' };
+    const container = (state: ContainerStatus_State, stopReason = '') =>
+      create(StateReportSchema, {
+        containers: [{ containerId: 'e'.repeat(64), name, state, stopReason }],
+      });
+    const replicas = async () =>
+      (
+        (
+          await fixture
+            .get(
+              `${fixture.environment}/applications/${applicationId}/replicas`,
+              'environmentViewer',
+            )
+            .expect(200)
+        ).body as { items: { state: string; stopReason: string | null }[] }
+      ).items;
+    await observations.record(as, container(ContainerStatus_State.RUNNING));
+    expect(await replicas()).toMatchObject([{ state: 'running', stopReason: null }]);
+    await observations.record(as, container(ContainerStatus_State.EXITED, 'disk_limit'));
+    expect(await replicas()).toMatchObject([{ state: 'exited', stopReason: 'disk_limit' }]);
+    // Gone, the container has no reason any more.
+    await observations.record(as, create(StateReportSchema, {}));
+    expect(await replicas()).toMatchObject([{ state: 'missing', stopReason: null }]);
+    const events = await auditLog().findMany({
+      where: { action: 'allocation.observed', actorId: nodeId },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(events.map((event) => event.metadata)).toEqual([
+      expect.objectContaining({ from: null, to: 'running' }),
+      expect.objectContaining({ from: 'running', to: 'exited', stopReason: 'disk_limit' }),
+      expect.objectContaining({ from: 'exited', to: 'missing' }),
+    ]);
+  });
 });
