@@ -646,7 +646,11 @@ type Resources struct {
 	// Memory limit in bytes. Required: zero is refused.
 	MemoryBytes uint64 `protobuf:"varint,2,opt,name=memory_bytes,json=memoryBytes,proto3" json:"memory_bytes,omitempty"`
 	// Maximum number of processes. Zero means the Docker default.
-	PidsLimit     uint32 `protobuf:"varint,3,opt,name=pids_limit,json=pidsLimit,proto3" json:"pids_limit,omitempty"`
+	PidsLimit uint32 `protobuf:"varint,3,opt,name=pids_limit,json=pidsLimit,proto3" json:"pids_limit,omitempty"`
+	// Size the container's writable layer may reach, in bytes (ADR 0022). The agent measures it
+	// and stops a container above it. Zero means no budget, from control planes older than this
+	// field; otherwise between 64 MiB and 1 TiB.
+	DiskBytes     uint64 `protobuf:"varint,4,opt,name=disk_bytes,json=diskBytes,proto3" json:"disk_bytes,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -698,6 +702,13 @@ func (x *Resources) GetMemoryBytes() uint64 {
 func (x *Resources) GetPidsLimit() uint32 {
 	if x != nil {
 		return x.PidsLimit
+	}
+	return 0
+}
+
+func (x *Resources) GetDiskBytes() uint64 {
+	if x != nil {
+		return x.DiskBytes
 	}
 	return 0
 }
@@ -3637,13 +3648,15 @@ const file_shipkeep_agent_v1_actions_proto_rawDesc = "" +
 	"\n" +
 	"size_bytes\x18\x01 \x01(\x04R\tsizeBytes\x12\x12\n" +
 	"\x04mode\x18\x02 \x01(\rR\x04modeB\b\n" +
-	"\x06source\"l\n" +
+	"\x06source\"\x8b\x01\n" +
 	"\tResources\x12\x1d\n" +
 	"\n" +
 	"cpu_millis\x18\x01 \x01(\rR\tcpuMillis\x12!\n" +
 	"\fmemory_bytes\x18\x02 \x01(\x04R\vmemoryBytes\x12\x1d\n" +
 	"\n" +
-	"pids_limit\x18\x03 \x01(\rR\tpidsLimit\"\xde\x02\n" +
+	"pids_limit\x18\x03 \x01(\rR\tpidsLimit\x12\x1d\n" +
+	"\n" +
+	"disk_bytes\x18\x04 \x01(\x04R\tdiskBytes\"\xde\x02\n" +
 	"\x0fHealthCheckSpec\x12\x1d\n" +
 	"\thttp_path\x18\x01 \x01(\tH\x00R\bhttpPath\x12\x1b\n" +
 	"\btcp_port\x18\x02 \x01(\rH\x00R\atcpPort\x125\n" +

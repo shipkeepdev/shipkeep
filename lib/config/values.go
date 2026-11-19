@@ -7,12 +7,15 @@ import (
 )
 
 // What the control plane can deploy (SPEC 2.2). The agent refuses a container above 256 CPUs or
-// 1 TiB, and Docker refuses a memory limit below 6 MiB. packages/config-schema holds the same
+// 1 TiB, and Docker refuses a memory limit below 6 MiB. A disk budget is between 64 MiB and 1 TiB
+// (ADR 0022). packages/config-schema holds the same
 // numbers for the TypeScript validator; the shared fixtures keep the two in step.
 const (
 	maxCPUMillis   = 256_000
 	minMemoryBytes = 6 << 20
 	maxMemoryBytes = 1 << 40
+	minDiskBytes   = 64 << 20
+	maxDiskBytes   = 1 << 40
 	// maxCountable is the largest whole number of milliseconds the control plane counts exactly
 	// (JavaScript's Number.MAX_SAFE_INTEGER).
 	maxCountable = 1<<53 - 1
@@ -86,6 +89,11 @@ func valueIssues(document any) []Issue {
 	if memory, ok := text(document, "resources", "memory"); ok {
 		if bytes := sizeInBytes(memory); !(bytes >= minMemoryBytes && bytes <= maxMemoryBytes) {
 			issues = append(issues, Issue{Path: "/resources/memory", Message: "must be between 6Mi and 1Ti"})
+		}
+	}
+	if disk, ok := text(document, "resources", "disk"); ok {
+		if bytes := sizeInBytes(disk); !(bytes >= minDiskBytes && bytes <= maxDiskBytes) {
+			issues = append(issues, Issue{Path: "/resources/disk", Message: "must be between 64Mi and 1Ti"})
 		}
 	}
 	// Every duration the deployment pipeline reads. A value it cannot count would fail there.

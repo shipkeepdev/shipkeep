@@ -75,6 +75,10 @@ message Resources {
   uint64 memory_bytes = 2;
   // Maximum number of processes. Zero means the Docker default.
   uint32 pids_limit = 3;
+  // Size the container's writable layer may reach, in bytes (ADR 0022). The agent measures it
+  // and stops a container above it. Zero means no budget, from control planes older than this
+  // field; otherwise between 64 MiB and 1 TiB.
+  uint64 disk_bytes = 4;
 }
 
 // Linux capabilities that may be added to a container. Everything else is rejected.

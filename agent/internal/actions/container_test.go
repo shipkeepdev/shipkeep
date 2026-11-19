@@ -134,10 +134,15 @@ func TestCreateContainerRejectsMaliciousSpecs(t *testing.T) {
 		"cpu overflow":        func(s *agentv1.ContainerSpec) { s.Resources.CpuMillis = maxCPUMillis + 1 },
 		"memory overflow":     func(s *agentv1.ContainerSpec) { s.Resources.MemoryBytes = maxMemoryBytes + 1 },
 		// A container without a CPU or a memory limit could starve its node (#301).
-		"no resources":       func(s *agentv1.ContainerSpec) { s.Resources = nil },
-		"empty resources":    func(s *agentv1.ContainerSpec) { s.Resources = &agentv1.Resources{PidsLimit: 64} },
-		"no cpu limit":       func(s *agentv1.ContainerSpec) { s.Resources.CpuMillis = 0 },
-		"no memory limit":    func(s *agentv1.ContainerSpec) { s.Resources.MemoryBytes = 0 },
+		"no resources":    func(s *agentv1.ContainerSpec) { s.Resources = nil },
+		"empty resources": func(s *agentv1.ContainerSpec) { s.Resources = &agentv1.Resources{PidsLimit: 64} },
+		"no cpu limit":    func(s *agentv1.ContainerSpec) { s.Resources.CpuMillis = 0 },
+		"no memory limit": func(s *agentv1.ContainerSpec) { s.Resources.MemoryBytes = 0 },
+		// A disk budget outside 64 MiB to 1 TiB (ADR 0022), and a forged budget label.
+		"tiny disk budget":   func(s *agentv1.ContainerSpec) { s.Resources.DiskBytes = minDiskBytes - 1 },
+		"huge disk budget":   func(s *agentv1.ContainerSpec) { s.Resources.DiskBytes = maxDiskBytes + 1 },
+		"max uint64 disk":    func(s *agentv1.ContainerSpec) { s.Resources.DiskBytes = ^uint64(0) },
+		"forged disk label":  func(s *agentv1.ContainerSpec) { s.Labels[DiskBudgetLabel] = "999999999999999" },
 		"stop timeout of 1h": func(s *agentv1.ContainerSpec) { s.StopTimeout = durationpb.New(time.Hour) },
 		"restart storm": func(s *agentv1.ContainerSpec) {
 			s.RestartPolicy = &agentv1.RestartPolicy{Mode: agentv1.RestartPolicy_MODE_ON_FAILURE, MaxRestarts: 1000}
@@ -186,4 +191,51 @@ func FuzzMountTargets(f *testing.F) {
 			t.Fatalf("accepted mount target %q", got)
 		}
 	})
+}
+
+func TestContainersCarryTheirDiskBudget(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		bytes uint64
+		label string
+	}{
+		{"budget", 1 << 30, "1073741824"},
+		{"smallest budget", minDiskBytes, "67108864"},
+		{"largest budget", maxDiskBytes, "1099511627776"},
+		// From a control plane older than the field: no budget, and no label to enforce.
+		{"no budget", 0, ""},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			spec := validSpec()
+			spec.Resources.DiskBytes = test.bytes
+			engine := newFakeEngine()
+			if update := create(t, engine, spec); update.GetState() != agentv1.OperationState_OPERATION_STATE_SUCCEEDED {
+				t.Fatalf("refused: %v", update)
+			}
+			if len(engine.created) != 1 {
+				t.Fatalf("created %d containers", len(engine.created))
+			}
+			for _, config := range engine.created {
+				label, present := config.Labels[DiskBudgetLabel]
+				if label != test.label || present != (test.label != "") {
+					t.Fatalf("label %q (present %v), want %q", label, present, test.label)
+				}
+			}
+		})
+	}
+}
+
+func TestReadOnlyRootGetsItsTmpfs(t *testing.T) {
+	spec := validSpec()
+	spec.ReadOnlyRootfs = true
+	spec.Mounts = []*agentv1.Mount{{ContainerPath: "/tmp", Source: &agentv1.Mount_Tmpfs_{Tmpfs: &agentv1.Mount_Tmpfs{SizeBytes: 64 << 20, Mode: 0o1777}}}}
+	engine := newFakeEngine()
+	if update := create(t, engine, spec); update.GetState() != agentv1.OperationState_OPERATION_STATE_SUCCEEDED {
+		t.Fatalf("refused: %v", update)
+	}
+	for _, config := range engine.created {
+		if !config.HostConfig.ReadonlyRootfs || len(config.HostConfig.Mounts) != 1 || config.HostConfig.Mounts[0].Type != "tmpfs" || config.HostConfig.Mounts[0].Target != "/tmp" {
+			t.Fatalf("not a read-only root with /tmp: %+v", config.HostConfig)
+		}
+	}
 }

@@ -944,15 +944,18 @@ func (x *ActionUpdate) GetUpdatedAt() *timestamppb.Timestamp {
 
 // Observed status of one managed container.
 type ContainerStatus struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	ContainerId   string                 `protobuf:"bytes,1,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	State         ContainerStatus_State  `protobuf:"varint,3,opt,name=state,proto3,enum=shipkeep.agent.v1.ContainerStatus_State" json:"state,omitempty"`
-	Healthy       bool                   `protobuf:"varint,4,opt,name=healthy,proto3" json:"healthy,omitempty"`
-	RestartCount  uint32                 `protobuf:"varint,5,opt,name=restart_count,json=restartCount,proto3" json:"restart_count,omitempty"`
-	StartedAt     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
-	ExitCode      int32                  `protobuf:"varint,7,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
-	Labels        map[string]string      `protobuf:"bytes,8,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	ContainerId  string                 `protobuf:"bytes,1,opt,name=container_id,json=containerId,proto3" json:"container_id,omitempty"`
+	Name         string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	State        ContainerStatus_State  `protobuf:"varint,3,opt,name=state,proto3,enum=shipkeep.agent.v1.ContainerStatus_State" json:"state,omitempty"`
+	Healthy      bool                   `protobuf:"varint,4,opt,name=healthy,proto3" json:"healthy,omitempty"`
+	RestartCount uint32                 `protobuf:"varint,5,opt,name=restart_count,json=restartCount,proto3" json:"restart_count,omitempty"`
+	StartedAt    *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=started_at,json=startedAt,proto3" json:"started_at,omitempty"`
+	ExitCode     int32                  `protobuf:"varint,7,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
+	Labels       map[string]string      `protobuf:"bytes,8,rep,name=labels,proto3" json:"labels,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	// Why the agent stopped the container itself, kept while the container exists: empty, or
+	// "disk_limit" when its writable layer went over its budget (ADR 0022).
+	StopReason    string `protobuf:"bytes,9,opt,name=stop_reason,json=stopReason,proto3" json:"stop_reason,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1041,6 +1044,13 @@ func (x *ContainerStatus) GetLabels() map[string]string {
 		return x.Labels
 	}
 	return nil
+}
+
+func (x *ContainerStatus) GetStopReason() string {
+	if x != nil {
+		return x.StopReason
+	}
+	return ""
 }
 
 type VolumeStatus struct {
@@ -2071,7 +2081,7 @@ const file_shipkeep_agent_v1_gateway_proto_rawDesc = "" +
 	"\x05error\x18\x05 \x01(\tR\x05error\x127\n" +
 	"\x06result\x18\x06 \x01(\v2\x1f.shipkeep.agent.v1.ActionResultR\x06result\x129\n" +
 	"\n" +
-	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xb3\x04\n" +
+	"updated_at\x18\a \x01(\v2\x1a.google.protobuf.TimestampR\tupdatedAt\"\xd4\x04\n" +
 	"\x0fContainerStatus\x12!\n" +
 	"\fcontainer_id\x18\x01 \x01(\tR\vcontainerId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12>\n" +
@@ -2081,7 +2091,9 @@ const file_shipkeep_agent_v1_gateway_proto_rawDesc = "" +
 	"\n" +
 	"started_at\x18\x06 \x01(\v2\x1a.google.protobuf.TimestampR\tstartedAt\x12\x1b\n" +
 	"\texit_code\x18\a \x01(\x05R\bexitCode\x12F\n" +
-	"\x06labels\x18\b \x03(\v2..shipkeep.agent.v1.ContainerStatus.LabelsEntryR\x06labels\x1a9\n" +
+	"\x06labels\x18\b \x03(\v2..shipkeep.agent.v1.ContainerStatus.LabelsEntryR\x06labels\x12\x1f\n" +
+	"\vstop_reason\x18\t \x01(\tR\n" +
+	"stopReason\x1a9\n" +
 	"\vLabelsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\x8e\x01\n" +

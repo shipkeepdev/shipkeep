@@ -366,6 +366,10 @@ export const shipkeepSchema = {
         },
         "healthcheck": {
           "$ref": "#/$defs/healthcheck"
+        },
+        "read_only_root": {
+          "description": "Run the container with a read-only root filesystem and a 64Mi tmpfs at /tmp, so that it writes only there (counted in its memory) and to its volumes (ADR 0022). Off by default: many images write elsewhere.",
+          "type": "boolean"
         }
       }
     },
@@ -386,7 +390,7 @@ export const shipkeepSchema = {
       }
     },
     "resources": {
-      "description": "CPU and memory limit of each container, which is also what placement reserves on the node. A limit left out is 1 CPU, or 512Mi of memory.",
+      "description": "Limits of each container. cpu and memory are also what placement reserves on the node; disk bounds what the container writes to its own filesystem (its writable layer), measured by the agent, which stops a container above it (ADR 0022). A limit left out is 1 CPU, 512Mi of memory, or 1Gi of disk.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -394,6 +398,9 @@ export const shipkeepSchema = {
           "$ref": "#/$defs/cpu"
         },
         "memory": {
+          "$ref": "#/$defs/size"
+        },
+        "disk": {
           "$ref": "#/$defs/size"
         }
       }

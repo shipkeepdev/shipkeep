@@ -3,7 +3,7 @@ import { validateShipkeepConfig } from './validate.js';
 
 describe('DEFAULT_RESOURCES', () => {
   it('is one CPU and 512 MiB, written as shipkeep.yml accepts it', () => {
-    expect(DEFAULT_RESOURCES).toEqual({ cpu: '1', memory: '512Mi' });
+    expect(DEFAULT_RESOURCES).toEqual({ cpu: '1', memory: '512Mi', disk: '1Gi' });
     expect(
       validateShipkeepConfig({
         version: 1,

@@ -153,11 +153,16 @@ type Release struct {
 // Name of a volume, database or node.
 type ResourceName string
 
-// CPU and memory limit of each container, which is also what placement reserves on
-// the node. A limit left out is 1 CPU, or 512Mi of memory.
+// Limits of each container. cpu and memory are also what placement reserves on the
+// node; disk bounds what the container writes to its own filesystem (its writable
+// layer), measured by the agent, which stops a container above it (ADR 0022). A
+// limit left out is 1 CPU, 512Mi of memory, or 1Gi of disk.
 type Resources struct {
 	// Cpu corresponds to the JSON schema field "cpu".
 	Cpu *Cpu `json:"cpu,omitempty,omitzero" yaml:"cpu,omitempty" mapstructure:"cpu,omitempty"`
+
+	// Disk corresponds to the JSON schema field "disk".
+	Disk *Size `json:"disk,omitempty,omitzero" yaml:"disk,omitempty" mapstructure:"disk,omitempty"`
 
 	// Memory corresponds to the JSON schema field "memory".
 	Memory *Size `json:"memory,omitempty,omitzero" yaml:"memory,omitempty" mapstructure:"memory,omitempty"`
@@ -172,6 +177,11 @@ type Run struct {
 
 	// Port the application listens on inside the container.
 	Port int `json:"port" yaml:"port" mapstructure:"port"`
+
+	// Run the container with a read-only root filesystem and a 64Mi tmpfs at /tmp, so
+	// that it writes only there (counted in its memory) and to its volumes (ADR
+	// 0022). Off by default: many images write elsewhere.
+	ReadOnlyRoot *bool `json:"read_only_root,omitempty,omitzero" yaml:"read_only_root,omitempty" mapstructure:"read_only_root,omitempty"`
 }
 
 type Scale struct {

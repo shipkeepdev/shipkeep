@@ -56,7 +56,10 @@ describe('agentAction', () => {
       env: [expect.objectContaining({ name: 'LOG_LEVEL', value: 'info' })],
       network: container.network,
       labels: { 'shipkeep.application': 'app' },
-      resources: { cpuMillis: 500, memoryBytes: 536_870_912n },
+      // The disk budget left out is 1 GiB (ADR 0022); the root stays writable by default.
+      resources: { cpuMillis: 500, memoryBytes: 536_870_912n, diskBytes: 1_073_741_824n },
+      readOnlyRootfs: false,
+      mounts: [],
       restartPolicy: { mode: RestartPolicy_Mode.ALWAYS },
     });
     expect(spec?.ports.map((port) => [port.containerPort, port.hostPort])).toEqual([[3000, 0]]);
@@ -67,6 +70,38 @@ describe('agentAction', () => {
         new TextDecoder().decode(secret.value),
       ]),
     ).toEqual([['DATABASE_URL', 3, 'postgres://fixture:private@db/app']]);
+  });
+
+  it('sends the disk budget and, on request, a read-only root with a bounded /tmp (ADR 0022)', () => {
+    const readOnly = containerPlan({
+      config: {
+        version: 1,
+        name: 'billing-api',
+        build: { type: 'image', image: 'ghcr.io/acme/billing:1.4.2' },
+        run: { port: 3000, read_only_root: true },
+        resources: { disk: '64Mi' },
+      },
+      image: IMAGE,
+      name: 'sk-billing-api-0123456789ab-r2-0',
+      network: 'sk-env-0190f5a87b1c7e2d8f3a0123456789ac',
+      labels: {},
+      task: false,
+    });
+    const action = wire(agentAction(step('create_container', { container: readOnly }), secrets));
+    if (action.case !== 'createContainer') throw new Error(String(action.case));
+    const spec = action.value.spec;
+    expect(spec?.resources?.diskBytes).toBe(67_108_864n);
+    expect(spec?.readOnlyRootfs).toBe(true);
+    expect(
+      spec?.mounts.map((mount) => [
+        mount.containerPath,
+        mount.readOnly,
+        mount.source.case,
+        mount.source.case === 'tmpfs'
+          ? [mount.source.value.sizeBytes, mount.source.value.mode]
+          : [],
+      ]),
+    ).toEqual([['/tmp', false, 'tmpfs', [67_108_864n, 0o1777]]]);
   });
 
   it('refuses to build a container whose secrets are not set', () => {
@@ -269,7 +304,11 @@ describe('agent compatibility vectors', () => {
     );
     expect(specs).toHaveLength(2);
     for (const resources of specs)
-      expect(resources).toMatchObject({ cpuMillis: 1000, memoryBytes: 536_870_912n });
+      expect(resources).toMatchObject({
+        cpuMillis: 1000,
+        memoryBytes: 536_870_912n,
+        diskBytes: 1_073_741_824n,
+      });
     const lines = planned.map(
       (action) =>
         `${action.case ?? ''} ${Buffer.from(
