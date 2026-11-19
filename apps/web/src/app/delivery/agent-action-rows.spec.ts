@@ -99,6 +99,7 @@ describe('agent action rows', () => {
       registry_unreachable: 'registry unreachable',
       registry_untrusted: 'registry certificate not trusted',
       disk_full: 'disk full',
+      egress_unguarded: 'egress proxy missing',
     } as const;
     for (const [reason, label] of Object.entries(labels)) {
       expect(undone(reason as keyof typeof labels).reason).toBe(label);
@@ -113,6 +114,11 @@ describe('agent action rows', () => {
       'The server could not pull the image: its disk is full.',
     ])
       expect(FR[sentence], sentence).toMatch(/^Le serveur n'a pas pu récupérer l'image : /);
+    expect(
+      FR[
+        "The server refused to pull the image: its Docker daemon does not go through Shipkeep's egress proxy, which keeps a registry from reaching the server's own network. Run the server installer again to restore it."
+      ],
+    ).toMatch(/^Le serveur a refusé de récupérer l'image : /);
   });
 
   it('reports a probe or a release task that ran but did not pass', () => {

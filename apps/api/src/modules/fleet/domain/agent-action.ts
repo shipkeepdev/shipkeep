@@ -117,6 +117,7 @@ export const ACTION_REASONS = [
   'registry_untrusted',
   'disk_full',
   'image_volume_undeclared',
+  'egress_unguarded',
   'unknown',
 ] as const;
 export type ActionReason = (typeof ACTION_REASONS)[number];
@@ -136,6 +137,7 @@ const AGENT_ERRORS: Readonly<Record<string, ActionReason>> = {
   'registry certificate not trusted by the server': 'registry_untrusted',
   'no space left on the server': 'disk_full',
   'the image declares a volume the configuration does not mount': 'image_volume_undeclared',
+  "the server's Docker does not go through its egress proxy": 'egress_unguarded',
 };
 /** The causes of a failed step: the only reasons an undone (compensated) action is given. */
 const STEP_CAUSES: ReadonlySet<ActionReason> = new Set([
@@ -145,6 +147,7 @@ const STEP_CAUSES: ReadonlySet<ActionReason> = new Set([
   'registry_untrusted',
   'disk_full',
   'image_volume_undeclared',
+  'egress_unguarded',
 ]);
 
 /**
