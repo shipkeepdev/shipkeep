@@ -1,6 +1,6 @@
 # Installing Shipkeep
 
-> **Status: a prerelease, exercised on one machine, not yet on a public server.** Installing the control plane with the installer, adding a server and deploying an application have run with the published artifacts of [`v0.1.0-alpha.2`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.2) (see [What has been tested](#what-has-been-tested)). A rollback and a restart of the server's container were run with `v0.1.0-alpha.1`. The upgrade steps have not run, and neither a real server, a public certificate nor a real mail provider has been tried. Use it on servers you can afford to lose, and please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
+> **Status: a prerelease, exercised on one machine, not yet on a public server.** Installing the control plane with the installer, adding a server and deploying an application have run with the published artifacts of [`v0.1.0-alpha.3`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.3), without an email account (see [What has been tested](#what-has-been-tested)). A rollback and a restart of the server's container were run with `v0.1.0-alpha.1`. The upgrade steps have not run, and neither a real server, a public certificate nor a real mail provider has been tried. Use it on servers you can afford to lose, and please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
 
 A Shipkeep installation has two kinds of machines:
 
@@ -160,7 +160,7 @@ Store the output in a password manager or another place that is not this server.
 
 ## Upgrade
 
-The installer does not upgrade. Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest (the `image` file of its bundle), then run `docker compose pull` and `docker compose up -d`. The `migrate` and `database-role` steps run again before the new control plane starts. Take a PostgreSQL backup first: automatic snapshots before upgrades are not built yet.
+The installer does not upgrade. In the installation directory, replace `compose.yml` with the one of the new release's bundle: it pins the PostgreSQL and Caddy images of that release. Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest (the `image` file of the same bundle), then run `docker compose pull` and `docker compose up -d`. The `migrate` and `database-role` steps run again before the new control plane starts. Take a PostgreSQL backup first: automatic snapshots before upgrades are not built yet.
 
 ## Troubleshooting
 
@@ -178,6 +178,7 @@ The installer does not upgrade. Change `SHIPKEEP_IMAGE` in `.env` to the new rel
   ```
 
   For the control plane, also run `sudo apt-get install -y docker-compose-plugin` and verify `docker compose version`. Resolve any errors before running the installer again. A partially installed `docker` command makes the installer skip repository setup; repairing only pending packages does not necessarily install every missing Docker package.
+
 - **Power loss or `kill -9` left Docker repository files:** reconcile `/etc/apt/sources.list.d/shipkeep-docker.sources` and `/etc/apt/keyrings/shipkeep-docker.gpg`. Remove them and run the installer again only if you can confirm they were left before package application. If package application may have started, keep them and finish installing and verifying Docker as described above before retrying. Once the old installer, `apt-get` and `dpkg` have stopped, use that attempt's `Docker signing-key workspace:` output to identify and remove its temporary directory under `/tmp`.
 - **The installer stopped while starting the stack:** it prints the command that finishes the installation. Keep `.env`: the database is created with the passwords it holds, and the installer will not run a second time on this directory.
 - **`migrate` or `database-role` exited with an error:** `docker compose logs migrate database-role`. A changed `POSTGRES_APP_PASSWORD` is the usual cause: an existing login keeps its password, so put the original value back.
@@ -186,6 +187,12 @@ The installer does not upgrade. Change `SHIPKEEP_IMAGE` in `.env` to the new rel
 - **Starting over, on a machine you can afford to lose:** `docker compose down --volumes` in the installation directory, then remove that directory. This deletes the database and the key-encryption key, and with them everything Shipkeep stored.
 
 ## What has been tested
+
+With the published artifacts of `v0.1.0-alpha.3`, on 19 November 2026, in fresh Ubuntu 24.04 containers with systemd and without Docker, following this page from its first command and without any email account:
+
+- The bundle downloaded from the release, and the `cosign verify-blob` command above: it succeeds, and it fails when given another identity or a modified file. The image signature verifies with `cosign verify`, and fails for another identity.
+- The installer through a terminal, answering its three questions: the DNS name, the address and the password of the first account. It asked nothing about email, the password did not appear in its output, the account was created, and the control plane reports `0.1.0-alpha.3` with email off. The test name was not public, so no certificate could be issued and the run ended the way this page describes for that case.
+- On that installation, once Caddy was switched to its internal certificate authority (by hand, for the test): sign-in with the account the installer created, an organization, a server added with the command and the token copied from the Servers page (its agent reports `0.1.0-alpha.3`, the token does not appear in the installer's output), and a deployment of `docker.io/traefik/whoami:v1.10.3` that succeeded and answers through that server's Caddy. It answers on plain HTTP as well, instead of redirecting to HTTPS ([#342](https://github.com/shipkeepdev/shipkeep/issues/342)).
 
 With the published artifacts of `v0.1.0-alpha.2`, on 15 November 2026, in fresh Ubuntu 24.04 containers with systemd and without Docker, following this page from its first command:
 
