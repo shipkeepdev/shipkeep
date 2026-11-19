@@ -1,5 +1,7 @@
 import { create } from '@bufbuild/protobuf';
 import { ContainerStatus_State, StateReportSchema } from '@shipkeep/proto-ts';
+import { Client } from 'pg';
+import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { enrollTestNode } from '../../testing/enroll-test-node';
@@ -7,7 +9,12 @@ import { tenantHttpFixture } from '../../testing/tenant-http';
 import { AllocationObservations } from '../deployments/application/allocation-observations';
 import { PIPELINE_STORE, type PipelineStore } from '../deployments/application/ports';
 
-import { DOMAIN_RESOLVER, type DomainResolver } from './application/ports';
+import {
+  APPLICATION_STORE,
+  type ApplicationStore,
+  DOMAIN_RESOLVER,
+  type DomainResolver,
+} from './application/ports';
 
 /** Fixed answers instead of the host's resolver; `undefined` is a failed lookup. */
 const ANSWERS: Readonly<Record<string, readonly string[] | undefined>> = {
@@ -85,9 +92,284 @@ describe('application domains over HTTP', () => {
         config: config({ name: 'second-app', domains: ['shared.example.com'] }),
       })
       .expect(201);
+    // Freeing the domain is audited, by the user whose change freed it.
+    const database = fixture.app.get(PrismaUnitOfWork);
+    const audited = await database.runTenant(fixture.organizationId, () =>
+      database.client.auditEvent.findMany({
+        where: { action: 'domain.released', targetId: first.id },
+      }),
+    );
+    expect(audited).toHaveLength(1);
+    expect(audited[0]).toMatchObject({
+      actorKind: 'user',
+      targetType: 'application',
+      metadata: expect.objectContaining({ hostname: 'shared.example.com' }) as unknown,
+    });
     await fixture
       .post(path(), 'owner', { config: config({ name: 'wild-app', domains: ['*.example.com'] }) })
       .expect(400);
+  });
+
+  it('keeps a dropped domain reserved while a placed release still serves it (#302)', async () => {
+    const nodeId = await enrollTestNode(fixture, {
+      facts: { hostname: 'edge-moving.example.com' },
+      ready: false,
+    });
+    const first = (
+      await fixture
+        .post(path(), 'owner', {
+          config: config({
+            name: 'moving-from',
+            domains: ['moving.example.com'],
+            secrets: undefined,
+          }),
+        })
+        .expect(201)
+    ).body as ApplicationBody;
+    const queued = await fixture.post(`${path()}/${first.id}/deployments`, 'owner', {}).expect(201);
+    const { release, deployment } = queued.body as {
+      release: { id: string };
+      deployment: { id: string };
+    };
+    const releaseId = release.id;
+    const tenant = <T>(work: () => Promise<T>) =>
+      fixture.app.get(PrismaUnitOfWork).runTenant(fixture.organizationId, work);
+    const pipeline = fixture.app.get<PipelineStore>(PIPELINE_STORE);
+    const claim = () =>
+      fixture.post(path(), 'owner', {
+        config: config({ name: 'moving-to', domains: ['moving.example.com'], secrets: undefined }),
+      });
+    // A queued deployment, not placed yet, routes its snapshot once it runs: dropping the domain
+    // from the configuration does not free it.
+    const unplaced = (
+      await fixture
+        .post(`${path()}/${first.id}/config`, 'owner', {
+          expectedConfigSha: first.configSha,
+          config: config({ name: 'moving-from', domains: [], secrets: undefined }),
+        })
+        .expect(200)
+    ).body as ApplicationBody;
+    await claim().expect(409);
+    const restored = (
+      await fixture
+        .post(`${path()}/${first.id}/config`, 'owner', {
+          expectedConfigSha: unplaced.configSha,
+          config: config({
+            name: 'moving-from',
+            domains: ['moving.example.com'],
+            secrets: undefined,
+          }),
+        })
+        .expect(200)
+    ).body as ApplicationBody;
+    first.configSha = restored.configSha;
+    await tenant(() =>
+      pipeline.place(
+        fixture.organizationId,
+        first.id,
+        releaseId,
+        [
+          {
+            index: 0,
+            nodeId,
+            container: 'sk-moving-from-0',
+            port: 3000,
+            cpuMillis: 0,
+            memoryBytes: 0,
+          },
+        ],
+        new Date(),
+      ),
+    );
+    // Cancelled, the deployment routes nothing new, but its placed replica may still serve.
+    await fixture
+      .post(`${path()}/${first.id}/deployments/${deployment.id}/cancel`, 'owner', {})
+      .expect(200);
+    // The configuration drops the domain; the placed release still lists it, so its route may
+    // still serve it.
+    const dropped = (
+      await fixture
+        .post(`${path()}/${first.id}/config`, 'owner', {
+          expectedConfigSha: first.configSha,
+          config: config({ name: 'moving-from', domains: [], secrets: undefined }),
+        })
+        .expect(200)
+    ).body as ApplicationBody;
+    await claim()
+      .expect(409)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'domain_taken',
+          details: { hostname: 'moving.example.com' },
+        });
+      });
+    // Listing it again in the same application takes it back without a conflict.
+    const again = (
+      await fixture
+        .post(`${path()}/${first.id}/config`, 'owner', {
+          expectedConfigSha: dropped.configSha,
+          config: config({
+            name: 'moving-from',
+            domains: ['moving.example.com'],
+            secrets: undefined,
+          }),
+        })
+        .expect(200)
+    ).body as ApplicationBody;
+    await fixture
+      .post(`${path()}/${first.id}/config`, 'owner', {
+        expectedConfigSha: again.configSha,
+        config: config({ name: 'moving-from', domains: [], secrets: undefined }),
+      })
+      .expect(200);
+    await claim().expect(409);
+    // The replicas of that release are stopped, as the pipeline does when the next deployment, a
+    // stop or a cleanup succeeds. While a route change of the application is not confirmed on the
+    // node, the route there may still serve the domain: it stays reserved.
+    const freeUnserved = () =>
+      tenant(() =>
+        fixture.app
+          .get<ApplicationStore>(APPLICATION_STORE)
+          .releaseUnservedDomains({ id: first.id, organizationId: fixture.organizationId }),
+      );
+    await tenant(() => pipeline.stop(first.id, [releaseId], new Date()));
+    const admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+    try {
+      const action = async (kind: string, state: string, at: Date, node = nodeId) => {
+        const id = uuidv7();
+        await admin.query(
+          `INSERT INTO agent_actions (id, organization_id, node_id, kind, idempotency_key, payload_enc, lease_epoch, deadline, state, created_at, updated_at, application_id, deployment_id)
+           VALUES ($1, $2, $3, $4, $5, '\\x00', 1, $6, $7, $6, $6, $8, $9)`,
+          [
+            id,
+            fixture.organizationId,
+            node,
+            kind,
+            `test:${id}`,
+            at,
+            state,
+            first.id,
+            deployment.id,
+          ],
+        );
+        return id;
+      };
+      const removal = await action('removeRoute', 'queued', new Date(Date.now() - 2000));
+      await freeUnserved();
+      await claim().expect(409);
+      // Failed, it leaves the route in an unknown state on that node.
+      await admin.query(`UPDATE agent_actions SET state = 'failed' WHERE id = $1`, [removal]);
+      expect(await freeUnserved()).toEqual([]);
+      await claim().expect(409);
+      // A removal that never ran left the route where it was.
+      for (const state of ['expired', 'cancelled', 'compensated']) {
+        await admin.query(`UPDATE agent_actions SET state = $2 WHERE id = $1`, [removal, state]);
+        expect(await freeUnserved()).toEqual([]);
+        await claim().expect(409);
+      }
+      // A route change that succeeded on another node says nothing about this one.
+      const other = await enrollTestNode(fixture, {
+        facts: { hostname: 'edge-moving-other.example.com' },
+        ready: false,
+      });
+      await action('removeRoute', 'succeeded', new Date(Date.now() - 1000), other);
+      await freeUnserved();
+      await claim().expect(409);
+      // An older route change still under way on this node can still apply after a later one
+      // succeeds: it keeps the domain until it can no longer apply.
+      const stale = await action('upsertRoute', 'queued', new Date(Date.now() - 3000));
+      await action('removeRoute', 'succeeded', new Date());
+      await freeUnserved();
+      await claim().expect(409);
+      // An addition that never ran installed nothing.
+      await admin.query(`UPDATE agent_actions SET state = 'expired' WHERE id = $1`, [stale]);
+      // The removal that never ran was followed by a success on this node: the route there is
+      // known.
+      expect(await freeUnserved()).toEqual(['moving.example.com']);
+      await claim().expect(201);
+    } finally {
+      await admin.end();
+    }
+  });
+
+  it('keeps a domain listed again once its releasing mark is cleared (#302)', async () => {
+    const nodeId = await enrollTestNode(fixture, {
+      facts: { hostname: 'edge-relisted.example.com' },
+      ready: false,
+    });
+    const created = (
+      await fixture
+        .post(path(), 'owner', {
+          config: config({
+            name: 'relisted',
+            domains: ['relisted.example.com'],
+            secrets: undefined,
+          }),
+        })
+        .expect(201)
+    ).body as ApplicationBody;
+    const queued = await fixture
+      .post(`${path()}/${created.id}/deployments`, 'owner', {})
+      .expect(201);
+    const { release, deployment } = queued.body as {
+      release: { id: string };
+      deployment: { id: string };
+    };
+    const tenant = <T>(work: () => Promise<T>) =>
+      fixture.app.get(PrismaUnitOfWork).runTenant(fixture.organizationId, work);
+    const pipeline = fixture.app.get<PipelineStore>(PIPELINE_STORE);
+    await tenant(() =>
+      pipeline.place(
+        fixture.organizationId,
+        created.id,
+        release.id,
+        [
+          {
+            index: 0,
+            nodeId,
+            container: 'sk-relisted-0',
+            port: 3000,
+            cpuMillis: 0,
+            memoryBytes: 0,
+          },
+        ],
+        new Date(),
+      ),
+    );
+    const save = async (sha: string, domains: string[]) =>
+      (
+        (
+          await fixture
+            .post(`${path()}/${created.id}/config`, 'owner', {
+              expectedConfigSha: sha,
+              config: config({ name: 'relisted', domains, secrets: undefined }),
+            })
+            .expect(200)
+        ).body as ApplicationBody
+      ).configSha;
+    // Dropped while a placed release serves it, then listed again.
+    const relisted = await save(await save(created.configSha, []), ['relisted.example.com']);
+    expect(relisted).toBeTruthy();
+    // Nothing serves it any more, the deployment is finished: only the configuration claims it.
+    await fixture
+      .post(`${path()}/${created.id}/deployments/${deployment.id}/cancel`, 'owner', {})
+      .expect(200);
+    await tenant(async () => {
+      await pipeline.stop(created.id, [release.id], new Date());
+      await fixture.app
+        .get<ApplicationStore>(APPLICATION_STORE)
+        .releaseUnservedDomains({ id: created.id, organizationId: fixture.organizationId });
+    });
+    await fixture
+      .post(path(), 'owner', {
+        config: config({
+          name: 'relisted-rival',
+          domains: ['relisted.example.com'],
+          secrets: undefined,
+        }),
+      })
+      .expect(409);
   });
 
   it('says whether each domain reaches a node of the organization running the application', async () => {

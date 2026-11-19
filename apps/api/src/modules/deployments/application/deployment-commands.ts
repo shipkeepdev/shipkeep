@@ -12,6 +12,7 @@ import {
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { APPLICATION_STORE, type ApplicationStore } from '../../apps/application/ports';
 import type { Application, ApplicationTarget } from '../../apps/domain/application';
+import { domainsReleased } from '../../apps/domain/domain-events';
 import { ConfirmationVerifier } from '../../confirmations/application/confirmation-verifier';
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
 import {
@@ -78,34 +79,41 @@ export class DeploymentCommands {
     applicationId: string,
     now = new Date(),
   ): Promise<{ release: Release; deployment: DeploymentRecord }> {
-    return this.scoped(context, 'deploy.run', target, applicationId, async (application) => {
-      const draft = releaseDraft(application.config);
-      const set = await this.secrets.list(target);
-      assertSecretsSet(
-        draft.secrets,
-        set.map((secret) => secret.name),
-      );
-      const running = await this.store.active(application.id);
-      if (running) throw deploymentInProgress(running.state);
-      const release = await this.store.createRelease(application, draft, context.userId, now);
-      if (!release) throw deploymentInProgress();
-      const deployment = await this.store.queue(release, draft, 'manual', context.userId, now);
-      if (!deployment) throw deploymentInProgress();
-      await this.events.publish([
-        this.event('release.created', context, application, release.id, now, {
-          number: release.number,
-          image: release.image,
-          configSha: release.configSha,
-        }),
-        this.event('deployment.queued', context, application, deployment.id, now, {
-          releaseId: release.id,
-          trigger: deployment.trigger,
-        }),
-      ]);
-      // The pipeline run commits with the deployment (PLAN M3.4c4c).
-      await this.waker.wake(application.organizationId, deployment.id);
-      return { release, deployment };
-    });
+    return this.scoped(
+      context,
+      'deploy.run',
+      target,
+      applicationId,
+      async (application) => {
+        const draft = releaseDraft(application.config);
+        const set = await this.secrets.list(target);
+        assertSecretsSet(
+          draft.secrets,
+          set.map((secret) => secret.name),
+        );
+        const running = await this.store.active(application.id);
+        if (running) throw deploymentInProgress(running.state);
+        const release = await this.store.createRelease(application, draft, context.userId, now);
+        if (!release) throw deploymentInProgress();
+        const deployment = await this.store.queue(release, draft, 'manual', context.userId, now);
+        if (!deployment) throw deploymentInProgress();
+        await this.events.publish([
+          this.event('release.created', context, application, release.id, now, {
+            number: release.number,
+            image: release.image,
+            configSha: release.configSha,
+          }),
+          this.event('deployment.queued', context, application, deployment.id, now, {
+            releaseId: release.id,
+            trigger: deployment.trigger,
+          }),
+        ]);
+        // The pipeline run commits with the deployment (PLAN M3.4c4c).
+        await this.waker.wake(application.organizationId, deployment.id);
+        return { release, deployment };
+      },
+      true,
+    );
   }
 
   /** Deploys a copy of the release an earlier deployment ran (SPEC 5.1, PLAN M3.5a). */
@@ -116,50 +124,61 @@ export class DeploymentCommands {
     deploymentId: string,
     now = new Date(),
   ): Promise<{ release: Release; deployment: DeploymentRecord }> {
-    return this.scoped(context, 'deploy.run', target, applicationId, async (application) => {
-      const previous = await this.store.find(application.id, deploymentId);
-      if (!previous) throw new NotFoundError('deployment');
-      assertRollbackTarget(previous, await this.store.serving(application.id));
-      const source = await this.store.release(application.id, previous.releaseId);
-      if (!source) throw new NotFoundError('release');
-      const draft = rollbackDraft(source);
-      const set = await this.secrets.list(target);
-      assertSecretsSet(
-        draft.secrets,
-        set.map((secret) => secret.name),
-      );
-      const running = await this.store.active(application.id);
-      if (running) throw deploymentInProgress(running.state);
-      // The older configuration may name a domain another application has claimed since. The
-      // current domains stay claimed: the next deployment uses them again.
-      const taken = await this.applications.syncDomains(
-        application,
-        [...new Set([...(application.config.domains ?? []), ...(source.config.domains ?? [])])],
-        now,
-      );
-      if (taken)
-        throw new ConflictError('domain_taken', 'Another application already uses this domain.', {
-          hostname: taken,
-        });
-      const release = await this.store.copyRelease(source, context.userId, now);
-      if (!release) throw deploymentInProgress();
-      const deployment = await this.store.queue(release, draft, 'rollback', context.userId, now);
-      if (!deployment) throw deploymentInProgress();
-      await this.events.publish([
-        this.event('release.created', context, application, release.id, now, {
-          number: release.number,
-          image: release.image,
-          configSha: release.configSha,
-          rollbackOf: source.number,
-        }),
-        this.event('deployment.queued', context, application, deployment.id, now, {
-          releaseId: release.id,
-          trigger: deployment.trigger,
-        }),
-      ]);
-      await this.waker.wake(application.organizationId, deployment.id);
-      return { release, deployment };
-    });
+    return this.scoped(
+      context,
+      'deploy.run',
+      target,
+      applicationId,
+      async (application) => {
+        const previous = await this.store.find(application.id, deploymentId);
+        if (!previous) throw new NotFoundError('deployment');
+        assertRollbackTarget(previous, await this.store.serving(application.id));
+        const source = await this.store.release(application.id, previous.releaseId);
+        if (!source) throw new NotFoundError('release');
+        const draft = rollbackDraft(source);
+        const set = await this.secrets.list(target);
+        assertSecretsSet(
+          draft.secrets,
+          set.map((secret) => secret.name),
+        );
+        const running = await this.store.active(application.id);
+        if (running) throw deploymentInProgress(running.state);
+        // The older configuration may name a domain another application has claimed since. The
+        // current domains stay claimed: the next deployment uses them again.
+        const { taken, released } = await this.applications.syncDomains(
+          application,
+          [...new Set([...(application.config.domains ?? []), ...(source.config.domains ?? [])])],
+          now,
+        );
+        if (taken)
+          throw new ConflictError('domain_taken', 'Another application already uses this domain.', {
+            hostname: taken,
+          });
+        if (released.length)
+          await this.events.publish(
+            domainsReleased(application, released, resourceActor(context), now),
+          );
+        const release = await this.store.copyRelease(source, context.userId, now);
+        if (!release) throw deploymentInProgress();
+        const deployment = await this.store.queue(release, draft, 'rollback', context.userId, now);
+        if (!deployment) throw deploymentInProgress();
+        await this.events.publish([
+          this.event('release.created', context, application, release.id, now, {
+            number: release.number,
+            image: release.image,
+            configSha: release.configSha,
+            rollbackOf: source.number,
+          }),
+          this.event('deployment.queued', context, application, deployment.id, now, {
+            releaseId: release.id,
+            trigger: deployment.trigger,
+          }),
+        ]);
+        await this.waker.wake(application.organizationId, deployment.id);
+        return { release, deployment };
+      },
+      true,
+    );
   }
 
   /**
@@ -275,6 +294,13 @@ export class DeploymentCommands {
           routing: stopped.routing,
         }),
       ]);
+      // A cancelled deployment no longer routes its snapshot: what nothing placed serves is free
+      // (#302). Replicas it placed keep their domains until the cleanup stops them.
+      const released = await this.applications.releaseUnservedDomains(application);
+      if (released.length)
+        await this.events.publish(
+          domainsReleased(application, released, resourceActor(context), now),
+        );
       await this.waker.wake(application.organizationId, cancelled.id);
       return cancelled;
     });
@@ -355,6 +381,7 @@ export class DeploymentCommands {
     target: ApplicationTarget,
     applicationId: string,
     work: (application: Application) => Promise<T>,
+    lock = false,
   ): Promise<T> {
     const scope = {
       organizationId: target.organizationId,
@@ -366,6 +393,12 @@ export class DeploymentCommands {
       async () => {
         await this.access.require(context.userId, permission, scope);
         return this.transaction.runTenant(target.organizationId, async () => {
+          const found = await this.applications.find(target, applicationId);
+          if (!found) throw new NotFoundError('application');
+          if (!lock) return work(found);
+          // Locked, then read again: the configuration a release snapshots is the one a
+          // concurrent change committed, never one that change has just replaced (#302).
+          if (!(await this.applications.lock(found))) throw new NotFoundError('application');
           const application = await this.applications.find(target, applicationId);
           if (!application) throw new NotFoundError('application');
           return work(application);

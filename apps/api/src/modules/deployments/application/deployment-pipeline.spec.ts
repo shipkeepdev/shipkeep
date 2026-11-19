@@ -2,6 +2,7 @@ import type { ShipkeepConfig } from '@shipkeep/config-schema';
 import { ConflictError, type DomainEvent, InvalidInputError, Secret } from '@shipkeep/domain';
 
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
+import type { ApplicationStore } from '../../apps/application/ports';
 import type { RegistryCredentialStore } from '../../registries/application/ports';
 import type { RegistryLogin } from '../../registries/domain/registry-credential';
 import type { SecretStore } from '../../secrets/application/ports';
@@ -61,8 +62,12 @@ function world(
     serving?: StoredAllocation[];
     /** Replicas of other applications, counted in the load of their node. */
     neighbours?: Pick<StoredAllocation, 'nodeId' | 'cpuMillis' | 'memoryBytes'>[];
+    /** Hostnames the store frees each time the pipeline offers the application's domains. */
+    freed?: string[];
   } = {},
 ) {
+  /** What commits while the run waits for the deployment's row lock. */
+  let beforeRowLock: (() => void) | undefined;
   let deployment: DeploymentRecord = {
     id: '0190f5a8-7b1c-7e2d-8f3a-00000000000d',
     organizationId: ORG,
@@ -121,6 +126,11 @@ function world(
   const superseded: { id: string; state: string }[] = [];
   const deployments = {
     byId: () => Promise.resolve(deployment),
+    lockState: () => {
+      beforeRowLock?.();
+      beforeRowLock = undefined;
+      return Promise.resolve(deployment.state);
+    },
     succeededOf: () => Promise.resolve([replaced]),
     transition: (next: DeploymentRecord, expected: string) => {
       if (next.id === replaced.id) {
@@ -226,6 +236,14 @@ function world(
       return Promise.resolve();
     },
   } as unknown as DomainEventBus;
+  /** Applications whose dropped domains were offered for release, in order (#302). */
+  const released: string[] = [];
+  const applications = {
+    releaseUnservedDomains: (application: { id: string }) => {
+      released.push(application.id);
+      return Promise.resolve([...(options.freed ?? [])]);
+    },
+  } as unknown as ApplicationStore;
   const subject = new DeploymentPipeline(
     deployments,
     pipeline,
@@ -235,6 +253,7 @@ function world(
     registries,
     transaction,
     bus,
+    applications,
   );
 
   /** Agents finish every queued action successfully. */
@@ -250,6 +269,7 @@ function world(
   return {
     subject,
     calls,
+    released,
     pipelineStore: pipeline,
     events,
     superseded,
@@ -264,6 +284,9 @@ function world(
     },
     get allocations() {
       return allocations;
+    },
+    whileWaitingForTheRowLock(work: () => void) {
+      beforeRowLock = work;
     },
     cancel() {
       deployment = {
@@ -314,7 +337,45 @@ describe('DeploymentPipeline', () => {
     expect(
       w.events.every((e) => e.actor.kind === 'system' && !JSON.stringify(e).includes('fixture')),
     ).toBe(true);
+    // Once the replaced replicas are stopped, the domains they alone served are free (#302).
+    expect(new Set(w.released)).toEqual(new Set([APP]));
+    // Woken again once finished (an action of it ended), it checks again.
+    const before = w.released.length;
     expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
+    expect(w.released).toHaveLength(before + 1);
+  });
+
+  it('queues no action once a cancellation committed before it held the deployment (#302)', async () => {
+    const w = world();
+    // Image resolved, placed: the next decision queues the first steps.
+    while ((await w.subject.run(ORG, w.deployment.id, () => NOW)) !== 'wait');
+    const before = w.queued.size;
+    w.agentsFinish();
+    w.whileWaitingForTheRowLock(() => {
+      w.cancel();
+    });
+    await w.subject.run(ORG, w.deployment.id, () => NOW);
+    // Loaded as running, the run found it cancelled once it held the row: it queued nothing and
+    // planned again from the cancelled state.
+    expect(w.deployment.state).toBe('cancelled');
+    expect(w.queued.size).toBe(before);
+  });
+
+  it('audits each domain it frees, as the system (#302)', async () => {
+    const w = world({ freed: ['old.acme.example.com'] });
+    for (
+      let round = 0;
+      round < 10 && (await w.subject.run(ORG, w.deployment.id, () => NOW)) === 'wait';
+      round++
+    )
+      w.agentsFinish();
+    const released = w.events.filter((e) => e.type === 'domain.released');
+    expect(released.length).toBeGreaterThan(0);
+    expect(released[0]).toMatchObject({
+      actor: { kind: 'system' },
+      target: { type: 'application', id: APP },
+      payload: { applicationId: APP, hostname: 'old.acme.example.com' },
+    });
   });
 
   it('supersedes the replaced deployment when a rollback succeeds', async () => {
@@ -579,6 +640,8 @@ describe('DeploymentPipeline', () => {
         ['deployment.advanced', 'succeeded'],
       ]);
       expect(w.superseded).toEqual([]);
+      // The route is gone: the domains the configuration dropped are free (#302).
+      expect(new Set(w.released)).toEqual(new Set([APP]));
     });
 
     it('fails when an agent cannot stop a replica, and keeps the reservation', async () => {
@@ -594,6 +657,8 @@ describe('DeploymentPipeline', () => {
       expect(w.deployment.state).toBe('failed');
       // The replica may still run: it keeps its room until a later stop succeeds.
       expect(w.allocations).toMatchObject([{ id: 'alloc-serving-0', stopped: false }]);
+      // And its domains stay reserved, since its route may still serve them.
+      expect(w.released).toEqual([]);
     });
   });
 
@@ -786,6 +851,7 @@ describe('DeploymentPipeline', () => {
     });
     expect([...w.queued.values()].some((a) => a.kind === 'createContainer')).toBe(false);
     expect(w.allocations.every((a) => a.stopped)).toBe(true);
+    expect(w.released).toEqual([APP]);
   });
 
   it('cleans up a deployment cancelled through the API once', async () => {
