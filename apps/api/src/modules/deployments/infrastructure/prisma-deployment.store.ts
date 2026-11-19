@@ -158,6 +158,16 @@ export class PrismaDeploymentStore implements DeploymentStore {
     return row ? deployment(row) : undefined;
   }
 
+  async lockState(deploymentId: string): Promise<DeploymentState | undefined> {
+    const rows = await this.database.client.$queryRaw<{ state: string }[]>`
+      SELECT state FROM deployments WHERE id = ${deploymentId}::uuid FOR UPDATE`;
+    const row = rows.at(0);
+    if (!row) return undefined;
+    const state = DEPLOYMENT_STATES.find((candidate) => candidate === row.state);
+    if (!state) throw new Error('Unknown deployment state in storage.');
+    return state;
+  }
+
   async list(applicationId: string): Promise<DeploymentRecord[]> {
     const rows = await this.database.client.deployment.findMany({
       where: { applicationId },
