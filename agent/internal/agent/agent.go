@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/shipkeepdev/shipkeep/agent/internal/config"
+	"github.com/shipkeepdev/shipkeep/agent/internal/diskbudget"
 	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
 	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
 	"github.com/shipkeepdev/shipkeep/agent/internal/reconcile"
@@ -84,6 +85,10 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 		stopReconcile()
 		reconciling.Wait()
 	}()
+	// The disk budget of each container (ADR 0022), enforced on the node alone as well.
+	reconciling.Go(func() {
+		diskbudget.Watcher{Engine: engine, State: store, Logger: a.logger}.Run(reconcileCtx)
+	})
 
 	a.logger.Info("agent started",
 		"version", buildinfo.Version,

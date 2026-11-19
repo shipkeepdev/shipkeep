@@ -41,6 +41,7 @@ var failureTexts = map[string]string{
 	docker.CauseRegistryUnreachable: "registry unreachable from the server",
 	docker.CauseRegistryUntrusted:   "registry certificate not trusted by the server",
 	docker.CauseDiskFull:            "no space left on the server",
+	causeImageVolume:                "the image declares a volume the configuration does not mount",
 }
 
 // failureText is the fixed text for a failed operation: its cause when the agent lists it.
