@@ -296,14 +296,15 @@ The agent only adopts or changes resources that carry its `sk.managed=true` labe
   - The journal keeps the cause as a short code (`last_error`), through compensation, a replay and a restart. A cause that is not a code is dropped.
   - The dispatcher sends the text of a cause it lists:
 
-    | Cause                                                                                    | Text sent                                                      | Reason on the control plane |
-    | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------- |
-    | The registry refused the pull: private image, wrong credentials, or no such repository   | `registry refused the pull`                                    | `registry_denied`           |
-    | The registry has no image with this name and digest                                      | `image not found in the registry`                              | `image_not_found`           |
-    | No answer from the registry (name, route, timeout)                                       | `registry unreachable from the server`                         | `registry_unreachable`      |
-    | The server does not trust the registry's certificate                                     | `registry certificate not trusted by the server`               | `registry_untrusted`        |
-    | No room left on the server for the image                                                 | `no space left on the server`                                  | `disk_full`                 |
-    | A read-only root whose image declares a `VOLUME` that the spec does not mount (ADR 0022) | `the image declares a volume the configuration does not mount` | `image_volume_undeclared`   |
+    | Cause                                                                                       | Text sent                                                      | Reason on the control plane |
+    | ------------------------------------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------- |
+    | The registry refused the pull: private image, wrong credentials, or no such repository      | `registry refused the pull`                                    | `registry_denied`           |
+    | The registry has no image with this name and digest                                         | `image not found in the registry`                              | `image_not_found`           |
+    | No answer from the registry (name, route, timeout)                                          | `registry unreachable from the server`                         | `registry_unreachable`      |
+    | The server does not trust the registry's certificate                                        | `registry certificate not trusted by the server`               | `registry_untrusted`        |
+    | No room left on the server for the image                                                    | `no space left on the server`                                  | `disk_full`                 |
+    | A read-only root whose image declares a `VOLUME` that the spec does not mount (ADR 0022)    | `the image declares a volume the configuration does not mount` | `image_volume_undeclared`   |
+    | The daemon's proxy settings are not exactly the egress proxy, read before a pull (ADR 0023) | `the server's Docker does not go through its egress proxy`     | `egress_unguarded`          |
 
   - The control plane maps each fixed text to a reason code and never repeats a text it does not know. A deployment's failure message is built from the reason: a failed pull says what happened and what to check, other steps keep `Step <name> <state>: <fixed text>`. An agent that predates the list keeps sending `action failed`.
 - The payload hash covers only the action message, so a redelivery with new ids or a new deadline still matches.

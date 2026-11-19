@@ -31,6 +31,7 @@ const REASONS: Readonly<Record<NonNullable<AgentAction['reason']>, string | null
   registry_untrusted: 'registry certificate not trusted',
   disk_full: 'disk full',
   image_volume_undeclared: 'image volume not declared',
+  egress_unguarded: 'egress proxy missing',
   unknown: 'unknown error',
 };
 

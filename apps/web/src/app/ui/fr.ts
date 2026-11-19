@@ -1258,6 +1258,8 @@ export const FR: Readonly<Record<string, string>> = {
     "Le serveur n'a pas pu récupérer l'image : il ne reconnaît pas le certificat du registre.",
   'The server did not create the container: the image declares a volume that the configuration does not mount, and with run.read_only_root Docker would give it an unbounded anonymous volume. Declare that path under volumes, or turn off run.read_only_root.':
     "Le serveur n'a pas créé le conteneur : l'image déclare un volume que la configuration ne monte pas, et avec run.read_only_root Docker lui donnerait un volume anonyme sans limite. Déclarez ce chemin sous volumes, ou désactivez run.read_only_root.",
+  "The server refused to pull the image: its Docker daemon does not go through Shipkeep's egress proxy, which keeps a registry from reaching the server's own network. Run the server installer again to restore it.":
+    "Le serveur a refusé de récupérer l'image : son démon Docker ne passe pas par le proxy de sortie de Shipkeep, qui empêche un registre d'atteindre le réseau du serveur lui-même. Relancez l'installeur du serveur pour le rétablir.",
   'The server could not pull the image: its disk is full.':
     "Le serveur n'a pas pu récupérer l'image : son disque est plein.",
   'The server could not pull the image: the registry does not have it.':
@@ -1488,6 +1490,7 @@ export const FR: Readonly<Record<string, string>> = {
   'disk > 80%': 'disque > 80 %',
   'disk full': 'disque plein',
   'image volume not declared': "volume d'image non déclaré",
+  'egress proxy missing': 'proxy de sortie absent',
   'stopped: disk limit': 'arrêté : limite disque',
   'docker cleanup · 4.2 GiB freed': 'docker cleanup · 4,2 Gio libérés',
   down: 'hors service',

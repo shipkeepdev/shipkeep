@@ -42,6 +42,7 @@ var failureTexts = map[string]string{
 	docker.CauseRegistryUntrusted:   "registry certificate not trusted by the server",
 	docker.CauseDiskFull:            "no space left on the server",
 	causeImageVolume:                "the image declares a volume the configuration does not mount",
+	causeEgressUnguarded:            "the server's Docker does not go through its egress proxy",
 }
 
 // failureText is the fixed text for a failed operation: its cause when the agent lists it.

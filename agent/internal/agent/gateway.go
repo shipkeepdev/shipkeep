@@ -92,7 +92,13 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	}()
 	// Facts are read when the result is built, after the action's context ended.
 	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine) //nolint:contextcheck // see above
-	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts), Epoch: func() uint64 { return epoch }}
+	var options []actions.Option
+	if a.cfg.Dev {
+		// A development machine has no egress proxy in front of its Docker daemon (ADR 0023).
+		a.logger.Warn("development mode: image pulls do not require the egress proxy")
+		options = append(options, actions.WithoutEgressCheck())
+	}
+	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts, options...), Epoch: func() uint64 { return epoch }}
 	runner := gateway.Runner{
 		Endpoint: a.endpoint(), StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher,
 		Report: func(ctx context.Context) (*agentv1.StateReport, error) {
