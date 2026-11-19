@@ -356,6 +356,10 @@ func TestApplyRouteIsOneUnitForTheSecuring(t *testing.T) {
 	fake.routes[RouteID("app")] = json.RawMessage(`{"@id":"sk-route-app","match":[{"host":["app.example.com"],"protocol":"https"}],"handle":[],"terminal":true}`)
 	secured := make(chan error, 1)
 	client.betweenWrites = func() {
+		if client.routes.TryLock() {
+			client.routes.Unlock()
+			t.Error("ApplyRoute released the route lock between its writes")
+		}
 		// Exactly in the gap: a securing started now must wait for the whole change.
 		go func() { secured <- client.SecureRoutes(ctx) }()
 		select {
