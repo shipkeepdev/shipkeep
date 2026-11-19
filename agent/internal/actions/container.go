@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path"
 
 	"google.golang.org/protobuf/proto"
 
@@ -41,6 +42,11 @@ func createContainer(engine Engine, spec *agentv1.ContainerSpec) (journal.Plan, 
 				return reuse(existing, fingerprint)
 			case !errors.Is(err, docker.ErrNotFound):
 				return journal.Outcome{}, fmt.Errorf("inspect container: %w", err)
+			}
+			if config.HostConfig.ReadonlyRootfs {
+				if err := imageVolumesMounted(ctx, engine, config); err != nil {
+					return journal.Outcome{}, err
+				}
 			}
 			id, err := engine.CreateContainer(ctx, name, config)
 			if err != nil {
@@ -96,4 +102,33 @@ func specFingerprint(spec *agentv1.ContainerSpec) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:]), nil
+}
+
+// causeImageVolume is the cause of a read-only-root container whose image declares a volume the
+// spec does not mount (ADR 0022).
+const causeImageVolume = "image_volume_undeclared"
+
+// causeError carries a cause the dispatcher turns into a fixed text.
+type causeError struct{ cause string }
+
+func (e causeError) Error() string { return e.cause }
+func (e causeError) Cause() string { return e.cause }
+
+// imageVolumesMounted refuses a read-only root whose image declares a VOLUME that no mount of the
+// spec covers: Docker would give that path an anonymous volume, which nothing bounds (ADR 0022).
+func imageVolumesMounted(ctx context.Context, engine Engine, config docker.ContainerConfig) error {
+	image, err := engine.Image(ctx, config.Image)
+	if err != nil {
+		return fmt.Errorf("inspect image: %w", err)
+	}
+	mounted := map[string]bool{}
+	for _, mount := range config.HostConfig.Mounts {
+		mounted[path.Clean(mount.Target)] = true
+	}
+	for declared := range image.Config.Volumes {
+		if !mounted[path.Clean(declared)] {
+			return causeError{cause: causeImageVolume}
+		}
+	}
+	return nil
 }

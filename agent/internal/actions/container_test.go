@@ -230,6 +230,7 @@ func TestReadOnlyRootGetsItsTmpfs(t *testing.T) {
 	spec.ReadOnlyRootfs = true
 	spec.Mounts = []*agentv1.Mount{{ContainerPath: "/tmp", Source: &agentv1.Mount_Tmpfs_{Tmpfs: &agentv1.Mount_Tmpfs{SizeBytes: 64 << 20, Mode: 0o1777}}}}
 	engine := newFakeEngine()
+	engine.images[spec.GetImageRef()] = docker.Image{}
 	if update := create(t, engine, spec); update.GetState() != agentv1.OperationState_OPERATION_STATE_SUCCEEDED {
 		t.Fatalf("refused: %v", update)
 	}
@@ -237,5 +238,44 @@ func TestReadOnlyRootGetsItsTmpfs(t *testing.T) {
 		if !config.HostConfig.ReadonlyRootfs || len(config.HostConfig.Mounts) != 1 || config.HostConfig.Mounts[0].Type != "tmpfs" || config.HostConfig.Mounts[0].Target != "/tmp" {
 			t.Fatalf("not a read-only root with /tmp: %+v", config.HostConfig)
 		}
+	}
+}
+
+func TestReadOnlyRootRefusesUndeclaredImageVolumes(t *testing.T) {
+	image := func(paths ...string) docker.Image {
+		var declared docker.Image
+		declared.Config.Volumes = map[string]struct{}{}
+		for _, path := range paths {
+			declared.Config.Volumes[path] = struct{}{}
+		}
+		return declared
+	}
+	for _, test := range []struct {
+		name     string
+		readOnly bool
+		image    docker.Image
+		created  bool
+	}{
+		// The spec mounts /app/uploads (a volume) and /tmp (a tmpfs).
+		{"declared volumes all mounted", true, image("/app/uploads", "/tmp/"), true},
+		{"no declared volume", true, image(), true},
+		{"a volume the spec does not mount", true, image("/var/lib/data"), false},
+		{"one of two not mounted", true, image("/app/uploads", "/data"), false},
+		// Without a read-only root the image volumes are what Docker always did.
+		{"writable root", false, image("/var/lib/data"), true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			spec := validSpec()
+			spec.ReadOnlyRootfs = test.readOnly
+			engine := newFakeEngine()
+			engine.images[spec.GetImageRef()] = test.image
+			update := create(t, engine, spec)
+			if test.created != (update.GetState() == agentv1.OperationState_OPERATION_STATE_SUCCEEDED) || test.created != (len(engine.created) == 1) {
+				t.Fatalf("created=%v: %v", test.created, update)
+			}
+			if !test.created && update.GetError() != "the image declares a volume the configuration does not mount" {
+				t.Fatalf("error %q", update.GetError())
+			}
+		})
 	}
 }
