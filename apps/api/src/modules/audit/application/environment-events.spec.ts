@@ -197,9 +197,9 @@ describe('EnvironmentEvents.poll', () => {
 
 describe('pumpEvents with a client that does not keep up (#345)', () => {
   const batch = (size: number, from = 0) =>
-    Array.from({ length: size }, (_, index) => record(`e${from + index}`));
+    Array.from({ length: size }, (_, index) => record(`e${String(from + index)}`));
 
-  /** A client whose buffer takes `capacity` bytes, then stops reading until `read` is called. */
+  /** A client whose buffer takes `capacity` bytes; `drains` says whether each wait succeeds. */
   function slowClient(capacity: number, drains: (waited: number) => boolean) {
     let queued = 0;
     let clock = 0;

@@ -69,13 +69,19 @@ async function stream(read: boolean, abortAfter?: number) {
     new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         controller.abort();
-        reject(new Error(`the stream did not end: ${polls} polls`));
+        reject(new Error(`the stream did not end: ${String(polls)} polls`));
       }, 10_000);
     }),
-  ]).finally(() => clearTimeout(timer));
+  ]).finally(() => {
+    clearTimeout(timer);
+  });
   await new Promise((resolve) => setTimeout(resolve, 50));
   client.destroy();
-  await new Promise<void>((resolve) => server.close(() => resolve()));
+  await new Promise<void>((resolve) => {
+    server.close(() => {
+      resolve();
+    });
+  });
   return { ...result, polls, received, closed };
 }
 

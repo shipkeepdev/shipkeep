@@ -5,7 +5,13 @@ import type { Writable } from 'node:stream';
  * still queued, and a bounded wait for the queue to empty. Every listener is removed when the wait
  * ends, whichever way it ends.
  */
-export function responseSink(response: Writable) {
+export interface ResponseSink {
+  readonly write: (chunk: string) => boolean;
+  readonly pending: () => number;
+  readonly drained: (milliseconds: number, signal: AbortSignal) => Promise<boolean>;
+}
+
+export function responseSink(response: Writable): ResponseSink {
   return {
     write: (chunk: string): boolean => response.write(chunk),
     pending: (): number => response.writableLength,
@@ -26,8 +32,12 @@ export function responseSink(response: Writable) {
           signal.removeEventListener('abort', onClose);
           resolve(value);
         };
-        const onDrain = () => finish(true);
-        const onClose = () => finish(false);
+        const onDrain = () => {
+          finish(true);
+        };
+        const onClose = () => {
+          finish(false);
+        };
         const timer = setTimeout(onClose, milliseconds);
         response.once('drain', onDrain);
         response.once('close', onClose);
