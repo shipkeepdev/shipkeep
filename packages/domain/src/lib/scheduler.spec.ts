@@ -1,4 +1,5 @@
 import {
+  DISK_MARGIN_BYTES,
   type PlacementRequest,
   placeReplica,
   placeReplicas,
@@ -259,5 +260,52 @@ describe('SPEC 6 scheduler properties', () => {
           ).toBeLessThanOrEqual(candidate.capacity.memoryBytes);
       }
     }
+  });
+});
+
+describe('disk budgets (ADR 0022)', () => {
+  const withDisk = { ...request, diskBytes: GiB };
+
+  it('needs the budget plus the margin of free disk on the node', () => {
+    expect(DISK_MARGIN_BYTES).toBe(2 * GiB);
+    expect(placeReplica(withDisk, [node('short', { diskFreeBytes: 3 * GiB - 1 })])).toEqual({
+      placed: false,
+      rejections: { short: 'disk' },
+    });
+    expect(placeReplica(withDisk, [node('enough', { diskFreeBytes: 3 * GiB })])).toEqual({
+      placed: true,
+      node: 'enough',
+    });
+    // A node that reported no free disk, or a request without a budget, is not checked.
+    expect(placeReplica(withDisk, [node('unknown')])).toEqual({ placed: true, node: 'unknown' });
+    expect(placeReplica(request, [node('short', { diskFreeBytes: 0 })])).toEqual({
+      placed: true,
+      node: 'short',
+    });
+  });
+
+  it('counts the budgets of the replicas it already placed on a node', () => {
+    // Room for two budgets beside the margin on `small`, any number on `large`.
+    const nodes = [
+      node('small', { diskFreeBytes: 4 * GiB }),
+      node('large', {
+        diskFreeBytes: 100 * GiB,
+        capacity: { cpuMillis: 1000, memoryBytes: 8 * GiB },
+      }),
+    ];
+    const placed = placeReplicas({ ...withDisk, spread: 'none' }, 3, [nodes[0]]);
+    expect(placed).toEqual({ nodes: ['small', 'small'], unplaced: 1 });
+    expect(placeReplicas({ ...withDisk, spread: 'node' }, 3, nodes).unplaced).toBe(0);
+  });
+
+  it('refuses amounts that are not whole bytes', () => {
+    for (const diskBytes of [-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 2])
+      expect(() => placeReplica({ ...request, diskBytes }, [node('a')])).toThrow(
+        'Invalid placement request.',
+      );
+    for (const diskFreeBytes of [-1, Number.POSITIVE_INFINITY])
+      expect(() => placeReplica(withDisk, [node('a', { diskFreeBytes })])).toThrow(
+        'Invalid scheduling state for node a.',
+      );
   });
 });

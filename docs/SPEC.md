@@ -448,7 +448,7 @@ starting -> unhealthy -> (restart within policy) -> starting | failed
 
 ## 6. Scheduling
 
-1. Filter nodes: status `ready`, required labels, architecture matches the image, free CPU and memory reservations, required ports free, volume affinity for stateful workloads.
+1. Filter nodes: status `ready`, required labels, architecture matches the image, free CPU and memory reservations, free disk for the disk budget, required ports free, volume affinity for stateful workloads.
 2. Rank: prefer nodes without another replica of the same app (spread), then lowest reserved memory ratio, then lowest reserved CPU ratio, then node name for determinism.
 3. Stateful workloads are pinned to the node that holds their volume.
 4. Scheduling is deterministic given the same inputs (unit-testable without a cluster).
@@ -458,7 +458,8 @@ The algorithm is `placeReplica` and `placeReplicas` in `packages/domain/src/lib/
 - A stateful workload is pinned only when some node already stores its volume; otherwise it is placed like any other replica and its volume is created there.
 - Resource ratios compare exactly (integer cross-multiplication), never as rounded floats.
 - `placeReplicas` places replicas one after another, each seeing the reservations, ports and spread of the previous ones, and reports how many did not fit.
-- An unplaced replica returns one rejection reason per node: `not_ready`, `architecture`, `labels`, `not_allowed`, `volume`, `cpu`, `memory` or `ports`, checked in that order, for operator explanations.
+- Disk (ADR 0022) is a check, not a reservation: a replica fits a node only if the free disk its agent last reported (`disk_free_bytes`) minus the disk budgets this placement already put there leaves the replica's budget plus 2 GiB (`DISK_MARGIN_BYTES`). A node that reported no free disk is not checked.
+- An unplaced replica returns one rejection reason per node: `not_ready`, `architecture`, `labels`, `not_allowed`, `volume`, `cpu`, `memory`, `disk` or `ports`, checked in that order, for operator explanations.
 - A node whose agent reported no architecture, CPU count or memory has no capacity. It is rejected with `architecture`, `cpu` or `memory`, even for a replica that reserves nothing, and the other nodes are still considered.
 - A replica reserves the CPU and memory limits its container runs under: `resources`, or the defaults of section 2.2. `resourceLimits` (`apps/api/src/modules/deployments/domain/container-plan.ts`) gives the placement request, the `Allocation` and the container spec the same two values. A node's capacity is its CPU count and its memory as its agent reports them, and placement never lets the reservations on a node exceed it.
 - Placements of one organization run one at a time. `place` takes a transaction-level PostgreSQL advisory lock for the organization (`PipelineStore.lockPlacement`) before it reads the nodes and their load, and holds it until its replicas are stored or the transaction rolls back. Two deployments placed at the same moment therefore cannot both count the same room as free: the second one reads the load with the first one's replicas in it. It also reads the time once it holds the lock, so a node whose heartbeats stopped while it waited is not counted as ready.
