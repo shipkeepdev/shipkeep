@@ -80,7 +80,9 @@ for cgroup in '' / shipkeep.slice /system.slice/docker.service /system.slice/evi
 done
 # The installer points Docker where the proxy listens and where the agent expects it.
 grep -qxF 'const Address = "127.0.0.1:7480"' agent/internal/egress/proxy.go || die 'the proxy listens elsewhere'
+# shellcheck disable=SC2154 # egress_proxy is set by deploy/install.sh, sourced above.
 grep -qxF "const EgressProxy = \"$egress_proxy\"" agent/internal/actions/docker.go || die 'the agent expects another proxy'
+# shellcheck disable=SC2154 # as above.
 [[ $egress_proxy == "http://127.0.0.1:7480" ]] || die 'the installer points Docker elsewhere'
 # A proxy in daemon.json would win over the egress proxy.
 printf '{"log-driver":"json-file"}\n' >"$work/daemon.json"
