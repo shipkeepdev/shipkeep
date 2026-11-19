@@ -53,6 +53,8 @@ export const configSchema = z
       .refine((value) => Number(value.split(':')[1]) <= 65535, 'port must be at most 65535')
       .default('0.0.0.0:7443'),
     AGENT_GATEWAY_SERVER_NAME: z.union([z.hostname(), z.ipv4(), z.ipv6()]).default('localhost'),
+    /** Enrollment attempts one client network may make per minute (#346). */
+    AGENT_ENROLLMENTS_PER_MINUTE: z.coerce.number().int().min(1).max(10_000).default(20),
     VICTORIALOGS_URL: httpUrl.default('http://localhost:9428'),
     VICTORIAMETRICS_URL: httpUrl.default('http://localhost:8428'),
     REGISTRY_URL: httpUrl.default('http://localhost:5000'),

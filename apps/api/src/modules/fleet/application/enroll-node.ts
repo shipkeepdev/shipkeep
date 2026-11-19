@@ -71,16 +71,22 @@ export class EnrollNode {
     @Inject(FLEET_TRANSACTION) private readonly transaction: FleetTransaction,
   ) {}
 
-  execute(command: EnrollNodeCommand, now = new Date()): Promise<EnrollNodeResult> {
+  async execute(command: EnrollNodeCommand, now = new Date()): Promise<EnrollNodeResult> {
+    // Before any transaction: a malformed request costs no database work (#346).
+    this.validate(command);
     return this.transaction.run(() => this.enroll(command, now));
   }
 
-  private async enroll(command: EnrollNodeCommand, now: Date): Promise<EnrollNodeResult> {
+  /** Refuses a request that cannot enroll whatever the database holds. Touches nothing. */
+  validate(command: Pick<EnrollNodeCommand, 'joinToken' | 'csrPem'>): void {
     if (!isWellFormedJoinToken(command.joinToken.expose()))
       throw new JoinTokenRejectedError('malformed');
     if (Buffer.byteLength(command.csrPem, 'utf8') > MAX_CSR_BYTES) {
       throw new InvalidInputError('csr_too_large', 'certificate request exceeds the size limit');
     }
+  }
+
+  private async enroll(command: EnrollNodeCommand, now: Date): Promise<EnrollNodeResult> {
     const tokenHash = hashJoinToken(command.joinToken.expose());
     // Only this token's row is visible until its organization is known (ADR 0015).
     const record = await this.transaction.runEnrollment(tokenHash, () =>
