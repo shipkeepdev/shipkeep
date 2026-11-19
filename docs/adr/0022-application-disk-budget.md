@@ -27,11 +27,14 @@ The maintainer chose a budget measured by the agent by default, and a read-only 
 - **The budget is not a hard bound.** The guide says so, with its limits:
   - a container can exceed its budget by what it writes between two measurements (up to 60 seconds) and during the 5-second grace period of the stop;
   - `SizeRw` walks the files of the writable layer, so it misses a file that a process deleted while it still holds it open and writes to: an application that does this on purpose is not stopped;
-  - writes to named volumes and logs are not part of the budget (logs have their own limit).
+  - writes to named volumes and logs are not part of the budget (logs have their own limit);
+  - neither are writes to the anonymous volumes Docker creates for each `VOLUME` an image declares, nor to the `/etc/hosts`, `/etc/resolv.conf` and `/etc/hostname` files Docker keeps on the host for each container.
 
   An application that must be bounded against such evasion runs with `run.read_only_root`. The measurement costs one Docker API call per minute, which walks every writable layer.
 
-- **A read-only root filesystem as an option, for a hard bound.** With `run.read_only_root: true`, the container gets `read_only_rootfs` and a tmpfs at `/tmp` of 64Mi. tmpfs pages count against the container's memory limit, so the kernel bounds them. Its only other writable paths are its declared volumes. The option is off by default because many images write outside `/tmp` (nginx under `/var/cache`, for instance) and fail on a read-only root.
+- **A read-only root filesystem as an option, for a hard bound.** With `run.read_only_root: true`, the container gets `read_only_rootfs` and a tmpfs at `/tmp` of 64Mi. tmpfs pages count against the container's memory limit, so the kernel bounds them. Its other writable paths are its declared volumes, and:
+  - an image that declares a `VOLUME` would get an anonymous volume, unbounded, at that path. With a read-only root the agent refuses to create the container unless the spec mounts something at each such path; the deployment fails and says which path to declare.
+  - whether the three files Docker keeps on the host (`/etc/hosts`, `/etc/resolv.conf`, `/etc/hostname`) stay writable under a read-only root is checked by the acceptance test. If they do, the guide says so. The option is off by default because many images write outside `/tmp` (nginx under `/var/cache`, for instance) and fail on a read-only root.
 - **Placement checks the disk.** A replica is placed on a node only if the free disk the node last reported (`disk_free_bytes`) leaves its budget plus a margin of 2 GiB for images and the agent. This is a check at placement, not a reservation like CPU and memory: images, volumes and logs also use the disk, and the free space is what counts. A deployment refused for lack of disk says so.
 - **Volumes are not covered.** Named volumes stay unbounded, as declared in `shipkeep.yml`. Image retention is #217.
 
@@ -52,8 +55,8 @@ Both are new fields, wire-compatible, and change no action: the action list is u
 ## Consequences
 
 - An application that fills its writable layer by mistake stops by itself once it exceeds its budget, plus what it writes in up to 65 seconds. The budget reserves no disk: images, volumes, logs and other applications can still fill the server, and a container under its budget can then be the one that runs out of space. The placement check only keeps new replicas off a server that is already short.
-- With `run.read_only_root`, a container cannot write outside its memory, its volumes and its logs at all.
+- With `run.read_only_root`, a container writes only to its memory, its declared volumes and its logs, plus the three host files above if the acceptance test shows they stay writable.
 - Applications that write more than 1Gi to their own filesystem need `resources.disk` raised, or a volume. The deployment does not fail for this: the container stops when it crosses the budget, and the page of the application shows why.
 - New code: the schema fields and their validators (TypeScript and Go, shared fixtures), the API passing `disk_bytes`, `read_only_rootfs` and the `/tmp` tmpfs, the agent's measurement loop, the stop and the reason in the state report, the reason shown on the application page, and the placement check. Each piece has malicious-input tests: oversized and zero budgets, a forged `sk.disk_bytes` label, and the bounds of the schema.
-- The acceptance test runs on a disposable filesystem: an application that writes past a small budget is stopped, while another application and the agent keep running.
+- The acceptance test runs on a disposable filesystem: an application that writes past a small budget is stopped, while another application and the agent keep running. It also checks, with a read-only root, that the image's `VOLUME` paths are refused when not declared and whether the three host files can be written.
 - `docs/SPEC.md` (3.4 and the configuration reference) and `docs/INSTALL.md` change with the implementation.
