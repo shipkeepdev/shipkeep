@@ -117,15 +117,21 @@ export class PrismaApplicationStore implements ApplicationStore {
   ): Promise<void> {
     const { id: applicationId, organizationId } = application;
     // What the application's routes can still serve: the domains of its releases that have placed
-    // replicas. The pipeline stops replicas only once their route no longer needs them.
+    // replicas (the pipeline stops replicas only once their route no longer needs them), and of
+    // the release of any deployment not finished yet, which routes the domains of its snapshot.
     const placed = await this.database.client.allocation.findMany({
       where: { organizationId, applicationId, state: 'placed' },
       select: { releaseId: true },
       distinct: ['releaseId'],
     });
-    const releases = placed.length
+    const unfinished = await this.database.client.deployment.findMany({
+      where: { organizationId, applicationId, state: { notIn: [...FINISHED_DEPLOYMENTS] } },
+      select: { releaseId: true },
+    });
+    const releaseIds = [...new Set([...placed, ...unfinished].map((row) => row.releaseId))];
+    const releases = releaseIds.length
       ? await this.database.client.release.findMany({
-          where: { organizationId, id: { in: placed.map((row) => row.releaseId) } },
+          where: { organizationId, id: { in: releaseIds } },
           select: { config: true },
         })
       : [];
@@ -229,6 +235,9 @@ function application(row: {
     updatedAt: row.updatedAt,
   };
 }
+
+/** Deployment states after which a deployment routes nothing new (as the deployments store). */
+const FINISHED_DEPLOYMENTS = ['succeeded', 'failed', 'cancelled', 'rolled_back'] as const;
 
 /** The domains a stored release configuration lists; anything else in that JSON is ignored. */
 function configDomains(config: unknown): string[] {

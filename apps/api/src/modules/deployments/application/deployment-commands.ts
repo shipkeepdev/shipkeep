@@ -275,6 +275,9 @@ export class DeploymentCommands {
           routing: stopped.routing,
         }),
       ]);
+      // A cancelled deployment no longer routes its snapshot: what nothing placed serves is free
+      // (#302). Replicas it placed keep their domains until the cleanup stops them.
+      await this.applications.releaseUnservedDomains(application);
       await this.waker.wake(application.organizationId, cancelled.id);
       return cancelled;
     });

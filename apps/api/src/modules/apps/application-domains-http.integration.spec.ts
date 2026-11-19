@@ -112,10 +112,42 @@ describe('application domains over HTTP', () => {
         .expect(201)
     ).body as ApplicationBody;
     const queued = await fixture.post(`${path()}/${first.id}/deployments`, 'owner', {}).expect(201);
-    const releaseId = (queued.body as { release: { id: string } }).release.id;
+    const { release, deployment } = queued.body as {
+      release: { id: string };
+      deployment: { id: string };
+    };
+    const releaseId = release.id;
     const tenant = <T>(work: () => Promise<T>) =>
       fixture.app.get(PrismaUnitOfWork).runTenant(fixture.organizationId, work);
     const pipeline = fixture.app.get<PipelineStore>(PIPELINE_STORE);
+    const claim = () =>
+      fixture.post(path(), 'owner', {
+        config: config({ name: 'moving-to', domains: ['moving.example.com'], secrets: undefined }),
+      });
+    // A queued deployment, not placed yet, routes its snapshot once it runs: dropping the domain
+    // from the configuration does not free it.
+    const unplaced = (
+      await fixture
+        .post(`${path()}/${first.id}/config`, 'owner', {
+          expectedConfigSha: first.configSha,
+          config: config({ name: 'moving-from', domains: [], secrets: undefined }),
+        })
+        .expect(200)
+    ).body as ApplicationBody;
+    await claim().expect(409);
+    const restored = (
+      await fixture
+        .post(`${path()}/${first.id}/config`, 'owner', {
+          expectedConfigSha: unplaced.configSha,
+          config: config({
+            name: 'moving-from',
+            domains: ['moving.example.com'],
+            secrets: undefined,
+          }),
+        })
+        .expect(200)
+    ).body as ApplicationBody;
+    first.configSha = restored.configSha;
     await tenant(() =>
       pipeline.place(
         fixture.organizationId,
@@ -134,6 +166,10 @@ describe('application domains over HTTP', () => {
         new Date(),
       ),
     );
+    // Cancelled, the deployment routes nothing new, but its placed replica may still serve.
+    await fixture
+      .post(`${path()}/${first.id}/deployments/${deployment.id}/cancel`, 'owner', {})
+      .expect(200);
     // The configuration drops the domain; the placed release still lists it, so its route may
     // still serve it.
     const dropped = (
@@ -144,10 +180,6 @@ describe('application domains over HTTP', () => {
         })
         .expect(200)
     ).body as ApplicationBody;
-    const claim = () =>
-      fixture.post(path(), 'owner', {
-        config: config({ name: 'moving-to', domains: ['moving.example.com'], secrets: undefined }),
-      });
     await claim()
       .expect(409)
       .expect((response) => {
