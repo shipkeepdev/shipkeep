@@ -179,7 +179,7 @@ func connect(t *testing.T, h *harness, authority string) (int, net.Conn, *bufio.
 }
 
 func TestTunnelsToAPublicAddress(t *testing.T) {
-	h := start(t, DefaultLimits, map[string][]string{"registry.example.com": {"8.8.8.8"}})
+	h := start(t, DefaultLimits, map[string][]string{"registry.example.com": {"8.8.8.8"}, "registry.example.com.": {"8.8.8.8"}})
 	status, conn, reader := connect(t, h, "registry.example.com:443")
 	if status != http.StatusOK {
 		t.Fatalf("status %d", status)
@@ -191,6 +191,10 @@ func TestTunnelsToAPublicAddress(t *testing.T) {
 	if err != nil || line != "ping\n" {
 		t.Fatalf("echo %q %v", line, err)
 	}
+	// An absolute name, with its final dot, is resolved as written.
+	if status, _, _ := connect(t, h, "registry.example.com.:443"); status != http.StatusOK {
+		t.Fatalf("absolute name: %d", status)
+	}
 	// An IP literal that is public goes through too.
 	if status, _, _ := connect(t, h, "8.8.8.8:5000"); status != http.StatusOK {
 		t.Fatalf("public literal: %d", status)
@@ -199,17 +203,18 @@ func TestTunnelsToAPublicAddress(t *testing.T) {
 
 func TestRefusesDestinationsThatAreNotPublic(t *testing.T) {
 	names := map[string][]string{
-		"loopback.example.com": {"127.0.0.1"},
-		"private.example.com":  {"192.168.208.3"},
-		"metadata.example.com": {"169.254.169.254"},
-		"mixed.example.com":    {"8.8.8.8", "10.0.0.5"}, // one private answer is enough
-		"mapped.example.com":   {"::ffff:127.0.0.1"},
-		"nat64.example.com":    {"64:ff9b::a9fe:a9fe"},
-		"v6.example.com":       {"::1"},
+		"loopback.example.com":  {"127.0.0.1"},
+		"loopback.example.com.": {"127.0.0.1"},
+		"private.example.com":   {"192.168.208.3"},
+		"metadata.example.com":  {"169.254.169.254"},
+		"mixed.example.com":     {"8.8.8.8", "10.0.0.5"}, // one private answer is enough
+		"mapped.example.com":    {"::ffff:127.0.0.1"},
+		"nat64.example.com":     {"64:ff9b::a9fe:a9fe"},
+		"v6.example.com":        {"::1"},
 	}
 	h := start(t, DefaultLimits, names)
 	for _, authority := range []string{
-		"loopback.example.com:443", "private.example.com:5443", "metadata.example.com:80",
+		"loopback.example.com:443", "loopback.example.com.:443", "private.example.com:5443", "metadata.example.com:80",
 		"mixed.example.com:443", "mapped.example.com:443", "nat64.example.com:443", "v6.example.com:443",
 		"127.0.0.1:7480", "[::1]:7480", "10.0.0.1:443", "169.254.169.254:80", "[::ffff:127.0.0.1]:443",
 	} {
@@ -244,7 +249,7 @@ func TestRefusesMalformedTargets(t *testing.T) {
 	for _, authority := range []string{
 		"registry.example.com", "registry.example.com:0", "registry.example.com:65536",
 		"registry.example.com:+443", "registry.example.com:0443", ":443",
-		"reg_istry.example.com:443", "registry..example.com:443", "-." + strings.Repeat("a", 64) + ".com:443",
+		"reg_istry.example.com:443", "registry..example.com:443", "registry.example.com..:443", ".:443", "-." + strings.Repeat("a", 64) + ".com:443",
 		strings.Repeat("a.", 130) + "com:443", "[fe80::1%25eth0]:443", "registry.example.com:443/../x",
 	} {
 		status, _, _ := request(t, h, fmt.Sprintf("CONNECT %s HTTP/1.1\r\nHost: %s\r\n\r\n", authority, authority))

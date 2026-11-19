@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/netip"
 	"strconv"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -267,14 +268,16 @@ func (p *Proxy) open(ctx context.Context, host string, port uint16) (net.Conn, s
 // literal, never empty, and the port is explicit.
 func target(authority string) (string, uint16, bool) {
 	host, portText, err := net.SplitHostPort(authority)
-	if err != nil || host == "" || len(host) > 253 {
+	// One final dot makes a name absolute; it stays on the name that is resolved.
+	name := strings.TrimSuffix(host, ".")
+	if err != nil || name == "" || len(name) > 253 {
 		return "", 0, false
 	}
 	port, err := strconv.ParseUint(portText, 10, 16)
 	if err != nil || port == 0 || portText != strconv.FormatUint(port, 10) {
 		return "", 0, false
 	}
-	if _, err := netip.ParseAddr(host); err != nil && !hostname(host) {
+	if _, err := netip.ParseAddr(host); err != nil && !hostname(name) {
 		return "", 0, false
 	}
 	return host, uint16(port), true
