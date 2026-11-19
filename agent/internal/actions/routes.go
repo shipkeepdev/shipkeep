@@ -101,11 +101,19 @@ func upsertRoute(router Router, containers Containers, sleep func(context.Contex
 					remove = append(remove, hosts...)
 				}
 				remove = slices.DeleteFunc(remove, func(host string) bool { return plain && slices.Contains(hosts, host) })
-				if err := router.SetPlainHosts(ctx, add, remove); err != nil {
+				// Three writes, ordered so that a failure between two of them leaves every host
+				// reachable: hosts leave the TLS-off list before the route changes (until then the
+				// old route still answers them, now with a certificate), and join it only after the
+				// route answers plain HTTP. The other order could leave a host without a
+				// certificate behind a route that answers HTTPS only.
+				if err := router.SetPlainHosts(ctx, nil, remove); err != nil {
 					return journal.Outcome{}, fmt.Errorf("set plain hosts: %w", err)
 				}
 				if err := router.UpsertRoute(ctx, desired); err != nil {
 					return journal.Outcome{}, fmt.Errorf("upsert route: %w", err)
+				}
+				if err := router.SetPlainHosts(ctx, add, nil); err != nil {
+					return journal.Outcome{}, fmt.Errorf("set plain hosts: %w", err)
 				}
 				return journal.Outcome{ResourceID: desired.ID}, nil
 			},

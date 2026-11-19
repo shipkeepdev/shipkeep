@@ -263,6 +263,11 @@ func TestSecuringOldRoutesWaitsForNoUpsert(t *testing.T) {
 	fake.routes[RouteID("old")] = json.RawMessage(`{"@id":"sk-route-old","match":[{"host":["old.example.com"]}],"handle":[],"terminal":true}`)
 	fake.gate, fake.listed = make(chan struct{}), make(chan struct{})
 	fake.mu.Unlock()
+	// Registered after admin(t), so it runs before the server's Close: a failed check must not
+	// leave the handler waiting on the gate, and Close waiting on the handler.
+	var release sync.Once
+	openGate := func() { release.Do(func() { close(fake.gate) }) }
+	t.Cleanup(openGate)
 	secured := make(chan error, 1)
 	go func() { secured <- client.SecureRoutes(ctx) }()
 	<-fake.listed
@@ -275,7 +280,7 @@ func TestSecuringOldRoutesWaitsForNoUpsert(t *testing.T) {
 		t.Fatalf("the upsert ran while the securing held the route: %v", err)
 	case <-time.After(100 * time.Millisecond):
 	}
-	close(fake.gate)
+	openGate()
 	if err := <-secured; err != nil {
 		t.Fatal(err)
 	}
