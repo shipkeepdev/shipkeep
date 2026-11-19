@@ -32,6 +32,10 @@ func TestConnectDialsLoopbackAndVerifiesThePublicName(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The request names the public address, port included, not the loopback one.
+	if authority := server.authority.Load(); authority == nil || *authority != endpoint.Address {
+		t.Fatalf("authority %v, want %q", authority, endpoint.Address)
+	}
 	conn, err := Open(endpoint, bundle)
 	if err != nil {
 		t.Fatal(err)
@@ -93,8 +97,30 @@ func TestConnectAcceptsOnlyLoopbackLiterals(t *testing.T) {
 			t.Fatalf("accepted %q", connect)
 		}
 	}
-	// The dial refuses it too, whatever the configuration check did.
-	if _, err := Open(Endpoint{Address: "shipkeep.example.com:7443", Connect: "10.0.0.1:7443"}, nodecredentials.Bundle{}); err == nil {
-		t.Fatal("dialed a connect address that is not loopback")
+}
+
+func TestOpenRefusesAConnectAddressThatIsNotLoopback(t *testing.T) {
+	// With valid credentials, so that only the connect address can be refused: the dial checks it
+	// too, whatever the configuration check did.
+	local, server := publicNameGateway(t, "shipkeep.example.com")
+	_, port, err := net.SplitHostPort(local)
+	if err != nil {
+		t.Fatal(err)
+	}
+	endpoint := Endpoint{Address: "shipkeep.example.com:" + port, Connect: local}
+	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+	defer cancel()
+	bundle, err := Enroll(ctx, endpoint, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	conn, err := Open(endpoint, bundle)
+	if err != nil {
+		t.Fatalf("valid credentials refused: %v", err)
+	}
+	_ = conn.Close()
+	endpoint.Connect = "10.0.0.1:" + port
+	if _, err := Open(endpoint, bundle); err == nil || !strings.Contains(err.Error(), "loopback") {
+		t.Fatalf("dialed a connect address that is not loopback: %v", err)
 	}
 }

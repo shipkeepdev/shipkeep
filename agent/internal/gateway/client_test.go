@@ -19,6 +19,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/peer"
 	"google.golang.org/grpc/status"
 
@@ -47,6 +48,8 @@ type testGateway struct {
 	cancel  atomic.Pointer[agentv1.CancelAction]
 	updates chan *agentv1.ActionUpdate
 	reports chan *agentv1.StateReport
+	// authority is the :authority of the last enrollment request.
+	authority atomic.Pointer[string]
 }
 
 func (g *testGateway) certificate(csrPEM string) (string, error) {
@@ -75,8 +78,11 @@ func (g *testGateway) certificate(csrPEM string) (string, error) {
 	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), nil
 }
 
-func (g *testGateway) Enroll(_ context.Context, request *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
+func (g *testGateway) Enroll(ctx context.Context, request *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 	g.calls.Add(1)
+	if values := metadata.ValueFromIncomingContext(ctx, ":authority"); len(values) == 1 {
+		g.authority.Store(&values[0])
+	}
 	if request.JoinToken != testToken.Expose() {
 		return nil, status.Error(codes.InvalidArgument, request.JoinToken)
 	}

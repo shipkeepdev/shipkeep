@@ -124,18 +124,19 @@ func Renew(ctx context.Context, client agentv1.AgentGatewayServiceClient, b node
 }
 
 func dial(endpoint Endpoint, ca *x509.Certificate, certificates []tls.Certificate) (*grpc.ClientConn, error) {
-	address, host, err := endpoint.target()
+	address, _, err := endpoint.target()
 	if err != nil {
 		return nil, err
 	}
 	roots := x509.NewCertPool()
 	roots.AddCert(ca)
 	dialer := &net.Dialer{}
-	// The target keeps the public address, so the authority and the TLS name stay the verified
-	// ones; only the TCP connection goes to address.
+	// The target keeps the public address: gRPC uses it as the authority and takes the TLS name
+	// from it (a ServerName in the TLS settings would replace the authority and drop its port).
+	// Only the TCP connection goes to address.
 	conn, err := grpc.NewClient("passthrough:///"+endpoint.Address,
 		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return dialer.DialContext(ctx, "tcp", address) }),
-		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: roots, Certificates: certificates, MinVersion: tls.VersionTLS13, ServerName: host})), grpc.WithDisableRetry(), grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: 20 * time.Second, Timeout: 10 * time.Second}), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(nodecredentials.MaxBytes), grpc.MaxCallSendMsgSize(nodecredentials.MaxBytes)))
+		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: roots, Certificates: certificates, MinVersion: tls.VersionTLS13})), grpc.WithDisableRetry(), grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: 20 * time.Second, Timeout: 10 * time.Second}), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(nodecredentials.MaxBytes), grpc.MaxCallSendMsgSize(nodecredentials.MaxBytes)))
 	if err != nil {
 		return nil, fmt.Errorf("create gateway connection: %w", err)
 	}
