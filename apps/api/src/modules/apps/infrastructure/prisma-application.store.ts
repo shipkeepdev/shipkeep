@@ -118,12 +118,33 @@ export class PrismaApplicationStore implements ApplicationStore {
     // One statement, so one snapshot: a reservation is kept when a release of the application
     // lists the domain and has placed replicas (the pipeline stops replicas only once their route
     // no longer needs them), or belongs to a deployment not finished yet, which routes the
-    // domains of its snapshot. Separate reads could each see a different state.
+    // domains of its snapshot. All of them are kept while a route change of the application is
+    // not confirmed on a node: one still under way, or one that did not succeed and that no later
+    // route change on that node did, since the route there may still serve them. Separate reads
+    // could each see a different state.
     await this.database.client.$executeRaw`
       DELETE FROM domains d
       WHERE d.organization_id = ${application.organizationId}::uuid
         AND d.application_id = ${application.id}::uuid
         AND d.releasing_at IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM agent_actions aa
+          JOIN nodes n ON n.organization_id = aa.organization_id AND n.id = aa.node_id
+          WHERE aa.organization_id = d.organization_id
+            AND aa.application_id = d.application_id
+            AND aa.kind IN ('upsertRoute', 'removeRoute')
+            AND n.status <> 'removed'
+            AND aa.state <> 'succeeded'
+            AND NOT EXISTS (
+              SELECT 1 FROM agent_actions later
+              WHERE later.organization_id = aa.organization_id
+                AND later.application_id = aa.application_id
+                AND later.node_id = aa.node_id
+                AND later.kind IN ('upsertRoute', 'removeRoute')
+                AND later.state = 'succeeded'
+                AND later.created_at > aa.created_at
+            )
+        )
         AND NOT EXISTS (
           SELECT 1 FROM releases r
           WHERE r.organization_id = d.organization_id

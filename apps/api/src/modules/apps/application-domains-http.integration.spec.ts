@@ -1,5 +1,7 @@
 import { create } from '@bufbuild/protobuf';
 import { ContainerStatus_State, StateReportSchema } from '@shipkeep/proto-ts';
+import { Client } from 'pg';
+import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { enrollTestNode } from '../../testing/enroll-test-node';
@@ -208,15 +210,52 @@ describe('application domains over HTTP', () => {
       })
       .expect(200);
     await claim().expect(409);
-    // Once the replicas of that release are stopped, as the pipeline does when the next
-    // deployment or a stop succeeds, nothing serves the domain and another application may take it.
-    await tenant(async () => {
-      await pipeline.stop(first.id, [releaseId], new Date());
-      await fixture.app
-        .get<ApplicationStore>(APPLICATION_STORE)
-        .releaseUnservedDomains({ id: first.id, organizationId: fixture.organizationId });
-    });
-    await claim().expect(201);
+    // The replicas of that release are stopped, as the pipeline does when the next deployment, a
+    // stop or a cleanup succeeds. While a route change of the application is not confirmed on the
+    // node, the route there may still serve the domain: it stays reserved.
+    const freeUnserved = () =>
+      tenant(() =>
+        fixture.app
+          .get<ApplicationStore>(APPLICATION_STORE)
+          .releaseUnservedDomains({ id: first.id, organizationId: fixture.organizationId }),
+      );
+    await tenant(() => pipeline.stop(first.id, [releaseId], new Date()));
+    const admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+    try {
+      const action = async (kind: string, state: string, at: Date) => {
+        const id = uuidv7();
+        await admin.query(
+          `INSERT INTO agent_actions (id, organization_id, node_id, kind, idempotency_key, payload_enc, lease_epoch, deadline, state, created_at, updated_at, application_id, deployment_id)
+           VALUES ($1, $2, $3, $4, $5, '\\x00', 1, $6, $7, $6, $6, $8, $9)`,
+          [
+            id,
+            fixture.organizationId,
+            nodeId,
+            kind,
+            `test:${id}`,
+            at,
+            state,
+            first.id,
+            deployment.id,
+          ],
+        );
+        return id;
+      };
+      const removal = await action('removeRoute', 'queued', new Date(Date.now() - 2000));
+      await freeUnserved();
+      await claim().expect(409);
+      // Failed, it leaves the route in an unknown state on that node.
+      await admin.query(`UPDATE agent_actions SET state = 'failed' WHERE id = $1`, [removal]);
+      await freeUnserved();
+      await claim().expect(409);
+      // A later route change on that node succeeded: the route there is known again.
+      await action('removeRoute', 'succeeded', new Date());
+      await freeUnserved();
+      await claim().expect(201);
+    } finally {
+      await admin.end();
+    }
   });
 
   it('says whether each domain reaches a node of the organization running the application', async () => {
