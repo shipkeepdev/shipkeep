@@ -16,7 +16,10 @@ export class RecordingTransaction implements FleetTransaction {
   readonly scopes: string[] = [];
   /** The innermost context, or `none` outside any scoped call. */
   current = 'none';
+  /** Transactions opened with `run`. */
+  opened = 0;
   run<T>(work: () => Promise<T>): Promise<T> {
+    this.opened++;
     return work();
   }
   runTenant<T>(organizationId: string, work: () => Promise<T>): Promise<T> {

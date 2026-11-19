@@ -176,6 +176,26 @@ describe('EnrollNode', () => {
     ).rejects.toMatchObject({ reason: 'malformed' });
   });
 
+  it('refuses a malformed request before it opens a transaction (#346)', async () => {
+    const { issue, enroll, transaction } = setup();
+    const token = await issue.execute({ organizationId: org, actor });
+    const before = { opened: transaction.opened, scopes: transaction.scopes.length };
+    for (const command of [
+      { joinToken: new Secret('not a token'), csrPem: FAKE_CSR },
+      { joinToken: new Secret(`${token.value.expose()}'; DROP TABLE nodes;--`), csrPem: FAKE_CSR },
+      { joinToken: new Secret('x'.repeat(100_000)), csrPem: FAKE_CSR },
+      { joinToken: token.value, csrPem: 'x'.repeat(8 * 1024 + 1) },
+    ]) {
+      expect(() => {
+        enroll.validate(command);
+      }).toThrow();
+      await expect(
+        enroll.execute({ ...command, facts: {}, agentVersion: '0.1.0' }),
+      ).rejects.toBeDefined();
+    }
+    expect({ opened: transaction.opened, scopes: transaction.scopes.length }).toEqual(before);
+  });
+
   it('rejects duplicate node names and oversized CSRs without touching the token', async () => {
     const { issue, enroll, tokens } = setup();
     const first = await issue.execute({ organizationId: org, actor });
