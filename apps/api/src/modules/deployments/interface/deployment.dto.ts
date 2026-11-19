@@ -3,7 +3,7 @@ import { DEPLOYMENT_STATES } from '@shipkeep/domain';
 import { IsString, Length, Matches } from 'class-validator';
 
 import { ApplicationPathDto } from '../../apps/interface/application.dto';
-import { OBSERVED_STATES, type ReplicaStatus } from '../domain/observations';
+import { OBSERVED_STATES, type ReplicaStatus, STOP_REASONS } from '../domain/observations';
 import { DEPLOYMENT_TRIGGERS, type DeploymentRecord, type Release } from '../domain/release';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -75,6 +75,14 @@ export class ReplicaDto {
     description: 'What the agent last saw; null until it has seen the container.',
   })
   state!: string | null;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    enum: STOP_REASONS,
+    description:
+      'Why its agent stopped it itself: disk_limit when it wrote more than its disk budget (ADR 0022).',
+  })
+  stopReason!: string | null;
   @ApiProperty({ type: String, format: 'date-time', nullable: true }) observedAt!: string | null;
 }
 export class ReplicaListDto {
@@ -90,6 +98,7 @@ export function replicaDto(replica: ReplicaStatus): ReplicaDto {
     nodeName: replica.nodeName,
     container: replica.container,
     state: replica.state,
+    stopReason: replica.stopReason,
     observedAt: replica.observedAt?.toISOString() ?? null,
   };
 }

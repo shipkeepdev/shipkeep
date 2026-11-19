@@ -30,6 +30,7 @@ const REASONS: Readonly<Record<NonNullable<AgentAction['reason']>, string | null
   registry_unreachable: 'registry unreachable',
   registry_untrusted: 'registry certificate not trusted',
   disk_full: 'disk full',
+  image_volume_undeclared: 'image volume not declared',
   unknown: 'unknown error',
 };
 

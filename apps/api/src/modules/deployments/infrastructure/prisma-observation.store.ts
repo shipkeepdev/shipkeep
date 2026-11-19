@@ -8,6 +8,7 @@ import {
   type ObservedAllocation,
   type ObservedState,
   type ReplicaStatus,
+  stopReason,
 } from '../domain/observations';
 
 @Injectable()
@@ -25,7 +26,11 @@ export class PrismaObservationStore implements ObservationStore {
       environmentId: row.application.environmentId,
       container: row.container,
       observation: row.observation
-        ? { state: observedState(row.observation.state), observedAt: row.observation.observedAt }
+        ? {
+            state: observedState(row.observation.state),
+            stopReason: stopReason(row.observation.stopReason ?? ''),
+            observedAt: row.observation.observedAt,
+          }
         : null,
     }));
   }
@@ -46,7 +51,12 @@ export class PrismaObservationStore implements ObservationStore {
     now: Date,
   ): Promise<void> {
     for (const change of changes) {
-      const data = { containerId: change.containerId, state: change.state, observedAt: now };
+      const data = {
+        containerId: change.containerId,
+        state: change.state,
+        stopReason: change.stopReason,
+        observedAt: now,
+      };
       await this.database.client.allocationObservation.upsert({
         where: { allocationId: change.allocationId },
         create: { allocationId: change.allocationId, organizationId, ...data },
@@ -63,7 +73,7 @@ function replica(row: {
   nodeId: string;
   container: string;
   node: { name: string };
-  observation: { state: string; observedAt: Date } | null;
+  observation: { state: string; stopReason: string | null; observedAt: Date } | null;
 }): ReplicaStatus {
   return {
     id: row.id,
@@ -73,6 +83,7 @@ function replica(row: {
     nodeName: row.node.name,
     container: row.container,
     state: row.observation ? observedState(row.observation.state) : null,
+    stopReason: row.observation ? stopReason(row.observation.stopReason ?? '') : null,
     observedAt: row.observation?.observedAt ?? null,
   };
 }

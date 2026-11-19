@@ -289,13 +289,14 @@ The agent only adopts or changes resources that carry its `sk.managed=true` labe
   - The journal keeps the cause as a short code (`last_error`), through compensation, a replay and a restart. A cause that is not a code is dropped.
   - The dispatcher sends the text of a cause it lists:
 
-    | Cause                                                                                  | Text sent                                        | Reason on the control plane |
-    | -------------------------------------------------------------------------------------- | ------------------------------------------------ | --------------------------- |
-    | The registry refused the pull: private image, wrong credentials, or no such repository | `registry refused the pull`                      | `registry_denied`           |
-    | The registry has no image with this name and digest                                    | `image not found in the registry`                | `image_not_found`           |
-    | No answer from the registry (name, route, timeout)                                     | `registry unreachable from the server`           | `registry_unreachable`      |
-    | The server does not trust the registry's certificate                                   | `registry certificate not trusted by the server` | `registry_untrusted`        |
-    | No room left on the server for the image                                               | `no space left on the server`                    | `disk_full`                 |
+    | Cause                                                                                    | Text sent                                                      | Reason on the control plane |
+    | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- | --------------------------- |
+    | The registry refused the pull: private image, wrong credentials, or no such repository   | `registry refused the pull`                                    | `registry_denied`           |
+    | The registry has no image with this name and digest                                      | `image not found in the registry`                              | `image_not_found`           |
+    | No answer from the registry (name, route, timeout)                                       | `registry unreachable from the server`                         | `registry_unreachable`      |
+    | The server does not trust the registry's certificate                                     | `registry certificate not trusted by the server`               | `registry_untrusted`        |
+    | No room left on the server for the image                                                 | `no space left on the server`                                  | `disk_full`                 |
+    | A read-only root whose image declares a `VOLUME` that the spec does not mount (ADR 0022) | `the image declares a volume the configuration does not mount` | `image_volume_undeclared`   |
 
   - The control plane maps each fixed text to a reason code and never repeats a text it does not know. A deployment's failure message is built from the reason: a failed pull says what happened and what to check, other steps keep `Step <name> <state>: <fixed text>`. An agent that predates the list keeps sending `action failed`.
 - The payload hash covers only the action message, so a redelivery with new ids or a new deadline still matches.
@@ -610,7 +611,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
   - `POST …/deployments` (201, `deploy.run`) snapshots the configuration as the next release (numbered per application) and queues a deployment.
     - The plan skips `building` and `built` for image sources, and runs `releasing` only when `release.command` is set.
     - It is refused with 409 `secrets_missing` (listing the names) while a referenced secret is unset, and with 409 `deployment_in_progress` while another deployment is unfinished.
-  - `GET …/replicas` (`environment.read`) lists the placed replicas with their node, container and what the agent last saw (`state`, null until seen; `observedAt`).
+  - `GET …/replicas` (`environment.read`) lists the placed replicas with their node, container and what the agent last saw (`state`, null until seen; `stopReason`, `disk_limit` while a container the agent stopped for its disk budget exists and is `exited` or `dead`, otherwise null; `observedAt`). A change of the stop reason is audited with the observation: every `allocation.observed` event carries `stopReason`, null when there is none.
   - `GET …/deployments` lists the 50 most recent deployments; `GET …/deployments/{deploymentId}` reads one; `GET …/releases` lists the 50 most recent releases (`environment.read`).
   - `GET …/agent-actions` (`environment.read`, issue #263) lists the agent actions the application's deployments requested, newest first, with `cursor`/`limit` (1–100, default 50); `nextCursor` is null on the last page.
     - Each item has the typed kind, the node (id and name), state, step, attempts, deployment id, times and the summary of SPEC 3.1: `outcome` (`in_progress`, `succeeded`, `refused`, `failed`, `expired`, `cancelled`, `compensated`), `reason` and `result`.
