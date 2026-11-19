@@ -225,7 +225,8 @@ export function configSection(key: string, data: SectionData): SectionCopy | nul
                   mono(replica.container || `#${String(replica.replica)}`),
                   mono(replica.nodeName),
                   // Stopped by its agent for writing past resources.disk (ADR 0022).
-                  replica.stopReason === 'disk_limit'
+                  replica.stopReason === 'disk_limit' &&
+                  (replica.state === 'exited' || replica.state === 'dead')
                     ? state('stopped: disk limit', RED)
                     : replica.state === 'running'
                       ? state('running', GREEN)

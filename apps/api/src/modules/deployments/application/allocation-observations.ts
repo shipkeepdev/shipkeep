@@ -99,7 +99,8 @@ export class AllocationObservations implements OnModuleInit {
               container: change.container,
               from: change.from,
               to: change.state,
-              ...(change.stopReason ? { stopReason: change.stopReason } : {}),
+              // Null once cleared, so a consumer always reads the current reason.
+              stopReason: change.stopReason,
             },
             occurredAt: now,
           }),

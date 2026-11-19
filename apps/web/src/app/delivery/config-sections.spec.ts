@@ -72,4 +72,26 @@ describe('instances section', () => {
     expect(JSON.stringify(cells)).toContain('stopped: disk limit');
     expect(FR['stopped: disk limit']).toBe('arrêté : limite disque');
   });
+
+  it('shows the state of a running replica, whatever reason comes with it', () => {
+    const block = configSection('placement', {
+      ...data(),
+      replicas: [
+        {
+          id: 'r1',
+          releaseId: 'rel',
+          replica: 0,
+          nodeId: 'n1',
+          nodeName: 'edge-1',
+          container: 'sk-api-0',
+          state: 'running',
+          stopReason: 'disk_limit',
+          observedAt: '2026-11-19T12:00:00.000Z',
+        },
+      ],
+    })?.blocks.find((candidate) => candidate.type === 'table');
+    const cells = JSON.stringify(block?.type === 'table' ? block.rows[0] : []);
+    expect(cells).toContain('running');
+    expect(cells).not.toContain('disk limit');
+  });
 });

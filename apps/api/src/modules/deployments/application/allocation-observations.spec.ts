@@ -82,6 +82,7 @@ describe('AllocationObservations', () => {
           container: 'sk-web-1',
           from: null,
           to: 'running',
+          stopReason: null,
         },
       ],
     ]);
@@ -125,6 +126,28 @@ describe('AllocationObservations', () => {
     );
     expect(applied).toMatchObject([[{ state: 'exited', stopReason: null }]]);
     expect(JSON.stringify(events)).not.toContain('something_newer');
+  });
+
+  it('drops a stop reason paired with a state that is not stopped', async () => {
+    const { service, applied } = setup([
+      placed({ state: 'running', stopReason: null, observedAt: NOW }),
+    ]);
+    await service.record(
+      identity,
+      report([{ state: ContainerStatus_State.RUNNING, stopReason: 'disk_limit' }]),
+      new Date(NOW.getTime() + 120_000),
+    );
+    expect(applied).toMatchObject([[{ state: 'running', stopReason: null }]]);
+  });
+
+  it('carries a cleared stop reason as null in the event', async () => {
+    const { service, events } = setup([
+      placed({ state: 'exited', stopReason: 'disk_limit', observedAt: NOW }),
+    ]);
+    await service.record(identity, report([{ state: ContainerStatus_State.RUNNING }]), NOW);
+    expect(events.map((event) => event.payload)).toMatchObject([
+      { from: 'exited', to: 'running', stopReason: null },
+    ]);
   });
 
   it('ignores a whole report with any invalid container, keeping the last good state', async () => {

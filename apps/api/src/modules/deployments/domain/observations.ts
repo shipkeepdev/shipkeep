@@ -14,6 +14,9 @@ export type ObservedState = (typeof OBSERVED_STATES)[number];
 export const STOP_REASONS = ['disk_limit'] as const;
 export type StopReason = (typeof STOP_REASONS)[number];
 
+/** States in which a container is stopped, the only ones a stop reason describes. */
+const STOPPED_STATES: readonly ObservedState[] = ['exited', 'dead'];
+
 /** A stop reason the control plane knows, or null for none or one it does not know. */
 export function stopReason(value: string): StopReason | null {
   return STOP_REASONS.find((reason) => reason === value) ?? null;
@@ -75,7 +78,9 @@ export function observationChanges(
     const previous = allocation.observation;
     if (!container && !previous) continue;
     const state = container?.state ?? 'missing';
-    const reason = container?.stopReason ?? null;
+    // A reason paired with a state that is not stopped describes nothing: it is dropped.
+    const reason =
+      container && STOPPED_STATES.includes(container.state) ? container.stopReason : null;
     const changed = previous?.state !== state || previous.stopReason !== reason;
     if (!changed && now.getTime() - previous.observedAt.getTime() < OBSERVATION_REFRESH_MS)
       continue;
