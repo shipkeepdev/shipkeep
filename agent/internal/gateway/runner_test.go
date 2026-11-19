@@ -71,12 +71,12 @@ func (g *testGateway) Connect(stream grpc.BidiStreamingServer[agentv1.ConnectReq
 
 func TestRunnerReconnectsAndSendsHeartbeats(t *testing.T) {
 	address, server := startGateway(t, true)
-	bundle, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	bundle, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	server.disconnect.Store(true)
-	runner := Runner{Address: address, StateDir: t.TempDir(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	runner := Runner{Endpoint: Endpoint{Address: address}, StateDir: t.TempDir(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	ctx, cancel := context.WithCancel(t.Context())
 	stopped := make(chan error, 1)
 	go func() { stopped <- runner.Run(ctx, bundle) }()
@@ -107,7 +107,7 @@ func TestRunnerReconnectsAndSendsHeartbeats(t *testing.T) {
 func TestRunnerPersistsRenewalBeforeReconnecting(t *testing.T) {
 	address, server := startGateway(t, true)
 	server.renewSoon.Store(true)
-	bundle, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	bundle, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestRunnerPersistsRenewalBeforeReconnecting(t *testing.T) {
 	if err := bundle.Save(dir); err != nil {
 		t.Fatal(err)
 	}
-	runner := Runner{Address: address, StateDir: dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	runner := Runner{Endpoint: Endpoint{Address: address}, StateDir: dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
 	renewed, err := runner.cycle(ctx, bundle)
@@ -133,12 +133,12 @@ func TestRunnerPersistsRenewalBeforeReconnecting(t *testing.T) {
 
 func TestRunnerStopsRetryingRejectedCredentials(t *testing.T) {
 	address, server := startGateway(t, true)
-	bundle, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	bundle, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	server.rejected.Store(true)
-	runner := Runner{Address: address, StateDir: t.TempDir(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	runner := Runner{Endpoint: Endpoint{Address: address}, StateDir: t.TempDir(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	_, err = runner.cycle(t.Context(), bundle)
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("rejection code lost: %v", err)
@@ -163,7 +163,7 @@ func TestBackoffIsBoundedAndJittered(t *testing.T) {
 func TestRunnerRetriesSavingRenewedCredentials(t *testing.T) {
 	address, server := startGateway(t, true)
 	server.renewSoon.Store(true)
-	bundle, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	bundle, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -172,7 +172,7 @@ func TestRunnerRetriesSavingRenewedCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	failures := 2
-	runner := Runner{Address: address, StateDir: dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	runner := Runner{Endpoint: Endpoint{Address: address}, StateDir: dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	runner.save = func(b nodecredentials.Bundle) error {
 		if failures > 0 {
 			failures--
@@ -195,7 +195,7 @@ func TestRunnerRetriesSavingRenewedCredentials(t *testing.T) {
 func TestRunnerFinishesRenewalWhenShutdownIsRequested(t *testing.T) {
 	address, server := startGateway(t, true)
 	server.renewSoon.Store(true)
-	bundle, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	bundle, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -203,7 +203,7 @@ func TestRunnerFinishesRenewalWhenShutdownIsRequested(t *testing.T) {
 	if err := bundle.Save(dir); err != nil {
 		t.Fatal(err)
 	}
-	runner := Runner{Address: address, StateDir: dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	runner := Runner{Endpoint: Endpoint{Address: address}, StateDir: dir, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel() // SIGTERM arrives as the renewal starts.
 	renewed, err := runner.cycle(ctx, bundle)
@@ -232,7 +232,7 @@ func (f fakeActions) Cancel(id string) bool {
 
 func TestRunnerDeliversActionsAndForwardsUpdates(t *testing.T) {
 	address, server := startGateway(t, true)
-	bundle, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	bundle, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestRunnerDeliversActionsAndForwardsUpdates(t *testing.T) {
 	server.action.Store(&agentv1.ActionRequest{ActionId: "019d0000-0000-7000-8000-00000000000a"})
 	server.cancel.Store(&agentv1.CancelAction{ActionId: "019d0000-0000-7000-8000-00000000000b"})
 	actions := fakeActions{cancelled: make(chan string, 1)}
-	runner := Runner{Address: address, StateDir: t.TempDir(), Actions: actions, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	runner := Runner{Endpoint: Endpoint{Address: address}, StateDir: t.TempDir(), Actions: actions, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
 	ctx, cancel := context.WithCancel(t.Context())
 	stopped := make(chan error, 1)
 	go func() { stopped <- runner.Run(ctx, bundle) }()

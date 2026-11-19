@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,6 +30,13 @@ var ErrNotFound = errors.New("caddy object not found")
 // Client talks to the local Caddy admin socket.
 type Client struct {
 	http *http.Client
+	// routes serializes the read-then-write sequences on routes and on the hosts without TLS: an
+	// upsert, a removal, a change of those hosts and the securing of old routes each read a value
+	// and write it back, and actions run concurrently.
+	routes sync.Mutex
+	// betweenWrites, nil outside tests, runs in ApplyRoute after the route is written and before
+	// its hosts join the TLS-off list, with the lock held.
+	betweenWrites func()
 }
 
 // New returns a client for the admin socket at path.
@@ -54,10 +62,18 @@ type Route struct {
 	Terminal bool      `json:"terminal"`
 }
 
-// Match selects requests by host.
+// Match selects requests by host and, for a route under automatic HTTPS, by protocol.
 type Match struct {
 	Host []string `json:"host"`
+	// Protocol is "https" for a route under automatic HTTPS: the server listens on both ports, and
+	// Caddy inserts its HTTP-to-HTTPS redirects after the last route that matches a host, so a
+	// route that matched plain HTTP too would answer there instead of the redirect. Empty for a
+	// route with TLS off, which is served on port 80.
+	Protocol string `json:"protocol,omitempty"`
 }
+
+// HTTPS is the protocol matcher of a route under automatic HTTPS.
+const HTTPS = "https"
 
 // Handler is a reverse_proxy handler.
 type Handler struct {
@@ -93,7 +109,8 @@ func RouteID(routeID string) string {
 
 // EnsureServer creates the Shipkeep server when missing. It creates only the deepest missing
 // level of apps/http/servers, never replaces existing configuration, and never uses /load (which
-// would also reset the admin endpoint the installer configured on a Unix socket).
+// would also reset the admin endpoint the installer configured on a Unix socket). On an existing
+// server it secures the routes that older agents wrote (see secureRoutes).
 func (c *Client) EnsureServer(ctx context.Context) error {
 	body := server{Listen: []string{":80", ":443"}, Routes: []Route{}}
 	levels := []struct {
@@ -116,16 +133,92 @@ func (c *Client) EnsureServer(ctx context.Context) error {
 			continue
 		}
 		if level.child == "" {
-			return nil
+			return c.secureRoutes(ctx)
 		}
 		return c.do(ctx, http.MethodPut, level.path+"/"+level.child, level.value, nil)
 	}
 	return errors.New("caddy has no configuration root; its admin endpoint is not configured by the installer")
 }
 
+// SecureRoutes secures the routes older agents wrote, as EnsureServer does, but creates nothing:
+// without the Shipkeep server there is no route to secure.
+func (c *Client) SecureRoutes(ctx context.Context) error {
+	present, err := c.exists(ctx, "/config/apps/http/servers/"+Server)
+	if err != nil || !present {
+		return err
+	}
+	return c.secureRoutes(ctx)
+}
+
+// secureRoutes adds the HTTPS protocol matcher to the Shipkeep routes that lack it: agents up to
+// 0.1.0-alpha.3 wrote routes that answered on plain HTTP instead of redirecting. A route whose
+// hosts are all skipped by automatic HTTPS has TLS off and keeps answering on port 80. Only the
+// match of a route with the Shipkeep id prefix changes; other routes are never touched.
+func (c *Client) secureRoutes(ctx context.Context) error {
+	c.routes.Lock()
+	defer c.routes.Unlock()
+	var routes []Route
+	if _, err := c.get(ctx, "/config/apps/http/servers/"+Server+"/routes", &routes); err != nil {
+		return fmt.Errorf("read caddy routes: %w", err)
+	}
+	var plain automaticHTTPS
+	if _, err := c.get(ctx, "/config/apps/http/servers/"+Server+"/automatic_https", &plain); err != nil {
+		return fmt.Errorf("read caddy automatic https: %w", err)
+	}
+	for _, route := range routes {
+		if !strings.HasPrefix(route.ID, idPrefix) || len(route.Match) == 0 {
+			continue
+		}
+		secured, changed := slices.Clone(route.Match), false
+		for index, match := range secured {
+			if match.Protocol != "" || len(match.Host) == 0 ||
+				!slices.ContainsFunc(match.Host, func(host string) bool { return !slices.Contains(plain.Skip, host) }) {
+				continue
+			}
+			secured[index].Protocol, changed = HTTPS, true
+		}
+		if changed {
+			if err := c.do(ctx, http.MethodPatch, "/id/"+route.ID+"/match", secured, nil); err != nil {
+				return fmt.Errorf("secure caddy route: %w", err)
+			}
+		}
+	}
+	return nil
+}
+
 // UpsertRoute replaces the route with route.ID, or appends it. Caddy applies each change
 // atomically and gracefully: in-flight requests finish on the old configuration.
 func (c *Client) UpsertRoute(ctx context.Context, route Route) error {
+	c.routes.Lock()
+	defer c.routes.Unlock()
+	return c.upsertRoute(ctx, route)
+}
+
+// ApplyRoute writes a route and moves its hosts in or out of the hosts without TLS, as one unit
+// that no other route change and no securing of old routes can interleave with. The order keeps
+// every host reachable if a write fails: hosts leave the TLS-off list before the route changes
+// (until then the old route still answers them, now with a certificate), and join it only after
+// the route answers plain HTTP. The other order could leave a host without a certificate behind a
+// route that answers HTTPS only.
+func (c *Client) ApplyRoute(ctx context.Context, route Route, plainAdd, plainRemove []string) error {
+	c.routes.Lock()
+	defer c.routes.Unlock()
+	if err := c.setPlainHosts(ctx, nil, plainRemove); err != nil {
+		return fmt.Errorf("set plain hosts: %w", err)
+	}
+	if err := c.upsertRoute(ctx, route); err != nil {
+		return fmt.Errorf("upsert route: %w", err)
+	}
+	if c.betweenWrites != nil {
+		c.betweenWrites()
+	}
+	if err := c.setPlainHosts(ctx, plainAdd, nil); err != nil {
+		return fmt.Errorf("set plain hosts: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) upsertRoute(ctx context.Context, route Route) error {
 	var stored json.RawMessage
 	present, err := c.get(ctx, "/id/"+route.ID, &stored)
 	if err != nil {
@@ -146,6 +239,8 @@ func (c *Client) Route(ctx context.Context, id string) (Route, bool, error) {
 
 // RemoveRoute deletes a route; a missing route is already removed.
 func (c *Client) RemoveRoute(ctx context.Context, id string) error {
+	c.routes.Lock()
+	defer c.routes.Unlock()
 	err := c.do(ctx, http.MethodDelete, "/id/"+id, nil, nil)
 	if errors.Is(err, ErrNotFound) {
 		return nil
@@ -155,6 +250,12 @@ func (c *Client) RemoveRoute(ctx context.Context, id string) error {
 
 // SetPlainHosts adds or removes hosts from automatic HTTPS (TLS mode off).
 func (c *Client) SetPlainHosts(ctx context.Context, add, remove []string) error {
+	c.routes.Lock()
+	defer c.routes.Unlock()
+	return c.setPlainHosts(ctx, add, remove)
+}
+
+func (c *Client) setPlainHosts(ctx context.Context, add, remove []string) error {
 	path := "/config/apps/http/servers/" + Server + "/automatic_https"
 	var current automaticHTTPS
 	present, err := c.get(ctx, path, &current)

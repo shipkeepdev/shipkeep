@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/shipkeepdev/shipkeep/agent/internal/actions"
 	"github.com/shipkeepdev/shipkeep/agent/internal/caddy"
@@ -24,7 +26,7 @@ import (
 
 func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *docker.Client) error {
 	if ctx.Err() != nil {
-		return nil //nolint:nilerr // Parent cancellation is a clean shutdown.
+		return nil // Parent cancellation is a clean shutdown.
 	}
 	name := a.cfg.Node.Name
 	if name == "" {
@@ -55,7 +57,7 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		if err != nil {
 			return err
 		}
-		bundle, err = gateway.Enroll(ctx, a.cfg.ControlPlane.Address, a.cfg.ControlPlane.CAFingerprint, a.cfg.Dev, token, facts, buildinfo.Version)
+		bundle, err = gateway.Enroll(ctx, a.endpoint(), a.cfg.ControlPlane.CAFingerprint, a.cfg.Dev, token, facts, buildinfo.Version)
 		if err != nil {
 			return err
 		}
@@ -76,11 +78,23 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	if err != nil {
 		return err
 	}
+	// Secures the routes an older agent wrote, without waiting for the next deployment. Caddy may
+	// still be starting, so it is retried until it succeeds; it stops with this gateway run.
+	secureCtx, stopSecuring := context.WithCancel(ctx)
+	secured := make(chan struct{})
+	go func() {
+		defer close(secured)
+		secureRoutesUntilDone(secureCtx, router, a.logger, time.Second, time.Minute)
+	}()
+	defer func() {
+		stopSecuring()
+		<-secured
+	}()
 	// Facts are read when the result is built, after the action's context ended.
 	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine) //nolint:contextcheck // see above
 	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts), Epoch: func() uint64 { return epoch }}
 	runner := gateway.Runner{
-		Address: a.cfg.ControlPlane.Address, StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher,
+		Endpoint: a.endpoint(), StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher,
 		Report: func(ctx context.Context) (*agentv1.StateReport, error) { return reporting.Snapshot(ctx, engine) },
 	}
 	return runner.Run(ctx, bundle)
@@ -113,4 +127,32 @@ func readJoinToken(path string) (secret.String, error) {
 		return secret.String{}, errors.New("join-token file is too large")
 	}
 	return secret.NewString(strings.TrimSuffix(string(data), "\n")), nil
+}
+
+// secureRoutesUntilDone runs SecureRoutes until it succeeds or ctx ends, waiting first, then twice
+// as long after each failure, up to most. Each failure is logged; Caddy's own error text is not in
+// it (the client reports statuses only).
+func secureRoutesUntilDone(ctx context.Context, router interface{ SecureRoutes(context.Context) error }, logger *slog.Logger, first, most time.Duration) {
+	delay := first
+	for {
+		err := router.SecureRoutes(ctx)
+		if err == nil || ctx.Err() != nil {
+			return
+		}
+		logger.Warn("caddy routes not checked yet; retrying", "error", err, "retry_in", delay.String())
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+		delay = min(delay*2, most)
+	}
+}
+
+// endpoint is the gateway as the configuration names it: the verified address, and the loopback
+// address to connect to on the machine that hosts the control plane (ADR 0021).
+func (a *Agent) endpoint() gateway.Endpoint {
+	return gateway.Endpoint{Address: a.cfg.ControlPlane.Address, Connect: a.cfg.ControlPlane.Connect}
 }

@@ -37,7 +37,7 @@ type ActionHandler interface {
 
 // Runner owns one outbound stream and its reconnect/renewal lifecycle.
 type Runner struct {
-	Address  string
+	Endpoint Endpoint
 	StateDir string
 	Version  string
 	Facts    *agentv1.NodeFacts
@@ -98,7 +98,7 @@ func (r *Runner) cycle(ctx context.Context, bundle nodecredentials.Bundle) (node
 	if err != nil {
 		return bundle, errIdentity
 	}
-	conn, err := Open(r.Address, bundle)
+	conn, err := Open(r.Endpoint, bundle)
 	if err != nil {
 		return bundle, err
 	}
