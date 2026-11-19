@@ -1,6 +1,6 @@
 module github.com/shipkeepdev/shipkeep/cli
 
-go 1.26.0
+go 1.26.11
 
 require (
 	github.com/shipkeepdev/shipkeep/lib v0.0.0

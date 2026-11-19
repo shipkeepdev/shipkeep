@@ -17,7 +17,7 @@ Shipkeep deploys software on servers that its users own, so security rules come 
 Follow [Run Shipkeep locally](README.md#run-shipkeep-locally). To contribute, you also need:
 
 - [gitleaks](https://github.com/gitleaks/gitleaks#installing) for the commit hook;
-- Go 1.26 or newer to run `pnpm gen`, and with [golangci-lint](https://golangci-lint.run/) for changes to `agent/`, `cli/` or `lib/`.
+- Go 1.26.11 or newer to run `pnpm gen`, and with [golangci-lint](https://golangci-lint.run/) for changes to `agent/`, `cli/` or `lib/`.
 
 Unit tests don't need Docker: `pnpm install`, then `pnpm test`.
 
