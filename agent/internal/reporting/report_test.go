@@ -75,3 +75,19 @@ func TestSnapshotNeverPublishesPartialInventories(t *testing.T) {
 		t.Fatal("daemon failure became an empty snapshot or leaked")
 	}
 }
+
+func TestSnapshotNamesWhyTheAgentStoppedAContainer(t *testing.T) {
+	e := engine{containers: []docker.ContainerSummary{managed("sk-full", "exited"), managed("sk-fine", "running")}}
+	report, err := SnapshotWithReasons(t.Context(), e, map[string]string{"sk-full": "disk_limit", "sk-gone": "disk_limit"})
+	if err != nil || len(report.GetContainers()) != 2 {
+		t.Fatalf("snapshot: %v, %v", report, err)
+	}
+	reasons := map[string]string{}
+	for _, container := range report.GetContainers() {
+		reasons[container.GetName()] = container.GetStopReason()
+	}
+	// A reason for a container that no longer exists is not reported.
+	if reasons["sk-full"] != "disk_limit" || reasons["sk-fine"] != "" || len(reasons) != 2 {
+		t.Fatalf("reasons %v", reasons)
+	}
+}
