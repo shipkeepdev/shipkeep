@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -21,11 +22,17 @@ import (
 var public = netip.MustParseAddr("8.8.8.8")
 
 type harness struct {
-	address string
-	logs    *bytes.Buffer
-	mu      sync.Mutex
-	dialed  []netip.AddrPort
+	address  string
+	logs     *safeBuffer
+	mu       sync.Mutex
+	dialed   []netip.AddrPort
+	listener net.Listener
+	cancel   context.CancelFunc
+	served   chan error
 }
+
+// blackhole stands for a public address that drops connection attempts.
+var blackhole = netip.MustParseAddr("9.9.9.9")
 
 func (h *harness) dials() []netip.AddrPort {
 	h.mu.Lock()
@@ -48,10 +55,9 @@ func start(t *testing.T, limits Limits, names map[string][]string) *harness {
 			go func() { _, _ = io.Copy(conn, conn); _ = conn.Close() }()
 		}
 	}()
-	h := &harness{logs: &bytes.Buffer{}}
-	var logMu sync.Mutex
+	h := &harness{logs: &safeBuffer{}}
 	proxy := &Proxy{
-		Logger: slog.New(slog.NewJSONHandler(lockedWriter{&logMu, h.logs}, nil)),
+		Logger: slog.New(slog.NewJSONHandler(h.logs, nil)),
 		Limits: limits,
 		Resolve: func(_ context.Context, host string) ([]netip.Addr, error) {
 			answers, ok := names[host]
@@ -68,6 +74,10 @@ func start(t *testing.T, limits Limits, names map[string][]string) *harness {
 			h.mu.Lock()
 			h.dialed = append(h.dialed, address)
 			h.mu.Unlock()
+			if address.Addr() == blackhole {
+				<-ctx.Done()
+				return nil, ctx.Err()
+			}
 			if address.Addr() != public {
 				return nil, errors.New("unreachable in the test")
 			}
@@ -75,18 +85,37 @@ func start(t *testing.T, limits Limits, names map[string][]string) *harness {
 			return dialer.DialContext(ctx, "tcp", echo.Addr().String())
 		},
 	}
-	listener := listen(t)
+	h.listener = listen(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	served := make(chan error, 1)
-	go func() { served <- proxy.Serve(ctx, listener) }()
+	h.cancel = cancel
+	h.served = make(chan error, 1)
+	go func() { h.served <- proxy.Serve(ctx, h.listener) }()
 	t.Cleanup(func() {
 		cancel()
-		if err := <-served; err != nil {
-			t.Errorf("serve: %v", err)
+		select {
+		case err, ok := <-h.served:
+			if ok && err != nil {
+				t.Errorf("serve: %v", err)
+			}
+		case <-time.After(10 * time.Second):
+			t.Error("Serve did not return")
 		}
 	})
-	h.address = listener.Addr().String()
+	h.address = h.listener.Addr().String()
 	return h
+}
+
+// stopped waits for Serve to return, and closes served for the cleanup.
+func (h *harness) stopped(t *testing.T, within time.Duration) error {
+	t.Helper()
+	select {
+	case err := <-h.served:
+		close(h.served)
+		return err
+	case <-time.After(within):
+		t.Fatal("Serve did not return")
+		return nil
+	}
 }
 
 func listen(t *testing.T) net.Listener {
@@ -99,15 +128,22 @@ func listen(t *testing.T) net.Listener {
 	return listener
 }
 
-type lockedWriter struct {
-	mu *sync.Mutex
-	w  io.Writer
+// safeBuffer is a log buffer that the proxy writes and the test reads at the same time.
+type safeBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
 }
 
-func (l lockedWriter) Write(p []byte) (int, error) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return l.w.Write(p)
+func (b *safeBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *safeBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // request sends a raw request and returns the status code and the open connection.
@@ -302,5 +338,60 @@ func TestGuardChecksTheAddressItConnectsTo(t *testing.T) {
 	case <-accepted:
 		t.Fatal("the loopback listener got a connection")
 	case <-time.After(100 * time.Millisecond):
+	}
+}
+
+// A request that withholds its body holds no socket past the request time: it never takes a
+// tunnel slot, so nothing else would bound it.
+func TestBoundsARequestThatWithholdsItsBody(t *testing.T) {
+	limits := DefaultLimits
+	limits.Request = 300 * time.Millisecond
+	h := start(t, limits, nil)
+	status, conn, reader := request(t, h, "POST / HTTP/1.1\r\nHost: example.com\r\nContent-Length: 1\r\n\r\n")
+	if status != http.StatusForbidden {
+		t.Fatalf("status %d", status)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(3 * time.Second))
+	if _, err := io.Copy(io.Discard, reader); err != nil {
+		t.Fatalf("the connection was not closed by the proxy: %v", err)
+	}
+}
+
+// Stopping the proxy ends established tunnels too: Shutdown alone leaves hijacked connections.
+func TestStopsWithItsTunnels(t *testing.T) {
+	h := start(t, DefaultLimits, map[string][]string{"registry.example.com": {"8.8.8.8"}})
+	status, conn, reader := connect(t, h, "registry.example.com:443")
+	if status != http.StatusOK {
+		t.Fatalf("status %d", status)
+	}
+	h.cancel()
+	if err := h.stopped(t, 5*time.Second); err != nil {
+		t.Fatalf("serve: %v", err)
+	}
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, err := reader.ReadByte(); err == nil || errors.Is(err, os.ErrDeadlineExceeded) {
+		t.Fatalf("the tunnel is still open: %v", err)
+	}
+}
+
+// A listener that fails ends Serve with its error, without waiting for the context.
+func TestReturnsAListenerFailure(t *testing.T) {
+	h := start(t, DefaultLimits, nil)
+	_ = h.listener.Close()
+	if err := h.stopped(t, 5*time.Second); err == nil {
+		t.Fatal("Serve returned no error for a closed listener")
+	}
+}
+
+// An address that drops connection attempts leaves time for the next one.
+func TestLeavesTimeForTheNextAddress(t *testing.T) {
+	limits := DefaultLimits
+	limits.Connect = time.Second
+	h := start(t, limits, map[string][]string{"two.example.com": {"9.9.9.9", "8.8.8.8"}})
+	if status, _, _ := connect(t, h, "two.example.com:443"); status != http.StatusOK {
+		t.Fatalf("status %d", status)
+	}
+	if dialed := h.dials(); len(dialed) != 2 || dialed[0].Addr() != blackhole {
+		t.Fatalf("dialed %v", dialed)
 	}
 }

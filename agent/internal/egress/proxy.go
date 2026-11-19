@@ -26,10 +26,13 @@ type Limits struct {
 	Connect time.Duration
 	// Longest life of a tunnel, enough to pull a large layer.
 	Lifetime time.Duration
+	// Time to read a request, body included, and to write a refusal. A tunnel replaces these
+	// deadlines with its lifetime once it is established.
+	Request time.Duration
 }
 
 // DefaultLimits are those of ADR 0023.
-var DefaultLimits = Limits{Tunnels: 64, Connect: 10 * time.Second, Lifetime: time.Hour}
+var DefaultLimits = Limits{Tunnels: 64, Connect: 10 * time.Second, Lifetime: time.Hour, Request: 10 * time.Second}
 
 // Resolver returns the addresses of a host name.
 type Resolver func(ctx context.Context, host string) ([]netip.Addr, error)
@@ -42,6 +45,13 @@ type Proxy struct {
 	// dial replaces the guarded dialer in tests; the public check still runs before it.
 	dial    func(ctx context.Context, address netip.AddrPort) (net.Conn, error)
 	tunnels chan struct{}
+
+	// Established tunnels: Shutdown does not track hijacked connections, so Serve closes and
+	// joins them itself.
+	mu      sync.Mutex
+	closing bool
+	live    map[net.Conn]struct{}
+	running sync.WaitGroup
 }
 
 // New returns a proxy that resolves names with the system resolver.
@@ -79,36 +89,86 @@ func (p *Proxy) connect(ctx context.Context, address netip.AddrPort) (net.Conn, 
 	return conn, nil
 }
 
-// Serve accepts proxy requests on listener until ctx ends.
+// Serve accepts proxy requests on listener until ctx ends or the listener fails. It returns once
+// every request and every tunnel has ended.
 func (p *Proxy) Serve(ctx context.Context, listener net.Listener) error {
 	p.tunnels = make(chan struct{}, p.Limits.Tunnels)
+	p.live = map[net.Conn]struct{}{}
 	server := &http.Server{
 		Handler:           p,
-		ReadHeaderTimeout: 10 * time.Second,
+		ReadHeaderTimeout: p.Limits.Request,
+		ReadTimeout:       p.Limits.Request,
+		WriteTimeout:      p.Limits.Request + p.Limits.Connect,
+		IdleTimeout:       p.Limits.Request,
 		MaxHeaderBytes:    8 << 10,
 		BaseContext:       func(net.Listener) context.Context { return ctx },
 		ErrorLog:          slog.NewLogLogger(p.Logger.Handler(), slog.LevelWarn),
 	}
+	served := make(chan struct{})
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		<-ctx.Done()
+		select {
+		case <-ctx.Done():
+		case <-served:
+		}
 		shutdown, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 		defer cancel()
 		_ = server.Shutdown(shutdown)
+		p.closeTunnels()
 	}()
 	err := server.Serve(listener)
+	close(served)
 	<-done
+	p.running.Wait()
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil
 	}
 	return fmt.Errorf("serve egress proxy: %w", err)
 }
 
+// track registers an established tunnel's connections; false once the proxy is closing, in which
+// case they are closed at once.
+func (p *Proxy) track(conns ...net.Conn) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closing {
+		for _, conn := range conns {
+			_ = conn.Close()
+		}
+		return false
+	}
+	for _, conn := range conns {
+		p.live[conn] = struct{}{}
+	}
+	return true
+}
+
+func (p *Proxy) untrack(conns ...net.Conn) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, conn := range conns {
+		delete(p.live, conn)
+	}
+}
+
+// closeTunnels ends every established tunnel; their handlers then return.
+func (p *Proxy) closeTunnels() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.closing = true
+	for conn := range p.live {
+		_ = conn.Close()
+	}
+}
+
 // ServeHTTP handles one proxy request. Only CONNECT is served: the daemon's registry traffic
 // stays HTTPS end to end, and a request in plain HTTP (a redirect or a token service on http://)
 // is refused without being forwarded.
 func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// Serve waits for every handler, the hijacked ones included, before it returns.
+	p.running.Add(1)
+	defer p.running.Done()
 	if r.Method != http.MethodConnect {
 		p.Logger.Warn("egress refused", "reason", "not_connect", "method", r.Method)
 		http.Error(w, "only HTTPS tunnels are allowed", http.StatusForbidden)
@@ -151,6 +211,10 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer client.Close() //nolint:errcheck // closing a finished tunnel
+	if !p.track(client, upstream) {
+		return
+	}
+	defer p.untrack(client, upstream)
 	if _, err := client.Write([]byte("HTTP/1.1 200 Connection established\r\n\r\n")); err != nil {
 		return
 	}
@@ -179,8 +243,16 @@ func (p *Proxy) open(ctx context.Context, host string, port uint16) (net.Conn, s
 			return nil, "not_public"
 		}
 	}
-	for _, address := range addresses {
-		conn, err := p.connect(ctx, netip.AddrPortFrom(address.Unmap(), port))
+	deadline, bounded := ctx.Deadline()
+	for i, address := range addresses {
+		// Each address gets its share of the time left, so one that drops connection attempts
+		// cannot spend the time of those after it.
+		attempt, cancel := ctx, context.CancelFunc(func() {})
+		if bounded {
+			attempt, cancel = context.WithTimeout(ctx, time.Until(deadline)/time.Duration(len(addresses)-i))
+		}
+		conn, err := p.connect(attempt, netip.AddrPortFrom(address.Unmap(), port))
+		cancel()
 		if errors.Is(err, errNotPublic) {
 			return nil, "not_public"
 		}
