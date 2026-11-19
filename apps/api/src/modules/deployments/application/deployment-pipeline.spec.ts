@@ -418,6 +418,27 @@ describe('DeploymentPipeline', () => {
     });
   });
 
+  it('keeps a replica off a node whose free disk cannot hold its budget (ADR 0022)', async () => {
+    const node = (disk: number) => ({
+      id: NODE,
+      name: 'edge-1',
+      status: 'ready',
+      lastHeartbeatAt: NOW,
+      labels: {},
+      // The default budget is 1 GiB, and 2 GiB stay free beside it.
+      facts: { ...READY_FACTS, disk_free_bytes: disk },
+    });
+    const short = world({ nodes: [node(3 * 2 ** 30 - 1)] });
+    expect(await short.subject.run(ORG, short.deployment.id, () => NOW)).toBe('done');
+    expect(short.deployment).toMatchObject({
+      state: 'failed',
+      error: 'No node can run replica 1 of 1 (edge-1: disk).',
+    });
+    const enough = world({ nodes: [node(3 * 2 ** 30)] });
+    await enough.subject.run(ORG, enough.deployment.id, () => NOW);
+    expect(enough.deployment.state).not.toBe('failed');
+  });
+
   it('gives an application without resources the default limits, reserved and enforced', async () => {
     const w = world();
     await w.subject.run(ORG, w.deployment.id, () => NOW);

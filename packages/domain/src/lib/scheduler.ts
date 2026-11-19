@@ -20,13 +20,25 @@ export interface SchedulableNode {
   readonly apps: readonly string[];
   /** Volumes stored on the node. */
   readonly volumes: readonly string[];
+  /**
+   * Free disk the node last reported, in bytes (ADR 0022); undefined when it reported none, in
+   * which case its disk is not checked.
+   */
+  readonly diskFreeBytes?: number;
+  /** Disk budgets of the replicas this placement already put on the node. */
+  readonly diskPlannedBytes?: number;
 }
+
+/** Free disk left beside the budgets, for images, logs and the agent (ADR 0022). */
+export const DISK_MARGIN_BYTES = 2 * 2 ** 30;
 
 export interface PlacementRequest {
   readonly app: string;
   /** Architectures the image is published for. */
   readonly architectures: readonly string[];
   readonly resources: Resources;
+  /** Disk budget of each replica (ADR 0022): checked against free disk, not reserved. */
+  readonly diskBytes?: number;
   /** Labels the node must carry with exactly these values. */
   readonly labels: Readonly<Record<string, string>>;
   /** Host ports the replica binds. */
@@ -39,7 +51,15 @@ export interface PlacementRequest {
 }
 
 export type PlacementRejection =
-  'not_ready' | 'architecture' | 'labels' | 'not_allowed' | 'cpu' | 'memory' | 'ports' | 'volume';
+  | 'not_ready'
+  | 'architecture'
+  | 'labels'
+  | 'not_allowed'
+  | 'cpu'
+  | 'memory'
+  | 'disk'
+  | 'ports'
+  | 'volume';
 
 export type PlacementDecision =
   | { readonly placed: true; readonly node: string }
@@ -105,6 +125,7 @@ export function placeReplicas(
             },
             usedPorts: [...node.usedPorts, ...request.ports],
             apps: node.apps.includes(request.app) ? node.apps : [...node.apps, request.app],
+            diskPlannedBytes: (node.diskPlannedBytes ?? 0) + (request.diskBytes ?? 0),
           }
         : node,
     );
@@ -136,6 +157,13 @@ function reject(
     node.reserved.memoryBytes + request.resources.memoryBytes > node.capacity.memoryBytes
   )
     return 'memory';
+  // Free disk must hold the replica's budget, the budgets already planned there and a margin.
+  if (
+    request.diskBytes !== undefined &&
+    node.diskFreeBytes !== undefined &&
+    node.diskFreeBytes - (node.diskPlannedBytes ?? 0) - request.diskBytes < DISK_MARGIN_BYTES
+  )
+    return 'disk';
   if (request.ports.some((port) => node.usedPorts.includes(port))) return 'ports';
   return undefined;
 }
@@ -171,6 +199,7 @@ function assertRequest(request: PlacementRequest): void {
     !request.app ||
     request.architectures.length === 0 ||
     !validResources(request.resources) ||
+    !optionalAmount(request.diskBytes) ||
     !request.ports.every(validPort) ||
     new Set(request.ports).size !== request.ports.length ||
     (spread !== 'node' && spread !== 'none')
@@ -182,6 +211,8 @@ function assertNode(node: SchedulableNode): void {
     !node.name ||
     !validResources(node.capacity) ||
     !validResources(node.reserved) ||
+    !optionalAmount(node.diskFreeBytes) ||
+    !optionalAmount(node.diskPlannedBytes) ||
     !node.usedPorts.every(validPort)
   )
     throw invalid(`Invalid scheduling state for node ${node.name || '(unnamed)'}.`);
@@ -190,6 +221,9 @@ function validResources(value: Resources): boolean {
   return [value.cpuMillis, value.memoryBytes].every(
     (amount) => Number.isSafeInteger(amount) && amount >= 0,
   );
+}
+function optionalAmount(value: number | undefined): boolean {
+  return value === undefined || (Number.isSafeInteger(value) && value >= 0);
 }
 function validPort(port: number): boolean {
   return Number.isInteger(port) && port >= 1 && port <= 65535;
