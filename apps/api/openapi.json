@@ -6098,6 +6098,17 @@
             ],
             "description": "What the agent last saw; null until it has seen the container."
           },
+          "stopReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "disk_limit",
+              null
+            ],
+            "description": "Why its agent stopped it itself: disk_limit when it wrote more than its disk budget (ADR 0022)."
+          },
           "observedAt": {
             "type": [
               "string",
@@ -6114,6 +6125,7 @@
           "nodeName",
           "container",
           "state",
+          "stopReason",
           "observedAt"
         ]
       },
@@ -6276,6 +6288,7 @@
               "registry_unreachable",
               "registry_untrusted",
               "disk_full",
+              "image_volume_undeclared",
               "unknown",
               null
             ]

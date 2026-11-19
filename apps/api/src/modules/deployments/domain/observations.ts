@@ -10,6 +10,15 @@ export const OBSERVED_STATES = [
 ] as const;
 export type ObservedState = (typeof OBSERVED_STATES)[number];
 
+/** Why an agent stopped a container itself (ADR 0022): what `ContainerStatus.stop_reason` may say. */
+export const STOP_REASONS = ['disk_limit'] as const;
+export type StopReason = (typeof STOP_REASONS)[number];
+
+/** A stop reason the control plane knows, or null for none or one it does not know. */
+export function stopReason(value: string): StopReason | null {
+  return STOP_REASONS.find((reason) => reason === value) ?? null;
+}
+
 /** Unchanged observations are refreshed this often, so `observedAt` shows the agent still reports. */
 export const OBSERVATION_REFRESH_MS = 60_000;
 
@@ -17,6 +26,7 @@ export interface ReportedContainer {
   readonly containerId: string;
   readonly name: string;
   readonly state: Exclude<ObservedState, 'missing'>;
+  readonly stopReason: StopReason | null;
 }
 
 /** A placed replica on the reporting node, with what was last observed for it. */
@@ -27,6 +37,7 @@ export interface ObservedAllocation {
   readonly container: string;
   readonly observation: {
     readonly state: ObservedState;
+    readonly stopReason: StopReason | null;
     readonly observedAt: Date;
   } | null;
 }
@@ -39,6 +50,8 @@ export interface ObservationChange {
   /** Null once the container is gone. */
   readonly containerId: string | null;
   readonly state: ObservedState;
+  /** Why the agent stopped it itself, while the container exists. */
+  readonly stopReason: StopReason | null;
   /** The previous state, or null the first time this allocation is seen. */
   readonly from: ObservedState | null;
   /** False for a refresh of an unchanged state: only real changes are audited. */
@@ -62,7 +75,8 @@ export function observationChanges(
     const previous = allocation.observation;
     if (!container && !previous) continue;
     const state = container?.state ?? 'missing';
-    const changed = previous?.state !== state;
+    const reason = container?.stopReason ?? null;
+    const changed = previous?.state !== state || previous.stopReason !== reason;
     if (!changed && now.getTime() - previous.observedAt.getTime() < OBSERVATION_REFRESH_MS)
       continue;
     changes.push({
@@ -72,6 +86,7 @@ export function observationChanges(
       container: allocation.container,
       containerId: container?.containerId ?? null,
       state,
+      stopReason: reason,
       from: previous?.state ?? null,
       changed,
     });
@@ -89,5 +104,7 @@ export interface ReplicaStatus {
   readonly container: string;
   /** Null until its agent has seen the container. */
   readonly state: ObservedState | null;
+  /** Why its agent stopped it itself (ADR 0022); null otherwise. */
+  readonly stopReason: StopReason | null;
   readonly observedAt: Date | null;
 }

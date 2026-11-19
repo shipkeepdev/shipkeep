@@ -529,6 +529,8 @@ model AllocationObservation {
   organizationId String     @map("organization_id") @db.Uuid
   containerId    String?    @map("container_id") @db.Char(64)
   state          String     @db.VarChar(16)
+  /// Why the agent stopped the container itself (ADR 0022), while it exists.
+  stopReason     String?    @map("stop_reason") @db.VarChar(16)
   observedAt     DateTime   @map("observed_at") @db.Timestamptz(6)
   allocation     Allocation @relation(fields: [organizationId, allocationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "allocation_observations_allocation_fkey")
 

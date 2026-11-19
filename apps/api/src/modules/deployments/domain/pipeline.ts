@@ -383,11 +383,16 @@ function failedStep(context: PipelineContext): string | undefined {
     const step = stepKey.slice(prefix.length).split(':')[0] ?? 'step';
     const pull = step === 'pull' && outcome.reason ? PULL_FAILURES[outcome.reason] : undefined;
     if (pull) return pull;
+    if (outcome.reason === 'image_volume_undeclared') return IMAGE_VOLUME_UNDECLARED;
     const text = outcome.reason ? reasonText(outcome.reason) : null;
     return `Step ${step} ${outcome.state}${text ? `: ${text}` : '.'}`;
   }
   return undefined;
 }
+
+/** A read-only root refused because the image declares a volume nothing mounts (ADR 0022). */
+const IMAGE_VOLUME_UNDECLARED =
+  'The server did not create the container: the image declares a volume that the configuration does not mount, and with run.read_only_root Docker would give it an unbounded anonymous volume. Declare that path under volumes, or turn off run.read_only_root.';
 
 /** What a failed pull says, by cause: what happened, in words that tell what to check. */
 const PULL_FAILURES: Partial<Record<ActionReason, string>> = {

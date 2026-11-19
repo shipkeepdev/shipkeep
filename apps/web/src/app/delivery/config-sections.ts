@@ -19,7 +19,11 @@ const YML = 'shipkeep.yml';
  * What a limit left out of `resources` means (SPEC 2.2). Fixed texts, so that they can be
  * translated; the test compares them with `DEFAULT_RESOURCES`.
  */
-export const DEFAULT_LIMIT_TEXT = { cpu: '1 CPU (default)', memory: '512Mi (default)' } as const;
+export const DEFAULT_LIMIT_TEXT = {
+  cpu: '1 CPU (default)',
+  memory: '512Mi (default)',
+  disk: '1Gi (default)',
+} as const;
 const field = (l: string, v: string | undefined, extra: Partial<FieldItem> = {}): FieldItem => ({
   l,
   v: v === undefined || v === '' ? '—' : v,
@@ -220,14 +224,17 @@ export function configSection(key: string, data: SectionData): SectionCopy | nul
               ? data.replicas.map((replica) => [
                   mono(replica.container || `#${String(replica.replica)}`),
                   mono(replica.nodeName),
-                  replica.state === 'running'
-                    ? state('running', GREEN)
-                    : replica.state
-                      ? state(
-                          replica.state,
-                          ['missing', 'dead', 'exited'].includes(replica.state) ? RED : AMBER,
-                        )
-                      : { t: 'not reported yet', dim: true },
+                  // Stopped by its agent for writing past resources.disk (ADR 0022).
+                  replica.stopReason === 'disk_limit'
+                    ? state('stopped: disk limit', RED)
+                    : replica.state === 'running'
+                      ? state('running', GREEN)
+                      : replica.state
+                        ? state(
+                            replica.state,
+                            ['missing', 'dead', 'exited'].includes(replica.state) ? RED : AMBER,
+                          )
+                        : { t: 'not reported yet', dim: true },
                 ])
               : [[{ t: 'No instance running yet.', dim: true }, '', '']],
           },
@@ -263,6 +270,9 @@ export function configSection(key: string, data: SectionData): SectionCopy | nul
             items: [
               field('CPU', config.resources?.cpu ?? DEFAULT_LIMIT_TEXT.cpu),
               field('Memory', config.resources?.memory ?? DEFAULT_LIMIT_TEXT.memory),
+              // Measured by the agent, which stops a container above it (ADR 0022).
+              field('Disk', config.resources?.disk ?? DEFAULT_LIMIT_TEXT.disk),
+              field('Read-only root', config.run?.read_only_root ? 'on' : 'off'),
               field('Replicas', String(config.scale?.replicas ?? 1)),
             ],
           },
