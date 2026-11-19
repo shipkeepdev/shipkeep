@@ -2,6 +2,7 @@ import { Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@ne
 import { PgBoss } from 'pg-boss';
 
 import { AppConfig } from '../config/app-config';
+import { utcSessionUrl } from '../prisma/utc-session';
 
 /** PostgreSQL is the only durable queue dependency (ADR 0004). */
 @Injectable()
@@ -10,7 +11,8 @@ export class JobQueue extends PgBoss implements OnModuleInit, OnModuleDestroy {
 
   constructor(config: AppConfig) {
     super({
-      connectionString: config.get('DATABASE_URL').expose(),
+      // Its sessions run in UTC too (utc-session.ts).
+      connectionString: utcSessionUrl(config.get('DATABASE_URL').expose()),
       schema: 'shipkeep_jobs',
       // Provisioned by migrations; the runtime login cannot create database schemas.
       createSchema: false,

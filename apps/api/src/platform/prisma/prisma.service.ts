@@ -4,6 +4,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { AppConfig } from '../config/app-config';
 
 import { PrismaClient } from './generated/client';
+import { assertUtcSession, utcSessionUrl } from './utc-session';
 
 /**
  * Prisma client for the control plane database, connected through the `pg` driver adapter.
@@ -15,12 +16,23 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   private readonly logger = new Logger(PrismaService.name);
 
   constructor(config: AppConfig) {
-    // The connection string is a Secret; it is exposed only here, into the driver.
-    super({ adapter: new PrismaPg({ connectionString: config.get('DATABASE_URL').expose() }) });
+    // The connection string is a Secret; it is exposed only here, into the driver. Every session
+    // runs in UTC (utc-session.ts).
+    super({
+      adapter: new PrismaPg({
+        connectionString: utcSessionUrl(config.get('DATABASE_URL').expose()),
+      }),
+    });
   }
 
   async onModuleInit(): Promise<void> {
     await this.$connect();
+    // The parameter can be lost on the way (a pooler that drops startup parameters): refuse to
+    // run rather than compare instants that disagree.
+    const [session] = await this.$queryRaw<
+      { zone: string }[]
+    >`SELECT current_setting('TimeZone') AS zone`;
+    assertUtcSession(session?.zone ?? '');
     this.logger.log('database connected');
   }
 
