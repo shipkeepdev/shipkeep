@@ -656,6 +656,10 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - IP literals and every resolved address must be public: not loopback, private, link-local, CGNAT, multicast, reserved or documentation ranges, including IPv4-mapped and NAT64 forms;
     - the socket connects to the address that was checked;
     - a 10 s timeout and 1 MiB responses at most.
+  - The node holds the same policy at the pull (ADR 0023), since the Docker daemon resolves the registry again, follows its redirects and calls its token service:
+    - the daemon goes through `shipkeep-egress` on `127.0.0.1:7480`, which serves `CONNECT` only and connects only to public addresses, checked by its dialer on the address it connects to (the ranges above, kept identical by a test);
+    - an nftables table, `inet shipkeep_egress`, rejects the new connections of `shipkeep.slice`, the slice that holds the Docker daemon, to loopback, except to the proxy and to the loopback name servers on port 53. Docker loads it before `dockerd` starts, and `nftables.service` loads it in the same transaction as its own ruleset at start, reload and stop;
+    - before each pull, the agent reads the daemon's proxy settings (`GET /info`) and refuses the pull (`egress_unguarded`) unless both are the proxy and `NO_PROXY` is empty. An agent started with `--dev` skips this.
   - Failures report `image_resolution_failed` with the registry and the status, never tokens. Registries on private networks are not supported yet (open question).
 
 ### 8.1 Identity security parameters
@@ -777,7 +781,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 
 - Deleting an application (issue #256) needs `environment.update`, because the permission catalog has no `application.delete`. A dedicated permission would let a role delete applications without changing environment settings, at the cost of a change to the role model and to API token scopes.
 
-- Private registries: an organization can store credentials (ADR 0019). Still open: an explicit allow-list for registries on private networks (the resolver refuses non-public addresses by default, SSRF), and credentials scoped to a project.
+- Private registries: an organization can store credentials (ADR 0019). Still open: an explicit allow-list for registries on private networks (the resolver and the node's egress proxy refuse non-public addresses, SSRF, ADR 0023), and credentials scoped to a project.
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).
 - Wildcard certificates: which DNS providers to support first for DNS-01 (proposal: Cloudflare, Route 53, Hetzner DNS, OVH).
 - Node public addresses (PLAN M3.6b1) are declared by an administrator only. The gateway sees the source address of each agent connection, but behind NAT, a proxy or a private link that is not the address visitors reach, so it is not used. A later step could show the observed address as a suggestion that an administrator confirms, never as a stored value.
