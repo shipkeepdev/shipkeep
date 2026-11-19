@@ -5,7 +5,7 @@ import { ContainerStatus_State, type StateReport } from '@shipkeep/proto-ts';
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { StateReports } from '../../fleet/application/state-reports';
 import type { NodeIdentity } from '../../fleet/domain/node-identity';
-import { observationChanges, type ReportedContainer } from '../domain/observations';
+import { observationChanges, type ReportedContainer, stopReason } from '../domain/observations';
 
 import {
   DEPLOYMENT_TRANSACTION,
@@ -41,7 +41,13 @@ export function reportedContainers(report: StateReport): ReportedContainer[] | u
     )
       return undefined;
     names.add(container.name);
-    containers.push({ containerId: container.containerId, name: container.name, state });
+    // A reason the control plane does not know (from a newer agent) is shown as none.
+    containers.push({
+      containerId: container.containerId,
+      name: container.name,
+      state,
+      stopReason: stopReason(container.stopReason),
+    });
   }
   return containers;
 }
@@ -93,6 +99,8 @@ export class AllocationObservations implements OnModuleInit {
               container: change.container,
               from: change.from,
               to: change.state,
+              // Null once cleared, so a consumer always reads the current reason.
+              stopReason: change.stopReason,
             },
             occurredAt: now,
           }),

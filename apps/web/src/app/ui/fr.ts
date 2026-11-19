@@ -156,6 +156,7 @@ export const FR: Readonly<Record<string, string>> = {
   '5 members': '5 membres',
   '5 resources': '5 ressources',
   '512Mi (default)': '512Mi (par défaut)',
+  '1Gi (default)': '1Gi (par défaut)',
   '52 MB': '52 Mo',
   '52 s ago': 'il y a 52 s',
   '5xx errors': 'Erreurs 5xx',
@@ -510,6 +511,7 @@ export const FR: Readonly<Record<string, string>> = {
   'Disable two-factor authentication': 'Désactiver la double authentification',
   Disabled: 'Désactivé',
   Disk: 'Disque',
+  'Read-only root': 'Racine en lecture seule',
   'Disk > 85%': 'Disque > 85 %',
   'Do nothing automatically': 'Ne rien faire automatiquement',
   'Docker cleanup': 'Nettoyage Docker',
@@ -1254,6 +1256,8 @@ export const FR: Readonly<Record<string, string>> = {
     "Le serveur n'a pas pu récupérer l'image : il n'a pas pu joindre le registre.",
   "The server could not pull the image: it does not trust the registry's certificate.":
     "Le serveur n'a pas pu récupérer l'image : il ne reconnaît pas le certificat du registre.",
+  'The server did not create the container: the image declares a volume that the configuration does not mount, and with run.read_only_root Docker would give it an unbounded anonymous volume. Declare that path under volumes, or turn off run.read_only_root.':
+    "Le serveur n'a pas créé le conteneur : l'image déclare un volume que la configuration ne monte pas, et avec run.read_only_root Docker lui donnerait un volume anonyme sans limite. Déclarez ce chemin sous volumes, ou désactivez run.read_only_root.",
   'The server could not pull the image: its disk is full.':
     "Le serveur n'a pas pu récupérer l'image : son disque est plein.",
   'The server could not pull the image: the registry does not have it.':
@@ -1483,6 +1487,8 @@ export const FR: Readonly<Record<string, string>> = {
   disabled: 'désactivé',
   'disk > 80%': 'disque > 80 %',
   'disk full': 'disque plein',
+  'image volume not declared': "volume d'image non déclaré",
+  'stopped: disk limit': 'arrêté : limite disque',
   'docker cleanup · 4.2 GiB freed': 'docker cleanup · 4,2 Gio libérés',
   down: 'hors service',
   draining: 'drainage',

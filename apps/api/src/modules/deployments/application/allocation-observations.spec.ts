@@ -15,7 +15,12 @@ const identity = { organizationId: ORG, nodeId: NODE, serial: '01' };
 const NOW = new Date('2026-11-07T12:00:00Z');
 const ID = 'f'.repeat(64);
 const report = (
-  containers: { containerId?: string; name?: string; state?: ContainerStatus_State }[],
+  containers: {
+    containerId?: string;
+    name?: string;
+    state?: ContainerStatus_State;
+    stopReason?: string;
+  }[],
 ) =>
   create(StateReportSchema, {
     containers: containers.map((container) => ({
@@ -77,21 +82,78 @@ describe('AllocationObservations', () => {
           container: 'sk-web-1',
           from: null,
           to: 'running',
+          stopReason: null,
         },
       ],
     ]);
   });
 
   it('refreshes an unchanged observation without an audit event', async () => {
-    const stale = placed({ state: 'running', observedAt: new Date(NOW.getTime() - 60_000) });
+    const stale = placed({
+      state: 'running',
+      stopReason: null,
+      observedAt: new Date(NOW.getTime() - 60_000),
+    });
     const { service, applied, events } = setup([stale]);
     await service.record(identity, report([{}]), NOW);
     expect(applied).toHaveLength(1);
     expect(events).toEqual([]);
   });
 
+  it('records why the agent stopped a replica, and audits it (ADR 0022)', async () => {
+    const { service, applied, events } = setup([
+      placed({ state: 'running', stopReason: null, observedAt: NOW }),
+    ]);
+    await service.record(
+      identity,
+      report([{ state: ContainerStatus_State.EXITED, stopReason: 'disk_limit' }]),
+      NOW,
+    );
+    expect(applied).toMatchObject([[{ state: 'exited', stopReason: 'disk_limit' }]]);
+    expect(events.map((event) => event.payload)).toMatchObject([
+      { from: 'running', to: 'exited', stopReason: 'disk_limit' },
+    ]);
+  });
+
+  it('keeps a report whose stop reason it does not know, without the reason', async () => {
+    const { service, applied, events } = setup([
+      placed({ state: 'running', stopReason: null, observedAt: NOW }),
+    ]);
+    await service.record(
+      identity,
+      report([{ state: ContainerStatus_State.EXITED, stopReason: 'something_newer' }]),
+      NOW,
+    );
+    expect(applied).toMatchObject([[{ state: 'exited', stopReason: null }]]);
+    expect(JSON.stringify(events)).not.toContain('something_newer');
+  });
+
+  it('drops a stop reason paired with a state that is not stopped', async () => {
+    const { service, applied } = setup([
+      placed({ state: 'running', stopReason: null, observedAt: NOW }),
+    ]);
+    await service.record(
+      identity,
+      report([{ state: ContainerStatus_State.RUNNING, stopReason: 'disk_limit' }]),
+      new Date(NOW.getTime() + 120_000),
+    );
+    expect(applied).toMatchObject([[{ state: 'running', stopReason: null }]]);
+  });
+
+  it('carries a cleared stop reason as null in the event', async () => {
+    const { service, events } = setup([
+      placed({ state: 'exited', stopReason: 'disk_limit', observedAt: NOW }),
+    ]);
+    await service.record(identity, report([{ state: ContainerStatus_State.RUNNING }]), NOW);
+    expect(events.map((event) => event.payload)).toMatchObject([
+      { from: 'exited', to: 'running', stopReason: null },
+    ]);
+  });
+
   it('ignores a whole report with any invalid container, keeping the last good state', async () => {
-    const { service, applied, nodes } = setup([placed({ state: 'running', observedAt: NOW })]);
+    const { service, applied, nodes } = setup([
+      placed({ state: 'running', stopReason: null, observedAt: NOW }),
+    ]);
     for (const bad of [
       report([{ name: '../../etc/passwd' }]),
       report([{ containerId: 'short' }]),

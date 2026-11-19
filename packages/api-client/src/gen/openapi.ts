@@ -1021,7 +1021,7 @@ export type components = {
              */
             readonly outcome: "in_progress" | "succeeded" | "refused" | "failed" | "expired" | "cancelled" | "compensated";
             /** @enum {string|null} */
-            readonly reason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "registry_denied" | "image_not_found" | "registry_unreachable" | "registry_untrusted" | "disk_full" | "unknown" | null;
+            readonly reason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "registry_denied" | "image_not_found" | "registry_unreachable" | "registry_untrusted" | "disk_full" | "image_volume_undeclared" | "unknown" | null;
             readonly result: components["schemas"]["AgentActionResultDto"] | null;
             /** @enum {string} */
             readonly state: "queued" | "pending" | "running" | "succeeded" | "failed" | "cancelled" | "compensating" | "compensated" | "expired";
@@ -1665,6 +1665,11 @@ export type components = {
              * @enum {string|null}
              */
             readonly state: "created" | "running" | "paused" | "restarting" | "exited" | "dead" | "missing" | null;
+            /**
+             * @description Why its agent stopped it itself: disk_limit when it wrote more than its disk budget (ADR 0022).
+             * @enum {string|null}
+             */
+            readonly stopReason: "disk_limit" | null;
         };
         readonly ReplicaListDto: {
             readonly items: readonly components["schemas"]["ReplicaDto"][];
