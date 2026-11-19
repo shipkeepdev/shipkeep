@@ -20,6 +20,8 @@ import { RequireTenant } from '../../identity/interface/route-access';
 import { type IdentityRequest, resourceContext } from '../../identity/interface/session-http';
 import { EnvironmentEvents, pumpEvents } from '../application/environment-events';
 
+import { responseSink } from './response-sink';
+
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
 export class EventStreamPathDto {
@@ -73,16 +75,19 @@ export class EnvironmentEventsController {
       // Reverse proxies must not hold events back.
       response.setHeader('X-Accel-Buffering', 'no');
       response.flushHeaders();
-      await pumpEvents({
+      const end = await pumpEvents({
         after,
         poll: (cursor) => this.events.poll(context, path, cursor),
-        write: (chunk) => response.write(chunk),
+        ...responseSink(response),
         signal: AbortSignal.any([left.signal, shutdown]),
         sleep: (milliseconds, signal) =>
           delay(milliseconds, undefined, { signal }).catch(() => undefined),
         now: () => Date.now(),
       });
-      response.end();
+      // A client that could not keep up would hold its queued bytes until it read them: drop them
+      // with the connection. The browser reconnects, and is authenticated again.
+      if (end === 'slow') response.destroy();
+      else response.end();
     });
   }
 }

@@ -22,6 +22,8 @@ type fakeRouter struct {
 	plain      []string
 	server     bool
 	containers fakeContainers
+	// failUpsert makes UpsertRoute fail, as Caddy refusing the new route would.
+	failUpsert bool
 }
 
 // fakeContainers answers container inspections for route upstreams (ADR 0017).
@@ -60,11 +62,20 @@ func (f *fakeRouter) Route(_ context.Context, id string) (caddy.Route, bool, err
 	route, ok := f.routes[id]
 	return route, ok, nil
 }
-func (f *fakeRouter) UpsertRoute(_ context.Context, route caddy.Route) error {
+
+// ApplyRoute follows the order of the Caddy client: removals, the route, then additions.
+func (f *fakeRouter) ApplyRoute(ctx context.Context, route caddy.Route, add, remove []string) error {
+	if err := f.SetPlainHosts(ctx, nil, remove); err != nil {
+		return err
+	}
 	f.mu.Lock()
-	defer f.mu.Unlock()
+	if f.failUpsert {
+		f.mu.Unlock()
+		return errors.New("caddy POST: status 400")
+	}
 	f.routes[route.ID] = route
-	return nil
+	f.mu.Unlock()
+	return f.SetPlainHosts(ctx, add, nil)
 }
 func (f *fakeRouter) RemoveRoute(_ context.Context, id string) error {
 	f.mu.Lock()
@@ -137,6 +148,10 @@ func TestPlainRoutesSkipAutomaticHTTPS(t *testing.T) {
 	if !succeeded(routeRequest(t, router, &slept, upsert(route))) || !slices.Equal(router.plain, []string{"api.acme.example.com"}) {
 		t.Fatalf("plain host not skipped: %v", router.plain)
 	}
+	// TLS off: the route answers plain HTTP, on port 80.
+	if match := router.routes[caddy.RouteID("api-prod")].Match; len(match) != 1 || match[0].Protocol != "" {
+		t.Fatalf("a route with TLS off is limited to HTTPS: %+v", match)
+	}
 	policy := router.routes[caddy.RouteID("api-prod")].Handle[0].LoadBalancing
 	if policy == nil || policy.SelectionPolicy["policy"] != "weighted_round_robin" {
 		t.Fatal("weights not applied")
@@ -144,6 +159,28 @@ func TestPlainRoutesSkipAutomaticHTTPS(t *testing.T) {
 	route.TlsMode = agentv1.TlsMode_TLS_MODE_AUTO_HTTP
 	if !succeeded(routeRequest(t, router, &slept, upsert(route))) || len(router.plain) != 0 {
 		t.Fatalf("switching back to HTTPS kept the skip: %v", router.plain)
+	}
+	if match := router.routes[caddy.RouteID("api-prod")].Match; len(match) != 1 || match[0].Protocol != caddy.HTTPS {
+		t.Fatalf("switching back to HTTPS left the route answering plain HTTP: %+v", match)
+	}
+}
+
+func TestHTTPSRoutesLeavePlainHTTPToTheRedirect(t *testing.T) {
+	// Caddy inserts its HTTP-to-HTTPS redirect after the last route that matches a host, on the
+	// server that listens on both ports: a route that matched plain HTTP would answer before it.
+	for _, mode := range []agentv1.TlsMode{agentv1.TlsMode_TLS_MODE_UNSPECIFIED, agentv1.TlsMode_TLS_MODE_AUTO_HTTP} {
+		router := &fakeRouter{routes: map[string]caddy.Route{}}
+		var slept []time.Duration
+		route := validRoute("172.18.0.5:8080")
+		route.TlsMode = mode
+		route.Hosts = []string{"api.acme.example.com", "*.preview.acme.example.com"}
+		if !succeeded(routeRequest(t, router, &slept, upsert(route))) {
+			t.Fatalf("%v: route not applied", mode)
+		}
+		match := router.routes[caddy.RouteID("api-prod")].Match
+		if len(match) != 1 || match[0].Protocol != caddy.HTTPS || !slices.Equal(match[0].Host, route.Hosts) {
+			t.Fatalf("%v: route does not answer HTTPS only: %+v", mode, match)
+		}
 	}
 }
 
@@ -246,5 +283,49 @@ func TestRoutesRejectUnsafeContainerUpstreams(t *testing.T) {
 				t.Fatalf("accepted: %v", update)
 			}
 		})
+	}
+}
+
+// reachable reports whether a host is served at all: a host under automatic HTTPS needs a route
+// that matches HTTPS; a host with TLS off has no certificate, so it needs a route that matches plain
+// HTTP.
+func reachable(router *fakeRouter, host string) bool {
+	for _, route := range router.routes {
+		for _, match := range route.Match {
+			if !slices.Contains(match.Host, host) {
+				continue
+			}
+			if slices.Contains(router.plain, host) {
+				return match.Protocol == ""
+			}
+			return true
+		}
+	}
+	return false
+}
+
+func TestAFailedRouteChangeLeavesItsHostsReachable(t *testing.T) {
+	for _, change := range []struct {
+		name     string
+		from, to agentv1.TlsMode
+	}{
+		{"automatic HTTPS to TLS off", agentv1.TlsMode_TLS_MODE_AUTO_HTTP, agentv1.TlsMode_TLS_MODE_OFF},
+		{"TLS off to automatic HTTPS", agentv1.TlsMode_TLS_MODE_OFF, agentv1.TlsMode_TLS_MODE_AUTO_HTTP},
+	} {
+		router := &fakeRouter{routes: map[string]caddy.Route{}}
+		var slept []time.Duration
+		route := validRoute("172.18.0.5:8080")
+		route.TlsMode = change.from
+		if !succeeded(routeRequest(t, router, &slept, upsert(route))) || !reachable(router, "api.acme.example.com") {
+			t.Fatalf("%s: first route not applied", change.name)
+		}
+		router.failUpsert = true
+		route.TlsMode = change.to
+		if succeeded(routeRequest(t, router, &slept, upsert(route))) {
+			t.Fatalf("%s: a refused route reported success", change.name)
+		}
+		if !reachable(router, "api.acme.example.com") {
+			t.Fatalf("%s: the failure left the host unreachable: plain %v, routes %+v", change.name, router.plain, router.routes)
+		}
 	}
 }
