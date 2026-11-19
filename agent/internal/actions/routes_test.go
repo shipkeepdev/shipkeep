@@ -62,14 +62,20 @@ func (f *fakeRouter) Route(_ context.Context, id string) (caddy.Route, bool, err
 	route, ok := f.routes[id]
 	return route, ok, nil
 }
-func (f *fakeRouter) UpsertRoute(_ context.Context, route caddy.Route) error {
+
+// ApplyRoute follows the order of the Caddy client: removals, the route, then additions.
+func (f *fakeRouter) ApplyRoute(ctx context.Context, route caddy.Route, add, remove []string) error {
+	if err := f.SetPlainHosts(ctx, nil, remove); err != nil {
+		return err
+	}
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	if f.failUpsert {
+		f.mu.Unlock()
 		return errors.New("caddy POST: status 400")
 	}
 	f.routes[route.ID] = route
-	return nil
+	f.mu.Unlock()
+	return f.SetPlainHosts(ctx, add, nil)
 }
 func (f *fakeRouter) RemoveRoute(_ context.Context, id string) error {
 	f.mu.Lock()

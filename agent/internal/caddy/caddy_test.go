@@ -24,21 +24,39 @@ type fakeAdmin struct {
 	routes   map[string]json.RawMessage
 	skip     []string
 	requests []string
-	// gate, when set, holds the read of the route list until it is closed; listed is closed when
-	// that read arrives.
-	gate, listed chan struct{}
+	// gate, when set, holds the request "METHOD path" named gated until it is closed; reached is
+	// closed when that request arrives.
+	gated         string
+	gate, reached chan struct{}
+	// failRoutes makes Caddy refuse every route write.
+	failRoutes bool
 }
 
 func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet && r.URL.Path == "/config/apps/http/servers/"+Server+"/routes" && f.gate != nil {
-		close(f.listed)
-		<-f.gate
+	f.mu.Lock()
+	gated := f.gate != nil && r.Method+" "+r.URL.Path == f.gated
+	gate, reached := f.gate, f.reached
+	f.mu.Unlock()
+	if gated {
+		close(reached)
+		<-gate
 	}
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.requests = append(f.requests, r.Method+" "+r.URL.Path)
 	body, _ := io.ReadAll(r.Body)
+	routeWrite := (r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/routes")) ||
+		(r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/id/"))
 	switch {
+	case routeWrite && f.failRoutes:
+		http.Error(w, "private config detail", http.StatusBadRequest)
+	case (r.Method == http.MethodPut || r.Method == http.MethodPatch) && r.URL.Path == "/config/apps/http/servers/"+Server+"/automatic_https":
+		var value automaticHTTPS
+		_ = json.Unmarshal(body, &value)
+		f.skip = value.Skip
+		if f.skip == nil {
+			f.skip = []string{}
+		}
 	case r.Method == http.MethodGet && r.URL.Path == "/config":
 		_, _ = w.Write([]byte(`{"admin":{"listen":"unix//run/caddy.sock"}}`))
 	case r.Method == http.MethodGet && r.URL.Path == "/config/apps":
@@ -253,24 +271,53 @@ func TestSecureRoutesCreatesNothingWithoutTheServer(t *testing.T) {
 	}
 }
 
+// hold makes the fake hold the request "METHOD path" until the returned release runs, and
+// returns a channel closed when that request arrives. Release runs at cleanup too, before the
+// server's Close, so that a failed test never leaves a handler waiting.
+func hold(t *testing.T, fake *fakeAdmin, request string) (<-chan struct{}, func()) {
+	t.Helper()
+	fake.mu.Lock()
+	fake.gated, fake.gate, fake.reached = request, make(chan struct{}), make(chan struct{})
+	gate, reached := fake.gate, fake.reached
+	fake.mu.Unlock()
+	var once sync.Once
+	release := func() { once.Do(func() { close(gate) }) }
+	t.Cleanup(release)
+	return reached, release
+}
+
+// within waits for a result, at most five seconds.
+func within(t *testing.T, results <-chan error, what string) error {
+	t.Helper()
+	select {
+	case err := <-results:
+		return err
+	case <-time.After(5 * time.Second):
+		t.Fatalf("%s did not finish", what)
+		return nil
+	}
+}
+
 func TestSecuringOldRoutesWaitsForNoUpsert(t *testing.T) {
 	// The securing reads a route and patches its match: an upsert of the same route in between
 	// would be overwritten with the old hosts.
 	client, fake := admin(t)
-	ctx := context.Background()
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
 	fake.mu.Lock()
 	fake.apps, fake.server = true, true
 	fake.routes[RouteID("old")] = json.RawMessage(`{"@id":"sk-route-old","match":[{"host":["old.example.com"]}],"handle":[],"terminal":true}`)
-	fake.gate, fake.listed = make(chan struct{}), make(chan struct{})
 	fake.mu.Unlock()
-	// Registered after admin(t), so it runs before the server's Close: a failed check must not
-	// leave the handler waiting on the gate, and Close waiting on the handler.
-	var release sync.Once
-	openGate := func() { release.Do(func() { close(fake.gate) }) }
-	t.Cleanup(openGate)
+	reached, release := hold(t, fake, "GET /config/apps/http/servers/"+Server+"/routes")
 	secured := make(chan error, 1)
 	go func() { secured <- client.SecureRoutes(ctx) }()
-	<-fake.listed
+	select {
+	case <-reached:
+	case err := <-secured:
+		t.Fatalf("the securing ended before listing the routes: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the securing never listed the routes")
+	}
 	upserted := make(chan error, 1)
 	go func() {
 		upserted <- client.UpsertRoute(ctx, Route{ID: RouteID("old"), Match: []Match{{Host: []string{"new.example.com"}, Protocol: HTTPS}}, Handle: []Handler{}, Terminal: true})
@@ -280,11 +327,11 @@ func TestSecuringOldRoutesWaitsForNoUpsert(t *testing.T) {
 		t.Fatalf("the upsert ran while the securing held the route: %v", err)
 	case <-time.After(100 * time.Millisecond):
 	}
-	openGate()
-	if err := <-secured; err != nil {
+	release()
+	if err := within(t, secured, "the securing"); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-upserted; err != nil {
+	if err := within(t, upserted, "the upsert"); err != nil {
 		t.Fatal(err)
 	}
 	fake.mu.Lock()
@@ -295,5 +342,82 @@ func TestSecuringOldRoutesWaitsForNoUpsert(t *testing.T) {
 	}
 	if len(stored.Match) != 1 || !slices.Equal(stored.Match[0].Host, []string{"new.example.com"}) || stored.Match[0].Protocol != HTTPS {
 		t.Fatalf("the upsert was lost: %s", fake.routes[RouteID("old")])
+	}
+}
+
+func TestApplyRouteIsOneUnitForTheSecuring(t *testing.T) {
+	// Switching a route to TLS off writes the route, then adds its host to the skip list. The
+	// securing must not run in between: it would see the host under automatic HTTPS and limit
+	// the new route to HTTPS, leaving a skipped host behind an HTTPS-only route.
+	client, fake := admin(t)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	fake.apps, fake.server = true, true
+	fake.routes[RouteID("app")] = json.RawMessage(`{"@id":"sk-route-app","match":[{"host":["app.example.com"],"protocol":"https"}],"handle":[],"terminal":true}`)
+	secured := make(chan error, 1)
+	client.betweenWrites = func() {
+		// Exactly in the gap: a securing started now must wait for the whole change.
+		go func() { secured <- client.SecureRoutes(ctx) }()
+		select {
+		case err := <-secured:
+			t.Errorf("the securing ran in the middle of a route change: %v", err)
+			secured <- err
+		case <-time.After(100 * time.Millisecond):
+		}
+	}
+	plain := Route{ID: RouteID("app"), Match: []Match{{Host: []string{"app.example.com"}}}, Handle: []Handler{}, Terminal: true}
+	if err := client.ApplyRoute(ctx, plain, []string{"app.example.com"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := within(t, secured, "the securing"); err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if !slices.Contains(fake.skip, "app.example.com") || strings.Contains(string(fake.routes[RouteID("app")]), "protocol") {
+		t.Fatalf("TLS-off route secured anyway: skip %v, route %s", fake.skip, fake.routes[RouteID("app")])
+	}
+}
+
+func TestAFailedApplyRouteLeavesItsHostsReachable(t *testing.T) {
+	ctx := context.Background()
+	for _, change := range []struct {
+		name        string
+		before      string
+		skip        []string
+		after       Route
+		add, remove []string
+	}{
+		{
+			name:   "automatic HTTPS to TLS off",
+			before: `{"@id":"sk-route-app","match":[{"host":["app.example.com"],"protocol":"https"}],"handle":[],"terminal":true}`,
+			skip:   []string{},
+			after:  Route{ID: RouteID("app"), Match: []Match{{Host: []string{"app.example.com"}}}, Handle: []Handler{}, Terminal: true},
+			add:    []string{"app.example.com"},
+		},
+		{
+			name:   "TLS off to automatic HTTPS",
+			before: `{"@id":"sk-route-app","match":[{"host":["app.example.com"]}],"handle":[],"terminal":true}`,
+			skip:   []string{"app.example.com"},
+			after:  Route{ID: RouteID("app"), Match: []Match{{Host: []string{"app.example.com"}, Protocol: HTTPS}}, Handle: []Handler{}, Terminal: true},
+			remove: []string{"app.example.com"},
+		},
+	} {
+		client, fake := admin(t)
+		fake.apps, fake.server, fake.skip = true, true, change.skip
+		fake.routes[RouteID("app")] = json.RawMessage(change.before)
+		fake.failRoutes = true
+		if err := client.ApplyRoute(ctx, change.after, change.add, change.remove); err == nil {
+			t.Fatalf("%s: a refused route reported success", change.name)
+		}
+		// The old route stays; a host under automatic HTTPS needs nothing more, a skipped host has
+		// no certificate and needs a route that answers plain HTTP.
+		var stored Route
+		if err := json.Unmarshal(fake.routes[RouteID("app")], &stored); err != nil {
+			t.Fatal(err)
+		}
+		if slices.Contains(fake.skip, "app.example.com") && stored.Match[0].Protocol != "" {
+			t.Fatalf("%s: skipped host behind an HTTPS-only route: skip %v, route %s", change.name, fake.skip, fake.routes[RouteID("app")])
+		}
 	}
 }

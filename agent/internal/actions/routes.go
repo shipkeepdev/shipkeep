@@ -21,7 +21,7 @@ import (
 type Router interface {
 	EnsureServer(ctx context.Context) error
 	Route(ctx context.Context, id string) (caddy.Route, bool, error)
-	UpsertRoute(ctx context.Context, route caddy.Route) error
+	ApplyRoute(ctx context.Context, route caddy.Route, plainAdd, plainRemove []string) error
 	RemoveRoute(ctx context.Context, id string) error
 	SetPlainHosts(ctx context.Context, add, remove []string) error
 }
@@ -101,19 +101,9 @@ func upsertRoute(router Router, containers Containers, sleep func(context.Contex
 					remove = append(remove, hosts...)
 				}
 				remove = slices.DeleteFunc(remove, func(host string) bool { return plain && slices.Contains(hosts, host) })
-				// Three writes, ordered so that a failure between two of them leaves every host
-				// reachable: hosts leave the TLS-off list before the route changes (until then the
-				// old route still answers them, now with a certificate), and join it only after the
-				// route answers plain HTTP. The other order could leave a host without a
-				// certificate behind a route that answers HTTPS only.
-				if err := router.SetPlainHosts(ctx, nil, remove); err != nil {
-					return journal.Outcome{}, fmt.Errorf("set plain hosts: %w", err)
-				}
-				if err := router.UpsertRoute(ctx, desired); err != nil {
-					return journal.Outcome{}, fmt.Errorf("upsert route: %w", err)
-				}
-				if err := router.SetPlainHosts(ctx, add, nil); err != nil {
-					return journal.Outcome{}, fmt.Errorf("set plain hosts: %w", err)
+				// One unit, ordered so that a failed write leaves every host reachable (ApplyRoute).
+				if err := router.ApplyRoute(ctx, desired, add, remove); err != nil {
+					return journal.Outcome{}, fmt.Errorf("apply route: %w", err)
 				}
 				return journal.Outcome{ResourceID: desired.ID}, nil
 			},

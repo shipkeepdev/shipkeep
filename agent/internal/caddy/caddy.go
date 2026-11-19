@@ -34,6 +34,9 @@ type Client struct {
 	// upsert, a removal, a change of those hosts and the securing of old routes each read a value
 	// and write it back, and actions run concurrently.
 	routes sync.Mutex
+	// betweenWrites, nil outside tests, runs in ApplyRoute after the route is written and before
+	// its hosts join the TLS-off list, with the lock held.
+	betweenWrites func()
 }
 
 // New returns a client for the admin socket at path.
@@ -188,6 +191,34 @@ func (c *Client) secureRoutes(ctx context.Context) error {
 func (c *Client) UpsertRoute(ctx context.Context, route Route) error {
 	c.routes.Lock()
 	defer c.routes.Unlock()
+	return c.upsertRoute(ctx, route)
+}
+
+// ApplyRoute writes a route and moves its hosts in or out of the hosts without TLS, as one unit
+// that no other route change and no securing of old routes can interleave with. The order keeps
+// every host reachable if a write fails: hosts leave the TLS-off list before the route changes
+// (until then the old route still answers them, now with a certificate), and join it only after
+// the route answers plain HTTP. The other order could leave a host without a certificate behind a
+// route that answers HTTPS only.
+func (c *Client) ApplyRoute(ctx context.Context, route Route, plainAdd, plainRemove []string) error {
+	c.routes.Lock()
+	defer c.routes.Unlock()
+	if err := c.setPlainHosts(ctx, nil, plainRemove); err != nil {
+		return fmt.Errorf("set plain hosts: %w", err)
+	}
+	if err := c.upsertRoute(ctx, route); err != nil {
+		return fmt.Errorf("upsert route: %w", err)
+	}
+	if c.betweenWrites != nil {
+		c.betweenWrites()
+	}
+	if err := c.setPlainHosts(ctx, plainAdd, nil); err != nil {
+		return fmt.Errorf("set plain hosts: %w", err)
+	}
+	return nil
+}
+
+func (c *Client) upsertRoute(ctx context.Context, route Route) error {
 	var stored json.RawMessage
 	present, err := c.get(ctx, "/id/"+route.ID, &stored)
 	if err != nil {
@@ -221,6 +252,10 @@ func (c *Client) RemoveRoute(ctx context.Context, id string) error {
 func (c *Client) SetPlainHosts(ctx context.Context, add, remove []string) error {
 	c.routes.Lock()
 	defer c.routes.Unlock()
+	return c.setPlainHosts(ctx, add, remove)
+}
+
+func (c *Client) setPlainHosts(ctx context.Context, add, remove []string) error {
 	path := "/config/apps/http/servers/" + Server + "/automatic_https"
 	var current automaticHTTPS
 	present, err := c.get(ctx, path, &current)
