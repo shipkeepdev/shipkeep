@@ -124,3 +124,42 @@ func TestRunDevModeStartsAndStopsOnCancel(t *testing.T) {
 		t.Fatalf("dev state dir missing: %v", err)
 	}
 }
+
+func TestRunEgressServesOnLoopbackAndStops(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	var stdout, stderr syncBuffer
+	done := make(chan int, 1)
+	go func() { done <- run(ctx, []string{"egress", "--listen", "127.0.0.1:0"}, &stdout, &stderr) }()
+	deadline := time.Now().Add(5 * time.Second)
+	for !strings.Contains(stderr.String(), "egress proxy listening") {
+		if time.Now().After(deadline) {
+			t.Fatalf("egress proxy did not start: %s", stderr.String())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	select {
+	case code := <-done:
+		if code != exitOK {
+			t.Fatalf("exit code = %d, stderr = %s", code, stderr.String())
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("egress proxy did not stop after cancellation")
+	}
+}
+
+// The proxy never listens beyond loopback: the daemon is its only client.
+func TestRunEgressRefusesAnAddressOffLoopback(t *testing.T) {
+	for _, args := range [][]string{
+		{"egress", "--listen", "0.0.0.0:7480"},
+		{"egress", "--listen", "192.168.1.5:7480"},
+		{"egress", "--listen", "localhost:7480"},
+		{"egress", "--listen", ":7480"},
+		{"egress", "extra"},
+	} {
+		var stdout, stderr syncBuffer
+		if code := run(context.Background(), args, &stdout, &stderr); code != exitUsage {
+			t.Errorf("%v: exit %d", args, code)
+		}
+	}
+}
