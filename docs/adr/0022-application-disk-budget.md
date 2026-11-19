@@ -23,8 +23,14 @@ To be decided:
 The maintainer chose a budget measured by the agent by default, and a read-only root filesystem as an option.
 
 - **A disk budget per container, by default.** `resources.disk` in `shipkeep.yml` is the size the container's writable layer may reach. It is 1Gi when left out, between 64Mi and 1Ti, written like `memory`. The control plane sends it in `Resources.disk_bytes`, a new field of the agent contract (below).
-- **The agent measures and enforces it.** Every 60 seconds, the agent asks Docker for the size of the writable layer of each managed container (`SizeRw`). A container above its budget is stopped, gracefully, like any stop. Its recorded intent becomes "stopped", so the reconciler does not start it again, and the state report names the reason (`disk_limit`) for as long as the container exists. The container stays stopped until a deployment replaces it. The agent logs the container's name, its budget and the size it reached, never the paths or the content written.
-- **The budget is not a hard bound.** A container can write more than its budget between two measurements: at most what it writes in 60 seconds, as fast as the disk allows. The guide says so. The measurement cost is one Docker API call per minute, which walks every writable layer.
+- **The agent measures and enforces it.** Every 60 seconds, the agent asks Docker for the size of the writable layer of each managed container (`SizeRw`). A container above its budget is stopped with a grace period of 5 seconds, whatever its own stop timeout, then killed. Its recorded intent becomes "stopped", so the reconciler does not start it again, and the state report names the reason (`disk_limit`) for as long as the container exists. The container stays stopped until a deployment replaces it. The agent logs the container's name, its budget and the size it reached, never the paths or the content written.
+- **The budget is not a hard bound.** The guide says so, with its limits:
+  - a container can exceed its budget by what it writes between two measurements (up to 60 seconds) and during the 5-second grace period of the stop;
+  - `SizeRw` walks the files of the writable layer, so it misses a file that a process deleted while it still holds it open and writes to: an application that does this on purpose is not stopped;
+  - writes to named volumes and logs are not part of the budget (logs have their own limit).
+
+  An application that must be bounded against such evasion runs with `run.read_only_root`. The measurement costs one Docker API call per minute, which walks every writable layer.
+
 - **A read-only root filesystem as an option, for a hard bound.** With `run.read_only_root: true`, the container gets `read_only_rootfs` and a tmpfs at `/tmp` of 64Mi. tmpfs pages count against the container's memory limit, so the kernel bounds them. Its only other writable paths are its declared volumes. The option is off by default because many images write outside `/tmp` (nginx under `/var/cache`, for instance) and fail on a read-only root.
 - **Placement checks the disk.** A replica is placed on a node only if the free disk the node last reported (`disk_free_bytes`) leaves its budget plus a margin of 2 GiB for images and the agent. This is a check at placement, not a reservation like CPU and memory: images, volumes and logs also use the disk, and the free space is what counts. A deployment refused for lack of disk says so.
 - **Volumes are not covered.** Named volumes stay unbounded, as declared in `shipkeep.yml`. Image retention is #217.
@@ -45,7 +51,8 @@ Both are new fields, wire-compatible, and change no action: the action list is u
 
 ## Consequences
 
-- A runaway application stops by itself before it fills a server, unless it writes faster than the disk can absorb in 60 seconds. With `run.read_only_root`, it cannot write outside its memory and its volumes at all.
+- An application that fills its writable layer by mistake stops by itself once it exceeds its budget, plus what it writes in up to 65 seconds. The budget reserves no disk: images, volumes, logs and other applications can still fill the server, and a container under its budget can then be the one that runs out of space. The placement check only keeps new replicas off a server that is already short.
+- With `run.read_only_root`, a container cannot write outside its memory, its volumes and its logs at all.
 - Applications that write more than 1Gi to their own filesystem need `resources.disk` raised, or a volume. The deployment does not fail for this: the container stops when it crosses the budget, and the page of the application shows why.
 - New code: the schema fields and their validators (TypeScript and Go, shared fixtures), the API passing `disk_bytes`, `read_only_rootfs` and the `/tmp` tmpfs, the agent's measurement loop, the stop and the reason in the state report, the reason shown on the application page, and the placement check. Each piece has malicious-input tests: oversized and zero budgets, a forged `sk.disk_bytes` label, and the bounds of the schema.
 - The acceptance test runs on a disposable filesystem: an application that writes past a small budget is stopped, while another application and the agent keep running.
