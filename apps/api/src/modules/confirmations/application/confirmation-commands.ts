@@ -8,7 +8,10 @@ import {
   type ConfirmationKeyProvider,
 } from '../../fleet/application/ports';
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
-import type { ResourceSecurityContext as SecurityContext } from '../../identity/application/resource-security-context';
+import {
+  resourceActor,
+  type ResourceSecurityContext as SecurityContext,
+} from '../../identity/application/resource-security-context';
 import { TenantAccess } from '../../organizations/application/tenant-access';
 import {
   CONFIRMABLE_ACTIONS,
@@ -102,7 +105,8 @@ export class ConfirmationCommands {
           createEvent({
             type: 'confirmation.issued',
             organizationId: request.organizationId,
-            actor: { kind: 'user', id: context.userId, ip: context.ip },
+            // The API token when one made the request, as for every resource mutation.
+            actor: resourceActor(context),
             target: { type: 'confirmation', id },
             payload: { action: request.action, target: request.target },
             occurredAt: now,

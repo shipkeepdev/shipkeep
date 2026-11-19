@@ -1,6 +1,7 @@
 import { Secret } from '@shipkeep/domain';
 
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
+import { ApiTokenCommands } from '../identity/application/api-token-commands';
 import { auditLog } from '../../testing/audit-log';
 import { enrollTestNode } from '../../testing/enroll-test-node';
 import { tenantHttpFixture } from '../../testing/tenant-http';
@@ -25,6 +26,43 @@ describe('confirmations over HTTP', () => {
     await fixture.close();
   });
 
+  it('records the API token that issued a confirmation, not only its user (#348)', async () => {
+    const user = await fixture.prisma.user.findUniqueOrThrow({
+      where: { id: fixture.actors.admin.id },
+    });
+    const admin = { ...fixture.owner, userId: user.id, securityVersion: user.securityVersion };
+    const grant = await fixture.app.get(ApiTokenCommands).create(
+      admin,
+      {
+        name: 'Fleet cleanup',
+        scopes: [
+          { permission: 'organization.read', organizationId: fixture.organizationId },
+          { permission: 'node.manage', organizationId: fixture.organizationId },
+        ],
+        expiresAt: new Date(Date.now() + 3600_000),
+      },
+      fixture.password,
+      {},
+    );
+    const response = await fixture
+      .http()
+      .post(path())
+      .set('Authorization', `Bearer ${grant.token.expose()}`)
+      .send({ action: 'node.remove', target: nodeId, name: 'edge-confirm' })
+      .expect(201);
+    const body = response.body as { id: string; token: string };
+    // Still bound to the user behind the token, who will have to use it.
+    expect(parseConfirmationToken(body.token)?.claims.sub).toBe(fixture.actors.admin.id);
+    const events = await auditLog().findMany({
+      where: { action: 'confirmation.issued', targetId: body.id },
+    });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({ actorKind: 'api_token', actorId: grant.metadata.id });
+    // No credential in the record: neither the API token nor the confirmation token.
+    expect(JSON.stringify(events)).not.toContain(grant.token.expose());
+    expect(JSON.stringify(events)).not.toContain(body.token);
+  });
+
   it('issues a single-use token for the exact node name to organization administrators', async () => {
     const response = await fixture
       .post(path(), 'admin', { action: 'node.remove', target: nodeId, name: 'edge-confirm' })
@@ -41,7 +79,9 @@ describe('confirmations over HTTP', () => {
     const events = await auditLog().findMany({
       where: { action: 'confirmation.issued', targetId: body.id },
     });
-    expect(events.map((event) => event.actorId)).toEqual([fixture.actors.admin.id]);
+    expect(events.map((event) => [event.actorKind, event.actorId])).toEqual([
+      ['user', fixture.actors.admin.id],
+    ]);
     expect(JSON.stringify(events)).not.toContain(body.token);
 
     const request = {
