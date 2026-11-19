@@ -218,7 +218,7 @@ export function configSection(key: string, data: SectionData): SectionCopy | nul
             type: 'table',
             title: 'Instances',
             aside: 'as reported by the agents',
-            cols: 'minmax(0,1.4fr) minmax(0,1fr) minmax(0,0.8fr)',
+            cols: 'minmax(0,1.3fr) minmax(0,0.7fr) minmax(0,1.1fr)',
             heads: ['Container', 'Server', 'State'],
             rows: data.replicas.length
               ? data.replicas.map((replica) => [
