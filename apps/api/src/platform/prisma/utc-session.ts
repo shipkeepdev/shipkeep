@@ -1,30 +1,37 @@
+import { Pool } from 'pg';
+
 /**
  * Every database session of the API runs in UTC (#322). The `pg` driver sends a `Date` as text
  * without an offset, and PostgreSQL reads such text in the session time zone: in any other zone, a
  * value written by the API and an instant PostgreSQL computes (`now()`) would disagree by the
  * offset, and expiry checks would move with it.
+ *
+ * The zone is set on every physical connection, as its first statement, rather than through the
+ * connection string: it then holds against a server, database or role default and against a
+ * login trigger, and the connection string stays exactly what the operator wrote. A pooler that
+ * shares server sessions between clients (transaction pooling) is not supported.
  */
+export const UTC_SESSION = "SET TIME ZONE 'UTC'";
 
-/** The startup parameter that sets the session time zone, as libpq writes it. */
-const UTC_OPTION = '-c TimeZone=UTC';
-
-/**
- * The connection URL with the UTC session parameter added to its `options`, after any options the
- * operator set: for a repeated `-c`, the last one wins.
- */
-export function utcSessionUrl(url: string): string {
-  const parsed = new URL(url);
-  const options = parsed.searchParams.get('options');
-  parsed.searchParams.set('options', options ? `${options} ${UTC_OPTION}` : UTC_OPTION);
-  return parsed.toString();
+/** A pool whose every connection runs UTC_SESSION before anything else. */
+export function utcPool(connectionString: string): Pool {
+  const pool = new Pool({ connectionString });
+  pool.on('connect', (client) => {
+    // Queued before the query the client is checked out for. If it fails, the connection is
+    // closed, so that nothing runs on it in another zone.
+    client.query(UTC_SESSION).catch(() => {
+      client.end().catch(() => undefined);
+    });
+  });
+  return pool;
 }
 
-/** Thrown when the session runs in another zone: a pooler may drop startup parameters. */
+/** Thrown when a session runs in another zone despite UTC_SESSION. */
 export class NonUtcSessionError extends Error {
   constructor(zone: string) {
     // The zone name comes from the server setting, never from the connection string.
     super(
-      `The database session time zone is ${JSON.stringify(zone.slice(0, 64))}, not UTC. Connect without a pooler that drops startup parameters, or set the timezone of the API's database roles to UTC.`,
+      `The database session time zone is ${JSON.stringify(zone.slice(0, 64))}, not UTC. A pooler that shares server sessions between clients is not supported.`,
     );
     this.name = 'NonUtcSessionError';
   }
@@ -34,3 +41,6 @@ export class NonUtcSessionError extends Error {
 export function assertUtcSession(zone: string): void {
   if (zone !== 'UTC') throw new NonUtcSessionError(zone);
 }
+
+/** The query that reads a session's zone, for the startup checks. */
+export const SESSION_ZONE = "SELECT current_setting('TimeZone') AS zone";
