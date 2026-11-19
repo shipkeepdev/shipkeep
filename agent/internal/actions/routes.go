@@ -238,7 +238,12 @@ func caddyRoute(route *agentv1.Route) (caddy.Route, []localUpstream, bool, time.
 	if weighted {
 		handler.LoadBalancing = &caddy.LoadBalancing{SelectionPolicy: map[string]any{"policy": "weighted_round_robin", "weights": weights}}
 	}
-	return caddy.Route{ID: caddy.RouteID(route.GetRouteId()), Match: []caddy.Match{{Host: hosts}}, Handle: []caddy.Handler{handler}, Terminal: true}, local, plain, drain, nil
+	// Under automatic HTTPS the route answers HTTPS only, so that plain HTTP gets Caddy's redirect.
+	match := caddy.Match{Host: hosts}
+	if !plain {
+		match.Protocol = caddy.HTTPS
+	}
+	return caddy.Route{ID: caddy.RouteID(route.GetRouteId()), Match: []caddy.Match{match}, Handle: []caddy.Handler{handler}, Terminal: true}, local, plain, drain, nil
 }
 
 // resolveUpstreams returns a copy of template with every container upstream resolved to the

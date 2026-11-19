@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"maps"
 	"net"
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -19,6 +21,7 @@ type fakeAdmin struct {
 	apps     bool
 	server   bool
 	routes   map[string]json.RawMessage
+	skip     []string
 	requests []string
 }
 
@@ -32,6 +35,24 @@ func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"admin":{"listen":"unix//run/caddy.sock"}}`))
 	case r.Method == http.MethodGet && r.URL.Path == "/config/apps":
 		writeExists(w, f.apps)
+	case r.Method == http.MethodGet && r.URL.Path == "/config/apps/http/servers/"+Server+"/routes" && f.server:
+		ids := slices.Sorted(maps.Keys(f.routes))
+		list := make([]json.RawMessage, 0, len(ids))
+		for _, id := range ids {
+			list = append(list, f.routes[id])
+		}
+		_ = json.NewEncoder(w).Encode(list)
+	case r.Method == http.MethodGet && r.URL.Path == "/config/apps/http/servers/"+Server+"/automatic_https" && f.skip != nil:
+		_ = json.NewEncoder(w).Encode(map[string][]string{"skip": f.skip})
+	case r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/id/") && strings.HasSuffix(r.URL.Path, "/match"):
+		id := strings.TrimSuffix(strings.TrimPrefix(r.URL.Path, "/id/"), "/match")
+		var route map[string]json.RawMessage
+		if err := json.Unmarshal(f.routes[id], &route); err != nil {
+			http.Error(w, "unknown object ID", http.StatusNotFound)
+			return
+		}
+		route["match"] = body
+		f.routes[id], _ = json.Marshal(route)
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/config/apps/http"):
 		if !f.apps {
 			// As Caddy does for a path below a missing parent.
@@ -152,5 +173,54 @@ func TestClientKeepsABadRequestAnErrorOutsideBootstrap(t *testing.T) {
 	}
 	if err := client.EnsureServer(ctx); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestEnsureServerSecuresRoutesOlderAgentsWrote(t *testing.T) {
+	client, fake := admin(t)
+	ctx := context.Background()
+	fake.apps, fake.server = true, true
+	fake.skip = []string{"plain.example.com"}
+	// Routes as agents up to 0.1.0-alpha.3 stored them, a TLS-off route, a route already secured,
+	// and a route that is not Shipkeep's.
+	fake.routes[RouteID("old")] = json.RawMessage(`{"@id":"sk-route-old","match":[{"host":["a.example.com","*.b.example.com"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.2:80"}],"health_checks":{"active":{"uri":"/"}}}],"terminal":true}`)
+	fake.routes[RouteID("plain")] = json.RawMessage(`{"@id":"sk-route-plain","match":[{"host":["plain.example.com"]}],"handle":[],"terminal":true}`)
+	fake.routes[RouteID("new")] = json.RawMessage(`{"@id":"sk-route-new","match":[{"host":["c.example.com"],"protocol":"https"}],"handle":[],"terminal":true}`)
+	fake.routes["control-plane"] = json.RawMessage(`{"@id":"control-plane","match":[{"host":["d.example.com"]}],"handle":[],"terminal":true}`)
+	before := map[string]string{}
+	for id, route := range fake.routes {
+		before[id] = string(route)
+	}
+	if err := client.EnsureServer(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var old struct {
+		Match  []Match           `json:"match"`
+		Handle []json.RawMessage `json:"handle"`
+	}
+	if err := json.Unmarshal(fake.routes[RouteID("old")], &old); err != nil {
+		t.Fatal(err)
+	}
+	if len(old.Match) != 1 || old.Match[0].Protocol != HTTPS || !slices.Equal(old.Match[0].Host, []string{"a.example.com", "*.b.example.com"}) {
+		t.Fatalf("old route not limited to HTTPS: %+v", old.Match)
+	}
+	// Only the match changed: fields the agent does not model are kept.
+	if len(old.Handle) != 1 || !strings.Contains(string(old.Handle[0]), "health_checks") {
+		t.Fatalf("securing the route rewrote its handler: %s", fake.routes[RouteID("old")])
+	}
+	for _, id := range []string{RouteID("plain"), RouteID("new"), "control-plane"} {
+		if string(fake.routes[id]) != before[id] {
+			t.Fatalf("route %s changed: %s", id, fake.routes[id])
+		}
+	}
+	// A second pass changes nothing.
+	fake.requests = nil
+	if err := client.EnsureServer(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range fake.requests {
+		if strings.HasPrefix(request, "PATCH") || strings.HasPrefix(request, "PUT") {
+			t.Fatalf("second pass wrote to Caddy: %v", fake.requests)
+		}
 	}
 }

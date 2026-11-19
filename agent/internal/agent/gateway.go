@@ -76,6 +76,11 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	if err != nil {
 		return err
 	}
+	// Secures the routes an older agent wrote, without waiting for the next deployment. Caddy may
+	// still be starting: the next route change does it again.
+	if err := router.EnsureServer(ctx); err != nil {
+		a.logger.Warn("caddy routes not checked at start; the next route change checks them", "error", err)
+	}
 	// Facts are read when the result is built, after the action's context ended.
 	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine) //nolint:contextcheck // see above
 	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts), Epoch: func() uint64 { return epoch }}

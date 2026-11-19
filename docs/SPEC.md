@@ -220,7 +220,7 @@ Routes (`agent/internal/caddy`, ADR 0005) are typed JSON sent to Caddy's admin A
 - **Configuration:** the agent owns one `shipkeep` server listening on `:80` and `:443`. It creates only the deepest missing configuration level and never calls `/load`, which would also reset the admin endpoint. Each route is the Caddy object `sk-route-<route_id>`: replaced in place with `PATCH /id/…`, or appended.
 - **Hosts:** 1–32 lowercase DNS names (a leading `*.` is allowed); IP addresses and `localhost` are refused.
 - **Upstreams:** 1–64 private IP `address:port` literals (Docker or WireGuard networks only), with weights 1–100 mapped to weighted round robin.
-- **TLS:** `TLS_MODE_OFF` adds the hosts to the server's `automatic_https.skip` list. DNS-01 is refused until a provider is configured.
+- **TLS:** under automatic HTTPS (`TLS_MODE_AUTO_HTTP`, the default) a route matches HTTPS requests only (`"protocol": "https"`), so that plain HTTP on port 80 gets Caddy's redirect to HTTPS; the server listens on both ports, and Caddy inserts its redirects after the last route that matches a host. `TLS_MODE_OFF` adds the hosts to the server's `automatic_https.skip` list, and its route answers plain HTTP. When it checks the Shipkeep server (at start and before every `UpsertRoute`), the agent adds the HTTPS matcher to the routes of older agents whose hosts are not skipped (#342). DNS-01 is refused until a provider is configured.
 - **Switch-then-drain:** `UpsertRoute` switches upstreams atomically and, when it replaced an existing route, waits the drain timeout (default 30 s, at most 5 min) before succeeding, so stopping the old instance comes after draining. `RemoveRoute` also drains after removal.
 
 Self-reconciliation (M1.6, `agent/internal/reconcile`):
