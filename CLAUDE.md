@@ -44,7 +44,7 @@ tools/              Code generation, git hooks, CI and development scripts
 
 ## Commands
 
-Node.js 22 (`.nvmrc`), pnpm 11, Nx, Go 1.26+ (three modules in one workspace, `go.work`), Docker for integration tests.
+Node.js 22 (`.nvmrc`), pnpm 11, Nx, Go 1.26.11+ (three modules in one workspace, `go.work`), Docker for integration tests.
 
 | Task                  | Command                                                               |
 | --------------------- | --------------------------------------------------------------------- |
