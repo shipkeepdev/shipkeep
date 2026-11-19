@@ -262,6 +262,12 @@ func TestReadOnlyRootRefusesUndeclaredImageVolumes(t *testing.T) {
 		{"no declared volume", true, image(), true},
 		{"a volume the spec does not mount", true, image("/var/lib/data"), false},
 		{"one of two not mounted", true, image("/app/uploads", "/data"), false},
+		// Only the exact target counts: neither a path that climbs out of a mount nor one under
+		// it, which Docker would still give its own anonymous volume.
+		{"a path that climbs out of a mount", true, image("/app/uploads/../escape"), false},
+		{"a path under a mount", true, image("/app/uploads/child"), false},
+		{"a mount's name as a prefix", true, image("/app/uploads-extra"), false},
+		{"a relative path", true, image("app/uploads"), false},
 		// Without a read-only root the image volumes are what Docker always did.
 		{"writable root", false, image("/var/lib/data"), true},
 	} {
