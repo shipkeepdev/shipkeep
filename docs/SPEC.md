@@ -658,7 +658,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - a 10 s timeout and 1 MiB responses at most.
   - The node holds the same policy at the pull (ADR 0023), since the Docker daemon resolves the registry again, follows its redirects and calls its token service:
     - the daemon goes through `shipkeep-egress` on `127.0.0.1:7480`, which serves `CONNECT` only and connects only to public addresses, checked by its dialer on the address it connects to (the ranges above, kept identical by a test);
-    - an nftables table, `inet shipkeep_egress`, rejects the new connections of `docker.service`'s cgroup to loopback, except to the proxy and to the loopback name servers on port 53. Docker loads it before `dockerd` starts, and `nftables.service` after it starts;
+    - an nftables table, `inet shipkeep_egress`, rejects the new connections of `shipkeep.slice`, the slice that holds the Docker daemon, to loopback, except to the proxy and to the loopback name servers on port 53. Docker loads it before `dockerd` starts, and `nftables.service` loads it in the same transaction as its own ruleset at start, reload and stop;
     - before each pull, the agent reads the daemon's proxy settings (`GET /info`) and refuses the pull (`egress_unguarded`) unless both are the proxy and `NO_PROXY` is empty. An agent started with `--dev` skips this.
   - Failures report `image_resolution_failed` with the registry and the status, never tokens. Registries on private networks are not supported yet (open question).
 

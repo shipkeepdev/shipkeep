@@ -49,26 +49,33 @@ nameserver 127.0.0.53
 nameserver 127.000.0.1
 nameserver 8.8.8.8
 nameserver 127.0.0.256
-nameserver 127.0.0.1; drop
+nameserver 127.0.0.2 # local resolver
+nameserver 127.0.0.3; another comment
 nameserver 127.0.0.1 extra
 nameserver ::1
+nameserver 0:0:0:0:0:0:0:1
+nameserver 0000::0001
 nameserver ::2
+nameserver ::1:1
+nameserver :::1
+nameserver 0:0:0:0:0:0:0:0:1
+nameserver ::ffff:127.0.0.1
 nameserver $(id)
 options edns0 trust-ad
 search example.com
 RESOLV
-[[ $(loopback_nameservers "$work/resolv.conf" | tr '\n' ' ') == '127.0.0.53 127.0.0.1 ::1 ' ]] || die 'loopback name servers'
-guard=$(printf '127.0.0.53\n::1\n' | egress_guard /system.slice/docker.service) || die 'the guard was refused'
-grep -qxF '    socket cgroupv2 level 2 "system.slice/docker.service" ct state new jump docker' <<<"$guard" || die 'the guard does not match the cgroup'
+[[ $(loopback_nameservers "$work/resolv.conf" | tr '\n' ' ') == '127.0.0.53 127.0.0.1 127.0.0.2 127.0.0.3 ::1 ::1 ::1 ' ]] || die "loopback name servers: $(loopback_nameservers "$work/resolv.conf" | tr '\n' ' ')"
+guard=$(printf '127.0.0.53\n::1\n' | egress_guard /shipkeep.slice) || die 'the guard was refused'
+grep -qxF '    socket cgroupv2 level 1 "shipkeep.slice" ct state new jump docker' <<<"$guard" || die 'the guard does not match the slice'
 grep -qxF '    ip daddr 127.0.0.1 tcp dport 7480 return' <<<"$guard" || die 'the proxy is not allowed'
 grep -qxF '    meta l4proto { tcp, udp } ct original ip daddr 127.0.0.53 ct original proto-dst 53 return' <<<"$guard" || die 'the name server is not allowed'
 grep -qxF '    meta l4proto { tcp, udp } ct original ip6 daddr ::1 ct original proto-dst 53 return' <<<"$guard" || die 'the IPv6 name server is not allowed'
 grep -qxF '    ip daddr 127.0.0.0/8 reject' <<<"$guard" || die 'loopback is not refused'
 grep -qxF '    ip6 daddr ::1 reject' <<<"$guard" || die 'IPv6 loopback is not refused'
 [[ $(grep -c ' return$' <<<"$guard") == 3 ]] || die 'unexpected exceptions'
-printf '' | egress_guard /system.slice/docker-0123.scope/system.slice/docker.service | grep -qF 'level 4 "system.slice/docker-0123.scope/system.slice/docker.service"' || die 'a nested cgroup'
+printf '' | egress_guard /system.slice/docker-0123.scope/shipkeep.slice | grep -qF 'level 3 "system.slice/docker-0123.scope/shipkeep.slice"' || die 'a nested cgroup'
 # shellcheck disable=SC2016
-for cgroup in '' / docker.service system.slice/docker.service /system.slice/evil.service /system.slice/docker.service.d '/system.slice/docker.service"' '/system.slice/docker.service; drop' $'/system.slice/docker.service\n' '/system.slice/$(id)/docker.service' '/system slice/docker.service'; do
+for cgroup in '' / shipkeep.slice /system.slice/docker.service /system.slice/evil.slice /shipkeep.slice/docker.service '/shipkeep.slice"' '/shipkeep.slice; drop' $'/shipkeep.slice\n' '/$(id)/shipkeep.slice' '/system slice/shipkeep.slice'; do
   refused egress_guard "$cgroup" </dev/null || die "accepted the cgroup $cgroup"
 done
 # A proxy in daemon.json would win over the egress proxy.

@@ -74,27 +74,49 @@ REPO
 # The egress proxy of the Docker daemon (ADR 0023). Its address is fixed: the agent checks it
 # (agent/internal/actions EgressProxy) and the proxy listens there (agent/internal/egress).
 egress_proxy=http://127.0.0.1:7480
+# True when $1 is an IPv6 loopback address in any of its written forms (::1, 0:0:0:0:0:0:0:1, ...).
+ipv6_loopback() {
+  local address=${1,,} group
+  local -a left right groups
+  [[ $address == *:* && $address =~ ^[0:]*1$ ]] || return 1
+  if [[ $address == *::* ]]; then
+    [[ ${address#*::} != *::* ]] || return 1
+    IFS=: read -r -a left <<<"${address%%::*}"
+    IFS=: read -r -a right <<<"${address#*::}"
+    ((${#left[@]} + ${#right[@]} <= 7)) || return 1
+    groups=("${left[@]}" "${right[@]}")
+  else
+    IFS=: read -r -a groups <<<"$address"
+    ((${#groups[@]} == 8)) || return 1
+  fi
+  for group in "${groups[@]}"; do
+    [[ $group =~ ^[0-9a-f]{1,4}$ ]] || return 1
+  done
+}
 # Prints the loopback name servers of the resolv.conf $1, one per line and normalized: an IPv4
 # address in 127.0.0.0/8, or ::1. The Docker daemon resolves names through them, so the guard
-# lets it reach them on port 53. Any other line is ignored.
+# lets it reach them on port 53. A comment after the address is ignored, as Docker does; any
+# other line is ignored.
 loopback_nameservers() {
-  local keyword address rest
-  while read -r keyword address rest || [[ -n $keyword ]]; do
-    [[ $keyword == nameserver && -z $rest ]] || continue
+  local line keyword address rest
+  while IFS= read -r line || [[ -n $line ]]; do
+    line=${line%%[#;]*}
+    read -r keyword address rest <<<"$line" || true
+    [[ $keyword == nameserver && -n $address && -z $rest ]] || continue
     if [[ $address =~ ^127\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
       ((10#${BASH_REMATCH[1]} <= 255 && 10#${BASH_REMATCH[2]} <= 255 && 10#${BASH_REMATCH[3]} <= 255)) || continue
       printf '127.%d.%d.%d\n' "$((10#${BASH_REMATCH[1]}))" "$((10#${BASH_REMATCH[2]}))" "$((10#${BASH_REMATCH[3]}))"
-    elif [[ $address == ::1 ]]; then
+    elif ipv6_loopback "$address"; then
       printf '::1\n'
     fi
   done <"$1"
 }
-# Prints the nftables guard of ADR 0023: new connections from the cgroup $1 (as systemd reports it
-# for docker.service) to loopback are rejected, except to the egress proxy and to the name servers
-# read on standard input, port 53. It fails for a cgroup that is not docker.service's.
+# Prints the nftables guard of ADR 0023 for the cgroup $1 of shipkeep.slice, which holds the
+# Docker daemon: its new connections to loopback are rejected, except to the egress proxy and to
+# the name servers read on standard input, port 53. It fails for a cgroup that is not the slice's.
 egress_guard() {
   local cgroup=$1 level server family
-  [[ $cgroup =~ ^(/[A-Za-z0-9@._:-]+)*/docker\.service$ ]] || return 1
+  [[ $cgroup =~ ^(/[A-Za-z0-9@._:-]+)*/shipkeep\.slice$ ]] || return 1
   level=${cgroup//[^\/]/}
   printf 'destroy table inet shipkeep_egress\n'
   printf 'table inet shipkeep_egress {\n'
@@ -128,21 +150,24 @@ egress_proxies_applied() {
   info=$(cat)
   [[ $info == *"\"HttpProxy\":\"$egress_proxy\""* && $info == *"\"HttpsProxy\":\"$egress_proxy\""* && $info == *'"NoProxy":""'* ]]
 }
-# Checks that the Docker daemon can be put behind the egress proxy, and writes the guard to
-# $1/egress.nft (ADR 0023). Nothing on the system changes but the nftables package.
+# Checks that the Docker daemon can be put behind the egress proxy (ADR 0023). Nothing on the
+# system changes but the nftables package.
 prepare_egress() {
   daemon_json_without_proxies /etc/docker/daemon.json || fail 'Remove the proxy settings (proxies, http-proxy, https-proxy, no-proxy) from /etc/docker/daemon.json: Docker would apply them instead of the egress proxy.'
   command -v nft >/dev/null || apt-get install -y --no-install-recommends nftables </dev/null
-  local cgroup
-  cgroup=$(systemctl show --property ControlGroup --value docker.service)
-  loopback_nameservers /etc/resolv.conf | egress_guard "$cgroup" >"$1/egress.nft" || fail 'docker.service does not run in its own cgroup.'
-  nft --check --file "$1/egress.nft" || fail 'nftables cannot load the egress guard of the Docker daemon.'
+  [[ -f /etc/nftables.conf ]] || fail 'nftables has no /etc/nftables.conf; reinstall the nftables package.'
 }
-# Runs the egress proxy as its own service, points the Docker daemon at it, installs the guard
-# from $1/egress.nft, restarts Docker and checks what it applies (ADR 0023). $1/agent is the
-# verified agent binary; the account shipkeep-egress exists already.
+# Puts the Docker daemon behind the egress proxy and the loopback guard, restarts Docker and checks
+# what it applies (ADR 0023). $1 is a private work directory holding the verified agent binary
+# ($1/agent); the account shipkeep-egress exists already.
+#
+# The guard matches the cgroup of shipkeep.slice, which holds the Docker daemon. The slice starts
+# at boot, before nftables, and its cgroup lives as long as it runs: unlike the cgroup of
+# docker.service, it exists whether Docker runs or not and does not change when Docker restarts.
+# So nftables.service can load the guard in the same transaction as its own ruleset, at start,
+# reload and stop, and no flush leaves Docker unguarded.
 install_egress() {
-  local attempt
+  local attempt slice
   # A root-owned copy: the agent's directory is private to its account, and that account must not
   # be able to replace the binary the proxy runs.
   install -d -m 0755 /usr/local/libexec
@@ -169,25 +194,54 @@ UMask=0077
 [Install]
 WantedBy=multi-user.target
 UNIT
+  cat > /etc/systemd/system/shipkeep.slice <<'UNIT'
+[Unit]
+Description=Shipkeep: the Docker daemon, behind the egress guard
+DefaultDependencies=no
+Before=slices.target nftables.service docker.service
+[Install]
+WantedBy=sysinit.target
+UNIT
+  chmod 0644 /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/shipkeep.slice
+  systemctl daemon-reload
+  systemctl enable --now shipkeep.slice
+  slice=$(systemctl show --property ControlGroup --value shipkeep.slice)
+  loopback_nameservers /etc/resolv.conf | egress_guard "$slice" >"$1/egress.nft" || fail 'shipkeep.slice has no cgroup.'
+  nft --check --file "$1/egress.nft" || fail 'nftables cannot load the egress guard of the Docker daemon.'
   install -m 0644 "$1/egress.nft" /etc/shipkeep-egress.nft
+  # nftables.service applies the operator's ruleset and the guard in one transaction.
+  printf 'include "/etc/nftables.conf"\ninclude "/etc/shipkeep-egress.nft"\n' >"$1/nftables.nft"
+  printf 'flush ruleset\ninclude "/etc/shipkeep-egress.nft"\n' >"$1/nftables-stop.nft"
+  install -m 0644 "$1/nftables.nft" /etc/shipkeep-nftables.nft
+  install -m 0644 "$1/nftables-stop.nft" /etc/shipkeep-nftables-stop.nft
   install -d -m 0755 /etc/systemd/system/docker.service.d /etc/systemd/system/nftables.service.d
-  # The guard is loaded inside docker.service's new cgroup before dockerd starts, at every start:
-  # nftables resolves the cgroup when it loads the rule, and each start creates a new one.
+  cat > /etc/systemd/system/nftables.service.d/shipkeep-egress.conf <<'UNIT'
+[Unit]
+Requires=shipkeep.slice
+After=shipkeep.slice
+[Service]
+ExecStart=
+ExecStart=/usr/sbin/nft --file /etc/shipkeep-nftables.nft
+ExecReload=
+ExecReload=/usr/sbin/nft --file /etc/shipkeep-nftables.nft
+ExecStop=
+ExecStop=/usr/sbin/nft --file /etc/shipkeep-nftables-stop.nft
+UNIT
+  # Docker runs in the slice. It loads the guard before dockerd starts, for a server whose
+  # nftables.service is not enabled (Ubuntu's default).
   cat > /etc/systemd/system/docker.service.d/shipkeep-egress.conf <<UNIT
 [Unit]
+Requires=shipkeep.slice
+After=shipkeep.slice shipkeep-egress.service
 Wants=shipkeep-egress.service
-After=shipkeep-egress.service
 [Service]
+Slice=shipkeep.slice
 Environment=HTTP_PROXY=$egress_proxy HTTPS_PROXY=$egress_proxy NO_PROXY= http_proxy=$egress_proxy https_proxy=$egress_proxy no_proxy=
 ExecStartPre=/usr/sbin/nft --file /etc/shipkeep-egress.nft
 UNIT
-  # A restart of nftables.service flushes the ruleset: it loads the guard again while Docker runs.
-  cat > /etc/systemd/system/nftables.service.d/shipkeep-egress.conf <<'UNIT'
-[Service]
-ExecStartPost=-/usr/sbin/nft --file /etc/shipkeep-egress.nft
-UNIT
-  chmod 0644 /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/{docker,nftables}.service.d/shipkeep-egress.conf
+  chmod 0644 /etc/systemd/system/{docker,nftables}.service.d/shipkeep-egress.conf
   systemctl daemon-reload
+  if systemctl is-active --quiet nftables; then systemctl reload nftables; fi
   systemctl enable --now shipkeep-egress
   # Docker reports its proxy settings whether or not anything listens there: wait for the proxy.
   for attempt in {1..20}; do
@@ -197,6 +251,7 @@ UNIT
   done
   printf 'Restarting Docker so that it pulls through the egress proxy; running containers restart with it.\n'
   systemctl restart docker
+  [[ $(systemctl show --property ControlGroup --value docker.service) == "$slice/docker.service" ]] || fail 'Docker does not run in shipkeep.slice.'
   nft list table inet shipkeep_egress >/dev/null || fail 'The egress guard of the Docker daemon is not loaded.'
   curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/v1.47/info | egress_proxies_applied || fail 'Docker does not report the egress proxy; check the proxy settings of its other drop-ins (systemctl cat docker).'
 }
@@ -228,7 +283,7 @@ port=${control_plane##*:}
 . /etc/os-release
 [[ $ID == ubuntu && $VERSION_ID == 24.04 ]] || fail 'This installer supports Ubuntu 24.04.'
 case $(uname -m) in x86_64) digest=$amd64 ;; aarch64) digest=$arm64 ;; *) fail 'Unsupported architecture.' ;; esac
-for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep /etc/shipkeep-caddy.json /etc/shipkeep-egress.nft /usr/local/libexec/shipkeep-egress /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf /etc/tmpfiles.d/shipkeep.conf; do
+for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep /etc/shipkeep-caddy.json /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft /etc/systemd/system/shipkeep.slice /usr/local/libexec/shipkeep-egress /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf /etc/tmpfiles.d/shipkeep.conf; do
   [[ ! -e $path && ! -L $path ]] || fail 'Existing Shipkeep installation; refusing to overwrite it.'
 done
 for account in shipkeep shipkeep-caddy shipkeep-egress; do

@@ -160,7 +160,7 @@ Each server needs a fresh Ubuntu 24.04 (amd64 or arm64) with `curl` and `sudo`, 
 Docker pulls every image through `shipkeep-egress`, a proxy on `127.0.0.1:7480` that connects only to public addresses over HTTPS, and an nftables table, `inet shipkeep_egress`, keeps the Docker daemon off the server's loopback (ADR 0023). This holds for every pull of this Docker daemon, including any you run yourself. The installer restarts Docker once to apply it, so containers already running restart with it.
 
 - Before each pull, the agent checks that Docker still goes through the proxy. If a later change to `daemon.json` or to another drop-in of `docker.service` sets a proxy, the deployment fails, saying that Docker does not go through its egress proxy. Remove that setting and restart Docker.
-- Do not flush the whole nftables ruleset by hand (`nft flush ruleset`): it removes the guard until Docker starts again. A restart of `nftables.service` loads the guard again by itself. `sudo systemctl restart docker` loads it in every case.
+- The Docker daemon runs in its own slice, `shipkeep.slice`. `nftables.service` loads the guard together with `/etc/nftables.conf` whenever it starts, reloads or stops. Do not flush the whole ruleset by hand (`nft flush ruleset`): it removes the guard until Docker starts again (`sudo systemctl restart docker`).
 - Registries on a private network are not supported yet.
 - A server installed before this change has neither the proxy nor the guard. Its agent keeps pulling as before until it is upgraded; an agent from this release refuses to pull on it. Install the server again to get them.
 
