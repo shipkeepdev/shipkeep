@@ -115,35 +115,30 @@ export class PrismaApplicationStore implements ApplicationStore {
   async releaseUnservedDomains(
     application: Pick<Application, 'id' | 'organizationId'>,
   ): Promise<void> {
-    const { id: applicationId, organizationId } = application;
-    // What the application's routes can still serve: the domains of its releases that have placed
-    // replicas (the pipeline stops replicas only once their route no longer needs them), and of
-    // the release of any deployment not finished yet, which routes the domains of its snapshot.
-    const placed = await this.database.client.allocation.findMany({
-      where: { organizationId, applicationId, state: 'placed' },
-      select: { releaseId: true },
-      distinct: ['releaseId'],
-    });
-    const unfinished = await this.database.client.deployment.findMany({
-      where: { organizationId, applicationId, state: { notIn: [...FINISHED_DEPLOYMENTS] } },
-      select: { releaseId: true },
-    });
-    const releaseIds = [...new Set([...placed, ...unfinished].map((row) => row.releaseId))];
-    const releases = releaseIds.length
-      ? await this.database.client.release.findMany({
-          where: { organizationId, id: { in: releaseIds } },
-          select: { config: true },
-        })
-      : [];
-    const served = [...new Set(releases.flatMap((release) => configDomains(release.config)))];
-    await this.database.client.domain.deleteMany({
-      where: {
-        organizationId,
-        applicationId,
-        releasingAt: { not: null },
-        hostname: { notIn: served },
-      },
-    });
+    // One statement, so one snapshot: a reservation is kept when a release of the application
+    // lists the domain and has placed replicas (the pipeline stops replicas only once their route
+    // no longer needs them), or belongs to a deployment not finished yet, which routes the
+    // domains of its snapshot. Separate reads could each see a different state.
+    await this.database.client.$executeRaw`
+      DELETE FROM domains d
+      WHERE d.organization_id = ${application.organizationId}::uuid
+        AND d.application_id = ${application.id}::uuid
+        AND d.releasing_at IS NOT NULL
+        AND NOT EXISTS (
+          SELECT 1 FROM releases r
+          WHERE r.organization_id = d.organization_id
+            AND r.application_id = d.application_id
+            AND jsonb_typeof(r.config -> 'domains') = 'array'
+            AND (r.config -> 'domains') ? d.hostname
+            AND (
+              EXISTS (SELECT 1 FROM allocations a WHERE a.release_id = r.id AND a.state = 'placed')
+              OR EXISTS (
+                SELECT 1 FROM deployments dp
+                WHERE dp.release_id = r.id
+                  AND dp.state NOT IN ('succeeded', 'failed', 'cancelled', 'rolled_back')
+              )
+            )
+        )`;
   }
 
   async find(target: ApplicationTarget, applicationId: string): Promise<Application | undefined> {
@@ -234,16 +229,4 @@ function application(row: {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
-}
-
-/** Deployment states after which a deployment routes nothing new (as the deployments store). */
-const FINISHED_DEPLOYMENTS = ['succeeded', 'failed', 'cancelled', 'rolled_back'] as const;
-
-/** The domains a stored release configuration lists; anything else in that JSON is ignored. */
-function configDomains(config: unknown): string[] {
-  if (typeof config !== 'object' || config === null) return [];
-  const domains: unknown = (config as { domains?: unknown }).domains;
-  return Array.isArray(domains)
-    ? domains.filter((domain): domain is string => typeof domain === 'string')
-    : [];
 }

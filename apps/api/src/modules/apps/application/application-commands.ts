@@ -82,6 +82,10 @@ export class ApplicationCommands {
   ): Promise<Application> {
     const config = applicationConfig(document);
     return this.scoped(context, 'deploy.run', target, async () => {
+      const found = await this.store.find(target, applicationId);
+      // The application's row lock orders this change with a deployment, which takes it before it
+      // reads the configuration: a release never snapshots domains this change frees (#302).
+      if (!found || !(await this.store.lock(found))) throw new NotFoundError('application');
       const current = await this.store.find(target, applicationId);
       if (!current) throw new NotFoundError('application');
       assertSameName(current, config);
