@@ -1,8 +1,10 @@
 import type { AuditRecord } from '../domain/audit-record';
 
 import {
+  DRAIN_TIMEOUT_MS,
   EnvironmentEvents,
   HEARTBEAT_MS,
+  MAX_PENDING_BYTES,
   POLL_MS,
   pumpEvents,
   serverSentEvent,
@@ -38,7 +40,12 @@ function pump(
       }
       return Promise.resolve(polls[round++](after));
     },
-    write: (chunk) => written.push(chunk),
+    write: (chunk) => {
+      written.push(chunk);
+      return true;
+    },
+    pending: () => 0,
+    drained: () => Promise.resolve(true),
     signal: controller.signal,
     sleep: (milliseconds) => {
       clock += milliseconds;
@@ -185,5 +192,93 @@ describe('EnvironmentEvents.poll', () => {
     const { events, calls } = service(() => Promise.reject(new Error('signed out')));
     await expect(events.poll(context, target, 'start')).rejects.toThrow('signed out');
     expect(calls).toEqual(['session']);
+  });
+});
+
+describe('pumpEvents with a client that does not keep up (#345)', () => {
+  const batch = (size: number, from = 0) =>
+    Array.from({ length: size }, (_, index) => record(`e${String(from + index)}`));
+
+  /** A client whose buffer takes `capacity` bytes; `drains` says whether each wait succeeds. */
+  function slowClient(capacity: number, drains: (waited: number) => boolean) {
+    let queued = 0;
+    let clock = 0;
+    const waits: number[] = [];
+    let polls = 0;
+    const controller = new AbortController();
+    const done = (poll: () => readonly AuditRecord[]) =>
+      pumpEvents({
+        after: 'start',
+        poll: () => {
+          polls++;
+          if (polls > 50) controller.abort();
+          return Promise.resolve(poll());
+        },
+        write: (chunk) => {
+          queued += chunk.length;
+          return queued <= capacity;
+        },
+        pending: () => Math.max(0, queued - capacity),
+        drained: (milliseconds) => {
+          waits.push(milliseconds);
+          clock += milliseconds;
+          if (!drains(milliseconds)) return Promise.resolve(false);
+          queued = 0;
+          return Promise.resolve(true);
+        },
+        signal: controller.signal,
+        sleep: (milliseconds) => {
+          clock += milliseconds;
+          return Promise.resolve();
+        },
+        now: () => clock,
+      });
+    return { done, waits, polls: () => polls, controller, queued: () => queued };
+  }
+
+  it('waits for the client, then ends the stream as slow, without reading more meanwhile', async () => {
+    const client = slowClient(1000, () => false);
+    const end = await client.done(() => batch(10));
+    expect(end).toBe('slow');
+    // One batch read and written, one bounded wait, no further poll.
+    expect(client.polls()).toBe(1);
+    expect(client.waits).toEqual([DRAIN_TIMEOUT_MS]);
+  });
+
+  it('resumes once the client catches up', async () => {
+    const client = slowClient(1000, () => true);
+    const end = await client.done(() => batch(10));
+    expect(end).toBe('done');
+    expect(client.polls()).toBeGreaterThan(1);
+    // Every batch overflows the buffer and is followed by one bounded wait, the last one included.
+    expect(client.waits.length).toBe(client.polls());
+  });
+
+  it('ends at once past the byte budget, without writing the rest of the batch', async () => {
+    const client = slowClient(0, () => true);
+    const end = await client.done(() => batch(1000));
+    expect(end).toBe('slow');
+    expect(client.polls()).toBe(1);
+    expect(client.waits).toEqual([]);
+    // Stopped within one event of the budget.
+    expect(client.queued()).toBeLessThanOrEqual(MAX_PENDING_BYTES + 512);
+  });
+
+  it('ends as done when the client leaves while the stream waits', async () => {
+    const controller = new AbortController();
+    const end = await pumpEvents({
+      after: 'start',
+      poll: () => Promise.resolve(batch(3)),
+      write: () => false,
+      pending: () => 10,
+      drained: () => {
+        controller.abort();
+        return Promise.resolve(false);
+      },
+      signal: controller.signal,
+      sleep: () => Promise.resolve(),
+      now: () => 0,
+    });
+    expect(end).toBe('done');
   });
 });

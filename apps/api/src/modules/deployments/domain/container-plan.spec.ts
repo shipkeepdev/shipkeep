@@ -4,6 +4,7 @@ import {
   containerName,
   containerPlan,
   cpuMillis,
+  diskBudget,
   durationMs,
   environmentNetwork,
   resourceLimits,
@@ -94,7 +95,22 @@ describe('resource limits', () => {
         expect(plan).toMatchObject(resourceLimits(config(resources)));
         expect(plan.cpuMillis).toBeGreaterThan(0);
         expect(plan.memoryBytes).toBeGreaterThan(0);
+        // Every container has a disk budget too (ADR 0022).
+        expect(plan.diskBytes).toBe(diskBudget(config(resources)));
+        expect(plan.readOnlyRoot).toBe(false);
       }
+  });
+
+  it('gives each container a disk budget of 1 GiB unless the application declares one', () => {
+    expect(diskBudget(config())).toBe(2 ** 30);
+    expect(diskBudget(config({ memory: '2Gi' }))).toBe(2 ** 30);
+    expect(diskBudget(config({ disk: '64Mi' }))).toBe(64 * 2 ** 20);
+    expect(diskBudget(config({ disk: '1Ti' }))).toBe(2 ** 40);
+    // A value the schema let through but that is not a size is refused, never unlimited.
+    for (const disk of ['0', 'abc', '1GB'])
+      expect(() => diskBudget(config({ disk }))).toThrow(
+        /The disk (value is invalid|limit must be greater than zero)/,
+      );
   });
 });
 

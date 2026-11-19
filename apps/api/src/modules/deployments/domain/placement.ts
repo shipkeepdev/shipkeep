@@ -3,7 +3,7 @@ import type { PlacementRequest, SchedulableNode } from '@shipkeep/domain';
 
 import { observedStatus } from '../../fleet/domain/node';
 
-import { resourceLimits } from './container-plan';
+import { diskBudget, resourceLimits } from './container-plan';
 
 /** What placement needs from a node record. */
 export interface NodeView {
@@ -64,6 +64,8 @@ export function schedulableNodes(
         usedPorts: [],
         apps: used?.applications ?? [],
         volumes: [],
+        // A node that reported no free disk is not checked (ADR 0022).
+        ...withDiskFree(diskFree(node.facts['disk_free_bytes'])),
       };
     });
 }
@@ -124,6 +126,7 @@ export function placementRequest(applicationId: string, config: ShipkeepConfig):
     app: applicationId,
     architectures: ARCHITECTURES,
     resources: resourceLimits(config),
+    diskBytes: diskBudget(config),
     labels: Object.fromEntries(
       Object.entries(config.scale?.placement?.labels ?? {}).filter(
         (entry): entry is [string, string] => typeof entry[1] === 'string',
@@ -133,6 +136,15 @@ export function placementRequest(applicationId: string, config: ShipkeepConfig):
     spread: config.scale?.placement?.spread ?? 'node',
     nodes: config.scale?.placement?.nodes ?? [],
   };
+}
+
+function withDiskFree(bytes: number | undefined): { diskFreeBytes?: number } {
+  return bytes === undefined ? {} : { diskFreeBytes: bytes };
+}
+
+/** The free disk a node reported; undefined when it reported none it can be trusted with. */
+function diskFree(value: string | number | undefined): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
 }
 
 function wholeNumber(value: string | number | undefined): number {

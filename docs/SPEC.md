@@ -52,6 +52,7 @@ release:
 resources:
   cpu: '0.5'
   memory: 512Mi
+  disk: 2Gi # what the container may write to its own filesystem (ADR 0022)
 
 scale:
   replicas: 2
@@ -117,6 +118,8 @@ compose:
 - `resources` is the CPU and memory limit of each container of the application, and what placement reserves for each replica (section 6).
   - A limit left out is `1` CPU, or `512Mi` of memory: an application without `resources` runs under one CPU and 512 MiB. `DEFAULT_RESOURCES` in `packages/config-schema` holds the two values for the control plane and the UI.
   - Zero is refused, in any notation (`0`, `0.0`, `0m`, `0Mi`): no value means "unlimited". A positive CPU amount below one millicore counts as one millicore.
+  - `disk` (default `1Gi`, between `64Mi` and `1Ti`) is the size each container's writable layer may reach. It is not reserved by placement. The agent measures it and stops a container above it, with the reason `disk_limit` (ADR 0022).
+  - `run.read_only_root: true` runs each container with a read-only root filesystem and a `64Mi` tmpfs at `/tmp`, which counts in its memory: it then writes only there and to its volumes. Off by default.
   - The release task runs under the same limits. It needs no reservation of its own: it runs on the first replica's node before that replica starts, in the room already reserved for it.
 - Domains: valid hostnames, max 50 per app, wildcard only with DNS-01 configured.
 - Volume paths: absolute, no `..`, not under `/proc`, `/sys`, `/dev`, `/etc`, `/var/run`.
@@ -206,6 +209,7 @@ Containers are created from the typed create body in `agent/internal/docker`. Th
 - `no-new-privileges`, a private IPC namespace and an init process;
 - the CPU and the memory limit of the spec, at most 256 CPUs and 1 TiB. Both are required: zero would mean unlimited to Docker, so a spec without either is refused, for a replica and for a release task alike. The agent has no default of its own, since placement must have reserved the value it enforces;
 - a pids limit (1024 unless specified, at most 65,536);
+- the disk budget of the spec (`Resources.disk_bytes`, 64 MiB to 1 TiB, or zero for none from older control planes) as the agent-owned label `sk.disk_bytes`, which labels from the control plane can never set (ADR 0022);
 - bounded `json-file` logs;
 - added capabilities from the allow-list only.
 
@@ -221,7 +225,7 @@ Routes (`agent/internal/caddy`, ADR 0005) are typed JSON sent to Caddy's admin A
 - **Configuration:** the agent owns one `shipkeep` server listening on `:80` and `:443`. It creates only the deepest missing configuration level and never calls `/load`, which would also reset the admin endpoint. Each route is the Caddy object `sk-route-<route_id>`: replaced in place with `PATCH /id/…`, or appended.
 - **Hosts:** 1–32 lowercase DNS names (a leading `*.` is allowed); IP addresses and `localhost` are refused.
 - **Upstreams:** 1–64 private IP `address:port` literals (Docker or WireGuard networks only), with weights 1–100 mapped to weighted round robin.
-- **TLS:** `TLS_MODE_OFF` adds the hosts to the server's `automatic_https.skip` list. DNS-01 is refused until a provider is configured.
+- **TLS:** under automatic HTTPS (`TLS_MODE_AUTO_HTTP`, the default) a route matches HTTPS requests only (`"protocol": "https"`), so that plain HTTP on port 80 gets Caddy's redirect to HTTPS; the server listens on both ports, and Caddy inserts its redirects after the last route that matches a host. `TLS_MODE_OFF` adds the hosts to the server's `automatic_https.skip` list, and its route answers plain HTTP. When it checks the Shipkeep server (at start and before every `UpsertRoute`), the agent adds the HTTPS matcher to the routes of older agents whose hosts are not skipped (#342). DNS-01 is refused until a provider is configured.
 - **Switch-then-drain:** `UpsertRoute` switches upstreams atomically and, when it replaced an existing route, waits the drain timeout (default 30 s, at most 5 min) before succeeding, so stopping the old instance comes after draining. `RemoveRoute` also drains after removal.
 
 Self-reconciliation (M1.6, `agent/internal/reconcile`):
@@ -333,7 +337,7 @@ Tenant identifiers must be canonical UUIDv7 values. Nested operations can join o
 
 Before choosing an organization, `runAccountDiscovery` sets a transaction-local `app.user_id` from the authenticated account and clears `app.org_id`. SELECT-only policies expose that active, verified account's own memberships and their organization metadata. They expose no other members, project/environment contents or role bindings, and grant no tenant writes. Account discovery and tenant scopes cannot nest into each other or change identity while active; both settings are cleared on exit. An arbitrary account identifier from request input must never be used as the discovery identity.
 
-The migration connection is configured separately with `MIGRATION_DATABASE_URL`; the API reads only its restricted `DATABASE_URL`. Provisioning grants explicit DML on runtime tables and only SELECT/INSERT on audit events, excluding migration tracking and future tables by default. Migrations create the queue schema; pg-boss manages objects only within `shipkeep_jobs` and does not require database-wide schema creation. Upgrade provisioning preserves existing queue objects/jobs while transferring their ownership inside that schema. See [database-role setup](DATABASE_ROLES.md) for development and deployment procedures.
+Every session the API opens (Prisma and the job queue) runs in UTC: each new connection of their pools runs `SET TIME ZONE 'UTC'` before anything else, which holds against a server, database or role default and against a login trigger, and both refuse to start when `current_setting('TimeZone')` is not `UTC` (#322). `DATABASE_URL` is used as written. A pooler that shares server sessions between clients (transaction pooling) is not supported. On an installation whose database already ran in another zone, timestamps written before this rule stay shifted by that offset: short-lived ones (sessions, rate-limit windows, codes) expire on their own, audit and deployment times do not change. `node main.js account reset-password` ends every session and token of an account. The driver sends a `Date` as text without an offset, which PostgreSQL reads in the session zone; in another zone, instants the API writes and instants PostgreSQL computes (`now()`) would disagree by the offset. The migration connection is configured separately with `MIGRATION_DATABASE_URL`; the API reads only its restricted `DATABASE_URL`. Provisioning grants explicit DML on runtime tables and only SELECT/INSERT on audit events, excluding migration tracking and future tables by default. Migrations create the queue schema; pg-boss manages objects only within `shipkeep_jobs` and does not require database-wide schema creation. Upgrade provisioning preserves existing queue objects/jobs while transferring their ownership inside that schema. See [database-role setup](DATABASE_ROLES.md) for development and deployment procedures.
 
 Fleet nodes and enrollment tokens reference an existing organization. Their foreign keys restrict organization deletion instead of cascading into servers, certificates or enrollment history. The fleet migration aborts if legacy rows reference missing organizations; an operator must reconcile these records with their verified owners before retrying the upgrade. It never creates a default owner, reassigns a server or deletes an orphan. Fleet enrollment authorization and transaction boundaries are maintained separately in the M1.2 stack; these foreign keys alone do not grant access or enforce fleet RLS.
 
@@ -443,7 +447,7 @@ starting -> unhealthy -> (restart within policy) -> starting | failed
 
 ## 6. Scheduling
 
-1. Filter nodes: status `ready`, required labels, architecture matches the image, free CPU and memory reservations, required ports free, volume affinity for stateful workloads.
+1. Filter nodes: status `ready`, required labels, architecture matches the image, free CPU and memory reservations, free disk for the disk budget, required ports free, volume affinity for stateful workloads.
 2. Rank: prefer nodes without another replica of the same app (spread), then lowest reserved memory ratio, then lowest reserved CPU ratio, then node name for determinism.
 3. Stateful workloads are pinned to the node that holds their volume.
 4. Scheduling is deterministic given the same inputs (unit-testable without a cluster).
@@ -453,7 +457,8 @@ The algorithm is `placeReplica` and `placeReplicas` in `packages/domain/src/lib/
 - A stateful workload is pinned only when some node already stores its volume; otherwise it is placed like any other replica and its volume is created there.
 - Resource ratios compare exactly (integer cross-multiplication), never as rounded floats.
 - `placeReplicas` places replicas one after another, each seeing the reservations, ports and spread of the previous ones, and reports how many did not fit.
-- An unplaced replica returns one rejection reason per node: `not_ready`, `architecture`, `labels`, `not_allowed`, `volume`, `cpu`, `memory` or `ports`, checked in that order, for operator explanations.
+- Disk (ADR 0022) is a check, not a reservation: a replica fits a node only if the free disk its agent last reported (`disk_free_bytes`) minus the disk budgets this placement already put there leaves the replica's budget plus 2 GiB (`DISK_MARGIN_BYTES`). A node that reported no free disk is not checked.
+- An unplaced replica returns one rejection reason per node: `not_ready`, `architecture`, `labels`, `not_allowed`, `volume`, `cpu`, `memory`, `disk` or `ports`, checked in that order, for operator explanations.
 - A node whose agent reported no architecture, CPU count or memory has no capacity. It is rejected with `architecture`, `cpu` or `memory`, even for a replica that reserves nothing, and the other nodes are still considered.
 - A replica reserves the CPU and memory limits its container runs under: `resources`, or the defaults of section 2.2. `resourceLimits` (`apps/api/src/modules/deployments/domain/container-plan.ts`) gives the placement request, the `Allocation` and the container spec the same two values. A node's capacity is its CPU count and its memory as its agent reports them, and placement never lets the reservations on a node exceed it.
 - Placements of one organization run one at a time. `place` takes a transaction-level PostgreSQL advisory lock for the organization (`PipelineStore.lockPlacement`) before it reads the nodes and their load, and holds it until its replicas are stored or the transaction rolls back. Two deployments placed at the same moment therefore cannot both count the same room as free: the second one reads the load with the first one's replicas in it. It also reads the time once it holds the lock, so a node whose heartbeats stopped while it waited is not counted as ready.

@@ -24,8 +24,15 @@ export interface ContainerPlan {
   readonly labels: Readonly<Record<string, string>>;
   readonly cpuMillis: number;
   readonly memoryBytes: number;
+  /** What the writable layer may reach; the agent stops a container above it (ADR 0022). */
+  readonly diskBytes: number;
+  /** A read-only root filesystem with a bounded tmpfs at /tmp (`run.read_only_root`). */
+  readonly readOnlyRoot: boolean;
   readonly restart: 'always' | 'never';
 }
+
+/** The tmpfs at /tmp of a container with a read-only root (ADR 0022); it counts in its memory. */
+export const READ_ONLY_TMP_BYTES = 64 * 2 ** 20;
 
 export interface HealthPlan {
   /** HTTP path probed on `port` (SPEC 2: `run.healthcheck.path`). */
@@ -45,8 +52,13 @@ export function cpuMillis(value: string): number {
 }
 
 /** Kubernetes-style size (`512Mi`, `2G`, bare bytes) as bytes. Zero is refused, not unlimited. */
-export function sizeBytes(value: string): number {
-  return positive(sizeInBytes(value), 'memory');
+export function sizeBytes(value: string, what = 'memory'): number {
+  return positive(sizeInBytes(value), what);
+}
+
+/** The disk budget of each container: `resources.disk`, or 1 GiB (ADR 0022). */
+export function diskBudget(config: ShipkeepConfig): number {
+  return sizeBytes(config.resources?.disk ?? DEFAULT_RESOURCES.disk, 'disk');
 }
 
 /**
@@ -106,6 +118,8 @@ export function containerPlan(input: {
     network: input.network,
     labels: input.labels,
     ...resourceLimits(config),
+    diskBytes: diskBudget(config),
+    readOnlyRoot: config.run?.read_only_root === true,
     restart: input.task ? 'never' : 'always',
   };
 }

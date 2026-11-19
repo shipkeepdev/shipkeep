@@ -130,6 +130,9 @@ message ContainerStatus {
   google.protobuf.Timestamp started_at = 6;
   int32 exit_code = 7;
   map<string, string> labels = 8;
+  // Why the agent stopped the container itself, kept while the container exists: empty, or
+  // "disk_limit" when its writable layer went over its budget (ADR 0022).
+  string stop_reason = 9;
 
   enum State {
     STATE_UNSPECIFIED = 0;

@@ -6,6 +6,7 @@ import (
 	"path"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
@@ -14,22 +15,27 @@ import (
 
 // Limits of a container specification (SPEC 3.3). Every bound is checked before the daemon.
 const (
-	maxCommand      = 64
-	maxArgument     = 4096
-	maxEnv          = 256
-	maxEnvValue     = 32 * 1024
-	maxSecretValue  = 64 * 1024
-	maxMounts       = 16
-	maxPorts        = 32
-	maxDNS          = 3
-	maxCPUMillis    = 256_000
-	maxMemoryBytes  = 1 << 40
-	maxTmpfsBytes   = 1 << 30
-	maxStopSeconds  = 600
-	defaultPids     = 1024
-	maxPids         = 65_536
-	maxRestarts     = 100
-	identityLabel   = "sk.name"
+	maxCommand     = 64
+	maxArgument    = 4096
+	maxEnv         = 256
+	maxEnvValue    = 32 * 1024
+	maxSecretValue = 64 * 1024
+	maxMounts      = 16
+	maxPorts       = 32
+	maxDNS         = 3
+	maxCPUMillis   = 256_000
+	maxMemoryBytes = 1 << 40
+	maxTmpfsBytes  = 1 << 30
+	maxStopSeconds = 600
+	defaultPids    = 1024
+	maxPids        = 65_536
+	maxRestarts    = 100
+	identityLabel  = "sk.name"
+	// DiskBudgetLabel records the disk budget the agent enforces (ADR 0022). Only the agent sets
+	// it: labels from the control plane never start with "sk.".
+	DiskBudgetLabel = "sk.disk_bytes"
+	minDiskBytes    = 64 << 20
+	maxDiskBytes    = 1 << 40
 	maxWorkingDir   = 1024
 	maxContainerDir = 1024
 )
@@ -72,6 +78,13 @@ func containerConfig(spec *agentv1.ContainerSpec) (string, docker.ContainerConfi
 		return "", docker.ContainerConfig{}, err
 	}
 	labels[identityLabel] = spec.GetName()
+	disk, err := diskBudget(spec.GetResources())
+	if err != nil {
+		return "", docker.ContainerConfig{}, err
+	}
+	if disk > 0 {
+		labels[DiskBudgetLabel] = strconv.FormatUint(disk, 10)
+	}
 	mounts, err := containerMounts(spec.GetMounts())
 	if err != nil {
 		return "", docker.ContainerConfig{}, err
@@ -240,6 +253,16 @@ func resources(input *agentv1.Resources, host *docker.HostConfig) error {
 		host.PidsLimit = int64(input.GetPidsLimit())
 	}
 	return nil
+}
+
+// diskBudget is the budget of the writable layer (ADR 0022). Zero is no budget, from control
+// planes older than the field; anything else must lie between 64 MiB and 1 TiB.
+func diskBudget(input *agentv1.Resources) (uint64, error) {
+	disk := input.GetDiskBytes()
+	if disk != 0 && (disk < minDiskBytes || disk > maxDiskBytes) {
+		return 0, errInput
+	}
+	return disk, nil
 }
 
 func dnsServers(input []string) ([]string, error) {
