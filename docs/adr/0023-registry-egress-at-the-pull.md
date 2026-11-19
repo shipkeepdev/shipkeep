@@ -1,6 +1,6 @@
 # ADR 0023: The registry address policy at the node's pull
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-19
 
 ## Context
@@ -20,22 +20,31 @@ An application's container can also reach the network. The daemon is different: 
 
 The same lab measured one way to constrain the daemon. Docker reads `HTTP_PROXY` and `HTTPS_PROXY` for its registry traffic. With them set to a logging proxy, every connection of cases 1 to 3 went through the proxy, which could refuse it, except one kind: Go never sends a request for `localhost`, `127.0.0.0/8` or `::1` to a proxy. A redirect or a token service on `http://127.0.0.1:…` still reached the loopback service directly.
 
-The lab then tried an nftables rule that rejects new connections from the daemon's cgroup to loopback. The redirect and the token service on loopback were refused (`connection refused`) and nothing reached the probe. Other processes kept reaching loopback, and a pull from Docker Hub worked.
+The lab then tried an nftables rule that rejects new connections from the daemon's cgroup to loopback. The redirect and the token service on loopback were refused (`connection refused`) and nothing reached the probe. Other processes kept reaching loopback, and a pull from Docker Hub worked. Loaded by an `ExecStartPre` of the Docker unit, the rule kept refusing them after two restarts of Docker, each with a new cgroup.
 
 ## Decision
 
 The maintainer chose an egress proxy on each node, with a firewall rule for loopback.
 
-- **An egress proxy for the Docker daemon.** A new mode of the agent binary, `shipkeep-agent egress`, runs as its own systemd service, `shipkeep-egress`, under its own user. It listens on `127.0.0.1:7480` only. The installer points the daemon at it with a drop-in, `/etc/systemd/system/docker.service.d/shipkeep-egress.conf`, which sets `HTTP_PROXY`, `HTTPS_PROXY` and an empty `NO_PROXY`. The daemon's own `daemon.json` is not touched.
+- **An egress proxy for the Docker daemon.** A new mode of the agent binary, `shipkeep-agent egress`, runs as its own systemd service, `shipkeep-egress`, under its own user. It listens on `127.0.0.1:7480` only. The installer points the daemon at it with a drop-in, `/etc/systemd/system/docker.service.d/shipkeep-egress.conf`, which sets `HTTP_PROXY`, `HTTPS_PROXY` and an empty `NO_PROXY`.
+  - Docker applies the proxy settings of `daemon.json` before those of its environment. The installer does not edit `daemon.json`: it refuses to continue when that file sets any proxy field, and says which one to remove. After it restarts the daemon, it reads the settings the daemon reports (`docker info`) and refuses to finish unless they are exactly the proxy's address and an empty `NO_PROXY`.
+  - The settings can change after the installation: someone edits `daemon.json`, or another drop-in sets the variables. So the agent reads them too (`GET /info`) before each pull. When they are not exactly the proxy's, it refuses the pull with a new cause, `egress_unguarded`, and the deployment says the server's Docker does not go through its egress proxy. An agent started with `--dev` skips this check and logs a warning.
   - The proxy accepts `CONNECT` only, so registry traffic stays HTTPS end to end and the proxy never sees it. A plain HTTP request, and so any redirect or token service in plain HTTP, is refused.
   - It resolves the name itself and connects only to an address that is public, by the same list as the control plane (not loopback, private, link-local, CGNAT, multicast, reserved or documentation ranges, including their IPv4-mapped and NAT64 forms). The check runs on the address the socket connects to, in the dialer, so a second answer cannot change it.
   - It bounds what it holds: 64 tunnels at once, 10 seconds to connect, one hour per tunnel (a pull of a large layer), and it logs the host, the port and the outcome of each tunnel, never a path or a header.
   - The proxy has no exception list now. A registry on a private network stays unsupported, as SPEC 16 says. When it is supported, its exception is an explicit setting of the server, reviewed like any other change of this policy.
-- **A loopback guard in the kernel.** The installer adds an nftables table, `inet shipkeep_egress`, with one rule in the `output` hook. It rejects the new connections that the processes of `docker.service` open to `127.0.0.0/8` or `::1`, except to the proxy's port and to port 53, where the local resolver listens.
-  - The rule matches the cgroup that systemd reports for `docker.service` (`socket cgroupv2`). It therefore touches neither the containers, which have their own network namespace, nor the other services of the host.
+- **A loopback guard in the kernel.** An nftables table, `inet shipkeep_egress`, has one chain in the `output` hook. It rejects the new connections that the processes of `docker.service` open to `127.0.0.0/8` or `::1`, with two exceptions, each an exact address and port:
+  - the proxy, `127.0.0.1` port 7480, TCP;
+  - each loopback name server listed in `/etc/resolv.conf` when the installer runs (`127.0.0.53` with systemd-resolved), port 53, UDP and TCP.
+
+  Nothing else on loopback is allowed, so a service on `[::1]:7480` or on another port of the resolver's address is out of reach.
+  - The rule matches the cgroup of `docker.service` (`socket cgroupv2`, level 2, `system.slice/docker.service`). It therefore touches neither the containers, which have their own network namespace, nor the other services of the host. The installer checks that systemd reports that cgroup for the unit, and refuses to continue otherwise.
+  - nftables resolves that path to a numeric cgroup ID when the rule is loaded, and systemd creates a new cgroup, with a new ID, each time the service starts. The table is therefore loaded by the same drop-in, as `ExecStartPre=/usr/sbin/nft -f /etc/shipkeep/egress-guard.nft`. That command runs inside the new cgroup, after systemd created it and before `dockerd` starts, at boot and at every restart. The file replaces the whole table, so a reload never leaves a stale rule. If it fails, Docker does not start: the guard is never missing while the daemon runs, at the cost of the daemon's availability. The installer checks the file with `nft -c` before it installs it.
+  - An operator who flushes the whole ruleset afterwards (`nft flush ruleset`, a restart of `nftables.service` with the default configuration) removes the guard until the next start of Docker. The installation guide says so, and says how to restore it (`systemctl restart docker`).
   - It matches new connections only (`ct state new`). The replies of `docker-proxy`, which serves published ports from the daemon's cgroup, still reach local clients, such as the agent of a single-machine installation that connects to the gateway on loopback.
   - It catches what bypasses the proxy: the loopback literals of a redirect or a token service, and a name that resolves to loopback.
-- **Nothing changes in the agent contract.** `PullImage` stays the same action, and the control plane keeps its own checks: a reference refused there never reaches a node. The node's checks hold even if the control plane's answer was wrong or has changed.
+
+- **The agent contract keeps its actions.** `PullImage` stays the same action, with one more cause in its closed list (`egress_unguarded`). The control plane keeps its own checks: a reference refused there never reaches a node. The node's checks hold even if the control plane's answer was wrong or has changed.
 - **Fail closed.** If the proxy is down, pulls fail with `registry_unreachable`. Running containers and routes are not affected. The service restarts after 5 seconds, like the agent.
 
 ## Alternatives considered
@@ -49,9 +58,9 @@ The maintainer chose an egress proxy on each node, with a firewall rule for loop
 
 - A pull reaches only public addresses, over HTTPS, whatever the registry, its redirects or its token service answer. The public registries in use redirect blobs over HTTPS to public storage (Docker Hub, GHCR, ECR, GCR), so they keep working. A registry that redirects to plain HTTP stops working.
 - The proxy sees host names and ports, so the node's log shows which registries it reaches. It never sees paths, tokens or credentials: they travel inside TLS.
-- Every pull of the Docker daemon on the server goes through the proxy, including the images of the control plane on a single machine (`docker compose pull` at an upgrade). An operator who uses the same daemon for something else gets the same policy for it, and the installation guide says so.
+- Every pull of the Docker daemon on the server goes through the proxy, which the agent checks before each pull, including the images of the control plane on a single machine (`docker compose pull` at an upgrade). An operator who uses the same daemon for something else gets the same policy for it, and the installation guide says so.
 - The control plane installer pulls its images before the server installer runs, so a first installation is not affected. Later upgrades go through the proxy.
 - Applying the drop-in needs a restart of the Docker daemon. On a new server the installer does it before any application runs. On a server already installed, the next run of the installer does it, and says that running containers restart with the daemon. Live restore is not assumed.
 - nftables is part of Ubuntu 24.04. The installer checks that the `socket cgroupv2` match is available and refuses to continue without it, rather than install a proxy that loopback literals can bypass.
-- New code: the egress mode of the agent, with tests for the address check at the dialer (rebinding, IPv4-mapped and NAT64 forms, IPv6 literals), the refusal of plain HTTP, the bounds and the log. Also the installer's drop-in and nftables table, with tests of the installer (`install_test.sh`), and a lab test on a real daemon that repeats the four cases above and checks that nothing reaches the loopback or private probes.
+- New code: the egress mode of the agent, with tests for the address check at the dialer (rebinding, IPv4-mapped and NAT64 forms, IPv6 literals), the refusal of plain HTTP, the bounds and the log. The agent's check of the daemon's proxy settings before a pull, with the `egress_unguarded` cause. The installer's drop-in, guard file and checks, with tests of the installer (`install_test.sh`). A lab test on a real daemon that repeats the four cases above, also after a restart of Docker, and checks that nothing reaches the loopback or private probes.
 - `docs/SPEC.md` (sections 8 and 16), `docs/THREAT_MODEL.md` and `docs/INSTALL.md` change with the implementation.
