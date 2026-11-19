@@ -138,6 +138,13 @@ describe('enrollment admission over real HTTP/2 TLS and PostgreSQL', () => {
 
   // The two cases share the network's quota, in this order: six attempts in all.
   let enrolled: { nodeId: string; leaseEpoch: bigint; cert: string; key: string };
+  /** The first frame the gateway sends the enrolled node on a new stream. */
+  const welcome = () => {
+    const stream = client({ cert: enrolled.cert, key: enrolled.key }).connect(
+      hello(enrolled.nodeId, enrolled.leaseEpoch),
+    );
+    return stream[Symbol.asyncIterator]().next();
+  };
 
   it('refuses enrollment once the global budget is full, whatever the connection, and keeps nodes connected', async () => {
     // Attempt 1: a node enrolls.
@@ -182,12 +189,7 @@ describe('enrollment admission over real HTTP/2 TLS and PostgreSQL', () => {
     expect({ lookups, nodes: await nodes() }).toEqual(before);
     expect(await unused(token.id)).toBe(true);
     // An enrolled node keeps its stream meanwhile.
-    await expect(
-      client({ cert: enrolled.cert, key: enrolled.key })
-        .connect(hello(enrolled.nodeId, enrolled.leaseEpoch))
-        [Symbol.asyncIterator]()
-        .next(),
-    ).resolves.toMatchObject({ value: { msg: { case: 'welcome' } } });
+    await expect(welcome()).resolves.toMatchObject({ value: { msg: { case: 'welcome' } } });
     open();
     await Promise.all(holders);
     // Attempt 3: the same token enrolls once the budget is free.
@@ -227,11 +229,6 @@ describe('enrollment admission over real HTTP/2 TLS and PostgreSQL', () => {
     expect(lookups).toBe(before);
     expect(await unused(token.id)).toBe(true);
     // Enrolled nodes are not enrollments: their streams do not count.
-    await expect(
-      client({ cert: enrolled.cert, key: enrolled.key })
-        .connect(hello(enrolled.nodeId, enrolled.leaseEpoch))
-        [Symbol.asyncIterator]()
-        .next(),
-    ).resolves.toMatchObject({ value: { msg: { case: 'welcome' } } });
+    await expect(welcome()).resolves.toMatchObject({ value: { msg: { case: 'welcome' } } });
   });
 });
