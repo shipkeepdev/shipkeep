@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"net/netip"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -18,6 +20,7 @@ import (
 
 	"github.com/shipkeepdev/shipkeep/agent/internal/agent"
 	"github.com/shipkeepdev/shipkeep/agent/internal/config"
+	"github.com/shipkeepdev/shipkeep/agent/internal/egress"
 	"github.com/shipkeepdev/shipkeep/agent/internal/logging"
 	"github.com/shipkeepdev/shipkeep/lib/buildinfo"
 )
@@ -67,6 +70,9 @@ func parseFlags(args []string, stderr io.Writer) (options, error) {
 // run executes the agent with the given arguments. It is separated from main so tests can drive
 // it without spawning a process.
 func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "egress" {
+		return runEgress(ctx, args[1:], stderr)
+	}
 	opts, err := parseFlags(args, stderr)
 	if err != nil {
 		return exitUsage
@@ -129,4 +135,39 @@ func loadConfig(opts options) (config.Config, error) {
 		path = config.DefaultPath
 	}
 	return config.Load(path, config.Default(), false)
+}
+
+// runEgress serves the egress proxy of the Docker daemon (ADR 0023), its own service on the
+// node. It takes no configuration file: the address is fixed, and only a test may change it.
+func runEgress(ctx context.Context, args []string, stderr io.Writer) int {
+	fs := flag.NewFlagSet("shipkeep-agent egress", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	listen := fs.String("listen", egress.Address, "address to listen on; loopback only")
+	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
+		return exitUsage
+	}
+	address, err := netip.ParseAddrPort(*listen)
+	if err != nil || !address.Addr().IsLoopback() {
+		_, _ = fmt.Fprintln(stderr, "shipkeep-agent egress: --listen must be a loopback address and port")
+		return exitUsage
+	}
+	logger, err := logging.New(stderr, "info", "json",
+		slog.String("component", "shipkeep-egress"),
+		slog.String("version", buildinfo.Version),
+	)
+	if err != nil {
+		return exitError
+	}
+	var listenConfig net.ListenConfig
+	listener, err := listenConfig.Listen(ctx, "tcp", address.String())
+	if err != nil {
+		logger.Error("egress proxy cannot listen", "error", err)
+		return exitError
+	}
+	logger.Info("egress proxy listening", "address", listener.Addr().String())
+	if err := egress.New(logger, egress.DefaultLimits).Serve(ctx, listener); err != nil {
+		logger.Error("egress proxy failed", "error", err)
+		return exitError
+	}
+	return exitOK
 }
