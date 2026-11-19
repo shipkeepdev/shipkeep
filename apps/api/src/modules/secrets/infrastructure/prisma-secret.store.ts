@@ -66,9 +66,13 @@ export class PrismaSecretStore implements SecretStore {
   async remove(target: SecretTarget, name: string): Promise<SecretMetadata | undefined> {
     const existing = await this.database.client.secret.findFirst({ where: { ...target, name } });
     if (!existing) return undefined;
-    await this.database.client.secret.deleteMany({
-      where: { id: existing.id, organizationId: target.organizationId },
+    // Only the version that was read, as in put: a rotation or a removal that committed meanwhile
+    // makes this one a conflict, so the audit event always names the version actually deleted.
+    const deleted = await this.database.client.secret.deleteMany({
+      where: { id: existing.id, organizationId: target.organizationId, version: existing.version },
     });
+    if (deleted.count !== 1)
+      throw new ConflictError('secret_changed', 'The secret changed meanwhile; retry.');
     return metadata(existing);
   }
 

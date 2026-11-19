@@ -95,4 +95,80 @@ describe('environment secrets over HTTP', () => {
     await fixture.post(`${path()}/TEMP/remove`, 'owner', {}).expect(404);
     expect(await auditLog().count({ where: { action: 'secret.removed' } })).toBe(1);
   });
+
+  /**
+   * Runs `between` once, right before the next removal deletes the row it read: the removal has
+   * read its version, and `between` commits on other connections before the delete runs (#349).
+   */
+  function pauseNextRemoval(between: () => Promise<unknown>) {
+    const database = fixture.app.get(PrismaUnitOfWork);
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- a getter, called with its receiver below
+    const original = Object.getOwnPropertyDescriptor(PrismaUnitOfWork.prototype, 'client')?.get;
+    let pending = true;
+    const spy = vi.spyOn(database, 'client', 'get').mockImplementation(function (
+      this: PrismaUnitOfWork,
+    ) {
+      const client = original?.call(this) as PrismaUnitOfWork['client'];
+      return new Proxy(client, {
+        get(target, property, receiver) {
+          const value: unknown = Reflect.get(target, property, receiver);
+          if (property !== 'secret') return value;
+          return new Proxy(value as object, {
+            get(secrets, method, inner) {
+              const fn: unknown = Reflect.get(secrets, method, inner);
+              if (method !== 'deleteMany' || !pending || typeof fn !== 'function') return fn;
+              return async (...args: unknown[]) => {
+                pending = false;
+                await between();
+                return (fn as (...a: unknown[]) => Promise<unknown>).apply(secrets, args);
+              };
+            },
+          });
+        },
+      });
+    });
+    return () => {
+      spy.mockRestore();
+    };
+  }
+
+  it('refuses a removal when another account rotated the secret after it was read', async () => {
+    await fixture.post(path(), 'owner', { name: 'ROTATED', value: 'one' }).expect(200);
+    const removedBefore = await auditLog().count({ where: { action: 'secret.removed' } });
+    const restore = pauseNextRemoval(() =>
+      fixture.post(path(), 'environmentAdmin', { name: 'ROTATED', value: 'two' }).expect(200),
+    );
+    try {
+      await fixture.post(`${path()}/ROTATED/remove`, 'owner', {}).expect(409);
+    } finally {
+      restore();
+    }
+    // Version 2 is kept, and no removal was recorded.
+    const listed = await fixture.get(path(), 'owner').expect(200);
+    expect((listed.body as { items: unknown[] }).items).toContainEqual(
+      expect.objectContaining({ name: 'ROTATED', version: 2 }),
+    );
+    expect(await auditLog().count({ where: { action: 'secret.removed' } })).toBe(removedBefore);
+  });
+
+  it('lets only one of two concurrent removals succeed, with one audit event', async () => {
+    await fixture.post(path(), 'owner', { name: 'RACED', value: 'one' }).expect(200);
+    const removedBefore = await auditLog().count({ where: { action: 'secret.removed' } });
+    let second: number | undefined;
+    const restore = pauseNextRemoval(async () => {
+      second = (await fixture.post(`${path()}/RACED/remove`, 'environmentAdmin', {})).status;
+    });
+    let first: number;
+    try {
+      first = (await fixture.post(`${path()}/RACED/remove`, 'owner', {})).status;
+    } finally {
+      restore();
+    }
+    expect([first, second].sort()).toEqual([204, 409]);
+    expect(await auditLog().count({ where: { action: 'secret.removed' } })).toBe(removedBefore + 1);
+    const listed = await fixture.get(path(), 'owner').expect(200);
+    expect((listed.body as { items: unknown[] }).items).not.toContainEqual(
+      expect.objectContaining({ name: 'RACED' }),
+    );
+  });
 });
