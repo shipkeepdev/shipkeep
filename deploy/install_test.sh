@@ -41,7 +41,53 @@ for file in second.asc first-then-second.asc second-then-first.asc one-block.asc
   refused single_signing_key "$work/$file" "$work/refused.gpg" "$first" || die "accepted the key file $file"
   [[ ! -s $work/refused.gpg ]] || die "a keyring was written from $file"
 done
+# The egress guard of the Docker daemon (ADR 0023): only loopback name servers, normalized, become
+# exceptions, and only docker.service's cgroup is matched.
+cat >"$work/resolv.conf" <<'RESOLV'
+# nameserver 127.0.0.9
+nameserver 127.0.0.53
+nameserver 127.000.0.1
+nameserver 8.8.8.8
+nameserver 127.0.0.256
+nameserver 127.0.0.1; drop
+nameserver 127.0.0.1 extra
+nameserver ::1
+nameserver ::2
+nameserver $(id)
+options edns0 trust-ad
+search example.com
+RESOLV
+[[ $(loopback_nameservers "$work/resolv.conf" | tr '\n' ' ') == '127.0.0.53 127.0.0.1 ::1 ' ]] || die 'loopback name servers'
+guard=$(printf '127.0.0.53\n::1\n' | egress_guard /system.slice/docker.service) || die 'the guard was refused'
+grep -qxF '    socket cgroupv2 level 2 "system.slice/docker.service" ct state new jump docker' <<<"$guard" || die 'the guard does not match the cgroup'
+grep -qxF '    ip daddr 127.0.0.1 tcp dport 7480 return' <<<"$guard" || die 'the proxy is not allowed'
+grep -qxF '    meta l4proto { tcp, udp } ct original ip daddr 127.0.0.53 ct original proto-dst 53 return' <<<"$guard" || die 'the name server is not allowed'
+grep -qxF '    meta l4proto { tcp, udp } ct original ip6 daddr ::1 ct original proto-dst 53 return' <<<"$guard" || die 'the IPv6 name server is not allowed'
+grep -qxF '    ip daddr 127.0.0.0/8 reject' <<<"$guard" || die 'loopback is not refused'
+grep -qxF '    ip6 daddr ::1 reject' <<<"$guard" || die 'IPv6 loopback is not refused'
+[[ $(grep -c ' return$' <<<"$guard") == 3 ]] || die 'unexpected exceptions'
+printf '' | egress_guard /system.slice/docker-0123.scope/system.slice/docker.service | grep -qF 'level 4 "system.slice/docker-0123.scope/system.slice/docker.service"' || die 'a nested cgroup'
+# shellcheck disable=SC2016
+for cgroup in '' / docker.service system.slice/docker.service /system.slice/evil.service /system.slice/docker.service.d '/system.slice/docker.service"' '/system.slice/docker.service; drop' $'/system.slice/docker.service\n' '/system.slice/$(id)/docker.service' '/system slice/docker.service'; do
+  refused egress_guard "$cgroup" </dev/null || die "accepted the cgroup $cgroup"
+done
+# A proxy in daemon.json would win over the egress proxy.
+printf '{"log-driver":"json-file"}\n' >"$work/daemon.json"
+daemon_json_without_proxies "$work/daemon.json" || die 'daemon.json without a proxy'
+daemon_json_without_proxies "$work/missing.json" || die 'no daemon.json'
+for key in proxies http-proxy https-proxy no-proxy; do
+  printf '{"%s":"x"}\n' "$key" >"$work/daemon.json"
+  refused daemon_json_without_proxies "$work/daemon.json" || die "accepted $key in daemon.json"
+done
+# What the daemon reports must be exactly the egress proxy, without exception.
+egress_proxies_applied <<<'{"ID":"x","HttpProxy":"http://127.0.0.1:7480","HttpsProxy":"http://127.0.0.1:7480","NoProxy":"","Name":"n"}' || die 'the egress proxy was not recognized'
+for info in '{}' '{"HttpProxy":"","HttpsProxy":"","NoProxy":""}' \
+  '{"HttpProxy":"http://127.0.0.1:7480","HttpsProxy":"http://127.0.0.1:7480","NoProxy":"*"}' \
+  '{"HttpProxy":"http://127.0.0.1:7480","HttpsProxy":"http://10.0.0.5:3128","NoProxy":""}' \
+  '{"HttpProxy":"http://127.0.0.1:74800","HttpsProxy":"http://127.0.0.1:74800","NoProxy":""}'; do
+  refused egress_proxies_applied <<<"$info" || die "accepted $info"
+done
 # shellcheck source=/dev/null
 . deploy/docker-repository-test.sh
 check_docker_repository deploy/install.sh "$work/apt"
-printf 'Installer input, redaction and signing-key checks passed.\n'
+printf 'Installer input, redaction, signing-key and egress checks passed.\n'

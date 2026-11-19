@@ -150,14 +150,21 @@ To turn email on later, set `SMTP_HOST` and `SMTP_FROM` in `.env`, and `SMTP_USE
 
 ## Add a server
 
-Each server needs a fresh Ubuntu 24.04 (amd64 or arm64) with `curl` and `sudo`, free ports 80 and 443, and outbound access to the control plane on ports 443 and 7443. The control plane never connects to it.
+Each server needs a fresh Ubuntu 24.04 (amd64 or arm64) with `curl` and `sudo`, free ports 80 and 443 (and 7480 on loopback), and outbound access to the control plane on ports 443 and 7443. The control plane never connects to it. If `/etc/docker/daemon.json` exists, it must not set a proxy (`proxies`, `http-proxy`, `https-proxy`, `no-proxy`): the installer refuses it.
 
 1. In the web UI, open **Servers**, enter your password and choose **Create a join token**. The token is shown once and expires after 15 minutes.
 2. Choose **Copy the command** and run it on the server. It downloads the installer from your control plane, checks its checksum, and runs it with `sudo`. If the checksum does not match, it says so and runs nothing.
 3. When asked, paste the join token. Its input is hidden, and it never appears in the command.
-4. The installer adds Docker (when absent) and Caddy, creates the `shipkeep-agent` and `shipkeep-caddy` services and starts them. Back in **Servers**, the server shows as `ready` within a few seconds.
+4. The installer adds Docker (when absent) and Caddy, creates the `shipkeep-agent`, `shipkeep-caddy` and `shipkeep-egress` services and starts them. Back in **Servers**, the server shows as `ready` within a few seconds.
 
-On failure, `journalctl -u shipkeep-agent` on the server says why. The installer refuses a server that already has Shipkeep or Caddy; [`deploy/README.md`](../deploy/README.md) lists what to remove to start over.
+Docker pulls every image through `shipkeep-egress`, a proxy on `127.0.0.1:7480` that connects only to public addresses over HTTPS, and an nftables table, `inet shipkeep_egress`, keeps the Docker daemon off the server's loopback (ADR 0023). This holds for every pull of this Docker daemon, including any you run yourself. The installer restarts Docker once to apply it, so containers already running restart with it.
+
+- Before each pull, the agent checks that Docker still goes through the proxy. If a later change to `daemon.json` or to another drop-in of `docker.service` sets a proxy, the deployment fails, saying that Docker does not go through its egress proxy. Remove that setting and restart Docker.
+- Do not flush the whole nftables ruleset by hand (`nft flush ruleset`): it removes the guard until Docker starts again. A restart of `nftables.service` loads the guard again by itself. `sudo systemctl restart docker` loads it in every case.
+- Registries on a private network are not supported yet.
+- A server installed before this change has neither the proxy nor the guard. Its agent keeps pulling as before until it is upgraded; an agent from this release refuses to pull on it. Install the server again to get them.
+
+On failure, `journalctl -u shipkeep-agent` (or `-u shipkeep-egress` for a refused pull) on the server says why. The installer refuses a server that already has Shipkeep or Caddy; [`deploy/README.md`](../deploy/README.md) lists what to remove to start over.
 
 ## Back up the key-encryption key
 

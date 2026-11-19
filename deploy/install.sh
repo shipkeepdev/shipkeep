@@ -71,6 +71,135 @@ REPO
   keep_repository=1
   apt-get install -y --no-download --no-install-recommends docker-ce docker-ce-cli containerd.io </dev/null
 )
+# The egress proxy of the Docker daemon (ADR 0023). Its address is fixed: the agent checks it
+# (agent/internal/actions EgressProxy) and the proxy listens there (agent/internal/egress).
+egress_proxy=http://127.0.0.1:7480
+# Prints the loopback name servers of the resolv.conf $1, one per line and normalized: an IPv4
+# address in 127.0.0.0/8, or ::1. The Docker daemon resolves names through them, so the guard
+# lets it reach them on port 53. Any other line is ignored.
+loopback_nameservers() {
+  local keyword address rest
+  while read -r keyword address rest || [[ -n $keyword ]]; do
+    [[ $keyword == nameserver && -z $rest ]] || continue
+    if [[ $address =~ ^127\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+      ((10#${BASH_REMATCH[1]} <= 255 && 10#${BASH_REMATCH[2]} <= 255 && 10#${BASH_REMATCH[3]} <= 255)) || continue
+      printf '127.%d.%d.%d\n' "$((10#${BASH_REMATCH[1]}))" "$((10#${BASH_REMATCH[2]}))" "$((10#${BASH_REMATCH[3]}))"
+    elif [[ $address == ::1 ]]; then
+      printf '::1\n'
+    fi
+  done <"$1"
+}
+# Prints the nftables guard of ADR 0023: new connections from the cgroup $1 (as systemd reports it
+# for docker.service) to loopback are rejected, except to the egress proxy and to the name servers
+# read on standard input, port 53. It fails for a cgroup that is not docker.service's.
+egress_guard() {
+  local cgroup=$1 level server family
+  [[ $cgroup =~ ^(/[A-Za-z0-9@._:-]+)*/docker\.service$ ]] || return 1
+  level=${cgroup//[^\/]/}
+  printf 'destroy table inet shipkeep_egress\n'
+  printf 'table inet shipkeep_egress {\n'
+  printf '  chain output {\n'
+  printf '    type filter hook output priority filter; policy accept;\n'
+  printf '    socket cgroupv2 level %d "%s" ct state new jump docker\n' "${#level}" "${cgroup#/}"
+  printf '  }\n'
+  printf '  chain docker {\n'
+  printf '    ip daddr 127.0.0.1 tcp dport 7480 return\n'
+  while read -r server; do
+    family=ip
+    [[ $server == ::1 ]] && family=ip6
+    # The original destination: a resolver may be reached through a DNAT to another port, as
+    # Docker's embedded resolver (127.0.0.11) is inside a container.
+    printf '    meta l4proto { tcp, udp } ct original %s daddr %s ct original proto-dst 53 return\n' "$family" "$server"
+  done
+  printf '    ip daddr 127.0.0.0/8 reject\n'
+  printf '    ip6 daddr ::1 reject\n'
+  printf '  }\n'
+  printf '}\n'
+}
+# Fails when the daemon.json $1 sets a proxy: Docker applies it before its environment, so the
+# egress proxy would be bypassed.
+daemon_json_without_proxies() {
+  [[ ! -e $1 ]] || ! grep -Eq '"(proxies|http-proxy|https-proxy|no-proxy)"' "$1"
+}
+# True when the daemon's GET /info answer, on standard input, reports exactly the egress proxy for
+# both schemes and no exception.
+egress_proxies_applied() {
+  local info
+  info=$(cat)
+  [[ $info == *"\"HttpProxy\":\"$egress_proxy\""* && $info == *"\"HttpsProxy\":\"$egress_proxy\""* && $info == *'"NoProxy":""'* ]]
+}
+# Checks that the Docker daemon can be put behind the egress proxy, and writes the guard to
+# $1/egress.nft (ADR 0023). Nothing on the system changes but the nftables package.
+prepare_egress() {
+  daemon_json_without_proxies /etc/docker/daemon.json || fail 'Remove the proxy settings (proxies, http-proxy, https-proxy, no-proxy) from /etc/docker/daemon.json: Docker would apply them instead of the egress proxy.'
+  command -v nft >/dev/null || apt-get install -y --no-install-recommends nftables </dev/null
+  local cgroup
+  cgroup=$(systemctl show --property ControlGroup --value docker.service)
+  loopback_nameservers /etc/resolv.conf | egress_guard "$cgroup" >"$1/egress.nft" || fail 'docker.service does not run in its own cgroup.'
+  nft --check --file "$1/egress.nft" || fail 'nftables cannot load the egress guard of the Docker daemon.'
+}
+# Runs the egress proxy as its own service, points the Docker daemon at it, installs the guard
+# from $1/egress.nft, restarts Docker and checks what it applies (ADR 0023). $1/agent is the
+# verified agent binary; the account shipkeep-egress exists already.
+install_egress() {
+  local attempt
+  # A root-owned copy: the agent's directory is private to its account, and that account must not
+  # be able to replace the binary the proxy runs.
+  install -d -m 0755 /usr/local/libexec
+  install -m 0755 -o root -g root "$1/agent" /usr/local/libexec/shipkeep-egress
+  cat > /etc/systemd/system/shipkeep-egress.service <<'UNIT'
+[Unit]
+Description=Shipkeep egress proxy of the Docker daemon
+After=network-online.target
+Wants=network-online.target
+[Service]
+User=shipkeep-egress
+Group=shipkeep-egress
+ExecStart=/usr/local/libexec/shipkeep-egress egress
+Restart=always
+RestartSec=5
+CapabilityBoundingSet=
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+UMask=0077
+[Install]
+WantedBy=multi-user.target
+UNIT
+  install -m 0644 "$1/egress.nft" /etc/shipkeep-egress.nft
+  install -d -m 0755 /etc/systemd/system/docker.service.d /etc/systemd/system/nftables.service.d
+  # The guard is loaded inside docker.service's new cgroup before dockerd starts, at every start:
+  # nftables resolves the cgroup when it loads the rule, and each start creates a new one.
+  cat > /etc/systemd/system/docker.service.d/shipkeep-egress.conf <<UNIT
+[Unit]
+Wants=shipkeep-egress.service
+After=shipkeep-egress.service
+[Service]
+Environment=HTTP_PROXY=$egress_proxy HTTPS_PROXY=$egress_proxy NO_PROXY= http_proxy=$egress_proxy https_proxy=$egress_proxy no_proxy=
+ExecStartPre=/usr/sbin/nft --file /etc/shipkeep-egress.nft
+UNIT
+  # A restart of nftables.service flushes the ruleset: it loads the guard again while Docker runs.
+  cat > /etc/systemd/system/nftables.service.d/shipkeep-egress.conf <<'UNIT'
+[Service]
+ExecStartPost=-/usr/sbin/nft --file /etc/shipkeep-egress.nft
+UNIT
+  chmod 0644 /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/{docker,nftables}.service.d/shipkeep-egress.conf
+  systemctl daemon-reload
+  systemctl enable --now shipkeep-egress
+  # Docker reports its proxy settings whether or not anything listens there: wait for the proxy.
+  for attempt in {1..20}; do
+    if systemctl is-active --quiet shipkeep-egress && [[ -n $(ss -H -ltn 'src = 127.0.0.1 and sport = :7480') ]]; then break; fi
+    ((attempt < 20)) || fail 'The egress proxy did not start; inspect journalctl -u shipkeep-egress.'
+    sleep 0.5
+  done
+  printf 'Restarting Docker so that it pulls through the egress proxy; running containers restart with it.\n'
+  systemctl restart docker
+  nft list table inet shipkeep_egress >/dev/null || fail 'The egress guard of the Docker daemon is not loaded.'
+  curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/v1.47/info | egress_proxies_applied || fail 'Docker does not report the egress proxy; check the proxy settings of its other drop-ins (systemctl cat docker).'
+}
 # The checks source this file for the functions above, and stop here.
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
 umask 077
@@ -99,10 +228,10 @@ port=${control_plane##*:}
 . /etc/os-release
 [[ $ID == ubuntu && $VERSION_ID == 24.04 ]] || fail 'This installer supports Ubuntu 24.04.'
 case $(uname -m) in x86_64) digest=$amd64 ;; aarch64) digest=$arm64 ;; *) fail 'Unsupported architecture.' ;; esac
-for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep /etc/shipkeep-caddy.json /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/tmpfiles.d/shipkeep.conf; do
+for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep /etc/shipkeep-caddy.json /etc/shipkeep-egress.nft /usr/local/libexec/shipkeep-egress /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf /etc/tmpfiles.d/shipkeep.conf; do
   [[ ! -e $path && ! -L $path ]] || fail 'Existing Shipkeep installation; refusing to overwrite it.'
 done
-for account in shipkeep shipkeep-caddy; do
+for account in shipkeep shipkeep-caddy shipkeep-egress; do
   ! getent passwd "$account" >/dev/null || fail 'An installation service account already exists.'
   ! getent group "$account" >/dev/null || fail 'An installation group already exists.'
 done
@@ -111,6 +240,8 @@ listeners=$(ss -H -ltn '( sport = :80 or sport = :443 )') || fail 'Cannot inspec
 [[ -z $listeners ]] || fail 'Ports 80/443 are occupied.'
 listeners=$(ss -H -lun 'sport = :443') || fail 'Cannot inspect UDP ports.'
 [[ -z $listeners ]] || fail 'Port 443 is occupied.'
+listeners=$(ss -H -ltn 'sport = :7480') || fail 'Cannot inspect TCP ports.'
+[[ -z $listeners ]] || fail 'Port 7480 is occupied; the egress proxy of the Docker daemon listens there.'
 [[ ! -e /usr/bin/caddy && ! -e /etc/apt/sources.list.d/shipkeep-caddy.sources && ! -e /etc/apt/keyrings/shipkeep-caddy.gpg && ! -e /etc/apt/keyrings/shipkeep-caddy.asc ]] || fail 'Caddy is already installed; reconcile it manually.'
 for service in caddy.service caddy-api.service; do
   if systemctl is-active --quiet "$service" || systemctl is-enabled --quiet "$service"; then fail 'Existing Caddy service; reconcile it manually.'; fi
@@ -132,6 +263,8 @@ fi
 systemctl enable --now docker
 # The agent pins Docker API 1.47. Do not silently replace an incompatible existing daemon.
 curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/v1.47/info -o /dev/null || fail 'Docker API 1.47 is unavailable.'
+# Every pull goes through the egress proxy, and a guard keeps the daemon off loopback (ADR 0023).
+prepare_egress "$work"
 # Upstream's signed repository: the edge proxy needs security updates, and Ubuntu's universe build
 # (2.6.2) neither guarantees them nor supports the socket mode used below.
 curl --fail --silent --show-error --proto '=https' --max-time 60 https://dl.cloudsmith.io/public/caddy/stable/gpg.key -o "$work/caddy.asc"
@@ -170,6 +303,7 @@ printf '\n' >&2
 groupadd --system shipkeep
 useradd --system --gid shipkeep --groups docker --home-dir /var/lib/shipkeep --no-create-home --shell /usr/sbin/nologin shipkeep
 useradd --system --gid shipkeep --home-dir /var/lib/shipkeep-caddy --no-create-home --shell /usr/sbin/nologin shipkeep-caddy
+useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin shipkeep-egress
 install -d -m 0700 -o shipkeep -g shipkeep /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep/bin
 install -m 0755 -o shipkeep -g shipkeep "$work/agent" /var/lib/shipkeep/bin/shipkeep-agent
 install -m 0600 -o shipkeep -g shipkeep "$work/agent.yaml" /etc/shipkeep/agent.yaml
@@ -235,6 +369,6 @@ UMask=0077
 WantedBy=multi-user.target
 UNIT
 chmod 0644 /etc/systemd/system/shipkeep-{agent,caddy}.service
-systemctl daemon-reload
+install_egress "$work"
 systemctl enable --now shipkeep-caddy shipkeep-agent
 printf 'Services started. Refresh Servers to verify ready; inspect journalctl -u shipkeep-agent on failure.\n'
