@@ -82,9 +82,17 @@ export class PrismaApplicationStore implements ApplicationStore {
     now: Date,
   ): Promise<string | undefined> {
     const { id: applicationId, organizationId } = application;
-    await this.database.client.domain.deleteMany({
-      where: { applicationId, hostname: { notIn: [...hostnames] } },
+    // A domain the configuration drops stays reserved while a placed release still serves it
+    // (#302); one it lists again is reserved as before.
+    await this.database.client.domain.updateMany({
+      where: { applicationId, hostname: { notIn: [...hostnames] }, releasingAt: null },
+      data: { releasingAt: now },
     });
+    await this.database.client.domain.updateMany({
+      where: { applicationId, hostname: { in: [...hostnames] }, releasingAt: { not: null } },
+      data: { releasingAt: null },
+    });
+    await this.releaseUnservedDomains(application);
     await this.database.client.domain.createMany({
       data: hostnames.map((hostname) => ({
         id: uuidv7(),
@@ -102,6 +110,34 @@ export class PrismaApplicationStore implements ApplicationStore {
     });
     const mine = new Set(owned.map((row) => row.hostname));
     return hostnames.find((hostname) => !mine.has(hostname));
+  }
+
+  async releaseUnservedDomains(
+    application: Pick<Application, 'id' | 'organizationId'>,
+  ): Promise<void> {
+    const { id: applicationId, organizationId } = application;
+    // What the application's routes can still serve: the domains of its releases that have placed
+    // replicas. The pipeline stops replicas only once their route no longer needs them.
+    const placed = await this.database.client.allocation.findMany({
+      where: { organizationId, applicationId, state: 'placed' },
+      select: { releaseId: true },
+      distinct: ['releaseId'],
+    });
+    const releases = placed.length
+      ? await this.database.client.release.findMany({
+          where: { organizationId, id: { in: placed.map((row) => row.releaseId) } },
+          select: { config: true },
+        })
+      : [];
+    const served = [...new Set(releases.flatMap((release) => configDomains(release.config)))];
+    await this.database.client.domain.deleteMany({
+      where: {
+        organizationId,
+        applicationId,
+        releasingAt: { not: null },
+        hostname: { notIn: served },
+      },
+    });
   }
 
   async find(target: ApplicationTarget, applicationId: string): Promise<Application | undefined> {
@@ -192,4 +228,13 @@ function application(row: {
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
+}
+
+/** The domains a stored release configuration lists; anything else in that JSON is ignored. */
+function configDomains(config: unknown): string[] {
+  if (typeof config !== 'object' || config === null) return [];
+  const domains: unknown = (config as { domains?: unknown }).domains;
+  return Array.isArray(domains)
+    ? domains.filter((domain): domain is string => typeof domain === 'string')
+    : [];
 }

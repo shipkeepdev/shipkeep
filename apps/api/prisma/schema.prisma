@@ -543,6 +543,8 @@ model Domain {
   applicationId  String      @map("application_id") @db.Uuid
   hostname       String      @db.VarChar(253)
   createdAt      DateTime    @map("created_at") @db.Timestamptz(6)
+  /// Set when the configuration no longer lists the domain while a placed release still does.
+  releasingAt    DateTime?   @map("releasing_at") @db.Timestamptz(6)
   application    Application @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "domains_application_fkey")
 
   @@unique([organizationId, hostname])

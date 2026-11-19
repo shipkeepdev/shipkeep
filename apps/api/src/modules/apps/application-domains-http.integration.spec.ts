@@ -7,7 +7,12 @@ import { tenantHttpFixture } from '../../testing/tenant-http';
 import { AllocationObservations } from '../deployments/application/allocation-observations';
 import { PIPELINE_STORE, type PipelineStore } from '../deployments/application/ports';
 
-import { DOMAIN_RESOLVER, type DomainResolver } from './application/ports';
+import {
+  APPLICATION_STORE,
+  type ApplicationStore,
+  DOMAIN_RESOLVER,
+  type DomainResolver,
+} from './application/ports';
 
 /** Fixed answers instead of the host's resolver; `undefined` is a failed lookup. */
 const ANSWERS: Readonly<Record<string, readonly string[] | undefined>> = {
@@ -88,6 +93,98 @@ describe('application domains over HTTP', () => {
     await fixture
       .post(path(), 'owner', { config: config({ name: 'wild-app', domains: ['*.example.com'] }) })
       .expect(400);
+  });
+
+  it('keeps a dropped domain reserved while a placed release still serves it (#302)', async () => {
+    const nodeId = await enrollTestNode(fixture, {
+      facts: { hostname: 'edge-moving.example.com' },
+      ready: false,
+    });
+    const first = (
+      await fixture
+        .post(path(), 'owner', {
+          config: config({
+            name: 'moving-from',
+            domains: ['moving.example.com'],
+            secrets: undefined,
+          }),
+        })
+        .expect(201)
+    ).body as ApplicationBody;
+    const queued = await fixture.post(`${path()}/${first.id}/deployments`, 'owner', {}).expect(201);
+    const releaseId = (queued.body as { release: { id: string } }).release.id;
+    const tenant = <T>(work: () => Promise<T>) =>
+      fixture.app.get(PrismaUnitOfWork).runTenant(fixture.organizationId, work);
+    const pipeline = fixture.app.get<PipelineStore>(PIPELINE_STORE);
+    await tenant(() =>
+      pipeline.place(
+        fixture.organizationId,
+        first.id,
+        releaseId,
+        [
+          {
+            index: 0,
+            nodeId,
+            container: 'sk-moving-from-0',
+            port: 3000,
+            cpuMillis: 0,
+            memoryBytes: 0,
+          },
+        ],
+        new Date(),
+      ),
+    );
+    // The configuration drops the domain; the placed release still lists it, so its route may
+    // still serve it.
+    const dropped = (
+      await fixture
+        .post(`${path()}/${first.id}/config`, 'owner', {
+          expectedConfigSha: first.configSha,
+          config: config({ name: 'moving-from', domains: [], secrets: undefined }),
+        })
+        .expect(200)
+    ).body as ApplicationBody;
+    const claim = () =>
+      fixture.post(path(), 'owner', {
+        config: config({ name: 'moving-to', domains: ['moving.example.com'], secrets: undefined }),
+      });
+    await claim()
+      .expect(409)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'domain_taken',
+          details: { hostname: 'moving.example.com' },
+        });
+      });
+    // Listing it again in the same application takes it back without a conflict.
+    const again = (
+      await fixture
+        .post(`${path()}/${first.id}/config`, 'owner', {
+          expectedConfigSha: dropped.configSha,
+          config: config({
+            name: 'moving-from',
+            domains: ['moving.example.com'],
+            secrets: undefined,
+          }),
+        })
+        .expect(200)
+    ).body as ApplicationBody;
+    await fixture
+      .post(`${path()}/${first.id}/config`, 'owner', {
+        expectedConfigSha: again.configSha,
+        config: config({ name: 'moving-from', domains: [], secrets: undefined }),
+      })
+      .expect(200);
+    await claim().expect(409);
+    // Once the replicas of that release are stopped, as the pipeline does when the next
+    // deployment or a stop succeeds, nothing serves the domain and another application may take it.
+    await tenant(async () => {
+      await pipeline.stop(first.id, [releaseId], new Date());
+      await fixture.app
+        .get<ApplicationStore>(APPLICATION_STORE)
+        .releaseUnservedDomains({ id: first.id, organizationId: fixture.organizationId });
+    });
+    await claim().expect(201);
   });
 
   it('says whether each domain reaches a node of the organization running the application', async () => {

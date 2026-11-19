@@ -2,6 +2,7 @@ import type { ShipkeepConfig } from '@shipkeep/config-schema';
 import { ConflictError, type DomainEvent, InvalidInputError, Secret } from '@shipkeep/domain';
 
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
+import type { ApplicationStore } from '../../apps/application/ports';
 import type { RegistryCredentialStore } from '../../registries/application/ports';
 import type { RegistryLogin } from '../../registries/domain/registry-credential';
 import type { SecretStore } from '../../secrets/application/ports';
@@ -226,6 +227,14 @@ function world(
       return Promise.resolve();
     },
   } as unknown as DomainEventBus;
+  /** Applications whose dropped domains were offered for release, in order (#302). */
+  const released: string[] = [];
+  const applications = {
+    releaseUnservedDomains: (application: { id: string }) => {
+      released.push(application.id);
+      return Promise.resolve();
+    },
+  } as unknown as ApplicationStore;
   const subject = new DeploymentPipeline(
     deployments,
     pipeline,
@@ -235,6 +244,7 @@ function world(
     registries,
     transaction,
     bus,
+    applications,
   );
 
   /** Agents finish every queued action successfully. */
@@ -250,6 +260,7 @@ function world(
   return {
     subject,
     calls,
+    released,
     pipelineStore: pipeline,
     events,
     superseded,
@@ -314,6 +325,8 @@ describe('DeploymentPipeline', () => {
     expect(
       w.events.every((e) => e.actor.kind === 'system' && !JSON.stringify(e).includes('fixture')),
     ).toBe(true);
+    // Once the replaced replicas are stopped, the domains they alone served are free (#302).
+    expect(w.released).toEqual([APP]);
     expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
   });
 
@@ -558,6 +571,8 @@ describe('DeploymentPipeline', () => {
         ['deployment.advanced', 'succeeded'],
       ]);
       expect(w.superseded).toEqual([]);
+      // The route is gone: the domains the configuration dropped are free (#302).
+      expect(w.released).toEqual([APP]);
     });
 
     it('fails when an agent cannot stop a replica, and keeps the reservation', async () => {
@@ -573,6 +588,8 @@ describe('DeploymentPipeline', () => {
       expect(w.deployment.state).toBe('failed');
       // The replica may still run: it keeps its room until a later stop succeeds.
       expect(w.allocations).toMatchObject([{ id: 'alloc-serving-0', stopped: false }]);
+      // And its domains stay reserved, since its route may still serve them.
+      expect(w.released).toEqual([]);
     });
   });
 
@@ -765,6 +782,7 @@ describe('DeploymentPipeline', () => {
     });
     expect([...w.queued.values()].some((a) => a.kind === 'createContainer')).toBe(false);
     expect(w.allocations.every((a) => a.stopped)).toBe(true);
+    expect(w.released).toEqual([APP]);
   });
 
   it('cleans up a deployment cancelled through the API once', async () => {

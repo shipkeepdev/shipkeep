@@ -40,14 +40,22 @@ export interface ApplicationStore {
    */
   delete(application: Pick<Application, 'id' | 'organizationId'>): Promise<boolean>;
   /**
-   * Makes `hostnames` the application's claimed domains. Returns a hostname another application of
-   * the organization already claims, in which case the caller must abort the transaction.
+   * Makes `hostnames` the application's claimed domains; a dropped domain that a placed release
+   * still lists stays reserved until releaseUnservedDomains frees it. Returns a hostname another
+   * application of the organization already claims, in which case the caller must abort the
+   * transaction.
    */
   syncDomains(
     application: Pick<Application, 'id' | 'organizationId'>,
     hostnames: readonly string[],
     now: Date,
   ): Promise<string | undefined>;
+  /**
+   * Frees the domains the configuration dropped that no placed release of the application lists
+   * any more (#302). Until then they stay reserved, so no other application can claim a domain
+   * that a running route may still serve.
+   */
+  releaseUnservedDomains(application: Pick<Application, 'id' | 'organizationId'>): Promise<void>;
   list(target: ApplicationTarget): Promise<Application[]>;
   /**
    * The organization's nodes, not removed, with a placed replica of the application that their
