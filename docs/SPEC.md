@@ -52,6 +52,7 @@ release:
 resources:
   cpu: '0.5'
   memory: 512Mi
+  disk: 2Gi # what the container may write to its own filesystem (ADR 0022)
 
 scale:
   replicas: 2
@@ -117,6 +118,8 @@ compose:
 - `resources` is the CPU and memory limit of each container of the application, and what placement reserves for each replica (section 6).
   - A limit left out is `1` CPU, or `512Mi` of memory: an application without `resources` runs under one CPU and 512 MiB. `DEFAULT_RESOURCES` in `packages/config-schema` holds the two values for the control plane and the UI.
   - Zero is refused, in any notation (`0`, `0.0`, `0m`, `0Mi`): no value means "unlimited". A positive CPU amount below one millicore counts as one millicore.
+  - `disk` (default `1Gi`, between `64Mi` and `1Ti`) is the size each container's writable layer may reach. It is not reserved by placement. The agent measures it and stops a container above it, with the reason `disk_limit` (ADR 0022).
+  - `run.read_only_root: true` runs each container with a read-only root filesystem and a `64Mi` tmpfs at `/tmp`, which counts in its memory: it then writes only there and to its volumes. Off by default.
   - The release task runs under the same limits. It needs no reservation of its own: it runs on the first replica's node before that replica starts, in the room already reserved for it.
 - Domains: valid hostnames, max 50 per app, wildcard only with DNS-01 configured.
 - Volume paths: absolute, no `..`, not under `/proc`, `/sys`, `/dev`, `/etc`, `/var/run`.
@@ -206,6 +209,7 @@ Containers are created from the typed create body in `agent/internal/docker`. Th
 - `no-new-privileges`, a private IPC namespace and an init process;
 - the CPU and the memory limit of the spec, at most 256 CPUs and 1 TiB. Both are required: zero would mean unlimited to Docker, so a spec without either is refused, for a replica and for a release task alike. The agent has no default of its own, since placement must have reserved the value it enforces;
 - a pids limit (1024 unless specified, at most 65,536);
+- the disk budget of the spec (`Resources.disk_bytes`, 64 MiB to 1 TiB, or zero for none from older control planes) as the agent-owned label `sk.disk_bytes`, which labels from the control plane can never set (ADR 0022);
 - bounded `json-file` logs;
 - added capabilities from the allow-list only.
 
