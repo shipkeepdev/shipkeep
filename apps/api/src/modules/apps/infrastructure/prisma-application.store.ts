@@ -3,7 +3,7 @@ import type { ShipkeepConfig } from '@shipkeep/config-schema';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
-import type { ApplicationStore } from '../application/ports';
+import type { ApplicationStore, DomainSync } from '../application/ports';
 import type {
   Application,
   ApplicationConfig,
@@ -80,7 +80,7 @@ export class PrismaApplicationStore implements ApplicationStore {
     application: Pick<Application, 'id' | 'organizationId'>,
     hostnames: readonly string[],
     now: Date,
-  ): Promise<string | undefined> {
+  ): Promise<DomainSync> {
     const { id: applicationId, organizationId } = application;
     // A domain the configuration drops stays reserved while a placed release still serves it
     // (#302); one it lists again is reserved as before.
@@ -92,7 +92,7 @@ export class PrismaApplicationStore implements ApplicationStore {
       where: { applicationId, hostname: { in: [...hostnames] }, releasingAt: { not: null } },
       data: { releasingAt: null },
     });
-    await this.releaseUnservedDomains(application);
+    const released = await this.releaseUnservedDomains(application);
     await this.database.client.domain.createMany({
       data: hostnames.map((hostname) => ({
         id: uuidv7(),
@@ -109,21 +109,23 @@ export class PrismaApplicationStore implements ApplicationStore {
       select: { hostname: true },
     });
     const mine = new Set(owned.map((row) => row.hostname));
-    return hostnames.find((hostname) => !mine.has(hostname));
+    return { taken: hostnames.find((hostname) => !mine.has(hostname)), released };
   }
 
   async releaseUnservedDomains(
     application: Pick<Application, 'id' | 'organizationId'>,
-  ): Promise<void> {
+  ): Promise<string[]> {
     // One statement, so one snapshot: a reservation is kept when a release of the application
     // lists the domain and has placed replicas (the pipeline stops replicas only once their route
     // no longer needs them), or belongs to a deployment not finished yet, which routes the
     // domains of its snapshot. All of them are kept while a route change of the application is
     // not settled on a node: one still under way (it can still apply, whatever happened since),
-    // or one that failed and that no later route change on that node succeeded after, since the
-    // route there may still serve them. Cancelled, expired and compensated changes can no longer
-    // apply. Separate reads could each see a different state.
-    await this.database.client.$executeRaw`
+    // or one that ended without effect while the route there may still serve them, until a later
+    // route change on that node succeeds. That is a failed change of either kind, and a route
+    // removal that never ran (cancelled, expired or compensated): the route it was to remove is
+    // still there. An addition that never ran installed nothing. Separate reads could each see a
+    // different state.
+    const rows = await this.database.client.$queryRaw<{ hostname: string }[]>`
       DELETE FROM domains d
       WHERE d.organization_id = ${application.organizationId}::uuid
         AND d.application_id = ${application.id}::uuid
@@ -138,7 +140,13 @@ export class PrismaApplicationStore implements ApplicationStore {
             AND (
               aa.state IN ('queued', 'pending', 'running', 'compensating')
               OR (
-                aa.state = 'failed'
+                (
+                  aa.state = 'failed'
+                  OR (
+                    aa.kind = 'removeRoute'
+                    AND aa.state IN ('cancelled', 'expired', 'compensated')
+                  )
+                )
                 AND NOT EXISTS (
                   SELECT 1 FROM agent_actions later
                   WHERE later.organization_id = aa.organization_id
@@ -165,7 +173,9 @@ export class PrismaApplicationStore implements ApplicationStore {
                   AND dp.state NOT IN ('succeeded', 'failed', 'cancelled', 'rolled_back')
               )
             )
-        )`;
+        )
+      RETURNING d.hostname`;
+    return rows.map((row) => row.hostname).sort();
   }
 
   async find(target: ApplicationTarget, applicationId: string): Promise<Application | undefined> {

@@ -12,6 +12,7 @@ import {
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { APPLICATION_STORE, type ApplicationStore } from '../../apps/application/ports';
 import type { Application, ApplicationTarget } from '../../apps/domain/application';
+import { domainsReleased } from '../../apps/domain/domain-events';
 import { ConfirmationVerifier } from '../../confirmations/application/confirmation-verifier';
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
 import {
@@ -144,7 +145,7 @@ export class DeploymentCommands {
         if (running) throw deploymentInProgress(running.state);
         // The older configuration may name a domain another application has claimed since. The
         // current domains stay claimed: the next deployment uses them again.
-        const taken = await this.applications.syncDomains(
+        const { taken, released } = await this.applications.syncDomains(
           application,
           [...new Set([...(application.config.domains ?? []), ...(source.config.domains ?? [])])],
           now,
@@ -153,6 +154,10 @@ export class DeploymentCommands {
           throw new ConflictError('domain_taken', 'Another application already uses this domain.', {
             hostname: taken,
           });
+        if (released.length)
+          await this.events.publish(
+            domainsReleased(application, released, resourceActor(context), now),
+          );
         const release = await this.store.copyRelease(source, context.userId, now);
         if (!release) throw deploymentInProgress();
         const deployment = await this.store.queue(release, draft, 'rollback', context.userId, now);
@@ -291,7 +296,11 @@ export class DeploymentCommands {
       ]);
       // A cancelled deployment no longer routes its snapshot: what nothing placed serves is free
       // (#302). Replicas it placed keep their domains until the cleanup stops them.
-      await this.applications.releaseUnservedDomains(application);
+      const released = await this.applications.releaseUnservedDomains(application);
+      if (released.length)
+        await this.events.publish(
+          domainsReleased(application, released, resourceActor(context), now),
+        );
       await this.waker.wake(application.organizationId, cancelled.id);
       return cancelled;
     });

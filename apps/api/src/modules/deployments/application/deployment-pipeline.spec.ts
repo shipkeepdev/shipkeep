@@ -62,8 +62,12 @@ function world(
     serving?: StoredAllocation[];
     /** Replicas of other applications, counted in the load of their node. */
     neighbours?: Pick<StoredAllocation, 'nodeId' | 'cpuMillis' | 'memoryBytes'>[];
+    /** Hostnames the store frees each time the pipeline offers the application's domains. */
+    freed?: string[];
   } = {},
 ) {
+  /** What commits while the run waits for the deployment's row lock. */
+  let beforeRowLock: (() => void) | undefined;
   let deployment: DeploymentRecord = {
     id: '0190f5a8-7b1c-7e2d-8f3a-00000000000d',
     organizationId: ORG,
@@ -122,6 +126,11 @@ function world(
   const superseded: { id: string; state: string }[] = [];
   const deployments = {
     byId: () => Promise.resolve(deployment),
+    lockState: () => {
+      beforeRowLock?.();
+      beforeRowLock = undefined;
+      return Promise.resolve(deployment.state);
+    },
     succeededOf: () => Promise.resolve([replaced]),
     transition: (next: DeploymentRecord, expected: string) => {
       if (next.id === replaced.id) {
@@ -232,7 +241,7 @@ function world(
   const applications = {
     releaseUnservedDomains: (application: { id: string }) => {
       released.push(application.id);
-      return Promise.resolve();
+      return Promise.resolve([...(options.freed ?? [])]);
     },
   } as unknown as ApplicationStore;
   const subject = new DeploymentPipeline(
@@ -275,6 +284,9 @@ function world(
     },
     get allocations() {
       return allocations;
+    },
+    whileWaitingForTheRowLock(work: () => void) {
+      beforeRowLock = work;
     },
     cancel() {
       deployment = {
@@ -331,6 +343,39 @@ describe('DeploymentPipeline', () => {
     const before = w.released.length;
     expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
     expect(w.released).toHaveLength(before + 1);
+  });
+
+  it('queues no action once a cancellation committed before it held the deployment (#302)', async () => {
+    const w = world();
+    // Image resolved, placed: the next decision queues the first steps.
+    while ((await w.subject.run(ORG, w.deployment.id, () => NOW)) !== 'wait');
+    const before = w.queued.size;
+    w.agentsFinish();
+    w.whileWaitingForTheRowLock(() => {
+      w.cancel();
+    });
+    await w.subject.run(ORG, w.deployment.id, () => NOW);
+    // Loaded as running, the run found it cancelled once it held the row: it queued nothing and
+    // planned again from the cancelled state.
+    expect(w.deployment.state).toBe('cancelled');
+    expect(w.queued.size).toBe(before);
+  });
+
+  it('audits each domain it frees, as the system (#302)', async () => {
+    const w = world({ freed: ['old.acme.example.com'] });
+    for (
+      let round = 0;
+      round < 10 && (await w.subject.run(ORG, w.deployment.id, () => NOW)) === 'wait';
+      round++
+    )
+      w.agentsFinish();
+    const released = w.events.filter((e) => e.type === 'domain.released');
+    expect(released.length).toBeGreaterThan(0);
+    expect(released[0]).toMatchObject({
+      actor: { kind: 'system' },
+      target: { type: 'application', id: APP },
+      payload: { applicationId: APP, hostname: 'old.acme.example.com' },
+    });
   });
 
   it('supersedes the replaced deployment when a rollback succeeds', async () => {

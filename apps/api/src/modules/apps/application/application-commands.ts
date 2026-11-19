@@ -19,6 +19,7 @@ import {
   type DomainDns,
   domainDns,
 } from '../domain/application';
+import { domainsReleased } from '../domain/domain-events';
 
 import {
   APPLICATION_STORE,
@@ -65,7 +66,7 @@ export class ApplicationCommands {
           'application_name_taken',
           'An application with this name already exists in the environment.',
         );
-      await this.claimDomains(created, now);
+      await this.claimDomains(context, created, now);
       await this.audit('created', context, created, now);
       return created;
     });
@@ -100,7 +101,7 @@ export class ApplicationCommands {
       if (configSha === current.configSha) return current;
       const updated = await this.store.replaceConfig(current, expectedSha, config, configSha, now);
       if (!updated) throw changed();
-      await this.claimDomains(updated, now);
+      await this.claimDomains(context, updated, now);
       await this.audit('updated', context, updated, now, current.configSha);
       return updated;
     });
@@ -151,12 +152,24 @@ export class ApplicationCommands {
   }
 
   /** A hostname belongs to one application per organization (SPEC 4). */
-  private async claimDomains(application: Application, now: Date): Promise<void> {
-    const taken = await this.store.syncDomains(application, application.config.domains ?? [], now);
+  private async claimDomains(
+    context: SecurityContext,
+    application: Application,
+    now: Date,
+  ): Promise<void> {
+    const { taken, released } = await this.store.syncDomains(
+      application,
+      application.config.domains ?? [],
+      now,
+    );
     if (taken)
       throw new ConflictError('domain_taken', 'Another application already uses this domain.', {
         hostname: taken,
       });
+    if (released.length)
+      await this.events.publish(
+        domainsReleased(application, released, resourceActor(context), now),
+      );
   }
 
   private scoped<T>(

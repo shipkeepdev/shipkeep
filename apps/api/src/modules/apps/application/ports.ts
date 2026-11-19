@@ -41,21 +41,24 @@ export interface ApplicationStore {
   delete(application: Pick<Application, 'id' | 'organizationId'>): Promise<boolean>;
   /**
    * Makes `hostnames` the application's claimed domains; a dropped domain that a placed release
-   * still lists stays reserved until releaseUnservedDomains frees it. Returns a hostname another
-   * application of the organization already claims, in which case the caller must abort the
-   * transaction.
+   * still lists stays reserved until releaseUnservedDomains frees it. `taken` is a hostname
+   * another application of the organization already claims, in which case the caller must abort
+   * the transaction. `released` lists the reservations freed on the way, which the caller audits.
    */
   syncDomains(
     application: Pick<Application, 'id' | 'organizationId'>,
     hostnames: readonly string[],
     now: Date,
-  ): Promise<string | undefined>;
+  ): Promise<DomainSync>;
   /**
    * Frees the domains the configuration dropped that no placed release of the application lists
    * any more (#302). Until then they stay reserved, so no other application can claim a domain
-   * that a running route may still serve.
+   * that a running route may still serve. Returns the hostnames freed, sorted, which the caller
+   * audits (`domainsReleased`).
    */
-  releaseUnservedDomains(application: Pick<Application, 'id' | 'organizationId'>): Promise<void>;
+  releaseUnservedDomains(
+    application: Pick<Application, 'id' | 'organizationId'>,
+  ): Promise<string[]>;
   list(target: ApplicationTarget): Promise<Application[]>;
   /**
    * The organization's nodes, not removed, with a placed replica of the application that their
@@ -73,4 +76,10 @@ export interface DomainResolver {
 export const APPLICATION_TRANSACTION = Symbol('ApplicationTransaction');
 export interface ApplicationTransaction {
   runTenant<T>(organizationId: string, work: () => Promise<T>): Promise<T>;
+}
+
+/** The outcome of syncDomains. */
+export interface DomainSync {
+  readonly taken: string | undefined;
+  readonly released: readonly string[];
 }

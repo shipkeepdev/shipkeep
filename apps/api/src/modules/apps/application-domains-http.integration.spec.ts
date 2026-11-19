@@ -92,6 +92,19 @@ describe('application domains over HTTP', () => {
         config: config({ name: 'second-app', domains: ['shared.example.com'] }),
       })
       .expect(201);
+    // Freeing the domain is audited, by the user whose change freed it.
+    const database = fixture.app.get(PrismaUnitOfWork);
+    const audited = await database.runTenant(fixture.organizationId, () =>
+      database.client.auditEvent.findMany({
+        where: { action: 'domain.released', targetId: first.id },
+      }),
+    );
+    expect(audited).toHaveLength(1);
+    expect(audited[0]).toMatchObject({
+      actorKind: 'user',
+      targetType: 'application',
+      metadata: expect.objectContaining({ hostname: 'shared.example.com' }) as unknown,
+    });
     await fixture
       .post(path(), 'owner', { config: config({ name: 'wild-app', domains: ['*.example.com'] }) })
       .expect(400);
@@ -247,8 +260,14 @@ describe('application domains over HTTP', () => {
       await claim().expect(409);
       // Failed, it leaves the route in an unknown state on that node.
       await admin.query(`UPDATE agent_actions SET state = 'failed' WHERE id = $1`, [removal]);
-      await freeUnserved();
+      expect(await freeUnserved()).toEqual([]);
       await claim().expect(409);
+      // A removal that never ran left the route where it was.
+      for (const state of ['expired', 'cancelled', 'compensated']) {
+        await admin.query(`UPDATE agent_actions SET state = $2 WHERE id = $1`, [removal, state]);
+        expect(await freeUnserved()).toEqual([]);
+        await claim().expect(409);
+      }
       // A route change that succeeded on another node says nothing about this one.
       const other = await enrollTestNode(fixture, {
         facts: { hostname: 'edge-moving-other.example.com' },
@@ -263,9 +282,11 @@ describe('application domains over HTTP', () => {
       await action('removeRoute', 'succeeded', new Date());
       await freeUnserved();
       await claim().expect(409);
+      // An addition that never ran installed nothing.
       await admin.query(`UPDATE agent_actions SET state = 'expired' WHERE id = $1`, [stale]);
-      // The failed removal was followed by a success on this node: the route there is known.
-      await freeUnserved();
+      // The removal that never ran was followed by a success on this node: the route there is
+      // known.
+      expect(await freeUnserved()).toEqual(['moving.example.com']);
       await claim().expect(201);
     } finally {
       await admin.end();

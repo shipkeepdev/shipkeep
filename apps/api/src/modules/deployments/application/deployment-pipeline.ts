@@ -16,6 +16,7 @@ import {
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { APPLICATION_STORE, type ApplicationStore } from '../../apps/application/ports';
+import { domainsReleased } from '../../apps/domain/domain-events';
 import {
   REGISTRY_CREDENTIAL_STORE,
   type RegistryCredentialStore,
@@ -127,7 +128,7 @@ export class DeploymentPipeline {
           );
         // A finished deployment runs again when one of its actions ends, such as the route removal
         // of its cleanup: what that action held reserved may now be free (#302).
-        await this.tenant(application, () => this.applications.releaseUnservedDomains(application));
+        await this.tenant(application, () => this.releaseDomains(application, now));
         return 'done';
       case 'resolve_image': {
         const image = context.release.config.build?.image ?? '';
@@ -170,10 +171,19 @@ export class DeploymentPipeline {
         return this.place(loaded, decision.replicas, clock);
       case 'run':
         if (decision.steps.length) {
-          const failure = await this.tenant(application, () =>
-            this.enqueue(loaded, decision.steps, now),
-          );
-          if (failure) return this.fail(loaded, failure, now);
+          const outcome = await this.tenant(application, async () => {
+            // The deployment's row lock orders these actions with a cancellation, which updates
+            // that row before it frees domains: either the cancellation sees the route actions
+            // queued here and keeps their domains reserved, or this run sees it and queues
+            // nothing (#302).
+            if (
+              (await this.deployments.lockState(context.deployment.id)) !== context.deployment.state
+            )
+              return { stale: true } as const;
+            return { failure: await this.enqueue(loaded, decision.steps, now) };
+          });
+          if ('stale' in outcome) return 'continue';
+          if (outcome.failure) return this.fail(loaded, outcome.failure, now);
         }
         return 'wait';
       case 'advance':
@@ -411,7 +421,7 @@ export class DeploymentPipeline {
       if (next.state === 'succeeded') {
         await this.pipeline.stop(application.id, loaded.previousReleases, now);
         // Domains the configuration dropped are free once no placed release serves them (#302).
-        await this.applications.releaseUnservedDomains(application);
+        await this.releaseDomains(application, now);
         // SPEC 5.1: a succeeded rollback supersedes the deployment it replaced.
         if (current.trigger === 'rollback')
           for (const replaced of await this.deployments.succeededOf(
@@ -463,8 +473,15 @@ export class DeploymentPipeline {
     await this.enqueue(loaded, steps, now);
     if (routing !== 'new_release_serving') {
       await this.pipeline.stop(loaded.application.id, [loaded.context.release.id], now);
-      await this.applications.releaseUnservedDomains(loaded.application);
+      await this.releaseDomains(loaded.application, now);
     }
+  }
+
+  /** Frees what nothing serves any more and audits each domain freed (#302). */
+  private async releaseDomains(application: PipelineApplication, now: Date): Promise<void> {
+    const released = await this.applications.releaseUnservedDomains(application);
+    if (released.length)
+      await this.events.publish(domainsReleased(application, released, SYSTEM_ACTOR, now));
   }
 
   private tenant<T>(application: PipelineApplication, work: () => Promise<T>): Promise<T> {
