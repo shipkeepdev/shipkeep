@@ -216,6 +216,23 @@ func (c *Client) RemoveVolume(ctx context.Context, name string) error {
 	return c.do(ctx, http.MethodDelete, "/volumes/"+url.PathEscape(name), nil, nil)
 }
 
+// Proxies are the proxy settings the daemon applies to its registry traffic, as it reports them
+// once daemon.json and its environment are combined.
+type Proxies struct {
+	HTTP  string `json:"HttpProxy"`
+	HTTPS string `json:"HttpsProxy"`
+	No    string `json:"NoProxy"`
+}
+
+// Proxies reads the daemon's proxy settings from GET /info.
+func (c *Client) Proxies(ctx context.Context) (Proxies, error) {
+	var info Proxies
+	if err := c.do(ctx, http.MethodGet, "/info", nil, &info); err != nil {
+		return Proxies{}, err
+	}
+	return info, nil
+}
+
 // Image inspects a local image by reference.
 func (c *Client) Image(ctx context.Context, ref string) (Image, error) {
 	var image Image

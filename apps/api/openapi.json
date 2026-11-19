@@ -6289,6 +6289,7 @@
               "registry_untrusted",
               "disk_full",
               "image_volume_undeclared",
+              "egress_unguarded",
               "unknown",
               null
             ]
