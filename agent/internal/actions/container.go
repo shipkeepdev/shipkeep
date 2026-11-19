@@ -43,10 +43,8 @@ func createContainer(engine Engine, spec *agentv1.ContainerSpec) (journal.Plan, 
 			case !errors.Is(err, docker.ErrNotFound):
 				return journal.Outcome{}, fmt.Errorf("inspect container: %w", err)
 			}
-			if config.HostConfig.ReadonlyRootfs {
-				if err := imageVolumesMounted(ctx, engine, config); err != nil {
-					return journal.Outcome{}, err
-				}
+			if err := imageVolumesMounted(ctx, engine, config); err != nil {
+				return journal.Outcome{}, err
 			}
 			id, err := engine.CreateContainer(ctx, name, config)
 			if err != nil {
@@ -119,6 +117,9 @@ func (e causeError) Cause() string { return e.cause }
 // imageVolumesMounted refuses a read-only root whose image declares a VOLUME that no mount of the
 // spec covers: Docker would give that path an anonymous volume, which nothing bounds (ADR 0022).
 func imageVolumesMounted(ctx context.Context, engine Engine, config docker.ContainerConfig) error {
+	if !config.HostConfig.ReadonlyRootfs {
+		return nil
+	}
 	image, err := engine.Image(ctx, config.Image)
 	if err != nil {
 		return fmt.Errorf("inspect image: %w", err)

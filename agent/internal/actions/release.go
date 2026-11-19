@@ -66,6 +66,10 @@ func releaseTask(engine Engine, action *agentv1.RunReleaseTask) (journal.Plan, e
 				case !errors.Is(err, docker.ErrNotFound):
 					return journal.Outcome{}, fmt.Errorf("inspect release task: %w", err)
 				}
+				// The same refusal as CreateContainer (SPEC 3.4).
+				if err := imageVolumesMounted(ctx, engine, config); err != nil {
+					return journal.Outcome{}, err
+				}
 				id, err := engine.CreateContainer(ctx, name, config)
 				if err != nil {
 					return journal.Outcome{}, fmt.Errorf("create release task: %w", err)

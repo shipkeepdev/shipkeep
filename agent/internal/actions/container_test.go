@@ -1,6 +1,7 @@
 package actions
 
 import (
+	"context"
 	"slices"
 	"strings"
 	"testing"
@@ -264,18 +265,33 @@ func TestReadOnlyRootRefusesUndeclaredImageVolumes(t *testing.T) {
 		// Without a read-only root the image volumes are what Docker always did.
 		{"writable root", false, image("/var/lib/data"), true},
 	} {
-		t.Run(test.name, func(t *testing.T) {
-			spec := validSpec()
-			spec.ReadOnlyRootfs = test.readOnly
-			engine := newFakeEngine()
-			engine.images[spec.GetImageRef()] = test.image
-			update := create(t, engine, spec)
-			if test.created != (update.GetState() == agentv1.OperationState_OPERATION_STATE_SUCCEEDED) || test.created != (len(engine.created) == 1) {
-				t.Fatalf("created=%v: %v", test.created, update)
-			}
-			if !test.created && update.GetError() != "the image declares a volume the configuration does not mount" {
-				t.Fatalf("error %q", update.GetError())
-			}
-		})
+		// A release task creates its container under the same rule (SPEC 3.4).
+		run := map[string]func(*fakeEngine, *agentv1.ContainerSpec) *agentv1.ActionUpdate{
+			"container": func(engine *fakeEngine, spec *agentv1.ContainerSpec) *agentv1.ActionUpdate {
+				return create(t, engine, spec)
+			},
+			"release task": func(engine *fakeEngine, spec *agentv1.ContainerSpec) *agentv1.ActionUpdate {
+				d := &Dispatcher{Journal: open(t), Handlers: dockerHandlers(engine, nil, &fakeProber{}, nil), Epoch: func() uint64 { return 3 }}
+				out := &recorder{}
+				d.Handle(context.Background(), &agentv1.ActionRequest{ActionId: testID, IdempotencyKey: "release", LeaseEpoch: 3, DeadlineUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+					Action: &agentv1.ActionRequest_RunReleaseTask{RunReleaseTask: &agentv1.RunReleaseTask{Spec: spec}}}, out.send)
+				return out.last(t)
+			},
+		}
+		for kind, apply := range run {
+			t.Run(test.name+"/"+kind, func(t *testing.T) {
+				spec := validSpec()
+				spec.ReadOnlyRootfs = test.readOnly
+				engine := newFakeEngine()
+				engine.images[spec.GetImageRef()] = test.image
+				update := apply(engine, spec)
+				if test.created != (update.GetState() == agentv1.OperationState_OPERATION_STATE_SUCCEEDED) || test.created != (len(engine.created) == 1) {
+					t.Fatalf("created=%v: %v", test.created, update)
+				}
+				if !test.created && update.GetError() != "the image declares a volume the configuration does not mount" {
+					t.Fatalf("error %q", update.GetError())
+				}
+			})
+		}
 	}
 }
