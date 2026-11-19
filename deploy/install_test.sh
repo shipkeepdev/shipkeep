@@ -41,4 +41,7 @@ for file in second.asc first-then-second.asc second-then-first.asc one-block.asc
   refused single_signing_key "$work/$file" "$work/refused.gpg" "$first" || die "accepted the key file $file"
   [[ ! -s $work/refused.gpg ]] || die "a keyring was written from $file"
 done
+# shellcheck source=/dev/null
+. deploy/docker-repository-test.sh
+check_docker_repository deploy/install.sh "$work/apt"
 printf 'Installer input, redaction and signing-key checks passed.\n'

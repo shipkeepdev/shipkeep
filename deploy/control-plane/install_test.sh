@@ -65,6 +65,10 @@ refuse 'Run with sudo' --domain shipkeep.example.com --email owner@example.com
 . "$installer"
 refused() { ! ("$@") 2>"$work/output"; }
 
+# shellcheck source=/dev/null
+. deploy/docker-repository-test.sh
+check_docker_repository "$installer" "$work/apt"
+
 mkdir "$work/fresh" "$work/installed" "$work/linked"
 assert_no_installation "$work/fresh"
 : >"$work/installed/.env"

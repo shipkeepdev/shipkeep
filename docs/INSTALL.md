@@ -165,6 +165,20 @@ The installer does not upgrade. Change `SHIPKEEP_IMAGE` in `.env` to the new rel
 ## Troubleshooting
 
 - **The installer refuses to start:** it names the reason (a busy port, a name that does not resolve, a directory that is not root's alone or lies below one, an earlier installation or its Docker volumes) and has changed nothing. Fix it and run the installer again. One refusal comes later: when Docker was removed and the volumes of an earlier installation remain, they only show once the installer has put Docker back.
+- **Docker packages could not be downloaded:** both installers remove the Docker apt source and keyring they added during the failed setup or download. Both APT steps use the normal package cache. HUP/TERM cleanup requires the signal to reach the package-download process. If only the parent installer was terminated, wait for `apt-get` and `dpkg` to stop before retrying. Run the same installer again once the network is back.
+- **Docker package application failed or was interrupted:** keep the signed source and keyring. After downloads succeed, the installer keeps them conservatively for the offline APT step, even if a changed package plan, a missing cached archive or a lock prevents `dpkg` from starting. Wait for other `apt-get` and `dpkg` processes to stop, then finish the installation from the retained repository:
+
+  ```sh
+  sudo dpkg --configure -a
+  sudo apt-get update
+  sudo apt-get --fix-broken install
+  sudo apt-get install -y docker-ce docker-ce-cli containerd.io
+  sudo systemctl enable --now docker
+  sudo docker info
+  ```
+
+  For the control plane, also run `sudo apt-get install -y docker-compose-plugin` and verify `docker compose version`. Resolve any errors before running the installer again. A partially installed `docker` command makes the installer skip repository setup; repairing only pending packages does not necessarily install every missing Docker package.
+- **Power loss or `kill -9` left Docker repository files:** reconcile `/etc/apt/sources.list.d/shipkeep-docker.sources` and `/etc/apt/keyrings/shipkeep-docker.gpg`. Remove them and run the installer again only if you can confirm they were left before package application. If package application may have started, keep them and finish installing and verifying Docker as described above before retrying. Once the old installer, `apt-get` and `dpkg` have stopped, use that attempt's `Docker signing-key workspace:` output to identify and remove its temporary directory under `/tmp`.
 - **The installer stopped while starting the stack:** it prints the command that finishes the installation. Keep `.env`: the database is created with the passwords it holds, and the installer will not run a second time on this directory.
 - **`migrate` or `database-role` exited with an error:** `docker compose logs migrate database-role`. A changed `POSTGRES_APP_PASSWORD` is the usual cause: an existing login keeps its password, so put the original value back.
 - **`control-plane` keeps restarting:** `docker compose logs control-plane`. The first line names every invalid or missing setting.
