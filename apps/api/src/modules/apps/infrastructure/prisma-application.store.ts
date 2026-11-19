@@ -119,9 +119,10 @@ export class PrismaApplicationStore implements ApplicationStore {
     // lists the domain and has placed replicas (the pipeline stops replicas only once their route
     // no longer needs them), or belongs to a deployment not finished yet, which routes the
     // domains of its snapshot. All of them are kept while a route change of the application is
-    // not confirmed on a node: one still under way, or one that did not succeed and that no later
-    // route change on that node did, since the route there may still serve them. Separate reads
-    // could each see a different state.
+    // not settled on a node: one still under way (it can still apply, whatever happened since),
+    // or one that failed and that no later route change on that node succeeded after, since the
+    // route there may still serve them. Cancelled, expired and compensated changes can no longer
+    // apply. Separate reads could each see a different state.
     await this.database.client.$executeRaw`
       DELETE FROM domains d
       WHERE d.organization_id = ${application.organizationId}::uuid
@@ -134,15 +135,20 @@ export class PrismaApplicationStore implements ApplicationStore {
             AND aa.application_id = d.application_id
             AND aa.kind IN ('upsertRoute', 'removeRoute')
             AND n.status <> 'removed'
-            AND aa.state <> 'succeeded'
-            AND NOT EXISTS (
-              SELECT 1 FROM agent_actions later
-              WHERE later.organization_id = aa.organization_id
-                AND later.application_id = aa.application_id
-                AND later.node_id = aa.node_id
-                AND later.kind IN ('upsertRoute', 'removeRoute')
-                AND later.state = 'succeeded'
-                AND later.created_at > aa.created_at
+            AND (
+              aa.state IN ('queued', 'pending', 'running', 'compensating')
+              OR (
+                aa.state = 'failed'
+                AND NOT EXISTS (
+                  SELECT 1 FROM agent_actions later
+                  WHERE later.organization_id = aa.organization_id
+                    AND later.application_id = aa.application_id
+                    AND later.node_id = aa.node_id
+                    AND later.kind IN ('upsertRoute', 'removeRoute')
+                    AND later.state = 'succeeded'
+                    AND later.created_at > aa.created_at
+                )
+              )
             )
         )
         AND NOT EXISTS (

@@ -125,6 +125,9 @@ export class DeploymentPipeline {
           await this.tenant(application, () =>
             this.recover(loaded, cancelledRouting(context), now),
           );
+        // A finished deployment runs again when one of its actions ends, such as the route removal
+        // of its cleanup: what that action held reserved may now be free (#302).
+        await this.tenant(application, () => this.applications.releaseUnservedDomains(application));
         return 'done';
       case 'resolve_image': {
         const image = context.release.config.build?.image ?? '';

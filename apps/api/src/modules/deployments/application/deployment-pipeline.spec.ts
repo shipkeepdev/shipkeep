@@ -326,8 +326,11 @@ describe('DeploymentPipeline', () => {
       w.events.every((e) => e.actor.kind === 'system' && !JSON.stringify(e).includes('fixture')),
     ).toBe(true);
     // Once the replaced replicas are stopped, the domains they alone served are free (#302).
-    expect(w.released).toEqual([APP]);
+    expect(new Set(w.released)).toEqual(new Set([APP]));
+    // Woken again once finished (an action of it ended), it checks again.
+    const before = w.released.length;
     expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
+    expect(w.released).toHaveLength(before + 1);
   });
 
   it('supersedes the replaced deployment when a rollback succeeds', async () => {
@@ -572,7 +575,7 @@ describe('DeploymentPipeline', () => {
       ]);
       expect(w.superseded).toEqual([]);
       // The route is gone: the domains the configuration dropped are free (#302).
-      expect(w.released).toEqual([APP]);
+      expect(new Set(w.released)).toEqual(new Set([APP]));
     });
 
     it('fails when an agent cannot stop a replica, and keeps the reservation', async () => {

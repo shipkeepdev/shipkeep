@@ -223,7 +223,7 @@ describe('application domains over HTTP', () => {
     const admin = new Client({ connectionString: fixture.databaseUrl });
     await admin.connect();
     try {
-      const action = async (kind: string, state: string, at: Date) => {
+      const action = async (kind: string, state: string, at: Date, node = nodeId) => {
         const id = uuidv7();
         await admin.query(
           `INSERT INTO agent_actions (id, organization_id, node_id, kind, idempotency_key, payload_enc, lease_epoch, deadline, state, created_at, updated_at, application_id, deployment_id)
@@ -231,7 +231,7 @@ describe('application domains over HTTP', () => {
           [
             id,
             fixture.organizationId,
-            nodeId,
+            node,
             kind,
             `test:${id}`,
             at,
@@ -249,13 +249,106 @@ describe('application domains over HTTP', () => {
       await admin.query(`UPDATE agent_actions SET state = 'failed' WHERE id = $1`, [removal]);
       await freeUnserved();
       await claim().expect(409);
-      // A later route change on that node succeeded: the route there is known again.
+      // A route change that succeeded on another node says nothing about this one.
+      const other = await enrollTestNode(fixture, {
+        facts: { hostname: 'edge-moving-other.example.com' },
+        ready: false,
+      });
+      await action('removeRoute', 'succeeded', new Date(Date.now() - 1000), other);
+      await freeUnserved();
+      await claim().expect(409);
+      // An older route change still under way on this node can still apply after a later one
+      // succeeds: it keeps the domain until it can no longer apply.
+      const stale = await action('upsertRoute', 'queued', new Date(Date.now() - 3000));
       await action('removeRoute', 'succeeded', new Date());
+      await freeUnserved();
+      await claim().expect(409);
+      await admin.query(`UPDATE agent_actions SET state = 'expired' WHERE id = $1`, [stale]);
+      // The failed removal was followed by a success on this node: the route there is known.
       await freeUnserved();
       await claim().expect(201);
     } finally {
       await admin.end();
     }
+  });
+
+  it('keeps a domain listed again once its releasing mark is cleared (#302)', async () => {
+    const nodeId = await enrollTestNode(fixture, {
+      facts: { hostname: 'edge-relisted.example.com' },
+      ready: false,
+    });
+    const created = (
+      await fixture
+        .post(path(), 'owner', {
+          config: config({
+            name: 'relisted',
+            domains: ['relisted.example.com'],
+            secrets: undefined,
+          }),
+        })
+        .expect(201)
+    ).body as ApplicationBody;
+    const queued = await fixture
+      .post(`${path()}/${created.id}/deployments`, 'owner', {})
+      .expect(201);
+    const { release, deployment } = queued.body as {
+      release: { id: string };
+      deployment: { id: string };
+    };
+    const tenant = <T>(work: () => Promise<T>) =>
+      fixture.app.get(PrismaUnitOfWork).runTenant(fixture.organizationId, work);
+    const pipeline = fixture.app.get<PipelineStore>(PIPELINE_STORE);
+    await tenant(() =>
+      pipeline.place(
+        fixture.organizationId,
+        created.id,
+        release.id,
+        [
+          {
+            index: 0,
+            nodeId,
+            container: 'sk-relisted-0',
+            port: 3000,
+            cpuMillis: 0,
+            memoryBytes: 0,
+          },
+        ],
+        new Date(),
+      ),
+    );
+    const save = async (sha: string, domains: string[]) =>
+      (
+        (
+          await fixture
+            .post(`${path()}/${created.id}/config`, 'owner', {
+              expectedConfigSha: sha,
+              config: config({ name: 'relisted', domains, secrets: undefined }),
+            })
+            .expect(200)
+        ).body as ApplicationBody
+      ).configSha;
+    // Dropped while a placed release serves it, then listed again.
+    const relisted = await save(await save(created.configSha, []), ['relisted.example.com']);
+    expect(relisted).toBeTruthy();
+    // Nothing serves it any more, the deployment is finished: only the configuration claims it.
+    await fixture
+      .post(`${path()}/${created.id}/deployments/${deployment.id}/cancel`, 'owner', {})
+      .expect(200);
+    await tenant(async () => {
+      await pipeline.stop(created.id, [release.id], new Date());
+      await fixture.app
+        .get<ApplicationStore>(APPLICATION_STORE)
+        .releaseUnservedDomains({ id: created.id, organizationId: fixture.organizationId });
+    });
+    await fixture
+      .post(path(), 'owner', {
+        config: config({
+          name: 'relisted-rival',
+          domains: ['relisted.example.com'],
+          secrets: undefined,
+        }),
+      })
+      .expect(409);
   });
 
   it('says whether each domain reaches a node of the organization running the application', async () => {
