@@ -149,14 +149,14 @@ func TestEnrollmentAndKeyRotationOverRealTLS(t *testing.T) {
 	address, server := startGateway(t, true)
 	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 	defer cancel()
-	bundle, err := Enroll(ctx, address, nodecredentials.Fingerprint(server.ca), false, testToken, &agentv1.NodeFacts{Hostname: "test-node"}, "test")
+	bundle, err := Enroll(ctx, Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, &agentv1.NodeFacts{Hostname: "test-node"}, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if bundle.NodeID != testNode || server.calls.Load() != 1 {
 		t.Fatal("enrollment identity missing")
 	}
-	conn, err := Open(address, bundle)
+	conn, err := Open(Endpoint{Address: address}, bundle)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestUntrustedGatewayNeverReceivesToken(t *testing.T) {
 		{wrongAddress, nodecredentials.Fingerprint(wrongHost.ca)},
 	} {
 		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
-		_, err := Enroll(ctx, test.address, test.fingerprint, false, testToken, nil, "test")
+		_, err := Enroll(ctx, Endpoint{Address: test.address}, test.fingerprint, false, testToken, nil, "test")
 		cancel()
 		if err == nil {
 			t.Fatal("accepted untrusted gateway")
@@ -200,7 +200,7 @@ func TestUntrustedGatewayNeverReceivesToken(t *testing.T) {
 func TestEnrollmentErrorsNeverEchoTokens(t *testing.T) {
 	address, server := startGateway(t, true)
 	rejected := secret.NewString(strings.Repeat("b", 43))
-	_, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, rejected, nil, "test")
+	_, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, rejected, nil, "test")
 	if err == nil || strings.Contains(err.Error(), rejected.Expose()) {
 		t.Fatal("RPC error disclosed token")
 	}
@@ -212,14 +212,14 @@ func TestEnrollmentErrorsNeverEchoTokens(t *testing.T) {
 
 func TestExpiredGatewayAndOversizedMessagesAreRejected(t *testing.T) {
 	address, server := startGateway(t, true, func(cert *x509.Certificate) { cert.NotAfter = time.Now().Add(-time.Minute) })
-	if _, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test"); err == nil {
+	if _, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test"); err == nil {
 		t.Fatal("accepted expired server certificate")
 	}
 	if server.calls.Load() != 0 {
 		t.Fatal("sent token to expired server")
 	}
 	address, server = startGateway(t, true)
-	if _, err := Enroll(t.Context(), address, nodecredentials.Fingerprint(server.ca), false, testToken, nil, strings.Repeat("x", nodecredentials.MaxBytes)); err == nil {
+	if _, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, nil, strings.Repeat("x", nodecredentials.MaxBytes)); err == nil {
 		t.Fatal("accepted oversized request")
 	}
 	if server.calls.Load() != 0 {

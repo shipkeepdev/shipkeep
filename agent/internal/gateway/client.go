@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"regexp"
 	"time"
 
@@ -26,14 +27,45 @@ const rpcTimeout = 30 * time.Second
 
 var tokenPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{43}$`)
 
+// Endpoint is where the gateway is. Address is host:port as the gateway certificate names it: the
+// TLS name, the hostname check and the CA pin always use its host. Connect, when set, is where the
+// TCP connection goes instead: a loopback address with a port, for an agent on the machine that
+// hosts the control plane (ADR 0021). It changes nothing that is verified.
+type Endpoint struct {
+	Address string
+	Connect string
+}
+
+// target returns the address to dial and the name to verify.
+func (e Endpoint) target() (dial, host string, err error) {
+	host, _, err = net.SplitHostPort(e.Address)
+	if err != nil || host == "" {
+		return "", "", errors.New("invalid gateway address")
+	}
+	if e.Connect == "" {
+		return e.Address, host, nil
+	}
+	if !LoopbackConnect(e.Connect) {
+		return "", "", errors.New("gateway connect address must be a loopback address with a port")
+	}
+	return e.Connect, host, nil
+}
+
+// LoopbackConnect reports whether connect is a canonical loopback IP literal with a non-zero port,
+// such as 127.0.0.1:7443 or [::1]:7443. Names are refused: they resolve elsewhere.
+func LoopbackConnect(connect string) bool {
+	address, err := netip.ParseAddrPort(connect)
+	return err == nil && address.String() == connect && address.Addr().IsLoopback() && address.Port() != 0
+}
+
 // Enroll proves the installation CA's identity before sending the single-use join token.
-func Enroll(ctx context.Context, address, fingerprint string, dev bool, token secret.String, facts *agentv1.NodeFacts, version string) (nodecredentials.Bundle, error) {
+func Enroll(ctx context.Context, endpoint Endpoint, fingerprint string, dev bool, token secret.String, facts *agentv1.NodeFacts, version string) (nodecredentials.Bundle, error) {
 	ctx, cancel := context.WithTimeout(ctx, rpcTimeout)
 	defer cancel()
 	if !tokenPattern.MatchString(token.Expose()) {
 		return nodecredentials.Bundle{}, errors.New("invalid join token format")
 	}
-	ca, err := discoverCA(ctx, address, fingerprint, dev)
+	ca, err := discoverCA(ctx, endpoint, fingerprint, dev)
 	if err != nil {
 		return nodecredentials.Bundle{}, err
 	}
@@ -41,7 +73,7 @@ func Enroll(ctx context.Context, address, fingerprint string, dev bool, token se
 	if err != nil {
 		return nodecredentials.Bundle{}, err
 	}
-	conn, err := dial(address, ca, nil)
+	conn, err := dial(endpoint, ca, nil)
 	if err != nil {
 		return nodecredentials.Bundle{}, err
 	}
@@ -59,7 +91,7 @@ func Enroll(ctx context.Context, address, fingerprint string, dev bool, token se
 }
 
 // Open creates a client connection using the persisted, validated client identity and pinned CA.
-func Open(address string, b nodecredentials.Bundle) (*grpc.ClientConn, error) {
+func Open(endpoint Endpoint, b nodecredentials.Bundle) (*grpc.ClientConn, error) {
 	pair, err := b.Validate("")
 	if err != nil {
 		return nil, err
@@ -69,7 +101,7 @@ func Open(address string, b nodecredentials.Bundle) (*grpc.ClientConn, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse pinned CA: %w", err)
 	}
-	return dial(address, ca, []tls.Certificate{pair})
+	return dial(endpoint, ca, []tls.Certificate{pair})
 }
 
 // Renew rotates the key and validates the new certificate before the caller persists it.
@@ -91,10 +123,19 @@ func Renew(ctx context.Context, client agentv1.AgentGatewayServiceClient, b node
 	return b, nil
 }
 
-func dial(address string, ca *x509.Certificate, certificates []tls.Certificate) (*grpc.ClientConn, error) {
+func dial(endpoint Endpoint, ca *x509.Certificate, certificates []tls.Certificate) (*grpc.ClientConn, error) {
+	address, host, err := endpoint.target()
+	if err != nil {
+		return nil, err
+	}
 	roots := x509.NewCertPool()
 	roots.AddCert(ca)
-	conn, err := grpc.NewClient("passthrough:///"+address, grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: roots, Certificates: certificates, MinVersion: tls.VersionTLS13})), grpc.WithDisableRetry(), grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: 20 * time.Second, Timeout: 10 * time.Second}), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(nodecredentials.MaxBytes), grpc.MaxCallSendMsgSize(nodecredentials.MaxBytes)))
+	dialer := &net.Dialer{}
+	// The target keeps the public address, so the authority and the TLS name stay the verified
+	// ones; only the TCP connection goes to address.
+	conn, err := grpc.NewClient("passthrough:///"+endpoint.Address,
+		grpc.WithContextDialer(func(ctx context.Context, _ string) (net.Conn, error) { return dialer.DialContext(ctx, "tcp", address) }),
+		grpc.WithTransportCredentials(credentials.NewTLS(&tls.Config{RootCAs: roots, Certificates: certificates, MinVersion: tls.VersionTLS13, ServerName: host})), grpc.WithDisableRetry(), grpc.WithKeepaliveParams(keepalive.ClientParameters{Time: 20 * time.Second, Timeout: 10 * time.Second}), grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(nodecredentials.MaxBytes), grpc.MaxCallSendMsgSize(nodecredentials.MaxBytes)))
 	if err != nil {
 		return nil, fmt.Errorf("create gateway connection: %w", err)
 	}
@@ -103,13 +144,13 @@ func dial(address string, ca *x509.Certificate, certificates []tls.Certificate) 
 
 // discoverCA sends no application data. Its custom verifier checks both the pinned root and
 // the normal server chain/hostname/validity before any enrollment RPC is possible.
-func discoverCA(ctx context.Context, address, fingerprint string, dev bool) (*x509.Certificate, error) {
+func discoverCA(ctx context.Context, endpoint Endpoint, fingerprint string, dev bool) (*x509.Certificate, error) {
 	if fingerprint == "" && !dev {
 		return nil, errors.New("installation CA fingerprint is required")
 	}
-	host, _, err := net.SplitHostPort(address)
+	address, host, err := endpoint.target()
 	if err != nil {
-		return nil, errors.New("invalid gateway address")
+		return nil, err
 	}
 	var trusted *x509.Certificate
 	config := &tls.Config{MinVersion: tls.VersionTLS13, ServerName: host, NextProtos: []string{"h2"},
