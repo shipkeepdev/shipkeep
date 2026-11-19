@@ -31,9 +31,10 @@ export class JobQueue extends PgBoss implements OnModuleInit, OnModuleDestroy {
     // checked before any job runs.
     await this.utcSessions();
     await this.start();
-    const { rows } = await this.getDb().executeSql(SESSION_ZONE);
-    const zone: unknown = (rows.at(0) as { zone?: unknown } | undefined)?.zone;
+    // Every failure after start(), the query included, stops what start() began.
     try {
+      const { rows } = await this.getDb().executeSql(SESSION_ZONE);
+      const zone: unknown = (rows.at(0) as { zone?: unknown } | undefined)?.zone;
       assertUtcSession(typeof zone === 'string' ? zone : '');
     } catch (error: unknown) {
       await this.stop({ graceful: false });

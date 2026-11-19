@@ -13,17 +13,20 @@ import { Pool } from 'pg';
  */
 export const UTC_SESSION = "SET TIME ZONE 'UTC'";
 
-/** A pool whose every connection runs UTC_SESSION before anything else. */
+/**
+ * A pool whose every connection runs UTC_SESSION before it is handed out: `onConnect` is awaited
+ * during connection setup, and a failure closes the connection and fails the checkout, so nothing
+ * ever runs on it in another zone.
+ */
 export function utcPool(connectionString: string): Pool {
-  const pool = new Pool({ connectionString });
-  pool.on('connect', (client) => {
-    // Queued before the query the client is checked out for. If it fails, the connection is
-    // closed, so that nothing runs on it in another zone.
-    client.query(UTC_SESSION).catch(() => {
-      client.end().catch(() => undefined);
-    });
+  return new Pool({
+    connectionString,
+    // pg-pool awaits the returned promise, although its type says void.
+    // eslint-disable-next-line @typescript-eslint/no-misused-promises -- awaited by pg-pool
+    onConnect: async (client) => {
+      await client.query(UTC_SESSION);
+    },
   });
-  return pool;
 }
 
 /** Thrown when a session runs in another zone despite UTC_SESSION. */
