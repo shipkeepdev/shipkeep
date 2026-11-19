@@ -112,6 +112,8 @@ const causeImageVolume = "image_volume_undeclared"
 type causeError struct{ cause string }
 
 func (e causeError) Error() string { return e.cause }
+
+// Cause is the code the journal keeps and the dispatcher turns into a fixed text.
 func (e causeError) Cause() string { return e.cause }
 
 // imageVolumesMounted refuses a read-only root whose image declares a VOLUME that no mount of the
