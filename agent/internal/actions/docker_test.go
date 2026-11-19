@@ -35,10 +35,22 @@ type fakeEngine struct {
 	auth              *docker.Auth
 	// pullErr makes every pull fail with this error.
 	pullErr error
+	// proxies are what the daemon reports; the egress proxy by default (ADR 0023).
+	proxies    docker.Proxies
+	proxiesErr error
 }
 
 func newFakeEngine() *fakeEngine {
-	return &fakeEngine{networks: map[string]docker.Network{}, volumes: map[string]docker.Volume{}, images: map[string]docker.Image{}}
+	return &fakeEngine{
+		networks: map[string]docker.Network{}, volumes: map[string]docker.Volume{}, images: map[string]docker.Image{},
+		proxies: docker.Proxies{HTTP: EgressProxy, HTTPS: EgressProxy},
+	}
+}
+
+func (f *fakeEngine) Proxies(context.Context) (docker.Proxies, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.proxies, f.proxiesErr
 }
 
 func (f *fakeEngine) NetworkByName(_ context.Context, name string) (docker.Network, error) {
@@ -261,6 +273,61 @@ func TestFailedPullReportsItsCauseAsAFixedText(t *testing.T) {
 	}
 }
 
+// A pull runs only while the daemon goes through the egress proxy (ADR 0023).
+func TestPullRequiresTheEgressProxy(t *testing.T) {
+	pull := &agentv1.ActionRequest{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: "registry.example.com/acme/api@" + digest}}}
+	for name, proxies := range map[string]docker.Proxies{
+		"no proxy":                {},
+		"another proxy":           {HTTP: "http://10.0.0.5:3128", HTTPS: "http://10.0.0.5:3128"},
+		"https only":              {HTTPS: EgressProxy},
+		"http only":               {HTTP: EgressProxy},
+		"no-proxy for everything": {HTTP: EgressProxy, HTTPS: EgressProxy, No: "*"},
+		"no-proxy for a registry": {HTTP: EgressProxy, HTTPS: EgressProxy, No: "registry.example.com"},
+		"a different port":        {HTTP: "http://127.0.0.1:7481", HTTPS: "http://127.0.0.1:7481"},
+		"localhost instead of IP": {HTTP: "http://localhost:7480", HTTPS: "http://localhost:7480"},
+		"user in the proxy URL":   {HTTP: "http://u@127.0.0.1:7480", HTTPS: "http://u@127.0.0.1:7480"},
+	} {
+		engine := newFakeEngine()
+		engine.proxies = proxies
+		update := run(t, engine, pull)
+		if update.GetState() != agentv1.OperationState_OPERATION_STATE_COMPENSATED || update.GetError() != "the server's Docker does not go through its egress proxy" {
+			t.Errorf("%s: state %v, error %q", name, update.GetState(), update.GetError())
+		}
+		if len(engine.pulls) != 0 {
+			t.Errorf("%s: pulled anyway", name)
+		}
+	}
+	// A daemon that does not say is not trusted either.
+	engine := newFakeEngine()
+	engine.proxiesErr = errors.New("daemon unavailable")
+	if update := run(t, engine, pull); succeeded(update) || len(engine.pulls) != 0 || update.GetError() != errFailed {
+		t.Fatalf("unknown settings: %v, pulls %v", update, engine.pulls)
+	}
+	// The egress proxy: the pull runs.
+	engine = newFakeEngine()
+	if update := run(t, engine, pull); !succeeded(update) || len(engine.pulls) != 1 {
+		t.Fatalf("guarded pull: %v", update)
+	}
+	// An image already on the server needs no pull, so no check.
+	engine.proxies = docker.Proxies{}
+	if update := run(t, engine, pull); !succeeded(update) || len(engine.pulls) != 1 {
+		t.Fatalf("present image: %v", update)
+	}
+}
+
+// Only an agent started with --dev pulls without the proxy.
+func TestPullWithoutEgressCheckInDevelopment(t *testing.T) {
+	engine := newFakeEngine()
+	engine.proxies = docker.Proxies{}
+	d := &Dispatcher{Journal: open(t), Handlers: DockerHandlers(engine, nil, nil, WithoutEgressCheck()), Epoch: func() uint64 { return 3 }}
+	out := &recorder{}
+	d.Handle(context.Background(), &agentv1.ActionRequest{ActionId: testID, IdempotencyKey: "pull", LeaseEpoch: 3, DeadlineUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+		Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{ImageRef: "registry.example.com/acme/api@" + digest}}}, out.send)
+	if update := out.last(t); !succeeded(update) || len(engine.pulls) != 1 {
+		t.Fatalf("dev pull: %v", update)
+	}
+}
+
 func TestDockerHandlersRejectMaliciousInput(t *testing.T) {
 	expired := &agentv1.RegistryCredentials{Server: "registry.internal", Username: "u", Password: "p", ExpiresAt: timestamppb.New(time.Now().Add(-time.Minute))}
 	foreign := &agentv1.RegistryCredentials{Server: "evil.example.com", Username: "u", Password: "p", ExpiresAt: timestamppb.New(time.Now().Add(time.Minute))}
@@ -329,7 +396,7 @@ func FuzzResourceAndImageValidation(f *testing.F) {
 			(!strings.HasPrefix(value, "sk-") || len(value) > 63 || strings.ContainsAny(value, "/.\\ \n\x00;")) {
 			t.Fatalf("accepted network name %q", value)
 		}
-		if _, err := pullImage(newFakeEngine(), &agentv1.PullImage{ImageRef: value}); err == nil &&
+		if _, err := pullImage(newFakeEngine(), &agentv1.PullImage{ImageRef: value}, true); err == nil &&
 			(!strings.Contains(value, "@sha256:") || strings.ContainsAny(value, " \n\x00;\\") || strings.Contains(value, "..")) {
 			t.Fatalf("accepted image reference %q", value)
 		}

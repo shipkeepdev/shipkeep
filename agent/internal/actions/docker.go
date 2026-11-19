@@ -27,6 +27,7 @@ type Engine interface {
 	RemoveVolume(ctx context.Context, name string) error
 	Image(ctx context.Context, ref string) (docker.Image, error)
 	PullImage(ctx context.Context, repository, digest string, auth *docker.Auth) error
+	Proxies(ctx context.Context) (docker.Proxies, error)
 	Container(ctx context.Context, ref string) (docker.Container, error)
 	CreateContainer(ctx context.Context, name string, config docker.ContainerConfig) (string, error)
 	StartContainer(ctx context.Context, id string) error
@@ -62,11 +63,50 @@ type Intents interface {
 }
 
 // DockerHandlers returns the Docker-backed handlers; health probes go over container networks.
-func DockerHandlers(engine Engine, confirmations Confirmer, intents Intents) map[string]Handler {
-	return dockerHandlers(engine, confirmations, NetworkProber{}, intents)
+func DockerHandlers(engine Engine, confirmations Confirmer, intents Intents, options ...Option) map[string]Handler {
+	return dockerHandlers(engine, confirmations, NetworkProber{}, intents, options...)
 }
 
-func dockerHandlers(engine Engine, confirmations Confirmer, prober Prober, intents Intents) map[string]Handler {
+// Option changes how the Docker handlers behave.
+type Option func(*handlerOptions)
+
+type handlerOptions struct {
+	egressUnchecked bool
+}
+
+// WithoutEgressCheck lets pulls run without the daemon going through the egress proxy. Only an
+// agent started with --dev uses it, on a machine without the proxy (ADR 0023).
+func WithoutEgressCheck() Option {
+	return func(o *handlerOptions) { o.egressUnchecked = true }
+}
+
+// EgressProxy is the proxy the daemon must use for every pull: the egress service on the node
+// (ADR 0023, agent/internal/egress).
+const EgressProxy = "http://127.0.0.1:7480"
+
+// causeEgressUnguarded is the cause of a pull refused because the daemon does not go through
+// the egress proxy.
+const causeEgressUnguarded = "egress_unguarded"
+
+// egressGuarded checks the daemon's effective proxy settings before a pull: both proxies are the
+// egress service and nothing bypasses it. Anything else, or a daemon that does not answer, refuses
+// the pull: the proxy is what keeps a registry from pointing the daemon at the node's network.
+func egressGuarded(ctx context.Context, engine Engine) error {
+	proxies, err := engine.Proxies(ctx)
+	if err != nil {
+		return fmt.Errorf("read daemon proxy settings: %w", err)
+	}
+	if proxies.HTTP != EgressProxy || proxies.HTTPS != EgressProxy || proxies.No != "" {
+		return causeError{cause: causeEgressUnguarded}
+	}
+	return nil
+}
+
+func dockerHandlers(engine Engine, confirmations Confirmer, prober Prober, intents Intents, options ...Option) map[string]Handler {
+	var settings handlerOptions
+	for _, option := range options {
+		option(&settings)
+	}
 	return map[string]Handler{
 		"health_check": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return healthCheck(engine, prober, req.GetHealthCheck())
@@ -80,7 +120,9 @@ func dockerHandlers(engine Engine, confirmations Confirmer, prober Prober, inten
 		"ensure_network": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return ensureNetwork(engine, req.GetEnsureNetwork())
 		}, Result: resourceResult},
-		"pull_image": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) { return pullImage(engine, req.GetPullImage()) }, Result: digestResult},
+		"pull_image": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
+			return pullImage(engine, req.GetPullImage(), !settings.egressUnchecked)
+		}, Result: digestResult},
 		"ensure_volume": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return ensureVolume(engine, req.GetEnsureVolume())
 		}, Result: resourceResult},
@@ -129,7 +171,7 @@ func ensureNetwork(engine Engine, action *agentv1.EnsureNetwork) (journal.Plan, 
 	}}}, nil
 }
 
-func pullImage(engine Engine, action *agentv1.PullImage) (journal.Plan, error) {
+func pullImage(engine Engine, action *agentv1.PullImage, checkEgress bool) (journal.Plan, error) {
 	ref := action.GetImageRef()
 	match := imageRef.FindStringSubmatch(ref)
 	if len(ref) > maxImageRef || match == nil {
@@ -147,6 +189,11 @@ func pullImage(engine Engine, action *agentv1.PullImage) (journal.Plan, error) {
 		Apply: func(ctx context.Context) (journal.Outcome, error) {
 			if present(ctx, engine, ref) {
 				return journal.Outcome{Digest: digest}, nil
+			}
+			if checkEgress {
+				if err := egressGuarded(ctx, engine); err != nil {
+					return journal.Outcome{}, err
+				}
 			}
 			if err := engine.PullImage(ctx, repository, digest, auth); err != nil {
 				return journal.Outcome{}, fmt.Errorf("pull image: %w", err)

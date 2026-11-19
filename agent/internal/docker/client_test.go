@@ -169,3 +169,24 @@ func TestPullOfAMissingImageWithoutAMessage(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 }
+
+// The proxy settings come from GET /info, as the daemon applies them (ADR 0023).
+func TestClientReadsTheDaemonProxies(t *testing.T) {
+	client := fakeDaemon(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet || r.URL.Path != "/"+apiVersion+"/info" {
+			http.NotFound(w, r)
+			return
+		}
+		_, _ = w.Write([]byte(`{"ID":"x","HttpProxy":"http://127.0.0.1:7480","HttpsProxy":"http://127.0.0.1:7480","NoProxy":"","Name":"node"}`))
+	})
+	proxies, err := client.Proxies(context.Background())
+	if err != nil || proxies != (Proxies{HTTP: "http://127.0.0.1:7480", HTTPS: "http://127.0.0.1:7480"}) {
+		t.Fatalf("got %+v, %v", proxies, err)
+	}
+	failing := fakeDaemon(t, func(w http.ResponseWriter, _ *http.Request) {
+		http.Error(w, `{"message":"boom"}`, http.StatusInternalServerError)
+	})
+	if _, err := failing.Proxies(context.Background()); err == nil {
+		t.Fatal("a failing daemon gave proxy settings")
+	}
+}

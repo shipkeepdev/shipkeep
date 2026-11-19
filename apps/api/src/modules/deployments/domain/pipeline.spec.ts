@@ -325,6 +325,9 @@ describe('deployment pipeline', () => {
       expect(failing('pull_image', { state: 'failed', reason: 'disk_full' })).toBe(
         'The server could not pull the image: its disk is full.',
       );
+      expect(failing('pull_image', { state: 'compensated', reason: 'egress_unguarded' })).toBe(
+        "The server refused to pull the image: its Docker daemon does not go through Shipkeep's egress proxy, which keeps a registry from reaching the server's own network. Run the server installer again to restore it.",
+      );
     });
 
     it('keeps the step and its fixed text for the other reasons', () => {

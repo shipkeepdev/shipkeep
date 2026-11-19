@@ -53,6 +53,7 @@ describe('summarizeAction', () => {
       'registry unreachable from the server': 'registry_unreachable',
       'registry certificate not trusted by the server': 'registry_untrusted',
       'no space left on the server': 'disk_full',
+      "the server's Docker does not go through its egress proxy": 'egress_unguarded',
     } as const;
     for (const [error, reason] of Object.entries(causes)) {
       // A failed step is usually undone, so its action ends compensated.
