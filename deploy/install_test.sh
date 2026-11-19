@@ -78,6 +78,10 @@ printf '' | egress_guard /system.slice/docker-0123.scope/shipkeep.slice | grep -
 for cgroup in '' / shipkeep.slice /system.slice/docker.service /system.slice/evil.slice /shipkeep.slice/docker.service '/shipkeep.slice"' '/shipkeep.slice; drop' $'/shipkeep.slice\n' '/$(id)/shipkeep.slice' '/system slice/shipkeep.slice'; do
   refused egress_guard "$cgroup" </dev/null || die "accepted the cgroup $cgroup"
 done
+# The installer points Docker where the proxy listens and where the agent expects it.
+grep -qxF 'const Address = "127.0.0.1:7480"' agent/internal/egress/proxy.go || die 'the proxy listens elsewhere'
+grep -qxF "const EgressProxy = \"$egress_proxy\"" agent/internal/actions/docker.go || die 'the agent expects another proxy'
+[[ $egress_proxy == "http://127.0.0.1:7480" ]] || die 'the installer points Docker elsewhere'
 # A proxy in daemon.json would win over the egress proxy.
 printf '{"log-driver":"json-file"}\n' >"$work/daemon.json"
 daemon_json_without_proxies "$work/daemon.json" || die 'daemon.json without a proxy'
