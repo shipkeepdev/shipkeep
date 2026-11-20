@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -100,6 +101,62 @@ type server struct {
 
 type automaticHTTPS struct {
 	Skip []string `json:"skip,omitempty"`
+}
+
+// ControlPlaneRouteID is the id of the control plane's route on the machine that hosts it
+// (ADR 0021). It is outside the Shipkeep route prefix, so no action can reach it.
+const ControlPlaneRouteID = "shipkeep-control-plane"
+
+// ControlPlaneRoute is the route that sends the control plane's name to its loopback port, under
+// automatic HTTPS.
+func ControlPlaneRoute(host, upstream string) Route {
+	return Route{
+		ID:       ControlPlaneRouteID,
+		Match:    []Match{{Host: []string{host}, Protocol: HTTPS}},
+		Handle:   []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{{Dial: upstream}}}},
+		Terminal: true,
+	}
+}
+
+// EnsureControlPlaneRoute keeps route as the first route of the Shipkeep server, so that it wins
+// over any other, and its host out of the hosts without TLS. It changes nothing when Caddy already
+// holds exactly that, and reports whether it wrote. It creates the server when Caddy lost it.
+func (c *Client) EnsureControlPlaneRoute(ctx context.Context, route Route) (bool, error) {
+	if err := c.EnsureServer(ctx); err != nil {
+		return false, err
+	}
+	c.routes.Lock()
+	defer c.routes.Unlock()
+	path := "/config/apps/http/servers/" + Server + "/routes"
+	var routes []Route
+	if _, err := c.get(ctx, path, &routes); err != nil {
+		return false, fmt.Errorf("read caddy routes: %w", err)
+	}
+	changed := false
+	if len(routes) == 0 || !reflect.DeepEqual(routes[0], route) {
+		if slices.ContainsFunc(routes, func(r Route) bool { return r.ID == route.ID }) {
+			if err := c.do(ctx, http.MethodDelete, "/id/"+route.ID, nil, nil); err != nil && !errors.Is(err, ErrNotFound) {
+				return false, fmt.Errorf("remove misplaced control plane route: %w", err)
+			}
+		}
+		// A PUT on an index inserts before it.
+		if err := c.do(ctx, http.MethodPut, path+"/0", route, nil); err != nil {
+			return false, fmt.Errorf("insert control plane route: %w", err)
+		}
+		changed = true
+	}
+	var plain automaticHTTPS
+	if _, err := c.get(ctx, "/config/apps/http/servers/"+Server+"/automatic_https", &plain); err != nil {
+		return changed, fmt.Errorf("read caddy automatic https: %w", err)
+	}
+	hosts := route.Match[0].Host
+	if slices.ContainsFunc(plain.Skip, func(host string) bool { return slices.Contains(hosts, host) }) {
+		if err := c.setPlainHosts(ctx, nil, hosts); err != nil {
+			return changed, fmt.Errorf("serve control plane over https: %w", err)
+		}
+		changed = true
+	}
+	return changed, nil
 }
 
 // RouteID is the Caddy object id of a Shipkeep route.
