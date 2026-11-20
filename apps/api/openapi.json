@@ -2965,6 +2965,148 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/metrics": {
+      "get": {
+        "operationId": "applicationMetrics",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "range",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "1h",
+              "type": "string",
+              "enum": [
+                "1h",
+                "24h",
+                "7d"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationMetricsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/nodes/{nodeId}/metrics": {
+      "get": {
+        "operationId": "nodeMetrics",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "range",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "1h",
+              "type": "string",
+              "enum": [
+                "1h",
+                "24h",
+                "7d"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeMetricsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
     "/api/v1/organizations": {
       "get": {
         "operationId": "listOrganizations",
@@ -6417,6 +6559,199 @@
         },
         "required": [
           "items"
+        ]
+      },
+      "MetricPointDto": {
+        "type": "object",
+        "properties": {
+          "t": {
+            "type": "number",
+            "description": "Unix time, in seconds."
+          },
+          "v": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "t",
+          "v"
+        ]
+      },
+      "MetricSeriesDto": {
+        "type": "object",
+        "properties": {
+          "labels": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Labels that tell series of one query apart, such as `status` for requests."
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricPointDto"
+            }
+          }
+        },
+        "required": [
+          "labels",
+          "points"
+        ]
+      },
+      "ApplicationMetricsDto": {
+        "type": "object",
+        "properties": {
+          "kept": {
+            "type": "boolean",
+            "description": "False when this installation keeps no metrics: every series is empty."
+          },
+          "range": {
+            "type": "string",
+            "enum": [
+              "1h",
+              "24h",
+              "7d"
+            ]
+          },
+          "stepSeconds": {
+            "type": "number"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cpu": {
+            "description": "CPU in use, in cores.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          },
+          "memory": {
+            "description": "Memory in use, in bytes.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          },
+          "requests": {
+            "description": "Requests per second, one series per `status` class: 2xx, 3xx, 4xx, 5xx, other.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          },
+          "duration": {
+            "description": "Mean response time, in seconds.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          }
+        },
+        "required": [
+          "kept",
+          "range",
+          "stepSeconds",
+          "from",
+          "to",
+          "cpu",
+          "memory",
+          "requests",
+          "duration"
+        ]
+      },
+      "NodeMetricsDto": {
+        "type": "object",
+        "properties": {
+          "kept": {
+            "type": "boolean",
+            "description": "False when this installation keeps no metrics: every series is empty."
+          },
+          "range": {
+            "type": "string",
+            "enum": [
+              "1h",
+              "24h",
+              "7d"
+            ]
+          },
+          "stepSeconds": {
+            "type": "number"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cpu": {
+            "description": "CPU in use, in cores.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          },
+          "memory": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          },
+          "memoryTotal": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          },
+          "disk": {
+            "description": "Under Docker's data root, in bytes.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          },
+          "diskTotal": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          },
+          "received": {
+            "description": "Bytes per second received.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          },
+          "sent": {
+            "description": "Bytes per second sent.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          }
+        },
+        "required": [
+          "kept",
+          "range",
+          "stepSeconds",
+          "from",
+          "to",
+          "cpu",
+          "memory",
+          "memoryTotal",
+          "disk",
+          "diskTotal",
+          "received",
+          "sent"
         ]
       },
       "OrganizationDto": {
