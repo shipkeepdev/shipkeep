@@ -157,6 +157,44 @@ prepare_egress() {
   command -v nft >/dev/null || apt-get install -y --no-install-recommends nftables </dev/null
   [[ -f /etc/nftables.conf ]] || fail 'nftables has no /etc/nftables.conf; reinstall the nftables package.'
 }
+# The share of the machine kept for the control plane and the system on a single machine (ADR 0021),
+# and the smallest machine that leaves room for an application beside it.
+reserved_cpu_millis=500
+reserved_memory_bytes=1073741824
+minimum_cpus=2
+minimum_memory_bytes=3221225472
+# True when the mounts file $1 has cgroup v2 on /sys/fs/cgroup with memory_recursiveprot: without
+# it, MemoryLow stops at a slice and never reaches the container scopes below it (ADR 0021).
+cgroup2_recursiveprot() {
+  local target type options rest
+  while read -r _ target type options rest; do
+    [[ $target == /sys/fs/cgroup && $type == cgroup2 ]] || continue
+    [[ ,$options, == *,memory_recursiveprot,* ]] && return 0
+  done <"$1"
+  return 1
+}
+# Prints the machine's memory in bytes, from the meminfo file $1.
+memory_total_bytes() {
+  local key value unit
+  while read -r key value unit; do
+    if [[ $key == MemTotal: && $value =~ ^[0-9]{1,15}$ && $unit == kB ]]; then
+      printf '%d\n' "$((10#$value * 1024))"
+      return 0
+    fi
+  done <"$1"
+  return 1
+}
+# True when $1 is the control plane's HTTP address on this machine: 127.0.0.1 and a port.
+valid_local_control_plane() {
+  [[ $1 =~ ^127\.0\.0\.1:([0-9]{1,5})$ ]] && ((10#${BASH_REMATCH[1]} > 0 && 10#${BASH_REMATCH[1]} <= 65535))
+}
+# Prints the slice of the applications on a single machine, whose memory is the machine's $1 bytes
+# minus the reservation, and whose CPU weight is below the control plane's (ADR 0021).
+workloads_slice_unit() {
+  (($1 > reserved_memory_bytes)) || return 1
+  printf '[Unit]\nDescription=Shipkeep: the applications of the machine that hosts the control plane\nBefore=slices.target\n'
+  printf '[Slice]\nMemoryMax=%d\nCPUWeight=50\n' "$(($1 - reserved_memory_bytes))"
+}
 # Puts the Docker daemon behind the egress proxy and the loopback guard, restarts Docker and checks
 # what it applies (ADR 0023). $1 is a private work directory holding the verified agent binary
 # ($1/agent); the account shipkeep-egress exists already.
@@ -202,6 +240,11 @@ Before=slices.target nftables.service docker.service
 [Install]
 WantedBy=sysinit.target
 UNIT
+  # On a single machine it also holds the control plane's and the applications' slices, and protects
+  # the reservation: memory protection reaches a cgroup only through protected ancestors (ADR 0021).
+  if [[ -n $local_control_plane ]]; then
+    printf '[Slice]\nMemoryLow=%d\n' "$reserved_memory_bytes" >>/etc/systemd/system/shipkeep.slice
+  fi
   chmod 0644 /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/shipkeep.slice
   systemctl daemon-reload
   systemctl enable --now shipkeep.slice
@@ -259,7 +302,7 @@ UNIT
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
 umask 077
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-control_plane='' fingerprint='' origin='' amd64='' arm64=''
+control_plane='' fingerprint='' origin='' amd64='' arm64='' local_control_plane='' agent_file=''
 while (($#)); do
   (($# >= 2)) || fail 'Missing option value.'
   case "$1" in
@@ -268,6 +311,10 @@ while (($#)); do
     --origin) origin=$2 ;;
     --amd64-sha256) amd64=$2 ;;
     --arm64-sha256) arm64=$2 ;;
+    # Set by the control plane installer on a single machine (ADR 0021): the control plane's HTTP
+    # address on loopback, and the agent binary it took from its own image (checked like a download).
+    --local-control-plane) local_control_plane=$2 ;;
+    --agent-file) agent_file=$2 ;;
     *) fail 'Unknown option.' ;;
   esac
   shift 2
@@ -277,19 +324,31 @@ port=${control_plane##*:}
 ((10#$port > 0 && 10#$port <= 65535)) || fail 'Invalid gateway port.'
 [[ $fingerprint =~ ^sha256:[a-f0-9]{64}$ && $amd64 =~ ^[a-f0-9]{64}$ && $arm64 =~ ^[a-f0-9]{64}$ ]] || fail 'Invalid SHA-256 pin.'
 [[ $origin =~ ^https://([a-zA-Z0-9.-]+|\[[a-fA-F0-9:]+\])(:[0-9]{1,5})?$ ]] || fail 'An HTTPS control-plane origin is required.'
+[[ -z $local_control_plane ]] || valid_local_control_plane "$local_control_plane" || fail 'Invalid local control plane address: 127.0.0.1 and a port are required.'
+[[ -z $agent_file || ($agent_file =~ ^/[A-Za-z0-9._/-]+$ && -f $agent_file && ! -L $agent_file) ]] || fail 'Invalid agent file: an absolute path to a regular file is required.'
+[[ -z $local_control_plane || -n $agent_file ]] || fail 'A single machine installs the agent of its control plane image: pass --agent-file.'
+# The control plane's name, the host of the gateway address, is the name its route serves.
+control_plane_host=${control_plane%:*}
 ((EUID == 0)) || fail 'Run with sudo.'
 [[ -d /run/systemd/system ]] || fail 'A systemd host is required.'
 # shellcheck source=/dev/null
 . /etc/os-release
 [[ $ID == ubuntu && $VERSION_ID == 24.04 ]] || fail 'This installer supports Ubuntu 24.04.'
 case $(uname -m) in x86_64) digest=$amd64 ;; aarch64) digest=$arm64 ;; *) fail 'Unsupported architecture.' ;; esac
-for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep /etc/shipkeep-caddy.json /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft /etc/systemd/system/shipkeep.slice /usr/local/libexec/shipkeep-egress /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf /etc/tmpfiles.d/shipkeep.conf; do
+for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep /etc/shipkeep-caddy.json /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-workloads.slice /usr/local/libexec/shipkeep-egress /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf /etc/tmpfiles.d/shipkeep.conf; do
   [[ ! -e $path && ! -L $path ]] || fail 'Existing Shipkeep installation; refusing to overwrite it.'
 done
 for account in shipkeep shipkeep-caddy shipkeep-egress; do
   ! getent passwd "$account" >/dev/null || fail 'An installation service account already exists.'
   ! getent group "$account" >/dev/null || fail 'An installation group already exists.'
 done
+if [[ -n $local_control_plane ]]; then
+  # ADR 0021: the reservation needs room beside it, and memory protection needs both of these.
+  (($(nproc) >= minimum_cpus)) || fail 'A single machine needs at least 2 CPUs; install the control plane and the applications on two machines.'
+  memory=$(memory_total_bytes /proc/meminfo) || fail 'Cannot read the memory of this machine.'
+  ((memory >= minimum_memory_bytes)) || fail 'A single machine needs at least 3 GiB of memory; install the control plane and the applications on two machines.'
+  cgroup2_recursiveprot /proc/self/mounts || fail 'A single machine needs cgroup v2 mounted with memory_recursiveprot (systemd 247 or later).'
+fi
 command -v ss >/dev/null || fail 'Install iproute2 before running this installer.'
 listeners=$(ss -H -ltn '( sport = :80 or sport = :443 )') || fail 'Cannot inspect TCP ports.'
 [[ -z $listeners ]] || fail 'Ports 80/443 are occupied.'
@@ -318,6 +377,10 @@ fi
 systemctl enable --now docker
 # The agent pins Docker API 1.47. Do not silently replace an incompatible existing daemon.
 curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/v1.47/info -o /dev/null || fail 'Docker API 1.47 is unavailable.'
+if [[ -n $local_control_plane ]]; then
+  # With the cgroupfs driver, CgroupParent is a plain path and no slice would hold the containers.
+  [[ $(docker info --format '{{.CgroupDriver}}') == systemd ]] || fail "A single machine needs Docker's systemd cgroup driver."
+fi
 # Every pull goes through the egress proxy, and a guard keeps the daemon off loopback (ADR 0023).
 prepare_egress "$work"
 # Upstream's signed repository: the edge proxy needs security updates, and Ubuntu's universe build
@@ -340,7 +403,11 @@ systemctl mask --runtime caddy.service caddy-api.service
 apt-get install -y --no-install-recommends caddy </dev/null
 systemctl disable caddy.service caddy-api.service
 systemctl unmask --runtime caddy.service caddy-api.service
-curl --fail --silent --show-error --proto '=https' --max-time 300 --max-filesize 50331648 "$origin/install/agent-$digest.bin" -o "$work/agent"
+if [[ -n $agent_file ]]; then
+  install -m 0600 -- "$agent_file" "$work/agent"
+else
+  curl --fail --silent --show-error --proto '=https' --max-time 300 --max-filesize 50331648 "$origin/install/agent-$digest.bin" -o "$work/agent"
+fi
 printf '%s  %s\n' "$digest" "$work/agent" | sha256sum --check --status || fail 'Agent checksum mismatch.'
 cat > "$work/agent.yaml" <<CONFIG
 control_plane:
@@ -348,6 +415,24 @@ control_plane:
   ca_fingerprint: '$fingerprint'
   join_token_file: /etc/shipkeep/join-token
 CONFIG
+if [[ -n $local_control_plane ]]; then
+  # ADR 0021: the agent connects over loopback and still verifies the public name, keeps the control
+  # plane's route in this node's Caddy, reports the reservation, and puts applications in their
+  # slice, first in the kernel's kill order.
+  cat >> "$work/agent.yaml" <<CONFIG
+  connect: '127.0.0.1:${control_plane##*:}'
+  route:
+    host: '$control_plane_host'
+    upstream: '$local_control_plane'
+node:
+  reservation:
+    cpu_millis: $reserved_cpu_millis
+    memory_bytes: $reserved_memory_bytes
+docker:
+  workloads_slice: shipkeep-workloads.slice
+  workloads_oom_score_adj: 1000
+CONFIG
+fi
 chmod 0700 "$work/agent"
 "$work/agent" --validate --config "$work/agent.yaml"
 printf 'Join token (input hidden; paste it, then Enter): ' >&2
@@ -425,5 +510,11 @@ WantedBy=multi-user.target
 UNIT
 chmod 0644 /etc/systemd/system/shipkeep-{agent,caddy}.service
 install_egress "$work"
+if [[ -n $local_control_plane ]]; then
+  workloads_slice_unit "$memory" >/etc/systemd/system/shipkeep-workloads.slice || fail 'No memory is left for applications beside the reservation.'
+  chmod 0644 /etc/systemd/system/shipkeep-workloads.slice
+  systemctl daemon-reload
+  systemctl start shipkeep-workloads.slice
+fi
 systemctl enable --now shipkeep-caddy shipkeep-agent
 printf 'Services started. Refresh Servers to verify ready; inspect journalctl -u shipkeep-agent on failure.\n'

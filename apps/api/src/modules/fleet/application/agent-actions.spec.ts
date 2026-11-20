@@ -95,6 +95,8 @@ describe('AgentActions.record', () => {
       memory_bytes: 17_179_869_184,
       disk_bytes: 0,
       disk_free_bytes: 0,
+      reserved_cpu_millis: 0,
+      reserved_memory_bytes: 0,
     });
   });
 

@@ -17,6 +17,13 @@ control_plane:
   # verified against the host of address and the fingerprint above.
   # connect: 127.0.0.1:7443
 
+  # Optional, only on the machine that hosts the control plane (ADR 0021): the control plane's
+  # route through this node's Caddy. The agent keeps it from its start, puts it back when Caddy
+  # loses it, and refuses any application route for this name.
+  # route:
+  #   host: shipkeep.example.com
+  #   upstream: 127.0.0.1:8080
+
 node:
   # Optional. Defaults to the hostname.
   name: ''

@@ -4,8 +4,8 @@ import {
   createEvent,
   type DomainEvent,
   isDomainError,
+  type PlacementRejection,
   type PlacementRequest,
-  placeReplica,
   placeReplicas,
   rollBack,
   type RoutingOutcome,
@@ -528,16 +528,25 @@ function schedule(
 ): { readonly nodes: readonly string[] } | { readonly failure: string } {
   const placed = placeReplicas(request, replicas, nodes);
   if (placed.unplaced === 0) return { nodes: placed.nodes };
-  const decision = placeReplica(request, nodes);
-  const reasons = decision.placed
-    ? 'capacity'
-    : Object.entries(decision.rejections)
-        .map(([node, why]) => `${node}: ${why}`)
-        .join(', ') || 'no nodes';
+  // Why the failing replica was refused, beside the replicas placed before it.
+  const reasons =
+    Object.entries(placed.rejections ?? {})
+      .map(([node, why]) => `${node}: ${REJECTIONS[why] ?? why}`)
+      .join(', ') || 'no nodes';
   return {
     failure: `No node can run replica ${String(replicas - placed.unplaced + 1)} of ${String(replicas)} (${reasons}).`,
   };
 }
+
+/**
+ * Rejections that need more words than their name. On the machine that hosts the control plane, a
+ * redeployment that does not fit beside the release it replaces is refused before it starts
+ * (ADR 0021): lowering its limits or placing it on another server makes room.
+ */
+const REJECTIONS: Partial<Record<PlacementRejection, string>> = {
+  surge:
+    'the old and the new release do not fit together beside the control plane reservation; lower the limits or place the application on another server',
+};
 
 function reason(error: unknown, fallback: string): string {
   return isDomainError(error) ? error.message : fallback;

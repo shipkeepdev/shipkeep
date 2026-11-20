@@ -2,6 +2,7 @@ import { DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   effect,
   inject,
@@ -19,7 +20,7 @@ import { ShellContext } from '../shell/shell-context';
 import { I18n, LANGUAGES, T } from '../ui/i18n';
 import { Notice } from '../ui/notice';
 import { CommandPalette, type PaletteEntry } from './command-palette';
-import { type Crumb, PageCrumbs } from './page-crumbs';
+import { type Crumb, PageCrumbs, RouteCrumbs } from './page-crumbs';
 import { VIEW_PATHS } from './views';
 
 interface NavEntry {
@@ -55,6 +56,7 @@ export class DashboardLayout {
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly crumbs = inject(PageCrumbs);
+  private readonly routeCrumbs = inject(RouteCrumbs);
   private readonly document = inject(DOCUMENT);
   protected readonly menuOpen = signal(false);
   protected readonly orgMenuOpen = signal(false);
@@ -138,10 +140,12 @@ export class DashboardLayout {
       this.navigation();
       this.menuOpen.set(false);
       this.orgMenuOpen.set(false);
-      let route = this.route.snapshot;
-      while (route.firstChild) route = route.firstChild;
-      const labels = (route.data['crumbs'] as readonly string[] | undefined) ?? [];
-      this.crumbs.set(labels.map((label) => ({ label })));
+    });
+    // The route's own crumbs, set before each page is created (RouteCrumbs).
+    this.routeCrumbs.apply(this.route.snapshot);
+    const watch = this.routeCrumbs.watch(this.router.events);
+    inject(DestroyRef).onDestroy(() => {
+      watch.unsubscribe();
     });
   }
 

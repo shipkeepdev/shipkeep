@@ -72,6 +72,7 @@ type Option func(*handlerOptions)
 
 type handlerOptions struct {
 	egressUnchecked bool
+	reservedHosts   []string
 	workloads       Workloads
 }
 
@@ -88,6 +89,12 @@ type Workloads struct {
 // WithWorkloads creates every application and release-task container under w.
 func WithWorkloads(w Workloads) Option {
 	return func(o *handlerOptions) { o.workloads = w }
+}
+
+// WithReservedHosts refuses every route for these host names, or a wildcard that covers one: the
+// control plane's name on the machine that hosts it (ADR 0021), whose route the agent keeps itself.
+func WithReservedHosts(hosts ...string) Option {
+	return func(o *handlerOptions) { o.reservedHosts = append(o.reservedHosts, hosts...) }
 }
 
 // WithoutEgressCheck lets pulls run without the daemon going through the egress proxy. Only an
