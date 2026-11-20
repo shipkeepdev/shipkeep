@@ -320,6 +320,30 @@ func (c *Client) upsertRoute(ctx context.Context, route Route) error {
 	return c.do(ctx, http.MethodPost, "/config/apps/http/servers/"+Server+"/routes", route, nil)
 }
 
+// TLSHosts lists the host names the Shipkeep server serves over HTTPS, sorted and without
+// duplicates. Wildcards are left out: no single certificate name answers for them.
+func (c *Client) TLSHosts(ctx context.Context) ([]string, error) {
+	var routes []Route
+	if _, err := c.get(ctx, "/config/apps/http/servers/"+Server+"/routes", &routes); err != nil {
+		return nil, fmt.Errorf("read caddy routes: %w", err)
+	}
+	hosts := []string{}
+	for _, route := range routes {
+		for _, match := range route.Match {
+			if match.Protocol != HTTPS {
+				continue
+			}
+			for _, host := range match.Host {
+				if !strings.HasPrefix(host, "*.") && !slices.Contains(hosts, host) {
+					hosts = append(hosts, host)
+				}
+			}
+		}
+	}
+	slices.Sort(hosts)
+	return hosts, nil
+}
+
 // Route returns the stored route with id, if any.
 func (c *Client) Route(ctx context.Context, id string) (Route, bool, error) {
 	var route Route

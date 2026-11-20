@@ -158,6 +158,17 @@ message StateReport {
   uint64 peer_list_version = 4;
   uint64 lease_epoch = 5;
   google.protobuf.Timestamp observed_at = 6;
+  // The certificates the node's Caddy serves for its HTTPS routes (PLAN M3.6b2), read with a TLS
+  // handshake on loopback; a host without a certificate for its name yet is absent.
+  repeated CertificateStatus certificates = 7;
+}
+
+// The certificate Caddy serves for one host name.
+message CertificateStatus {
+  string hostname = 1;
+  google.protobuf.Timestamp not_after = 2;
+  // The issuer's common name, or its organization when it has none, at most 64 bytes.
+  string issuer = 3;
 }
 
 // Reply to Hello.
