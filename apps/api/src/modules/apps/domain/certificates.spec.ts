@@ -1,9 +1,4 @@
-import {
-  CERTIFICATE_REFRESH_MS,
-  CERTIFICATE_STALE_MS,
-  certificateChanges,
-  domainCertificate,
-} from './certificates';
+import { CERTIFICATE_REFRESH_MS, certificateChanges } from './certificates';
 
 const now = new Date('2026-11-20T12:00:00Z');
 const later = (ms: number) => new Date(now.getTime() + ms);
@@ -84,25 +79,5 @@ describe('certificateChanges', () => {
       later(1),
     );
     expect(reissued).toEqual([expect.objectContaining({ changed: true, issuer: 'E6' })]);
-  });
-});
-
-describe('domainCertificate', () => {
-  it('shows the recent reading that expires first', () => {
-    const soon = { notAfter: later(86_400_000), issuer: 'R10', observedAt: now };
-    const far = { notAfter: expiry, issuer: 'R11', observedAt: now };
-    expect(domainCertificate([far, soon], later(1))).toBe(soon);
-  });
-
-  it('ignores readings no node refreshed recently', () => {
-    const old = { notAfter: later(1), issuer: 'R10', observedAt: now };
-    const fresh = {
-      notAfter: expiry,
-      issuer: 'R11',
-      observedAt: later(CERTIFICATE_STALE_MS),
-    };
-    expect(domainCertificate([old, fresh], later(CERTIFICATE_STALE_MS))).toBe(fresh);
-    expect(domainCertificate([old], later(CERTIFICATE_STALE_MS))).toBeUndefined();
-    expect(domainCertificate([], now)).toBeUndefined();
   });
 });

@@ -84,20 +84,3 @@ export interface DomainCertificate {
   readonly issuer: string;
   readonly observedAt: Date;
 }
-
-/**
- * The certificate to show for a domain: of the recent readings from every node, the one that
- * expires first, since that node is the first to break. Undefined when no node read one recently.
- */
-export function domainCertificate(
-  readings: readonly DomainCertificate[],
-  now: Date,
-): DomainCertificate | undefined {
-  return readings
-    .filter((reading) => now.getTime() - reading.observedAt.getTime() < CERTIFICATE_STALE_MS)
-    .reduce<DomainCertificate | undefined>(
-      (soonest, reading) =>
-        !soonest || reading.notAfter.getTime() < soonest.notAfter.getTime() ? reading : soonest,
-      undefined,
-    );
-}

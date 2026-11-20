@@ -108,6 +108,13 @@ export interface DomainCertificateStore {
     changes: readonly CertificateChange[],
     now: Date,
   ): Promise<void>;
-  /** Every node's readings for the application's domains, by host name. */
-  forApplication(applicationId: string): Promise<Map<string, DomainCertificate[]>>;
+  /**
+   * For each domain of the application, by host name, the reading observed after freshSince
+   * that expires first, among every node's.
+   */
+  forApplication(
+    organizationId: string,
+    applicationId: string,
+    freshSince: Date,
+  ): Promise<Map<string, DomainCertificate>>;
 }

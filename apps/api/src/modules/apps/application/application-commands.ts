@@ -20,7 +20,7 @@ import {
   type DomainDns,
   domainDns,
 } from '../domain/application';
-import { type DomainCertificate, domainCertificate } from '../domain/certificates';
+import { CERTIFICATE_STALE_MS, type DomainCertificate } from '../domain/certificates';
 import { domainsReleased } from '../domain/domain-events';
 
 import {
@@ -159,7 +159,11 @@ export class ApplicationCommands {
         return {
           application: found,
           hosts: await this.store.hosts(found),
-          readings: await this.certificates.forApplication(found.id),
+          readings: await this.certificates.forApplication(
+            found.organizationId,
+            found.id,
+            new Date(now.getTime() - CERTIFICATE_STALE_MS),
+          ),
         };
       },
     );
@@ -172,7 +176,7 @@ export class ApplicationCommands {
           hosts,
           now,
         ),
-        certificate: domainCertificate(readings.get(hostname) ?? [], now),
+        certificate: readings.get(hostname),
       })),
     );
   }

@@ -124,7 +124,7 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 			if err != nil {
 				return nil, err
 			}
-			report.Certificates = certificates.Snapshot()
+			report.Certificates = certificates.Snapshot(time.Now())
 			return report, nil
 		},
 	}
