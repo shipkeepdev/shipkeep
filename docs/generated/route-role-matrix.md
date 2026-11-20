@@ -38,6 +38,7 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | POST | `/organizations/:organizationId/members/:membershipId/remove` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/members/:membershipId/role` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/nodes` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
+| GET | `/organizations/:organizationId/nodes/:nodeId/metrics` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/nodes/:nodeId/public-addresses` | node.manage @ organization | node.manage | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/nodes/:nodeId/remove` | node.manage @ organization | node.manage | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/projects` | organization.read @ organization | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
@@ -63,6 +64,7 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/deployments/:deploymentId/cancel` | deploy.run @ environment | deploy.run | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/deployments/:deploymentId/rollback` | deploy.run @ environment | deploy.run | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/domains` | environment.read @ environment | environment.read | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
+| GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/metrics` | environment.read @ environment | environment.read | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
 | GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/releases` | environment.read @ environment | environment.read | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
 | GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/replicas` | environment.read @ environment | environment.read | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/stop` | deploy.run @ environment | deploy.run | yes | yes | no | yes | no | no | yes | no | no | no | no |

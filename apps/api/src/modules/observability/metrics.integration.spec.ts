@@ -124,7 +124,7 @@ describe('metrics with PostgreSQL and VictoriaMetrics', () => {
     const domains = new Set(series.data.map((labels) => labels['domain']).filter(Boolean));
     expect([...domains]).toEqual(['charted.example.com']);
     const replicas = series.data.filter((labels) =>
-      labels['__name__']?.startsWith('shipkeep_container_'),
+      labels['__name__'].startsWith('shipkeep_container_'),
     );
     expect(new Set(replicas.map((labels) => labels['application_id']))).toEqual(
       new Set([applicationId]),

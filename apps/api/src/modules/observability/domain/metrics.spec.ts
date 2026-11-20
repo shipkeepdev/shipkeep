@@ -23,29 +23,27 @@ const node = {
   networkReceivedBytes: 1000,
   networkSentBytes: 2000,
 };
+const container = {
+  name: 'sk-shop-0123456789ab-r1-0',
+  cpuSeconds: 3.5,
+  memoryUsedBytes: 1e8,
+  memoryLimitBytes: 5e8,
+  networkReceivedBytes: 10,
+  networkSentBytes: 20,
+};
+const host = {
+  host: 'shop.example.com',
+  responses2xx: 40,
+  responses3xx: 1,
+  responses4xx: 2,
+  responses5xx: 3,
+  responsesOther: 0,
+  durationSeconds: 2.25,
+};
 const measures = (patch: Partial<Measures> = {}): Measures => ({
   node,
-  containers: [
-    {
-      name: 'sk-shop-0123456789ab-r1-0',
-      cpuSeconds: 3.5,
-      memoryUsedBytes: 1e8,
-      memoryLimitBytes: 5e8,
-      networkReceivedBytes: 10,
-      networkSentBytes: 20,
-    },
-  ],
-  hosts: [
-    {
-      host: 'shop.example.com',
-      responses2xx: 40,
-      responses3xx: 1,
-      responses4xx: 2,
-      responses5xx: 3,
-      responsesOther: 0,
-      durationSeconds: 2.25,
-    },
-  ],
+  containers: [container],
+  hosts: [host],
   ...patch,
 });
 const workload = { projectId: PROJECT, environmentId: ENV, applicationId: APP };
@@ -63,25 +61,16 @@ describe('validMeasures', () => {
     ['an absurd value', measures({ node: { ...node, networkSentBytes: 1e300 } })],
     [
       'a container name that is not Shipkeep',
-      measures({ containers: [{ ...measures().containers[0]!, name: '../etc/passwd' }] }),
+      measures({ containers: [{ ...container, name: '../etc/passwd' }] }),
     ],
-    [
-      'an injected host',
-      measures({ hosts: [{ ...measures().hosts[0]!, host: 'shop.example.com"} 1\nx{a="' }] }),
-    ],
-    [
-      'an uppercase host',
-      measures({ hosts: [{ ...measures().hosts[0]!, host: 'Shop.example.com' }] }),
-    ],
-    ['an empty label', measures({ hosts: [{ ...measures().hosts[0]!, host: 'a..example.com' }] })],
+    ['an injected host', measures({ hosts: [{ ...host, host: 'shop.example.com"} 1\nx{a="' }] })],
+    ['an uppercase host', measures({ hosts: [{ ...host, host: 'Shop.example.com' }] })],
+    ['an empty label', measures({ hosts: [{ ...host, host: 'a..example.com' }] })],
     [
       'more containers than an agent sends',
-      measures({ containers: Array.from({ length: 257 }, () => measures().containers[0]!) }),
+      measures({ containers: Array.from({ length: 257 }, () => container) }),
     ],
-    [
-      'more hosts than an agent sends',
-      measures({ hosts: Array.from({ length: 65 }, () => measures().hosts[0]!) }),
-    ],
+    ['more hosts than an agent sends', measures({ hosts: Array.from({ length: 65 }, () => host) })],
   ])('refuses the whole report for %s', (_, report) => {
     expect(validMeasures(report)).toBeUndefined();
   });
