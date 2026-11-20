@@ -46,12 +46,14 @@ type Watcher struct {
 
 	mu       sync.Mutex
 	readings map[string]reading
+	// attempts holds when each host was last read, whatever the outcome, so that a host whose
+	// handshake fails or presents another name's certificate waits Refresh like any other.
+	attempts map[string]time.Time
 }
 
 type reading struct {
 	notAfter time.Time
 	issuer   string
-	at       time.Time
 }
 
 // Run reads the certificates until ctx ends: at once, then every Interval.
@@ -89,31 +91,35 @@ func (w *Watcher) pass(ctx context.Context, now time.Time) {
 	w.mu.Lock()
 	if w.readings == nil {
 		w.readings = map[string]reading{}
+		w.attempts = map[string]time.Time{}
 	}
-	stale := []string{}
-	for host := range w.readings {
+	// A name no longer routed is forgotten, its reading and its last attempt.
+	for host := range w.attempts {
 		if !slices.Contains(hosts, host) {
-			stale = append(stale, host)
+			delete(w.attempts, host)
+			delete(w.readings, host)
 		}
-	}
-	for _, host := range stale {
-		delete(w.readings, host)
 	}
 	due := []string{}
 	for _, host := range hosts {
-		if last, ok := w.readings[host]; !ok || now.Sub(last.at) >= refresh {
+		if last, ok := w.attempts[host]; !ok || now.Sub(last) >= refresh {
 			due = append(due, host)
+			w.attempts[host] = now
 		}
 	}
 	w.mu.Unlock()
 	for _, host := range due {
 		certificate, err := read(ctx, w.Address, host)
 		w.mu.Lock()
-		if err != nil || certificate == nil || certificate.VerifyHostname(host) != nil {
+		switch {
+		case err != nil:
+			// Caddy's listener did not answer: the last reading stays until it does.
+			w.Logger.Debug("certificate not read", "host", host, "error", err)
+		case certificate == nil || certificate.VerifyHostname(host) != nil:
 			// No certificate for this name yet (or Caddy's fallback): report nothing for it.
 			delete(w.readings, host)
-		} else {
-			w.readings[host] = reading{notAfter: certificate.NotAfter, issuer: issuer(certificate), at: now}
+		default:
+			w.readings[host] = reading{notAfter: certificate.NotAfter, issuer: issuer(certificate)}
 		}
 		w.mu.Unlock()
 	}
