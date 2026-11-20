@@ -281,6 +281,14 @@ for version in 27.5.1 20.10.24 26.1.4-ce '' '28' '28.0.0;id'; do
   refused engine_keeps_loopback "$version" || die "Docker Engine '$version' was accepted"
 done
 
+# Organization ids are tenant ids: UUIDv7, ordered by time.
+for _ in 1 2 3 4 5 6 7 8; do
+  generated=$(new_uuid7)
+  [[ $generated =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || die "not a UUIDv7: $generated"
+done
+stamp=${generated:0:8}${generated:9:4}
+((10#$(date +%s%3N) - 16#$stamp < 60000 && 16#$stamp <= 10#$(date +%s%3N))) || die "the UUIDv7 does not hold the current time: $generated"
+
 # install-state: what --resume yes reads back, and nothing else.
 state=$work/state
 mkdir "$state"
@@ -341,6 +349,8 @@ resume_with() (
   add_this_server() { printf 'server %s\n' "$organization_id" >>"$work/resume-calls"; }
   # shellcheck disable=SC2329
   https_answers() { return 0; }
+  # shellcheck disable=SC2329
+  controlplane_slice() { printf 'slice\n' >>"$work/resume-calls"; }
   trap unfinished EXIT
   : >"$state/.env"
   finish
@@ -352,8 +362,8 @@ resume_with "$single_state" 3 1 0 >"$work/resume-output" 2>&1 || die "a resume o
 grep -q 'already exists: it is kept' "$work/resume-output" || die 'the existing account was not said to be kept'
 grep -qx account "$state/install-state" || die 'the kept account was not recorded'
 chosen=$(sed -n 's/^organization_id=//p' "$state/install-state")
-[[ $chosen =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || die 'no organization id was chosen and recorded'
-[[ $(<"$work/resume-calls") == "compose up -d"$'\n'"account"$'\n'"organization $chosen"$'\n'"server $chosen" ]] || die "unexpected resumed steps: $(<"$work/resume-calls")"
+[[ $chosen =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || die "no UUIDv7 organization id was chosen and recorded: $chosen"
+[[ $(<"$work/resume-calls") == "slice"$'\n'"compose up -d"$'\n'"account"$'\n'"organization $chosen"$'\n'"server $chosen" ]] || die "unexpected resumed steps: $(<"$work/resume-calls")"
 [[ $(tail -n 3 "$state/install-state") == "organization_id=$chosen"$'\n'"organization_created"$'\n'"server" ]] || die 'the resumed steps were not recorded in order'
 grep -q 'Other people sign up by themselves' "$work/resume-output" || die 'a resumed installation that sends email said it sends none'
 grep -q 'Shipkeep is running at https://shipkeep.example.com' "$work/resume-output" || die 'the resumed run did not finish'
@@ -364,11 +374,11 @@ resume_with "$single_state" 1 1 0 >"$work/resume-output" 2>&1 && die 'a refused 
 # Stopped after the organization id was recorded: the same id is used again, so that the command
 # finds the organization the first run committed.
 resume_with "${single_state}account\norganization_id=$uuid\n" 0 1 0 >"$work/resume-output" 2>&1 || die "a resume with a recorded organization id failed: $(<"$work/resume-output")"
-[[ $(<"$work/resume-calls") == "compose up -d"$'\n'"organization $uuid"$'\n'"server $uuid" ]] || die "the recorded organization id was not reused: $(<"$work/resume-calls")"
+[[ $(<"$work/resume-calls") == "slice"$'\n'"compose up -d"$'\n'"organization $uuid"$'\n'"server $uuid" ]] || die "the recorded organization id was not reused: $(<"$work/resume-calls")"
 
 # The server installer finished before the run stopped: its installation is recorded, not repeated.
 resume_with "${single_state}account\norganization_id=$uuid\norganization_created\n" 0 0 0 >"$work/resume-output" 2>&1 || die "a resume over a finished server install failed: $(<"$work/resume-output")"
-[[ $(<"$work/resume-calls") == "compose up -d" ]] || die "the server installer ran again: $(<"$work/resume-calls")"
+[[ $(<"$work/resume-calls") == "slice"$'\n'"compose up -d" ]] || die "the server installer ran again: $(<"$work/resume-calls")"
 grep -qx server "$state/install-state" || die 'the finished server install was not recorded'
 # An installation that is not this one's stops the run, with what to do.
 resume_with "${single_state}account\norganization_id=$uuid\norganization_created\n" 0 2 0 >"$work/resume-output" 2>&1 && die 'an installation of another control plane was accepted'
@@ -393,6 +403,14 @@ mkdir -p "$server/etc/shipkeep" "$server/var/lib/shipkeep" "$server/etc/systemd/
 printf "control_plane:\n  address: 'shipkeep.example.com:7443'\n  connect: '127.0.0.1:7443'\n  route:\n    host: 'shipkeep.example.com'\n    upstream: '127.0.0.1:3000'\n" >"$server/etc/shipkeep/agent.yaml"
 : >"$server/etc/systemd/system/shipkeep-agent.service"
 : >"$server/etc/shipkeep/join-token"
+# The server installer stopped before enabling its services: unfinished, not done.
+[[ $(installed) == 2 ]] || die 'an unfinished server installation was taken as done'
+mkdir -p "$server/etc/systemd/system/multi-user.target.wants"
+for unit in shipkeep-agent shipkeep-caddy; do
+  ln -s "/etc/systemd/system/$unit.service" "$server/etc/systemd/system/multi-user.target.wants/$unit.service"
+done
+[[ $(installed) == 2 ]] || die 'a server installation without its egress proxy was taken as done'
+ln -s /etc/systemd/system/shipkeep-egress.service "$server/etc/systemd/system/multi-user.target.wants/shipkeep-egress.service"
 [[ $(installed) == 0 ]] || die 'an installation waiting to enroll was not recognized'
 printf '{"node_id":"n","organization_id":"%s"}' "$uuid" >"$server/var/lib/shipkeep/credentials.json"
 [[ $(installed) == 0 ]] || die 'an enrolled installation was not recognized'

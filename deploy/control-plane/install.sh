@@ -476,15 +476,32 @@ create_organization() {
   [[ $said == "Organization created: $organization_id" ]]
 }
 
-# 0 when an earlier run installed this machine as a server of this control plane, and the agent,
-# once enrolled, belongs to organization_id; 1 when nothing is installed; 2 for an installation
-# that is not this one's, which the operator reconciles.
+# A UUIDv7, the form of every tenant id: 48 bits of Unix time in milliseconds, the version, then
+# random bits with the variant.
+new_uuid7() {
+  local ms random hex
+  ms=$(date +%s%3N) || return 1
+  [[ $ms =~ ^[0-9]{13}$ ]] || return 1
+  random=$(od -An -N10 -tx1 /dev/urandom | tr -d ' \n') || return 1
+  [[ $random =~ ^[0-9a-f]{20}$ ]] || return 1
+  printf -v hex '%012x' "$ms"
+  printf '%s-%s-7%s-%x%s-%s\n' "${hex:0:8}" "${hex:8:4}" "${random:0:3}" $(((16#${random:3:1} & 3) | 8)) "${random:4:3}" "${random:7:12}"
+}
+
+# 0 when an earlier run installed this machine as a server of this control plane to the end (its
+# services enabled, the installer's last step, and running), and the agent, once enrolled, belongs
+# to organization_id; 1 when nothing is installed; 2 for an installation that is unfinished or not
+# this one's, whose server part the operator removes.
 # $1, empty on a server, roots the paths for the checks.
 this_server_installed() {
-  local root=${1:-} config credentials enrolled
+  local root=${1:-} config credentials enrolled unit
   config=$root/etc/shipkeep/agent.yaml credentials=$root/var/lib/shipkeep/credentials.json
   [[ -e $config || -L $config || -e $root/etc/systemd/system/shipkeep-agent.service ]] || return 1
   [[ -f $config && ! -L $config ]] || return 2
+  for unit in shipkeep-agent shipkeep-caddy shipkeep-egress; do
+    [[ -L $root/etc/systemd/system/multi-user.target.wants/$unit.service ]] || return 2
+    [[ -n $root ]] || systemctl is-active --quiet "$unit" || return 2
+  done
   grep -Fxq "  address: '$domain:7443'" "$config" && grep -Fxq "    upstream: '127.0.0.1:3000'" "$config" || return 2
   if [[ -f $credentials && ! -L $credentials ]]; then
     enrolled=$(grep -Eo '"organization_id": *"[0-9a-f-]{36}"' "$credentials" | grep -Eo '[0-9a-f-]{36}') || return 2
@@ -525,11 +542,24 @@ add_this_server() {
   return "$status"
 }
 
+# PostgreSQL and the API run in this slice, protected up to the reservation (ADR 0021). Its parent,
+# shipkeep.slice, gets the same protection from the server installer. Written once .env exists, so
+# that a run stopped before leaves nothing a new run refuses, and again on resume.
+controlplane_slice() {
+  local unit=/etc/systemd/system/shipkeep-controlplane.slice
+  printf '[Unit]\nDescription=Shipkeep: the control plane on the machine that also runs applications\nBefore=slices.target\n[Slice]\nMemoryLow=%d\n' "$reserved_memory_bytes" >"$unit.new"
+  chmod 0644 "$unit.new"
+  mv -- "$unit.new" "$unit"
+  systemctl daemon-reload
+  systemctl start shipkeep-controlplane.slice
+}
+
 # Everything after the settings file. Each step is recorded once done, so that `--resume yes`
 # runs only those left; the wait for the certificate is not a step: Caddy keeps trying alone.
 finish() {
   local attempt=0 status
   writing=1
+  ((!single)) || controlplane_slice
   if ((!started)); then
     printf 'Downloading the images...\n'
     compose pull
@@ -556,8 +586,7 @@ finish() {
   if ((single)); then
     if ((!organization_done)); then
       if [[ -z $organization_id ]]; then
-        organization_id=$(</proc/sys/kernel/random/uuid)
-        [[ $organization_id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || fail 'Cannot choose an organization id.'
+        organization_id=$(new_uuid7) || fail 'Cannot choose an organization id.'
         record "organization_id=$organization_id"
       fi
       create_organization || exit 1
@@ -567,7 +596,7 @@ finish() {
       status=0
       this_server_installed || status=$?
       if ((status == 2)); then
-        printf 'shipkeep-install: this machine already has a Shipkeep server installation that is not the one of this control plane and organization; remove it (see Starting over in docs/INSTALL.md), then resume.\n' >&2
+        printf 'shipkeep-install: this machine has a Shipkeep server installation that is unfinished, or not the one of this control plane and organization. Remove its server part (see Starting over in docs/INSTALL.md), then resume.\n' >&2
         exit 1
       elif ((status == 1)); then
         add_this_server || exit 1
@@ -753,12 +782,6 @@ main() {
     # With the cgroupfs driver, cgroup_parent is a plain path and no slice would hold the containers.
     [[ $(docker info --format '{{.CgroupDriver}}') == systemd ]] || fail "Applications on this machine need Docker's systemd cgroup driver."
     assert_single_machine_docker
-    # PostgreSQL and the API run in this slice, protected up to the reservation (ADR 0021). Its
-    # parent, shipkeep.slice, gets the same protection from the server installer.
-    printf '[Unit]\nDescription=Shipkeep: the control plane on the machine that also runs applications\nBefore=slices.target\n[Slice]\nMemoryLow=%d\n' "$reserved_memory_bytes" >/etc/systemd/system/shipkeep-controlplane.slice
-    chmod 0644 /etc/systemd/system/shipkeep-controlplane.slice
-    systemctl daemon-reload
-    systemctl start shipkeep-controlplane.slice
   fi
   admin_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
   app_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
