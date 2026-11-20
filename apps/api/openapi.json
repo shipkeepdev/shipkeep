@@ -5802,6 +5802,30 @@
           "config"
         ]
       },
+      "DomainCertificateDto": {
+        "type": "object",
+        "properties": {
+          "notAfter": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the certificate expires."
+          },
+          "issuer": {
+            "type": "string",
+            "description": "The issuer's common name, or its organization, at most 64 bytes."
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When a node last read it."
+          }
+        },
+        "required": [
+          "notAfter",
+          "issuer",
+          "observedAt"
+        ]
+      },
       "DomainDto": {
         "type": "object",
         "properties": {
@@ -5835,13 +5859,25 @@
               "unknown"
             ],
             "description": "Whether the answers reach a server running the application, compared with the public addresses administrators declared for its nodes. serving: every answer is such a server. partial: only some answers are. elsewhere: none is, or there is no record. not_running: no reachable server runs the application. unknown: the lookup failed, or a server running it has no declared address."
+          },
+          "certificate": {
+            "description": "The certificate the servers running the application serve for the name: of the readings nodes reported in the last hour, the one that expires first. Null while none was read, for instance before the first certificate is issued.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DomainCertificateDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
           "hostname",
           "status",
           "addresses",
-          "match"
+          "match",
+          "certificate"
         ]
       },
       "DomainListDto": {

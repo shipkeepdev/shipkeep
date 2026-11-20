@@ -316,6 +316,7 @@ model Node {
   createdAt       DateTime          @map("created_at") @db.Timestamptz(6)
   lastHeartbeatAt DateTime?         @map("last_heartbeat_at") @db.Timestamptz(6)
   certificates    NodeCertificate[]
+  domainCertificates DomainCertificate[]
   actions         AgentAction[]
   allocations     Allocation[]
   organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
@@ -548,8 +549,26 @@ model Domain {
   /// Set when the configuration no longer lists the domain while a placed release still does.
   releasingAt    DateTime?   @map("releasing_at") @db.Timestamptz(6)
   application    Application @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "domains_application_fkey")
+  certificates   DomainCertificate[]
 
   @@unique([organizationId, hostname])
+  @@unique([organizationId, id])
   @@index([applicationId])
   @@map("domains")
+}
+
+/// The certificate a node's Caddy serves for a domain, as its last state report said (SPEC 3.5).
+model DomainCertificate {
+  organizationId String   @map("organization_id") @db.Uuid
+  domainId       String   @map("domain_id") @db.Uuid
+  nodeId         String   @map("node_id") @db.Uuid
+  notAfter       DateTime @map("not_after") @db.Timestamptz(6)
+  issuer         String   @db.VarChar(64)
+  observedAt     DateTime @map("observed_at") @db.Timestamptz(6)
+  domain         Domain   @relation(fields: [organizationId, domainId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "domain_certificates_domain_fkey")
+  node           Node     @relation(fields: [organizationId, nodeId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "domain_certificates_node_fkey")
+
+  @@id([domainId, nodeId])
+  @@index([organizationId, nodeId])
+  @@map("domain_certificates")
 }

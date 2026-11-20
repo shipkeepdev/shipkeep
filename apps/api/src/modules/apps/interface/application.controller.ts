@@ -89,7 +89,19 @@ export class ApplicationController {
       target(path),
       path.applicationId,
     );
-    return { items: items.map((item) => ({ ...item, addresses: [...item.addresses] })) };
+    return {
+      items: items.map(({ certificate, ...item }) => ({
+        ...item,
+        addresses: [...item.addresses],
+        certificate: certificate
+          ? {
+              notAfter: certificate.notAfter.toISOString(),
+              issuer: certificate.issuer,
+              observedAt: certificate.observedAt.toISOString(),
+            }
+          : null,
+      })),
+    };
   }
 
   @Post(`${APPLICATIONS}/:applicationId/config`)

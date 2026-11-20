@@ -6,19 +6,32 @@ import type { NodeIdentity } from '../domain/node-identity';
 export type StateReportHandler = (identity: NodeIdentity, report: StateReport) => Promise<void>;
 
 /**
- * Hands agent state reports to whoever owns the observed workloads. The deployments context
- * depends on fleet, so it registers here instead of fleet importing it. Without a handler,
- * reports are dropped: they are refreshed every 30 seconds anyway.
+ * Hands agent state reports to the contexts that own what they describe: deployments for the
+ * replicas, apps for the certificates of domains. Those contexts depend on fleet, so they register
+ * here instead of fleet importing them. Without a handler, reports are dropped: they are
+ * refreshed every 30 seconds anyway.
  */
 @Injectable()
 export class StateReports {
-  private handler: StateReportHandler | undefined;
+  private readonly handlers: StateReportHandler[] = [];
 
   register(handler: StateReportHandler): void {
-    this.handler = handler;
+    this.handlers.push(handler);
   }
 
+  /**
+   * Every handler sees the report, even when an earlier one fails, so that one context's outage
+   * does not hide the report from the others. The first failure is then rethrown.
+   */
   async deliver(identity: NodeIdentity, report: StateReport): Promise<void> {
-    await this.handler?.(identity, report);
+    let failure: Error | undefined;
+    for (const handler of this.handlers) {
+      try {
+        await handler(identity, report);
+      } catch (error) {
+        failure ??= error instanceof Error ? error : new Error('state report handler failed');
+      }
+    }
+    if (failure) throw failure;
   }
 }

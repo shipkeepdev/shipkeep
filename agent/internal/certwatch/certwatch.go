@@ -54,7 +54,13 @@ type Watcher struct {
 type reading struct {
 	notAfter time.Time
 	issuer   string
+	// at is when the certificate was last read: a reading never refreshed for staleAfter, because
+	// Caddy's routes or listener stay unreadable, is no longer reported.
+	at time.Time
 }
+
+// staleAfter is how many refresh delays a reading may go without a successful read.
+const staleAfter = 3
 
 // Run reads the certificates until ctx ends: at once, then every Interval.
 func (w *Watcher) Run(ctx context.Context) {
@@ -119,18 +125,26 @@ func (w *Watcher) pass(ctx context.Context, now time.Time) {
 			// No certificate for this name yet (or Caddy's fallback): report nothing for it.
 			delete(w.readings, host)
 		default:
-			w.readings[host] = reading{notAfter: certificate.NotAfter, issuer: issuer(certificate)}
+			w.readings[host] = reading{notAfter: certificate.NotAfter, issuer: issuer(certificate), at: now}
 		}
 		w.mu.Unlock()
 	}
 }
 
-// Snapshot returns the readings, sorted by host name.
-func (w *Watcher) Snapshot() []*agentv1.CertificateStatus {
+// Snapshot returns the readings, sorted by host name, without those that went unrefreshed for
+// staleAfter refresh delays at now: the control plane would otherwise keep them fresh forever.
+func (w *Watcher) Snapshot(now time.Time) []*agentv1.CertificateStatus {
+	refresh := w.Refresh
+	if refresh <= 0 {
+		refresh = defaultAfter
+	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	statuses := make([]*agentv1.CertificateStatus, 0, len(w.readings))
 	for host, last := range w.readings {
+		if now.Sub(last.at) >= staleAfter*refresh {
+			continue
+		}
 		statuses = append(statuses, &agentv1.CertificateStatus{Hostname: host, NotAfter: timestamppb.New(last.notAfter), Issuer: last.issuer})
 	}
 	slices.SortFunc(statuses, func(a, b *agentv1.CertificateStatus) int {
@@ -152,7 +166,8 @@ func issuer(certificate *x509.Certificate) string {
 	}
 	cut := []rune{}
 	for _, r := range name {
-		if r < 0x20 || r == 0x7f {
+		// C0 and C1 controls: the control plane refuses a report that holds one.
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) {
 			continue
 		}
 		cut = append(cut, r)

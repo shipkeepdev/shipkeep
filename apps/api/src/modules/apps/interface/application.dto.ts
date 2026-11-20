@@ -43,6 +43,15 @@ export class ApplicationListDto {
   @ApiProperty({ type: [ApplicationDto] }) items!: ApplicationDto[];
 }
 
+export class DomainCertificateDto {
+  @ApiProperty({ format: 'date-time', description: 'When the certificate expires.' })
+  notAfter!: string;
+  @ApiProperty({ description: "The issuer's common name, or its organization, at most 64 bytes." })
+  issuer!: string;
+  @ApiProperty({ format: 'date-time', description: 'When a node last read it.' })
+  observedAt!: string;
+}
+
 export class DomainDto {
   @ApiProperty() hostname!: string;
   @ApiProperty({
@@ -62,6 +71,15 @@ export class DomainDto {
       'it has no declared address.',
   })
   match!: string;
+  @ApiProperty({
+    type: DomainCertificateDto,
+    nullable: true,
+    description:
+      'The certificate the servers running the application serve for the name: of the readings ' +
+      'nodes reported in the last hour, the one that expires first. Null while none was read, ' +
+      'for instance before the first certificate is issued.',
+  })
+  certificate!: DomainCertificateDto | null;
 }
 export class DomainListDto {
   @ApiProperty({ type: [DomainDto] }) items!: DomainDto[];

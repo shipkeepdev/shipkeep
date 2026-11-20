@@ -1294,9 +1294,25 @@ export type components = {
             /** @description Most recent first, at most 50. */
             readonly items: readonly components["schemas"]["DeploymentDto"][];
         };
+        readonly DomainCertificateDto: {
+            /** @description The issuer's common name, or its organization, at most 64 bytes. */
+            readonly issuer: string;
+            /**
+             * Format: date-time
+             * @description When the certificate expires.
+             */
+            readonly notAfter: string;
+            /**
+             * Format: date-time
+             * @description When a node last read it.
+             */
+            readonly observedAt: string;
+        };
         readonly DomainDto: {
             /** @description Public addresses only. */
             readonly addresses: readonly string[];
+            /** @description The certificate the servers running the application serve for the name: of the readings nodes reported in the last hour, the one that expires first. Null while none was read, for instance before the first certificate is issued. */
+            readonly certificate: components["schemas"]["DomainCertificateDto"] | null;
             readonly hostname: string;
             /**
              * @description Whether the answers reach a server running the application, compared with the public addresses administrators declared for its nodes. serving: every answer is such a server. partial: only some answers are. elsewhere: none is, or there is no record. not_running: no reachable server runs the application. unknown: the lookup failed, or a server running it has no declared address.
