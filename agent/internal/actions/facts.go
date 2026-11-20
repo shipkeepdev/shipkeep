@@ -21,9 +21,16 @@ type Versions interface {
 	DockerVersion(ctx context.Context) (string, error)
 }
 
+// Reservation is the share of the machine the agent reports as kept for the control plane and the
+// system, from its local configuration (ADR 0021).
+type Reservation struct {
+	CPUMillis   uint32
+	MemoryBytes uint64
+}
+
 // FactsHandler reports host facts (CollectFacts). It reads only kernel interfaces and the local
 // daemons; it never runs a command.
-func FactsHandler(stateDir string, versions Versions) Handler {
+func FactsHandler(stateDir string, versions Versions, reservation Reservation) Handler {
 	return Handler{
 		Plan: func(*agentv1.ActionRequest) (journal.Plan, error) {
 			return journal.Plan{Version: "collect-facts-v1", Steps: []journal.Step{{
@@ -35,13 +42,14 @@ func FactsHandler(stateDir string, versions Versions) Handler {
 		},
 		// Facts are cheap and current: they are read when the result is reported, not journaled.
 		Result: func(journal.Outcome) *agentv1.ActionResult {
-			return &agentv1.ActionResult{Result: &agentv1.ActionResult_Facts{Facts: Facts(context.Background(), stateDir, versions)}}
+			return &agentv1.ActionResult{Result: &agentv1.ActionResult_Facts{Facts: Facts(context.Background(), stateDir, versions, reservation)}}
 		},
 	}
 }
 
-// Facts reads hardware and software facts of this node.
-func Facts(ctx context.Context, stateDir string, versions Versions) *agentv1.NodeFacts {
+// Facts reads hardware and software facts of this node. CPU and memory are the machine's; the
+// reservation is reported beside them, for placement to subtract.
+func Facts(ctx context.Context, stateDir string, versions Versions, reservation Reservation) *agentv1.NodeFacts {
 	hostname, _ := os.Hostname() // an unknown hostname is reported empty
 	facts := &agentv1.NodeFacts{
 		Hostname:     truncate(hostname, 253),
@@ -50,6 +58,9 @@ func Facts(ctx context.Context, stateDir string, versions Versions) *agentv1.Nod
 		CpuCount:     uint32(runtime.NumCPU()), //nolint:gosec // CPU counts fit
 		MemoryBytes:  memoryBytes(),
 		AgentVersion: truncate(buildinfo.Version, 64),
+
+		ReservedCpuMillis:   reservation.CPUMillis,
+		ReservedMemoryBytes: reservation.MemoryBytes,
 	}
 	var name unix.Utsname
 	if unix.Uname(&name) == nil {

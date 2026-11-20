@@ -2966,8 +2966,13 @@ type NodeFacts struct {
 	CaddyVersion     string                 `protobuf:"bytes,11,opt,name=caddy_version,json=caddyVersion,proto3" json:"caddy_version,omitempty"`
 	WireguardVersion string                 `protobuf:"bytes,12,opt,name=wireguard_version,json=wireguardVersion,proto3" json:"wireguard_version,omitempty"`
 	AgentVersion     string                 `protobuf:"bytes,13,opt,name=agent_version,json=agentVersion,proto3" json:"agent_version,omitempty"`
-	unknownFields    protoimpl.UnknownFields
-	sizeCache        protoimpl.SizeCache
+	// Share of the machine kept for the control plane and the system, from the agent's local
+	// configuration (ADR 0021). cpu_count and memory_bytes stay the machine's; placement subtracts
+	// these. Zero on a machine that does not host the control plane.
+	ReservedCpuMillis   uint32 `protobuf:"varint,14,opt,name=reserved_cpu_millis,json=reservedCpuMillis,proto3" json:"reserved_cpu_millis,omitempty"`
+	ReservedMemoryBytes uint64 `protobuf:"varint,15,opt,name=reserved_memory_bytes,json=reservedMemoryBytes,proto3" json:"reserved_memory_bytes,omitempty"`
+	unknownFields       protoimpl.UnknownFields
+	sizeCache           protoimpl.SizeCache
 }
 
 func (x *NodeFacts) Reset() {
@@ -3089,6 +3094,20 @@ func (x *NodeFacts) GetAgentVersion() string {
 		return x.AgentVersion
 	}
 	return ""
+}
+
+func (x *NodeFacts) GetReservedCpuMillis() uint32 {
+	if x != nil {
+		return x.ReservedCpuMillis
+	}
+	return 0
+}
+
+func (x *NodeFacts) GetReservedMemoryBytes() uint64 {
+	if x != nil {
+		return x.ReservedMemoryBytes
+	}
+	return 0
 }
 
 // Result of a health probe.
@@ -3854,7 +3873,7 @@ const file_shipkeep_agent_v1_actions_proto_rawDesc = "" +
 	"\rcosign_bundle\x18\x03 \x01(\v2\x1f.shipkeep.agent.v1.CosignBundleR\fcosignBundle\x1a<\n" +
 	"\x0eImageRefsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xc6\x03\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xaa\x04\n" +
 	"\tNodeFacts\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x0e\n" +
 	"\x02os\x18\x02 \x01(\tR\x02os\x12\x1d\n" +
@@ -3871,7 +3890,9 @@ const file_shipkeep_agent_v1_actions_proto_rawDesc = "" +
 	" \x01(\tR\rdockerVersion\x12#\n" +
 	"\rcaddy_version\x18\v \x01(\tR\fcaddyVersion\x12+\n" +
 	"\x11wireguard_version\x18\f \x01(\tR\x10wireguardVersion\x12#\n" +
-	"\ragent_version\x18\r \x01(\tR\fagentVersion\"\xb4\x01\n" +
+	"\ragent_version\x18\r \x01(\tR\fagentVersion\x12.\n" +
+	"\x13reserved_cpu_millis\x18\x0e \x01(\rR\x11reservedCpuMillis\x122\n" +
+	"\x15reserved_memory_bytes\x18\x0f \x01(\x04R\x13reservedMemoryBytes\"\xb4\x01\n" +
 	"\x11HealthCheckResult\x12\x18\n" +
 	"\ahealthy\x18\x01 \x01(\bR\ahealthy\x123\n" +
 	"\x15consecutive_successes\x18\x02 \x01(\rR\x14consecutiveSuccesses\x121\n" +

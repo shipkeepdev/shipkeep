@@ -55,7 +55,7 @@ var (
 
 // containerConfig validates spec completely and returns the only create body the agent sends.
 // Privileged mode, host namespaces, devices and bind mounts cannot be expressed at all.
-func containerConfig(spec *agentv1.ContainerSpec) (string, docker.ContainerConfig, error) {
+func containerConfig(spec *agentv1.ContainerSpec, workloads Workloads) (string, docker.ContainerConfig, error) {
 	if spec == nil || !resourceName.MatchString(spec.GetName()) || !imageRef.MatchString(spec.GetImageRef()) ||
 		len(spec.GetImageRef()) > maxImageRef || !resourceName.MatchString(spec.GetNetwork()) {
 		return "", docker.ContainerConfig{}, errInput
@@ -103,6 +103,11 @@ func containerConfig(spec *agentv1.ContainerSpec) (string, docker.ContainerConfi
 		IpcMode:        "private",
 		Init:           true,
 		LogConfig:      map[string]any{"Type": "json-file", "Config": map[string]string{"max-size": "10m", "max-file": "3"}},
+		CgroupParent:   workloads.Slice,
+	}
+	if workloads.OOMScoreAdj != nil {
+		adj := *workloads.OOMScoreAdj
+		host.OomScoreAdj = &adj
 	}
 	if err := resources(spec.GetResources(), &host); err != nil {
 		return "", docker.ContainerConfig{}, err
