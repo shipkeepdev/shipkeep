@@ -18,10 +18,12 @@ import (
 
 // fakeAdmin keeps the server config and routes by id, enough to exercise the client's calls.
 type fakeAdmin struct {
-	mu       sync.Mutex
-	apps     bool
-	server   bool
-	routes   map[string]json.RawMessage
+	mu     sync.Mutex
+	apps   bool
+	server bool
+	routes map[string]json.RawMessage
+	// order lists route ids as Caddy keeps them; ids set directly in routes come after, sorted.
+	order    []string
 	skip     []string
 	requests []string
 	// gate, when set, holds the request "METHOD path" named gated until it is closed; reached is
@@ -46,7 +48,8 @@ func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.requests = append(f.requests, r.Method+" "+r.URL.Path)
 	body, _ := io.ReadAll(r.Body)
 	routeWrite := (r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/routes")) ||
-		(r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/id/"))
+		(r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/id/")) ||
+		(r.Method == http.MethodPatch && r.URL.Path == "/config/apps/http/servers/"+Server+"/routes")
 	switch {
 	case routeWrite && f.failRoutes:
 		http.Error(w, "private config detail", http.StatusBadRequest)
@@ -62,7 +65,7 @@ func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodGet && r.URL.Path == "/config/apps":
 		writeExists(w, f.apps)
 	case r.Method == http.MethodGet && r.URL.Path == "/config/apps/http/servers/"+Server+"/routes" && f.server:
-		ids := slices.Sorted(maps.Keys(f.routes))
+		ids := f.ordered()
 		list := make([]json.RawMessage, 0, len(ids))
 		for _, id := range ids {
 			list = append(list, f.routes[id])
@@ -95,10 +98,30 @@ func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, _ = w.Write(route)
+	case r.Method == http.MethodPatch && r.URL.Path == "/config/apps/http/servers/"+Server+"/routes" && f.server:
+		// Caddy replaces the whole list at once.
+		var list []json.RawMessage
+		_ = json.Unmarshal(body, &list)
+		f.routes, f.order = map[string]json.RawMessage{}, []string{}
+		for _, raw := range list {
+			var route Route
+			_ = json.Unmarshal(raw, &route)
+			f.routes[route.ID] = raw
+			f.order = append(f.order, route.ID)
+		}
+	case r.Method == http.MethodPut && r.URL.Path == "/config/apps/http/servers/"+Server+"/routes/0" && f.server:
+		// Caddy inserts before the index.
+		var route Route
+		_ = json.Unmarshal(body, &route)
+		f.order = append([]string{route.ID}, slices.DeleteFunc(f.ordered(), func(id string) bool { return id == route.ID })...)
+		f.routes[route.ID] = body
 	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/routes"),
 		r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/id/"):
 		var route Route
 		_ = json.Unmarshal(body, &route)
+		if _, known := f.routes[route.ID]; !known {
+			f.order = append(f.ordered(), route.ID)
+		}
 		f.routes[route.ID] = body
 	case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/id/"):
 		id := strings.TrimPrefix(r.URL.Path, "/id/")
@@ -107,10 +130,23 @@ func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		delete(f.routes, id)
+		f.order = slices.DeleteFunc(f.ordered(), func(other string) bool { return other == id })
 	case r.Method == http.MethodPut || r.Method == http.MethodPatch:
 	default:
 		http.Error(w, "private config detail", http.StatusBadRequest)
 	}
+}
+
+// ordered returns the route ids in Caddy's order: those written through the API first, then any a
+// test placed directly in routes, sorted.
+func (f *fakeAdmin) ordered() []string {
+	ids := slices.DeleteFunc(slices.Clone(f.order), func(id string) bool { _, ok := f.routes[id]; return !ok })
+	for _, id := range slices.Sorted(maps.Keys(f.routes)) {
+		if !slices.Contains(ids, id) {
+			ids = append(ids, id)
+		}
+	}
+	return ids
 }
 
 func writeExists(w http.ResponseWriter, exists bool) {

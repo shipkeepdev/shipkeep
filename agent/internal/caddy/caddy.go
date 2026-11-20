@@ -11,6 +11,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -75,11 +76,14 @@ type Match struct {
 // HTTPS is the protocol matcher of a route under automatic HTTPS.
 const HTTPS = "https"
 
-// Handler is a reverse_proxy handler.
+// Handler is a reverse_proxy handler, or the static_response of the control plane's redirect.
 type Handler struct {
 	Handler       string         `json:"handler"`
-	Upstreams     []Upstream     `json:"upstreams"`
+	Upstreams     []Upstream     `json:"upstreams,omitempty"`
 	LoadBalancing *LoadBalancing `json:"load_balancing,omitempty"`
+	// StatusCode and Headers belong to a static_response.
+	StatusCode int                 `json:"status_code,omitempty"`
+	Headers    map[string][]string `json:"headers,omitempty"`
 }
 
 // Upstream is one backend address.
@@ -100,6 +104,92 @@ type server struct {
 
 type automaticHTTPS struct {
 	Skip []string `json:"skip,omitempty"`
+}
+
+// The ids of the control plane's routes on the machine that hosts it (ADR 0021). They are outside
+// the Shipkeep route prefix, so no action can reach them.
+const (
+	ControlPlaneRouteID         = "shipkeep-control-plane"
+	ControlPlaneRedirectRouteID = "shipkeep-control-plane-http"
+)
+
+// ControlPlaneRoutes are the routes of the control plane's name: HTTPS to its loopback port, and
+// plain HTTP redirected to HTTPS. The redirect is a route of its own, so that no application route
+// placed after it answers that name on HTTP, not even a wildcard with TLS off.
+func ControlPlaneRoutes(host, upstream string) []Route {
+	return []Route{
+		{
+			ID:       ControlPlaneRouteID,
+			Match:    []Match{{Host: []string{host}, Protocol: HTTPS}},
+			Handle:   []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{{Dial: upstream}}}},
+			Terminal: true,
+		},
+		{
+			ID:    ControlPlaneRedirectRouteID,
+			Match: []Match{{Host: []string{host}, Protocol: "http"}},
+			Handle: []Handler{{
+				Handler:    "static_response",
+				StatusCode: http.StatusPermanentRedirect,
+				Headers:    map[string][]string{"Location": {"https://{http.request.host}{http.request.uri}"}},
+			}},
+			Terminal: true,
+		},
+	}
+}
+
+// EnsureControlPlaneRoutes keeps routes, in their order, as the first routes of the Shipkeep
+// server, so that they win over any other, and their hosts out of the hosts without TLS. It changes
+// nothing when Caddy already holds exactly that, and reports whether it wrote. It creates the
+// server when Caddy lost it.
+func (c *Client) EnsureControlPlaneRoutes(ctx context.Context, wanted []Route) (bool, error) {
+	if err := c.EnsureServer(ctx); err != nil {
+		return false, err
+	}
+	c.routes.Lock()
+	defer c.routes.Unlock()
+	path := "/config/apps/http/servers/" + Server + "/routes"
+	// The other routes are kept as Caddy returned them, so that fields this client does not model
+	// survive the rewrite.
+	var raw []json.RawMessage
+	if _, err := c.get(ctx, path, &raw); err != nil {
+		return false, fmt.Errorf("read caddy routes: %w", err)
+	}
+	routes := make([]Route, len(raw))
+	for i := range raw {
+		if err := json.Unmarshal(raw[i], &routes[i]); err != nil {
+			return false, fmt.Errorf("decode caddy route: %w", err)
+		}
+	}
+	changed := false
+	if len(routes) < len(wanted) || !reflect.DeepEqual(routes[:len(wanted)], wanted) {
+		// One PATCH replaces the whole list: Caddy applies it at once, so no intermediate
+		// configuration lacks the fixed routes and lets an application route answer for the host.
+		next := make([]any, 0, len(raw)+len(wanted))
+		for _, route := range wanted {
+			next = append(next, route)
+		}
+		for i, route := range routes {
+			if !slices.ContainsFunc(wanted, func(w Route) bool { return w.ID == route.ID }) {
+				next = append(next, raw[i])
+			}
+		}
+		if err := c.do(ctx, http.MethodPatch, path, next, nil); err != nil {
+			return false, fmt.Errorf("replace caddy routes: %w", err)
+		}
+		changed = true
+	}
+	var plain automaticHTTPS
+	if _, err := c.get(ctx, "/config/apps/http/servers/"+Server+"/automatic_https", &plain); err != nil {
+		return changed, fmt.Errorf("read caddy automatic https: %w", err)
+	}
+	hosts := wanted[0].Match[0].Host
+	if slices.ContainsFunc(plain.Skip, func(host string) bool { return slices.Contains(hosts, host) }) {
+		if err := c.setPlainHosts(ctx, nil, hosts); err != nil {
+			return changed, fmt.Errorf("serve control plane over https: %w", err)
+		}
+		changed = true
+	}
+	return changed, nil
 }
 
 // RouteID is the Caddy object id of a Shipkeep route.

@@ -7,6 +7,7 @@ import (
 	"net/netip"
 	"regexp"
 	"slices"
+	"strings"
 	"time"
 
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -53,13 +54,14 @@ var (
 )
 
 // RouteHandlers returns the Caddy-backed route handlers; sleep waits for draining (tests shorten it).
-func RouteHandlers(router Router, containers Containers, sleep func(context.Context, time.Duration) error) map[string]Handler {
+// A route for a reserved host, or a wildcard that covers one, is refused (ADR 0021).
+func RouteHandlers(router Router, containers Containers, sleep func(context.Context, time.Duration) error, reserved ...string) map[string]Handler {
 	if sleep == nil {
 		sleep = wait
 	}
 	return map[string]Handler{
 		"upsert_route": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
-			return upsertRoute(router, containers, sleep, req.GetUpsertRoute().GetRoute())
+			return upsertRoute(router, containers, sleep, req.GetUpsertRoute().GetRoute(), reserved)
 		}, Result: resourceResult},
 		"remove_route": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return removeRoute(router, sleep, req.GetRemoveRoute())
@@ -69,10 +71,15 @@ func RouteHandlers(router Router, containers Containers, sleep func(context.Cont
 
 // upsertRoute switches traffic atomically, then waits for in-flight requests to drain from the
 // replaced upstreams before reporting success (switch-then-drain, ADR 0005).
-func upsertRoute(router Router, containers Containers, sleep func(context.Context, time.Duration) error, route *agentv1.Route) (journal.Plan, error) {
+func upsertRoute(router Router, containers Containers, sleep func(context.Context, time.Duration) error, route *agentv1.Route, reserved []string) (journal.Plan, error) {
 	template, local, plain, drain, err := caddyRoute(route)
 	if err != nil {
 		return journal.Plan{}, err
+	}
+	for _, host := range hostsOf(template) {
+		if slices.ContainsFunc(reserved, func(name string) bool { return covers(host, name) }) {
+			return journal.Plan{}, errInput
+		}
 	}
 	// Unknown after a restart: draining again is harmless, skipping it is not.
 	replaced := true
@@ -294,6 +301,20 @@ func drainTimeout(value *durationpb.Duration) (time.Duration, error) {
 		return 0, errInput
 	}
 	return drain, nil
+}
+
+// covers reports whether a route host matches name: the same name, or a wildcard for exactly one
+// more label, as Caddy matches it.
+func covers(host, name string) bool {
+	if host == name {
+		return true
+	}
+	suffix, wildcard := strings.CutPrefix(host, "*")
+	if !wildcard {
+		return false
+	}
+	label, found := strings.CutSuffix(name, suffix)
+	return found && label != "" && !strings.Contains(label, ".")
 }
 
 func hostsOf(route caddy.Route) []string {

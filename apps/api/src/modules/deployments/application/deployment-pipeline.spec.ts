@@ -480,6 +480,51 @@ describe('DeploymentPipeline', () => {
       ]);
     });
 
+    it('refuses it before anything starts on the machine that hosts the control plane (ADR 0021)', async () => {
+      // Two cores, one of them kept for the control plane: the old and the new release need two.
+      const shared: NodeView = {
+        ...oneCore,
+        facts: {
+          architecture: 'amd64',
+          cpu_count: 2,
+          memory_bytes: 2 ** 31,
+          reserved_cpu_millis: 1000,
+          reserved_memory_bytes: 2 ** 30,
+        },
+      };
+      const w = world({ nodes: [shared], serving: [serving] });
+      expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
+      expect(w.deployment).toMatchObject({
+        state: 'failed',
+        error:
+          'No node can run replica 1 of 1 (edge-1: the old and the new release do not fit together beside the control plane reservation; lower the limits or place the application on another server).',
+      });
+      expect(w.allocations.filter((a) => a.releaseId === w.deployment.releaseId)).toEqual([]);
+    });
+
+    it('explains a surge refusal of a later replica, beside the replicas placed before it', async () => {
+      // Three cores, one kept: the old release (one core) and one new replica fit, a second does not.
+      const shared: NodeView = {
+        ...oneCore,
+        facts: {
+          architecture: 'amd64',
+          cpu_count: 3,
+          memory_bytes: 2 ** 33,
+          reserved_cpu_millis: 1000,
+          reserved_memory_bytes: 2 ** 30,
+        },
+      };
+      const w = world({
+        nodes: [shared],
+        serving: [serving],
+        config: { ...config, scale: { replicas: 2 } },
+      });
+      expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
+      expect(w.deployment.error).toBe(
+        'No node can run replica 2 of 2 (edge-1: the old and the new release do not fit together beside the control plane reservation; lower the limits or place the application on another server).',
+      );
+    });
+
     it('still refuses a release when another application holds the room', async () => {
       const w = world({ nodes: [oneCore], neighbours: [{ nodeId: NODE, ...DEFAULT_LIMITS }] });
       await w.subject.run(ORG, w.deployment.id, () => NOW);

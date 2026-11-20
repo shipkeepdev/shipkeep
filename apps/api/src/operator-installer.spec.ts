@@ -1,7 +1,7 @@
 import { PassThrough, Writable } from 'node:stream';
 
 import type { INestApplicationContext } from '@nestjs/common';
-import { Secret, SYSTEM_ACTOR } from '@shipkeep/domain';
+import { ConflictError, NotFoundError, Secret, SYSTEM_ACTOR } from '@shipkeep/domain';
 
 import { IssueJoinToken } from './modules/fleet/application/issue-join-token';
 import { CERTIFICATE_AUTHORITY } from './modules/fleet/application/ports';
@@ -9,6 +9,7 @@ import { OperatorAccountCommands } from './modules/identity/application/operator
 import { OperatorOrganizationCommands } from './modules/organizations/application/operator-organization-commands';
 import {
   needsPassword,
+  operatorExitCode,
   OperatorUsageError,
   parseOperatorCommand,
   runOperatorCommand,
@@ -44,6 +45,27 @@ describe('operator commands of the single-machine installer (ADR 0021)', () => {
       slug: 'atelier-nord',
       owner: 'owner@example.com',
     });
+    // The installer may choose the id, so that a resumed run finds the organization again.
+    expect(
+      parseOperatorCommand([
+        'organization',
+        'create',
+        '--name',
+        'Atelier Nord',
+        '--slug',
+        'atelier-nord',
+        '--owner',
+        'owner@example.com',
+        '--id',
+        ORG,
+      ]),
+    ).toEqual({
+      action: 'organization-create',
+      name: 'Atelier Nord',
+      slug: 'atelier-nord',
+      owner: 'owner@example.com',
+      id: ORG,
+    });
     const token = parseOperatorCommand(['server', 'join-token', '--organization', ORG]);
     expect(token).toEqual({ action: 'join-token', organizationId: ORG });
     const fingerprint = parseOperatorCommand(['server', 'ca-fingerprint']);
@@ -71,6 +93,57 @@ describe('operator commands of the single-machine installer (ADR 0021)', () => {
         'o@example.com',
       ],
       ['organization', 'create', '--name', 'A', '--slug', 'a', '--owner', 'o@example.com', 'extra'],
+      ['organization', 'create', '--name', 'A', '--slug', 'a', '--owner', 'o@example.com', '--id'],
+      [
+        'organization',
+        'create',
+        '--name',
+        'A',
+        '--slug',
+        'a',
+        '--owner',
+        'o@example.com',
+        '--id',
+        'not-a-uuid',
+      ],
+      [
+        'organization',
+        'create',
+        '--name',
+        'A',
+        '--slug',
+        'a',
+        '--owner',
+        'o@example.com',
+        '--id',
+        ORG.toUpperCase(),
+      ],
+      // A UUIDv4 is no tenant id: the organization would be out of reach of every tenant route.
+      [
+        'organization',
+        'create',
+        '--name',
+        'A',
+        '--slug',
+        'a',
+        '--owner',
+        'o@example.com',
+        '--id',
+        '3f1c2d4e-5a6b-4c7d-8e9f-0a1b2c3d4e5f',
+      ],
+      [
+        'organization',
+        'create',
+        '--name',
+        'A',
+        '--slug',
+        'a',
+        '--owner',
+        'o@example.com',
+        '--id',
+        ORG,
+        hostile,
+      ],
       ['organization', 'delete', '--name', 'A'],
       ['server', 'join-token'],
       ['server', 'join-token', '--organization', 'not-a-uuid'],
@@ -124,7 +197,12 @@ describe('what those commands do', () => {
       new PassThrough(),
     );
     expect(activeAccountId).toHaveBeenCalledWith('Owner@example.com');
-    expect(create).toHaveBeenCalledWith({ name: 'Atelier Nord', slug: 'atelier-nord' }, 'user-1');
+    expect(create).toHaveBeenCalledWith(
+      { name: 'Atelier Nord', slug: 'atelier-nord' },
+      'user-1',
+      expect.any(Date),
+      undefined,
+    );
     expect(lines(output)).toBe(`Organization created: ${ORG}\n`);
   });
 
@@ -213,5 +291,19 @@ describe('what those commands do', () => {
         new PassThrough(),
       ),
     ).rejects.toBeInstanceOf(OperatorUsageError);
+  });
+});
+
+describe('the exit status of a refused command', () => {
+  it('tells an existing account apart, so that a resumed installer keeps it', () => {
+    expect(operatorExitCode(new OperatorUsageError())).toBe(2);
+    expect(
+      operatorExitCode(
+        new ConflictError('account_exists', 'An account with this address already exists.'),
+      ),
+    ).toBe(3);
+    expect(operatorExitCode(new ConflictError('organization_slug_unavailable', 'x'))).toBe(1);
+    expect(operatorExitCode(new NotFoundError('Account'))).toBe(1);
+    expect(operatorExitCode(new Error('connect ECONNREFUSED'))).toBe(1);
   });
 });
