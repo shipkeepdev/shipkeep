@@ -738,12 +738,12 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 ## 12. Observability and alerts
 
 - Logs: labels `org`, `project`, `env`, `app`, `service`, `instance`, `node`, `stream`. Search by label and full text. Retention 30 days default.
-- Metrics (ADR 0024): CPU, memory and network per container and per node, disk per node; HTTP request rate, latency and status codes per route from Caddy. Retention 30 days. Disk per container, the size of its writable layer, is what the disk budget measures (ADR 0022); it is not in the metrics report yet.
+- Metrics (ADR 0024): CPU, memory and network per container and per node, disk per node; HTTP request rate, mean latency and responses by status class (2xx, 3xx, 4xx, 5xx, other) per route from Caddy. Retention 30 days. Disk per container, the size of its writable layer, is what the disk budget measures (ADR 0022); it is not in the metrics report yet.
   - Every 30 seconds the agent samples:
     - the node: CPU in use, memory in use and in total, disk in use and in total under Docker's data root, and network bytes received and sent;
     - each managed container: CPU in use, memory in use and its limit, and network bytes received and sent;
     - each host name of its routes, from Caddy's `/metrics` with `per_host`: requests by status class, and the sum and count of response durations.
-  - It sends them as a `MetricsReport` on the `Connect` stream, with the session's lease epoch, at most 256 containers and 64 host names, under 60 KiB. A report that does not fit is not sent, and nothing is kept while the stream is down.
+  - It sends them as a `MetricsReport` on the `Connect` stream, with the session's lease epoch. A report holds at most 256 containers and 64 host names: past those bounds the agent keeps the first by name and leaves the rest out of that sample, never the node's or the other containers' values. At those bounds a report stays well under 60 KiB; one that would not is not sent. Nothing is kept while the stream is down.
   - The control plane refuses a stale epoch and ignores a report that breaks a bound.
   - It maps each container name to the node's placed allocation, and each host name to a domain whose application has a placed allocation on that node. It drops what maps to nothing, including a host name routed only on another node. It writes the samples to VictoriaMetrics with labels it sets itself: organization, project, environment, application, node, and replica or domain. A label the agent sent is never written as it came.
   - VictoriaMetrics is a service of the control plane's Compose project, on its internal network only, pinned by digest, with 30 days of retention. Only the API queries it, with identifiers it validated for the caller's organization.
