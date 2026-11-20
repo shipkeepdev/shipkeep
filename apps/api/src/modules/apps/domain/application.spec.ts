@@ -2,6 +2,7 @@ import { InvalidInputError } from '@shipkeep/domain';
 
 import {
   applicationConfig,
+  assertDomainsAvailable,
   assertSameName,
   canonicalJson,
   type ApplicationHost,
@@ -196,5 +197,39 @@ describe('domainMatch', () => {
     // A suspect node still serves until its lease expires.
     const suspect = nodeAt(['8.8.8.8'], { lastHeartbeatAt: new Date(now.getTime() - 20_000) });
     expect(domainMatch(['8.8.8.8'], [suspect], now)).toBe('serving');
+  });
+});
+
+describe("the control plane's name (ADR 0021)", () => {
+  const config = (domains: string[]) =>
+    applicationConfig({
+      version: 1,
+      name: 'web',
+      build: { type: 'image', image: 'nginx' },
+      run: { port: 80 },
+      domains,
+    }).config;
+
+  it('cannot serve an application', () => {
+    expect(() => {
+      assertDomainsAvailable(config(['www.example.com', 'shipkeep.example.com']), [
+        'shipkeep.example.com',
+      ]);
+    }).toThrow(expect.objectContaining({ code: 'domain_reserved' }));
+    // Host names compare without case, as DNS does.
+    expect(() => {
+      assertDomainsAvailable(config(['shipkeep.example.com']), ['Shipkeep.Example.com']);
+    }).toThrow(expect.objectContaining({ code: 'domain_reserved' }));
+  });
+
+  it('leaves other names, and applications without domains, alone', () => {
+    expect(() => {
+      assertDomainsAvailable(config(['app.shipkeep.example.com', 'example.com']), [
+        'shipkeep.example.com',
+      ]);
+    }).not.toThrow();
+    expect(() => {
+      assertDomainsAvailable(config([]), ['shipkeep.example.com']);
+    }).not.toThrow();
   });
 });

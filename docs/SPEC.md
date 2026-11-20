@@ -608,6 +608,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - only `build.type: image` is accepted until git (M3.1) and Compose (M3.8) sources;
     - the canonical JSON (sorted keys) is limited to 64 KiB and hashed with SHA-256 into `configSha`;
     - a duplicate name in the environment is 409 `application_name_taken`;
+    - no application may use the control plane's own name, the host of `API_PUBLIC_URL`: saving, deploying or rolling back a configuration that lists it is 400 `domain_reserved` (ADR 0021; the agent of the machine that hosts the control plane refuses it too);
     - a hostname belongs to one application per organization: saving a configuration syncs its `domains`, and a host another application claims is 409 `domain_taken` (a rollback checks this too). A domain the configuration drops stays claimed while a release of the application with placed replicas still lists it, since its route may still serve it; it is freed when the pipeline stops the last such replicas (after the next deployment, a stop, or a failed deployment's cleanup succeeds), or with the application (#302);
     - wildcard domains are refused with 400 `wildcard_domain_unsupported` until DNS-01 exists.
   - `GET …/{applicationId}/domains` (`environment.read`) looks up each domain live: `public` with its addresses, `private` (only non-public answers, never revealed, so the control plane's resolver cannot be used to map internal names), `none` or `unknown`. It does not connect to the answers. `status` and its values are unchanged.
