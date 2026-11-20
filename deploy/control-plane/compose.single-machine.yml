@@ -28,6 +28,12 @@ services:
     cgroup_parent: shipkeep-controlplane.slice
     oom_score_adj: -900
 
+  # In the reservation, capped, and not protected from the OOM killer like the API and PostgreSQL:
+  # losing metrics costs history, not state.
+  victoriametrics:
+    cgroup_parent: shipkeep-controlplane.slice
+    mem_limit: 320m
+
   kek:
     cgroup_parent: shipkeep-controlplane.slice
 

@@ -100,6 +100,7 @@ services:
       SMTP_FROM: ${SMTP_FROM:-}
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      VICTORIAMETRICS_URL: http://victoriametrics:8428
     volumes:
       - keys:/var/lib/shipkeep:ro
     network_mode: service:net
@@ -110,6 +111,19 @@ services:
         condition: service_completed_successfully
       database-role:
         condition: service_completed_successfully
+    restart: unless-stopped
+
+  # Metrics the agents report through the control plane (ADR 0024). Internal network only: no port is
+  # published, and only the API reads it. Losing it loses history, not state.
+  victoriametrics:
+    image: victoriametrics/victoria-metrics:v1.155.0@sha256:f60dc268b54ecf87f6e09d740c2b732838aa9193090cc741417c9f6386a130df
+    command:
+      - -storageDataPath=/victoria-metrics-data
+      - -retentionPeriod=30d
+      - -httpListenAddr=:8428
+      - -memory.allowedBytes=256MiB
+    volumes:
+      - victoriametrics-data:/victoria-metrics-data
     restart: unless-stopped
 
   caddy:
@@ -128,6 +142,7 @@ services:
 
 volumes:
   postgres-data:
+  victoriametrics-data:
   keys:
   caddy-data:
   caddy-config:
