@@ -148,9 +148,67 @@ single_signing_key() {
   return "$status"
 }
 
-# The bundled file only: Docker Compose would otherwise also load an override file found next to it.
+# The bundled files only: Docker Compose would otherwise also load an override file found next to
+# them. On a single machine (ADR 0021) the bundled override drops Caddy and keeps HTTP on loopback.
 compose() {
-  docker compose --file compose.yml "$@"
+  if ((single)); then
+    docker compose --file compose.yml --file compose.single-machine.yml "$@"
+  else
+    docker compose --file compose.yml "$@"
+  fi
+}
+
+# Single machine (ADR 0021): what the control plane keeps, and the smallest machine that leaves room
+# for an application beside it. deploy/install.sh carries the same values and checks. Two machines
+# until main says otherwise.
+single=0 compose_files='-f compose.yml'
+reserved_memory_bytes=1073741824
+minimum_memory_bytes=3221225472
+# True when the mounts file $1 has cgroup v2 on /sys/fs/cgroup with memory_recursiveprot.
+cgroup2_recursiveprot() {
+  local target type options rest
+  while read -r _ target type options rest; do
+    [[ $target == /sys/fs/cgroup && $type == cgroup2 ]] || continue
+    [[ ,$options, == *,memory_recursiveprot,* ]] && return 0
+  done <"$1"
+  return 1
+}
+# Prints the machine's memory in bytes, from the meminfo file $1.
+memory_total_bytes() {
+  local key value unit
+  while read -r key value unit; do
+    if [[ $key == MemTotal: && $value =~ ^[0-9]{1,15}$ && $unit == kB ]]; then
+      printf '%d\n' "$((10#$value * 1024))"
+      return 0
+    fi
+  done <"$1"
+  return 1
+}
+valid_yes_no() {
+  [[ $1 =~ ^(yes|no|y|n)$ ]]
+}
+# An organization name, as the control plane accepts it: 1 to 80 printable characters, no space at
+# either end. Printable is ASCII here, stricter than the control plane, so no byte surprises it.
+valid_organization() {
+  [[ $1 =~ ^[[:print:]]{1,80}$ && $1 == "${1#[[:space:]]}" && $1 == "${1%[[:space:]]}" ]]
+}
+# The organization's slug, from its name: lowercase letters, digits and single hyphens, starting
+# with a letter, at most 40 characters.
+organization_slug() {
+  local slug=${1,,}
+  slug=${slug//[^a-z0-9]/-}
+  while [[ $slug == *--* ]]; do slug=${slug//--/-}; done
+  slug=${slug#-}
+  [[ $slug =~ ^[a-z] ]] || slug=org-$slug
+  slug=${slug:0:40}
+  slug=${slug%-}
+  printf '%s\n' "$slug"
+}
+# Reads the file $2 from the control plane image into $3, and checks it against the SHA-256 $1.
+image_file() {
+  [[ $1 =~ ^[a-f0-9]{64}$ ]] || return 1
+  compose run --rm --no-deps -T --entrypoint cat control-plane "/app/web/browser/install/$2" >"$3" || return 1
+  printf '%s  %s\n' "$1" "$3" | sha256sum --check --status
 }
 
 # Sets the variable named by $1 from stdin, unless a flag already did. An invalid answer is asked
@@ -311,47 +369,91 @@ install_docker() {
 # certificate of the domain is issued. Over loopback, so that it does not depend on the route from
 # this machine to its own public address.
 https_answers() {
+  # On a single machine the server's Caddy answers, on the host: the gateway of the control plane's
+  # network reaches it.
   compose exec -T control-plane node -e '
     const name = process.argv[1];
+    const host = process.argv[2];
     const request = require("node:https").get(
-      { host: "127.0.0.1", port: 443, servername: name, path: "/api/v1/health", headers: { host: name }, timeout: 8000 },
+      { host, port: 443, servername: name, path: "/api/v1/health", headers: { host: name }, timeout: 8000 },
       (response) => process.exit(response.statusCode === 200 ? 0 : 1),
     );
     request.on("timeout", () => process.exit(1));
     request.on("error", () => process.exit(1));
-  ' "$1" >/dev/null 2>&1
+  ' "$1" "$( ((single)) && printf 172.31.250.1 || printf 127.0.0.1)" >/dev/null 2>&1
 }
 
 # Printed when the run stops after the settings file is written: its passwords must be kept.
 unfinished() {
-  ((!writing)) || printf 'shipkeep-install: the installation did not finish. Keep %s/.env: it holds the database passwords. Once the cause is fixed, finish with: cd %s && sudo docker compose -f compose.yml up -d\n' "$directory" "$directory" >&2
+  ((!writing)) || printf 'shipkeep-install: the installation did not finish. Keep %s/.env: it holds the database passwords. Once the cause is fixed, finish with: cd %s && sudo docker compose %s up -d\n' "$directory" "$directory" "$compose_files" >&2
+}
+
+# ADR 0021: the first organization, then this machine enrolled in it as a server, with the agent
+# and the installer of the control plane's own image. The join token goes from the control plane
+# to the server installer through a pipe, never on a terminal or in a file of this script.
+add_this_server() {
+  local said organization_id fingerprint manifest installer amd64 arm64 digest work status
+  said=$(compose run --rm --no-deps -T control-plane node main.js organization create --name "$organization" --slug "$(organization_slug "$organization")" --owner "$owner_email") || {
+    printf 'shipkeep-install: the control plane is running, but the organization %s was not created.\n' "$organization" >&2
+    return 1
+  }
+  organization_id=${said##* }
+  [[ $organization_id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
+  fingerprint=$(compose run --rm --no-deps -T control-plane node main.js server ca-fingerprint) || return 1
+  [[ $fingerprint =~ ^sha256:[a-f0-9]{64}$ ]] || return 1
+  manifest=$(compose run --rm --no-deps -T --entrypoint cat control-plane /app/web/browser/install/manifest.json) || return 1
+  [[ $manifest =~ ^\{\"installer\":\"([a-f0-9]{64})\",\"amd64\":\"([a-f0-9]{64})\",\"arm64\":\"([a-f0-9]{64})\"\}$ ]] || {
+    printf 'shipkeep-install: the control plane image holds no agent to install.\n' >&2
+    return 1
+  }
+  installer=${BASH_REMATCH[1]} amd64=${BASH_REMATCH[2]} arm64=${BASH_REMATCH[3]}
+  work=$(mktemp -d /var/lib/shipkeep-cp-install.XXXXXX) || return 1
+  case $(uname -m) in x86_64) digest=$amd64 ;; *) digest=$arm64 ;; esac
+  if ! image_file "$installer" "install-$installer.sh" "$work/install.sh" || ! image_file "$digest" "agent-$digest.bin" "$work/agent"; then
+    rm -rf -- "$work"
+    printf 'shipkeep-install: the agent of the control plane image does not match its checksum.\n' >&2
+    return 1
+  fi
+  printf 'Installing the agent and the edge proxy of this server...\n'
+  status=0
+  compose run --rm --no-deps -T control-plane node main.js server join-token --organization "$organization_id" |
+    bash "$work/install.sh" --control-plane "$domain:7443" --ca-fingerprint "$fingerprint" --origin "https://$domain" \
+      --amd64-sha256 "$amd64" --arm64-sha256 "$arm64" --local-control-plane 127.0.0.1:3000 --agent-file "$work/agent" || status=$?
+  rm -rf -- "$work"
+  ((status == 0)) || printf 'shipkeep-install: the control plane is running, but this server was not added; add one from the Servers page.\n' >&2
+  return "$status"
 }
 
 main() {
   umask 077
   export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-  local here file port listeners attempt=0 user_given=0
+  local here file port listeners memory attempt=0 user_given=0
   own_variables
   directory=/opt/shipkeep writing=0
   domain='' owner_email='' owner_password=''
   smtp_host='' smtp_port='' smtp_from='' smtp_user='' smtp_password=''
+  single_answer='' single=0 organization='' compose_files='-f compose.yml'
   while (($#)); do
     (($# >= 2)) || fail 'Missing option value.'
     case "$1" in
       --dir) directory=$2 ;;
       --domain) domain=$2 ;;
       --email) owner_email=$2 ;;
+      --single-machine) single_answer=$2 ;;
+      --organization) organization=$2 ;;
       --smtp-host) smtp_host=$2 ;;
       --smtp-port) smtp_port=$2 ;;
       --smtp-from) smtp_from=$2 ;;
       --smtp-user) smtp_user=$2 user_given=1 ;;
-      *) fail 'Unknown option. Options: --dir, --domain, --email, and for an installation that sends email --smtp-host, --smtp-port, --smtp-from, --smtp-user.' ;;
+      *) fail 'Unknown option. Options: --dir, --domain, --email, --single-machine yes|no, --organization, and for an installation that sends email --smtp-host, --smtp-port, --smtp-from, --smtp-user.' ;;
     esac
     shift 2
   done
   valid_directory "$directory" || fail 'Invalid directory: an absolute path is required.'
   [[ -z $domain ]] || valid_domain "$domain" || fail 'Invalid domain: a lowercase DNS name is required, for example shipkeep.example.com.'
   [[ -z $owner_email ]] || valid_address "$owner_email" || fail 'Invalid email address.'
+  [[ -z $single_answer ]] || valid_yes_no "$single_answer" || fail 'Invalid --single-machine: yes or no.'
+  [[ -z $organization ]] || valid_organization "$organization" || fail 'Invalid organization name: 1 to 80 printable characters.'
   [[ -z $smtp_host ]] || valid_smtp_host "$smtp_host" || fail 'Invalid SMTP host.'
   [[ -z $smtp_port ]] || valid_port "$smtp_port" || fail 'Invalid SMTP port.'
   [[ -z $smtp_from ]] || valid_address "$smtp_from" || fail 'Invalid sender address.'
@@ -365,7 +467,7 @@ main() {
   case $(uname -m) in x86_64 | aarch64) ;; *) fail 'Unsupported architecture: the image is built for amd64 and arm64.' ;; esac
   here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
   read_image "$here/image"
-  for file in compose.yml Caddyfile; do
+  for file in compose.yml compose.single-machine.yml Caddyfile; do
     [[ -f $here/$file && ! -L $here/$file ]] || fail "Run this installer from a release bundle: $file is missing."
   done
   assert_root_directory "$directory"
@@ -383,6 +485,27 @@ main() {
   listeners=$(ss -H -lun 'sport = :443') || fail 'Cannot inspect UDP ports.'
   [[ -z $listeners ]] || fail 'UDP port 443 is already in use on this machine.'
 
+  # ADR 0021: one machine runs the control plane and the applications, unless the person says no.
+  if [[ -z $single_answer ]]; then
+    printf 'Run applications on this machine too? A separate machine is safer for code you trust less than the control plane. [Y/n]: ' >&2
+    IFS= read -r single_answer || single_answer=''
+    [[ -n $single_answer ]] || single_answer=yes
+    valid_yes_no "${single_answer,,}" || fail 'Answer yes or no.'
+    single_answer=${single_answer,,}
+  fi
+  if [[ $single_answer == y* ]]; then
+    single=1 compose_files='-f compose.yml -f compose.single-machine.yml'
+    (($(nproc) >= 2)) || fail 'Applications on this machine need at least 2 CPUs. Run with --single-machine no and add a separate server.'
+    memory=$(memory_total_bytes /proc/meminfo) || fail 'Cannot read the memory of this machine.'
+    ((memory >= minimum_memory_bytes)) || fail 'Applications on this machine need at least 3 GiB of memory. Run with --single-machine no and add a separate server.'
+    cgroup2_recursiveprot /proc/self/mounts || fail 'Applications on this machine need cgroup v2 mounted with memory_recursiveprot (systemd 247 or later).'
+    listeners=$(ss -H -ltn 'sport = :3000') || fail 'Cannot inspect TCP ports.'
+    [[ -z $listeners ]] || fail 'Port 3000 is already in use on this machine; the control plane listens there on loopback.'
+    for file in /etc/systemd/system/shipkeep-controlplane.slice /etc/shipkeep; do
+      [[ ! -e $file && ! -L $file ]] || fail "$file already exists: this machine already runs Shipkeep."
+    done
+  fi
+
   ask domain 'DNS name of the control plane, for example shipkeep.example.com' valid_domain 'A lowercase DNS name is required, for example shipkeep.example.com.'
   # Without its DNS record Caddy cannot obtain the certificate, and failed attempts are rate limited.
   if command -v getent >/dev/null; then
@@ -391,6 +514,9 @@ main() {
   # The first account is created here, on the server: no email is needed to start (ADR 0020).
   ask owner_email 'Email address of the first account (it is the sign-in name; nothing is sent to it)' valid_address 'An email address is required, for example you@example.com.'
   ask_owner_password
+  if ((single)); then
+    ask organization 'Name of the first organization, for example your company or team' valid_organization 'An organization name of 1 to 80 printable characters is required.'
+  fi
   # Email is only asked for when --smtp-host says the installation sends some.
   if [[ -n $smtp_host ]]; then
     [[ -n $smtp_port ]] || smtp_port=465
@@ -417,6 +543,16 @@ main() {
     # Volumes outlive a removed Docker, and only show again now.
     assert_no_volumes
   fi
+  if ((single)); then
+    # With the cgroupfs driver, cgroup_parent is a plain path and no slice would hold the containers.
+    [[ $(docker info --format '{{.CgroupDriver}}') == systemd ]] || fail "Applications on this machine need Docker's systemd cgroup driver."
+    # PostgreSQL and the API run in this slice, protected up to the reservation (ADR 0021). Its
+    # parent, shipkeep.slice, gets the same protection from the server installer.
+    printf '[Unit]\nDescription=Shipkeep: the control plane on the machine that also runs applications\nBefore=slices.target\n[Slice]\nMemoryLow=%d\n' "$reserved_memory_bytes" >/etc/systemd/system/shipkeep-controlplane.slice
+    chmod 0644 /etc/systemd/system/shipkeep-controlplane.slice
+    systemctl daemon-reload
+    systemctl start shipkeep-controlplane.slice
+  fi
   admin_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
   app_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
   [[ $admin_password =~ ^[a-f0-9]{64}$ && $app_password =~ ^[a-f0-9]{64}$ ]] || fail 'Cannot generate the database passwords.'
@@ -425,7 +561,7 @@ main() {
   [[ -d $directory ]] || install -d -m 0755 "$directory"
   assert_root_directory "$directory"
   writing=1
-  install -m 0644 "$here/compose.yml" "$here/Caddyfile" "$directory/"
+  install -m 0644 "$here/compose.yml" "$here/compose.single-machine.yml" "$here/Caddyfile" "$directory/"
   write_env "$directory/.env.new"
   mv -- "$directory/.env.new" "$directory/.env"
   unset smtp_password admin_password app_password
@@ -440,10 +576,13 @@ main() {
   if ! create_first_account; then
     unset owner_password
     printf 'shipkeep-install: the control plane is running, but the first account was not created. Create it with:\n' >&2
-    printf '  cd %s && sudo docker compose -f compose.yml run --rm --no-deps control-plane node main.js account create --email %s\n' "$directory" "$owner_email" >&2
+    printf '  cd %s && sudo docker compose %s run --rm --no-deps control-plane node main.js account create --email %s\n' "$directory" "$compose_files" "$owner_email" >&2
     exit 1
   fi
   unset owner_password
+  if ((single)); then
+    add_this_server || exit 1
+  fi
 
   printf 'Waiting for the HTTPS certificate of %s...\n' "$domain"
   until https_answers "$domain"; do
@@ -451,7 +590,11 @@ main() {
     if ((attempt >= 24)); then
       printf 'The control plane is running, but https://%s does not answer with a valid certificate yet.\n' "$domain" >&2
       printf 'Check that %s points at this machine and that ports 80 and 443 are reachable from the internet.\n' "$domain" >&2
-      printf 'Caddy keeps trying by itself: do not run this installer again. Its reasons are in: cd %s && sudo docker compose -f compose.yml logs caddy\n' "$directory" >&2
+      if ((single)); then
+        printf 'Caddy keeps trying by itself: do not run this installer again. Its reasons are in: sudo journalctl -u shipkeep-caddy\n' >&2
+      else
+        printf 'Caddy keeps trying by itself: do not run this installer again. Its reasons are in: cd %s && sudo docker compose -f compose.yml logs caddy\n' "$directory" >&2
+      fi
       exit 1
     fi
     sleep 5
@@ -464,7 +607,13 @@ main() {
     printf 'This installation sends no email: more accounts and lost passwords are handled on this server.\n'
     printf 'See https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md#accounts-without-email\n'
   fi
-  printf 'The compose file and its settings are in %s. Keep .env private: it holds the database passwords.\n' "$directory"
+  if ((single)); then
+    printf 'This machine is also a server of the organization %s: deploy applications to it from the Servers page.\n' "$organization"
+    printf 'The compose files and their settings are in %s; give both files to Docker Compose: cd %s && sudo docker compose %s ...\n' "$directory" "$directory" "$compose_files"
+    printf 'Keep .env private: it holds the database passwords.\n'
+  else
+    printf 'The compose file and its settings are in %s. Keep .env private: it holds the database passwords.\n' "$directory"
+  fi
   printf 'Back up the key-encryption key now: https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md#back-up-the-key-encryption-key\n'
 }
 

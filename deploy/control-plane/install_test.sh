@@ -358,4 +358,33 @@ refused bash deploy/control-plane/build-bundle.sh ../1.2.3 "$reference" "$work/b
 refused bash deploy/control-plane/build-bundle.sh 1.2.4 "$reference" "$work/bad" || die 'accepted a tag that is not the version'
 refused bash deploy/control-plane/build-bundle.sh 1.2.3 ghcr.io/shipkeepdev/shipkeep:1.2.3 "$work/bad" || die 'accepted a reference without a digest'
 [[ ! -e $work/bad ]] || die 'a refused bundle left files behind'
+# Single machine (ADR 0021): the answers and the slug of the first organization.
+for answer in yes no y n; do valid_yes_no "$answer" || die "refused the answer $answer"; done
+for answer in '' Yes oui 'yes ' $'yes\n' maybe; do refused valid_yes_no "$answer" || die "accepted the answer $answer"; done
+valid_organization 'Atelier Nord' || die 'refused an organization name'
+valid_organization "$(printf 'a%.0s' {1..80})" || die 'refused 80 characters'
+# shellcheck disable=SC2016
+for name in '' ' Atelier' 'Atelier ' "$(printf 'a%.0s' {1..81})" $'Atelier\nNord' $'Atelier\tNord' 'Café'; do
+  refused valid_organization "$name" || die "accepted the organization name $name"
+done
+[[ $(organization_slug 'Atelier Nord') == atelier-nord ]] || die 'slug of Atelier Nord'
+[[ $(organization_slug '  ACME -- Corp!!  ') == acme-corp ]] || die "slug of ACME: $(organization_slug '  ACME -- Corp!!  ')"
+[[ $(organization_slug '42 Labs') == org-42-labs ]] || die 'a slug must start with a letter'
+[[ $(organization_slug "$(printf 'ab-%.0s' {1..30})") =~ ^[a-z][a-z0-9-]{0,39}$ ]] || die 'a long slug'
+[[ $(organization_slug "$(printf 'ab-%.0s' {1..30})") != *- ]] || die 'a slug ends with a hyphen'
+printf 'cgroup2 /sys/fs/cgroup cgroup2 rw,nsdelegate,memory_recursiveprot 0 0\n' >"$work/mounts"
+cgroup2_recursiveprot "$work/mounts" || die 'memory_recursiveprot not found'
+printf 'cgroup2 /sys/fs/cgroup cgroup2 rw,nsdelegate 0 0\n' >"$work/mounts"
+refused cgroup2_recursiveprot "$work/mounts" || die 'accepted cgroup v2 without memory_recursiveprot'
+printf 'MemTotal:        4028292 kB\n' >"$work/meminfo"
+[[ $(memory_total_bytes "$work/meminfo") == 4124971008 ]] || die 'memory misread'
+# The same values as the server installer, which writes the agent's half of the reservation.
+grep -qxF 'reserved_memory_bytes=1073741824' deploy/install.sh || die 'the installers reserve different memory'
+grep -qxF 'minimum_memory_bytes=3221225472' deploy/install.sh || die 'the installers need different memory'
+# Refused single-machine answers stop before anything is asked or changed.
+for options in '--single-machine maybe' "--single-machine yes --organization $(printf 'a%.0s' {1..81})"; do
+  # shellcheck disable=SC2086 # the options are words on purpose
+  if bash "$installer" $options </dev/null >"$work/output" 2>&1; then die "accepted $options"; fi
+  grep -Eq 'single-machine|organization name' "$work/output" || die "refused $options for another reason: $(cat "$work/output")"
+done
 printf 'Control plane installer checks passed.\n'
