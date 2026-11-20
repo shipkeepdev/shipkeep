@@ -20,8 +20,8 @@ var errReleaseTimeout = errors.New("release task timed out")
 
 // releaseTask runs a one-off container (for example migrations) once: create, run until exit
 // within the timeout, record the exit code, remove. It never restarts.
-func releaseTask(engine Engine, action *agentv1.RunReleaseTask) (journal.Plan, error) {
-	name, config, err := containerConfig(action.GetSpec())
+func releaseTask(engine Engine, action *agentv1.RunReleaseTask, workloads Workloads) (journal.Plan, error) {
+	name, config, err := containerConfig(action.GetSpec(), workloads)
 	if err != nil {
 		return journal.Plan{}, err
 	}
