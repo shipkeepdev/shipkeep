@@ -13,6 +13,7 @@ import (
 
 	"github.com/shipkeepdev/shipkeep/agent/internal/actions"
 	"github.com/shipkeepdev/shipkeep/agent/internal/caddy"
+	"github.com/shipkeepdev/shipkeep/agent/internal/certwatch"
 	"github.com/shipkeepdev/shipkeep/agent/internal/confirm"
 	"github.com/shipkeepdev/shipkeep/agent/internal/credentials"
 	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
@@ -79,6 +80,18 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	if err != nil {
 		return err
 	}
+	// The certificates Caddy serves, read on loopback and reported with the state (PLAN M3.6b2).
+	certificates := &certwatch.Watcher{Hosts: router, Logger: a.logger, Address: "127.0.0.1:443", Interval: time.Minute, Refresh: 10 * time.Minute}
+	watchCtx, stopWatching := context.WithCancel(ctx)
+	watched := make(chan struct{})
+	go func() {
+		defer close(watched)
+		certificates.Run(watchCtx)
+	}()
+	defer func() {
+		stopWatching()
+		<-watched
+	}()
 	// Secures the routes an older agent wrote, without waiting for the next deployment. Caddy may
 	// still be starting, so it is retried until it succeeds; it stops with this gateway run.
 	secureCtx, stopSecuring := context.WithCancel(ctx)
@@ -107,7 +120,12 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 			if err != nil {
 				return nil, err
 			}
-			return reporting.SnapshotWithReasons(ctx, engine, reasons)
+			report, err := reporting.SnapshotWithReasons(ctx, engine, reasons)
+			if err != nil {
+				return nil, err
+			}
+			report.Certificates = certificates.Snapshot()
+			return report, nil
 		},
 	}
 	return runner.Run(ctx, bundle)

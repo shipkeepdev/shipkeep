@@ -425,3 +425,26 @@ func TestAFailedApplyRouteLeavesItsHostsReachable(t *testing.T) {
 		}
 	}
 }
+
+func TestTLSHostsListsHTTPSNamesOnly(t *testing.T) {
+	client, _ := admin(t)
+	ctx := context.Background()
+	if err := client.EnsureServer(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for id, match := range map[string]Match{
+		"b":     {Host: []string{"b.example.com", "a.example.com"}, Protocol: HTTPS},
+		"plain": {Host: []string{"plain.example.com"}},
+		"wild":  {Host: []string{"*.example.com"}, Protocol: HTTPS},
+		"dup":   {Host: []string{"a.example.com"}, Protocol: HTTPS},
+	} {
+		route := Route{ID: RouteID(id), Match: []Match{match}, Handle: []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{{Dial: "10.0.0.2:80"}}}}, Terminal: true}
+		if err := client.UpsertRoute(ctx, route); err != nil {
+			t.Fatal(err)
+		}
+	}
+	hosts, err := client.TLSHosts(ctx)
+	if err != nil || !slices.Equal(hosts, []string{"a.example.com", "b.example.com"}) {
+		t.Fatalf("hosts = %v, %v", hosts, err)
+	}
+}
