@@ -16,6 +16,23 @@ describe('parseConfig', () => {
     expect(cfg.WEB_DIST_DIR).toBeUndefined();
   });
 
+  it('trusts nobody, loopback, or exactly one address for forwarding headers (ADR 0021)', () => {
+    expect(parseConfig(minimal).TRUST_PROXY).toBe('none');
+    for (const value of ['none', 'loopback', '172.31.250.1', 'fd00:5b::1'])
+      expect(parseConfig({ ...minimal, TRUST_PROXY: value }).TRUST_PROXY).toBe(value);
+    for (const value of [
+      '',
+      'all',
+      'true',
+      '172.31.250.0/24',
+      '172.31.250.1,127.0.0.1',
+      '172.31.250.1 ',
+      '172.31.250.256',
+      'uniquelocal',
+    ])
+      expect(() => parseConfig({ ...minimal, TRUST_PROXY: value }), value).toThrow(/TRUST_PROXY/);
+  });
+
   it('wraps the database URL in a Secret', () => {
     const cfg = parseConfig(minimal);
     expect(String(cfg.DATABASE_URL)).not.toContain('shipkeep:shipkeep');
