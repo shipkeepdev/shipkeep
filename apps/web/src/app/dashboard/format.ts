@@ -43,6 +43,16 @@ export function deploymentStatus(state: Deployment['state'], stop = false): Stat
   }
 }
 
+/**
+ * What an application's badge says once its latest deployment succeeded: whether its replicas run,
+ * from the same list as the "n of m replicas running" line, so the two never disagree (#366).
+ */
+export function servingStatus(running: number, replicas: number): Status {
+  if (running === 0) return { label: 'not running', color: RED };
+  if (running < replicas) return { label: 'degraded', color: AMBER };
+  return { label: 'live', color: GREEN };
+}
+
 export function nodeStatus(status: FleetNode['status']): Status {
   switch (status) {
     case 'ready':
