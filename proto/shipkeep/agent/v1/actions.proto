@@ -468,6 +468,11 @@ message NodeFacts {
   string caddy_version = 11;
   string wireguard_version = 12;
   string agent_version = 13;
+  // Share of the machine kept for the control plane and the system, from the agent's local
+  // configuration (ADR 0021). cpu_count and memory_bytes stay the machine's; placement subtracts
+  // these. Zero on a machine that does not host the control plane.
+  uint32 reserved_cpu_millis = 14;
+  uint64 reserved_memory_bytes = 15;
 }
 
 // Result of a health probe.
