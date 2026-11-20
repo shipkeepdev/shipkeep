@@ -16,6 +16,8 @@ export interface Cell {
   readonly dot?: string;
   readonly logo?: BrandName;
   readonly icon?: IconName;
+  /** Values for the placeholders of `t`, such as `{n}`. */
+  readonly values?: Readonly<Record<string, string | number>>;
 }
 export type CellInput = string | Cell;
 

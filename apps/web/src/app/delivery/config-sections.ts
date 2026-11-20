@@ -1,6 +1,6 @@
 import { type ShipkeepConfig } from '@shipkeep/config-schema';
 
-import { type Block, type CellInput, type FieldItem } from '../dashboard/screen-model';
+import { type Block, type Cell, type CellInput, type FieldItem } from '../dashboard/screen-model';
 import { AMBER, GREEN, GREY, RED } from '../dashboard/format';
 import { type SectionCopy } from './application-design';
 import { type DomainStatus, type Release, type Replica, type SecretMetadata } from './delivery-api';
@@ -12,6 +12,8 @@ export interface SectionData {
   readonly secrets: readonly SecretMetadata[];
   readonly domains: readonly DomainStatus[];
   readonly replicas: readonly Replica[];
+  /** When the page reads the data, to count the days a certificate has left. */
+  readonly now: Date;
 }
 
 const YML = 'shipkeep.yml';
@@ -32,7 +34,7 @@ const field = (l: string, v: string | undefined, extra: Partial<FieldItem> = {})
 });
 const words = (command: readonly string[] | undefined) => command?.join(' ');
 const mono = (t: string, fg?: string): CellInput => ({ t, mono: true, ...(fg ? { fg } : {}) });
-const state = (t: string, color: string): CellInput => ({ t, fg: color, dot: color });
+const state = (t: string, color: string): Cell => ({ t, fg: color, dot: color });
 const note = (text: string): Block => ({ type: 'note', text });
 
 /**
@@ -55,6 +57,28 @@ export function domainMatch(domain: DomainStatus): CellInput {
         AMBER,
       );
   }
+}
+
+const DAY_MS = 86_400_000;
+/** Caddy renews a certificate about 30 days before it expires: less than this means it failed. */
+export const RENEWAL_LATE_DAYS = 21;
+const URGENT_DAYS = 7;
+
+/**
+ * The certificate the servers serve for a domain, as days left (PLAN M3.6b2): green while renewal
+ * is on time, amber once it is late, red in the last week and after expiry.
+ */
+export function certificateState(domain: DomainStatus, now: Date): CellInput {
+  const certificate = domain.certificate;
+  if (!certificate) return state('not issued yet', GREY);
+  const days = Math.floor((Date.parse(certificate.notAfter) - now.getTime()) / DAY_MS);
+  if (days < 0) return state('expired', RED);
+  if (days === 0) return state('expires today', RED);
+  if (days === 1) return state('expires tomorrow', RED);
+  if (days < URGENT_DAYS) return { ...state('expires in {n} days', RED), values: { n: days } };
+  if (days < RENEWAL_LATE_DAYS)
+    return { ...state('renewal late, {n} days left', AMBER), values: { n: days } };
+  return { ...state('{n} days left', GREEN), values: { n: days } };
 }
 
 /**
@@ -118,11 +142,12 @@ export function configSection(key: string, data: SectionData): SectionCopy | nul
               {
                 type: 'table',
                 // The answer comes second, so it stays visible on a phone before the table scrolls.
-                cols: 'minmax(0,1.2fr) minmax(0,1.6fr) minmax(0,0.8fr) minmax(0,1fr)',
-                heads: ['Domain', 'Points at', 'DNS', 'Addresses'],
+                cols: 'minmax(0,1.2fr) minmax(0,1.5fr) minmax(0,1.3fr) minmax(0,0.8fr) minmax(0,1fr)',
+                heads: ['Domain', 'Points at', 'Certificate', 'DNS', 'Addresses'],
                 rows: data.domains.map((domain) => [
                   mono(domain.hostname, '#EDEDEF'),
                   domainMatch(domain),
+                  certificateState(domain, data.now),
                   domain.status === 'public'
                     ? state('public', GREEN)
                     : domain.status === 'none'
@@ -134,7 +159,7 @@ export function configSection(key: string, data: SectionData): SectionCopy | nul
                 ]),
               },
               note(
-                'Point each domain at a public address of a server running this application. Administrators set these addresses on the Servers page. Certificates are issued automatically once it answers on ports 80 and 443.',
+                'Point each domain at a public address of a server running this application. Administrators set these addresses on the Servers page. Certificates are issued automatically once it answers on ports 80 and 443, and renewed about 30 days before they expire. The certificate shown is the one that expires first among the servers.',
               ),
             ]
           : [note('No domain yet. Add one under domains: in shipkeep.yml.')],

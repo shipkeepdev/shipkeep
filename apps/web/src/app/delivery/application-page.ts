@@ -627,6 +627,7 @@ export class ApplicationPage {
         secrets: this.secrets(),
         domains: this.domains.items(),
         replicas: this.replicas.items(),
+        now: new Date(),
       }) ?? { title: key, desc: '', blocks: [] }
     );
   });
