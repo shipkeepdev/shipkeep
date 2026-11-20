@@ -134,7 +134,7 @@ When the installer asks **Run applications on this machine too?** and you answer
 - 0.5 CPU and 1 GiB stay reserved for the control plane: applications are placed in what is left, and a redeployment whose old and new releases do not fit together beside the reservation is refused before anything starts, with the reason.
 - PostgreSQL and the API run in `shipkeep-controlplane.slice`, whose memory up to the reservation the kernel reclaims last, and their containers are the least likely the out-of-memory killer picks. Applications run in `shipkeep-workloads.slice`, limited to the rest of the memory, and are the most likely. This is a preference the kernel follows, not a guarantee: under enough pressure it can still reclaim protected memory or stop a process of the control plane.
 
-It needs Ubuntu 24.04 with systemd (the system every server needs), at least 2 CPUs and 3 GiB of memory, cgroup v2 mounted with `memory_recursiveprot` (systemd 247 or later, as on Ubuntu 24.04), Docker's `systemd` cgroup driver (the default with cgroup v2) and Docker Compose 2.24.4 or later (the first that reads the `!override` of `compose.single-machine.yml`). The installer checks all of them before it changes anything and refuses the single-machine form otherwise; answer no to install the control plane alone, on any Linux with Docker.
+It needs Ubuntu 24.04 with systemd (the system every server needs), at least 2 CPUs and 3 GiB of memory, cgroup v2 mounted with `memory_recursiveprot` (systemd 247 or later, as on Ubuntu 24.04), Docker's `systemd` cgroup driver (the default with cgroup v2), Docker Engine 28 or later (older engines let other machines of the local network reach ports published on `127.0.0.1`, where the control plane listens) and Docker Compose 2.24.4 or later (the first that reads the `!override` of `compose.single-machine.yml`), with ports 3000 and 7480 free. The installer checks all of them before it changes anything and refuses the single-machine form otherwise; answer no to install the control plane alone, on any Linux with Docker.
 
 On such a machine, give Docker Compose both files: `sudo docker compose -f compose.yml -f compose.single-machine.yml <command>`, for example to upgrade. The certificate comes from the server's Caddy: `sudo journalctl -u shipkeep-caddy` shows its reasons.
 
@@ -221,7 +221,7 @@ The installer does not upgrade. In the installation directory, replace `compose.
   sudo bash install.sh --dir /opt/shipkeep --resume yes
   ```
 
-  It reads the settings of the interrupted run from `install-state` in that directory, starts the stack and runs only the steps not done yet: it asks for the password again only when the account was not created. On one machine, when adding the server stopped after the server installer had begun writing, that installer refuses to run again: remove what it wrote (the host part of [Starting over](#starting-over) below, without `docker compose down`), then resume.
+  It reads the settings of the interrupted run from `install-state` in that directory, starts the stack and runs only the steps not done yet. It asks for the password again only when the account was not created, and keeps an account, an organization or a server installation that the interrupted run had finished without recording it. On one machine, when adding the server stopped after the server installer had begun writing, that installer refuses to run again: remove [the server part](#starting-over), then resume. A run stopped before writing `.env` started nothing: run the installer again, as at first.
 
 - **`migrate` or `database-role` exited with an error:** `docker compose logs migrate database-role`. A changed `POSTGRES_APP_PASSWORD` is the usual cause: an existing login keeps its password, so put the original value back.
 - **`control-plane` keeps restarting:** `docker compose logs control-plane`. The first line names every invalid or missing setting.
@@ -230,7 +230,9 @@ The installer does not upgrade. In the installation directory, replace `compose.
 
 ### Starting over
 
-On [one machine for everything](#one-machine-for-everything), the machine is also a server: the agent, its Caddy, the egress guard and the applications' containers live on the host, outside Compose, and the installer refuses to run while any of it remains. After `docker compose down --volumes`, remove them as root. This also stops and deletes every application on the machine:
+On [one machine for everything](#one-machine-for-everything), the machine is also a server: the agent, its Caddy, the egress guard and the applications' containers live on the host, outside Compose, and the installers refuse to run while any of it remains.
+
+**The server part.** To resume after adding this machine as a server failed halfway, remove only this part, as root, then run the installer with `--resume yes`. It stops and deletes every application on the machine, and keeps the control plane, its slice and its directory:
 
 ```sh
 systemctl disable --now shipkeep-agent shipkeep-caddy shipkeep-egress
@@ -240,7 +242,7 @@ rm -rf /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep \
   /etc/shipkeep-caddy.json /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft \
   /usr/local/libexec/shipkeep-egress /etc/tmpfiles.d/shipkeep.conf \
   /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service \
-  /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-workloads.slice /etc/systemd/system/shipkeep-controlplane.slice \
+  /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-workloads.slice \
   /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf
 apt-get purge -y caddy
 rm -f /etc/apt/sources.list.d/shipkeep-caddy.sources /etc/apt/keyrings/shipkeep-caddy.gpg /etc/apt/keyrings/shipkeep-caddy.asc
@@ -250,7 +252,17 @@ systemctl restart docker
 # The installer restarts Docker too: forget the restarts counted so far, or systemd refuses one.
 systemctl reset-failed docker
 if systemctl is-active --quiet nftables; then systemctl restart nftables; fi
-rm -rf /opt/shipkeep
+```
+
+**Everything, on a machine you can afford to lose.** This deletes the database and the key-encryption key, and with them everything Shipkeep stored. Set `dir` to the directory the installer used (`--dir`, `/opt/shipkeep` by default), remove the stack and its volumes, then the server part above, then the rest:
+
+```sh
+dir=/opt/shipkeep
+(cd "$dir" && docker compose -f compose.yml -f compose.single-machine.yml down --volumes)
+# ... the server part above ...
+rm -f /etc/systemd/system/shipkeep-controlplane.slice
+systemctl daemon-reload
+rm -rf -- "$dir"
 ```
 
 Docker stays installed. The installer then runs again as on a new machine.
