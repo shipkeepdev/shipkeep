@@ -61,34 +61,6 @@ describe('application domains over HTTP', () => {
     await fixture.close();
   });
 
-  it("refuses the control plane's own name, on creation and on change (ADR 0021)", async () => {
-    await fixture
-      .post(path(), 'owner', {
-        config: config({ name: 'impostor', domains: ['www.example.com', 'shipkeep.example.com'] }),
-      })
-      .expect(400)
-      .expect((response) => {
-        expect(response.body).toMatchObject({
-          code: 'domain_reserved',
-          details: { hostname: 'shipkeep.example.com' },
-        });
-      });
-    const created = (
-      await fixture
-        .post(path(), 'owner', { config: config({ name: 'neighbour', domains: [] }) })
-        .expect(201)
-    ).body as ApplicationBody;
-    await fixture
-      .post(`${path()}/${created.id}/config`, 'owner', {
-        expectedConfigSha: created.configSha,
-        config: config({ name: 'neighbour', domains: ['shipkeep.example.com'] }),
-      })
-      .expect(400)
-      .expect((response) => {
-        expect(response.body).toMatchObject({ code: 'domain_reserved' });
-      });
-  });
-
   it('refuses a claimed hostname, frees it on change and refuses wildcards', async () => {
     const first = (
       await fixture
@@ -491,5 +463,34 @@ describe('application domains over HTTP', () => {
     expect(new Set(Object.values(await domains()))).toEqual(new Set(['not_running']));
 
     await fixture.get(`${path()}/${applicationId}/domains`, 'outsider').expect(404);
+  });
+
+  // Last: it leaves an application in the environment that the tests above would list.
+  it("refuses the control plane's own name, on creation and on change (ADR 0021)", async () => {
+    await fixture
+      .post(path(), 'owner', {
+        config: config({ name: 'impostor', domains: ['www.example.com', 'shipkeep.example.com'] }),
+      })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'domain_reserved',
+          details: { hostname: 'shipkeep.example.com' },
+        });
+      });
+    const created = (
+      await fixture
+        .post(path(), 'owner', { config: config({ name: 'reserved-neighbour', domains: [] }) })
+        .expect(201)
+    ).body as ApplicationBody;
+    await fixture
+      .post(`${path()}/${created.id}/config`, 'owner', {
+        expectedConfigSha: created.configSha,
+        config: config({ name: 'reserved-neighbour', domains: ['shipkeep.example.com'] }),
+      })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toMatchObject({ code: 'domain_reserved' });
+      });
   });
 });
