@@ -56,3 +56,27 @@ func TestTheControlPlaneRouteIsKeptWhileTheAgentRuns(t *testing.T) {
 		t.Fatal("the keeper did not stop with its context")
 	}
 }
+
+type stalledRouter struct{ attempts chan struct{} }
+
+func (s *stalledRouter) EnsureControlPlaneRoutes(ctx context.Context, _ []caddy.Route) (bool, error) {
+	<-ctx.Done()
+	s.attempts <- struct{}{}
+	return false, ctx.Err()
+}
+
+// A Caddy that never finishes answering ends each attempt after one interval, so the keeper
+// retries instead of holding the route lock while the agent runs.
+func TestAStalledAttemptEndsAfterOneInterval(t *testing.T) {
+	router := &stalledRouter{attempts: make(chan struct{}, 16)}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go keepControlPlaneRoute(ctx, router, caddy.ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080"), 20*time.Millisecond, time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	for range 2 {
+		select {
+		case <-router.attempts:
+		case <-time.After(5 * time.Second):
+			t.Fatal("a stalled attempt was not bounded")
+		}
+	}
+}

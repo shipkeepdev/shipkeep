@@ -48,7 +48,8 @@ func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.requests = append(f.requests, r.Method+" "+r.URL.Path)
 	body, _ := io.ReadAll(r.Body)
 	routeWrite := (r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/routes")) ||
-		(r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/id/"))
+		(r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/id/")) ||
+		(r.Method == http.MethodPatch && r.URL.Path == "/config/apps/http/servers/"+Server+"/routes")
 	switch {
 	case routeWrite && f.failRoutes:
 		http.Error(w, "private config detail", http.StatusBadRequest)
@@ -97,6 +98,17 @@ func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		_, _ = w.Write(route)
+	case r.Method == http.MethodPatch && r.URL.Path == "/config/apps/http/servers/"+Server+"/routes" && f.server:
+		// Caddy replaces the whole list at once.
+		var list []json.RawMessage
+		_ = json.Unmarshal(body, &list)
+		f.routes, f.order = map[string]json.RawMessage{}, []string{}
+		for _, raw := range list {
+			var route Route
+			_ = json.Unmarshal(raw, &route)
+			f.routes[route.ID] = raw
+			f.order = append(f.order, route.ID)
+		}
 	case r.Method == http.MethodPut && r.URL.Path == "/config/apps/http/servers/"+Server+"/routes/0" && f.server:
 		// Caddy inserts before the index.
 		var route Route

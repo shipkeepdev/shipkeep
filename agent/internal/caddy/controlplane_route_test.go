@@ -185,3 +185,40 @@ func TestControlPlaneRouteWaitsForARouteChangeInProgress(t *testing.T) {
 		t.Fatalf("the plain route was secured mid-change: %+v, skip %v", stored.Match, fake.skip)
 	}
 }
+
+// The repair is one write that replaces the list: Caddy never runs a configuration where the fixed
+// routes are missing and an application wildcard answers for the control plane's name. The other
+// routes keep their order and the fields this client does not model.
+func TestControlPlaneRouteRepairIsOneWrite(t *testing.T) {
+	client, fake := admin(t)
+	ctx := context.Background()
+	if err := client.EnsureServer(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	fake.routes[RouteID("a")] = json.RawMessage(`{"@id":"sk-route-a","match":[{"host":["*.example.com"],"protocol":"https"}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.2:80"}],"flush_interval":-1}],"terminal":true}`)
+	fake.routes[RouteID("b")] = json.RawMessage(`{"@id":"sk-route-b","match":[{"host":["b.example.com"],"protocol":"https"}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.3:80"}]}],"terminal":true}`)
+	fake.order = []string{RouteID("b"), RouteID("a")}
+	writes := len(fake.requests)
+	fake.mu.Unlock()
+	if changed, err := client.EnsureControlPlaneRoutes(ctx, ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080")); err != nil || !changed {
+		t.Fatalf("apply: changed=%v err=%v", changed, err)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	routeWrites := []string{}
+	for _, request := range fake.requests[writes:] {
+		if !strings.HasPrefix(request, "GET ") && !strings.HasSuffix(request, "/automatic_https") {
+			routeWrites = append(routeWrites, request)
+		}
+	}
+	if !slices.Equal(routeWrites, []string{"PATCH /config/apps/http/servers/" + Server + "/routes"}) {
+		t.Fatalf("route writes = %v", routeWrites)
+	}
+	if order := fake.ordered(); !slices.Equal(order, []string{ControlPlaneRouteID, ControlPlaneRedirectRouteID, RouteID("b"), RouteID("a")}) {
+		t.Fatalf("route order = %v", order)
+	}
+	if !strings.Contains(string(fake.routes[RouteID("a")]), `"flush_interval":-1`) {
+		t.Fatalf("a field the client does not model was lost: %s", fake.routes[RouteID("a")])
+	}
+}

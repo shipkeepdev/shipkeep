@@ -20,7 +20,11 @@ type controlPlaneRouter interface {
 func keepControlPlaneRoute(ctx context.Context, router controlPlaneRouter, routes []caddy.Route, interval, retry time.Duration, logger *slog.Logger) {
 	delay := retry
 	for {
-		changed, err := router.EnsureControlPlaneRoutes(ctx, routes)
+		// An attempt lasts at most one interval: a Caddy that stalls a response body would otherwise
+		// hold the route lock, and every route action with it, for as long as the agent runs.
+		attempt, cancel := context.WithTimeout(ctx, interval)
+		changed, err := router.EnsureControlPlaneRoutes(attempt, routes)
+		cancel()
 		next := interval
 		switch {
 		case ctx.Err() != nil:

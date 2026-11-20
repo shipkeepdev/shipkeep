@@ -148,24 +148,33 @@ func (c *Client) EnsureControlPlaneRoutes(ctx context.Context, wanted []Route) (
 	c.routes.Lock()
 	defer c.routes.Unlock()
 	path := "/config/apps/http/servers/" + Server + "/routes"
-	var routes []Route
-	if _, err := c.get(ctx, path, &routes); err != nil {
+	// The other routes are kept as Caddy returned them, so that fields this client does not model
+	// survive the rewrite.
+	var raw []json.RawMessage
+	if _, err := c.get(ctx, path, &raw); err != nil {
 		return false, fmt.Errorf("read caddy routes: %w", err)
+	}
+	routes := make([]Route, len(raw))
+	for i := range raw {
+		if err := json.Unmarshal(raw[i], &routes[i]); err != nil {
+			return false, fmt.Errorf("decode caddy route: %w", err)
+		}
 	}
 	changed := false
 	if len(routes) < len(wanted) || !reflect.DeepEqual(routes[:len(wanted)], wanted) {
+		// One PATCH replaces the whole list: Caddy applies it at once, so no intermediate
+		// configuration lacks the fixed routes and lets an application route answer for the host.
+		next := make([]any, 0, len(raw)+len(wanted))
 		for _, route := range wanted {
-			if slices.ContainsFunc(routes, func(r Route) bool { return r.ID == route.ID }) {
-				if err := c.do(ctx, http.MethodDelete, "/id/"+route.ID, nil, nil); err != nil && !errors.Is(err, ErrNotFound) {
-					return false, fmt.Errorf("remove misplaced control plane route: %w", err)
-				}
+			next = append(next, route)
+		}
+		for i, route := range routes {
+			if !slices.ContainsFunc(wanted, func(w Route) bool { return w.ID == route.ID }) {
+				next = append(next, raw[i])
 			}
 		}
-		// A PUT on an index inserts before it: the last one first, so they end in order.
-		for i := len(wanted) - 1; i >= 0; i-- {
-			if err := c.do(ctx, http.MethodPut, path+"/0", wanted[i], nil); err != nil {
-				return false, fmt.Errorf("insert control plane route: %w", err)
-			}
+		if err := c.do(ctx, http.MethodPatch, path, next, nil); err != nil {
+			return false, fmt.Errorf("replace caddy routes: %w", err)
 		}
 		changed = true
 	}
