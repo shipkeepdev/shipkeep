@@ -159,3 +159,52 @@ func TestHandshakeReadsTheServedCertificate(t *testing.T) {
 		t.Fatal("a closed port gave a certificate")
 	}
 }
+
+// A handshake that fails keeps the last reading: the listener may be restarting. A certificate
+// for another name removes it: Caddy no longer serves one for this host.
+func TestKeepsTheReadingWhenTheHandshakeFails(t *testing.T) {
+	answer := "valid"
+	w := &Watcher{Hosts: &hosts{names: []string{"app.example.com"}}, Logger: quiet(), Refresh: time.Minute,
+		Read: func(_ context.Context, _ string, host string) (*x509.Certificate, error) {
+			switch answer {
+			case "down":
+				return nil, errors.New("connection refused")
+			case "other":
+				return certificate(t, []string{"other.example.com"}, "CA", time.Now().Add(time.Hour)), nil
+			}
+			return certificate(t, []string{host}, "CA", time.Now().Add(time.Hour)), nil
+		}}
+	now := time.Now()
+	w.pass(context.Background(), now)
+	answer = "down"
+	w.pass(context.Background(), now.Add(time.Minute))
+	if got := w.Snapshot(); len(got) != 1 {
+		t.Fatalf("a failed handshake dropped the reading: %v", got)
+	}
+	answer = "other"
+	w.pass(context.Background(), now.Add(2*time.Minute))
+	if got := w.Snapshot(); len(got) != 0 {
+		t.Fatalf("a certificate for another name was kept: %v", got)
+	}
+}
+
+// Every outcome waits Refresh before the next handshake, not only an accepted reading.
+func TestRetriesAFailedHostOnlyAfterRefresh(t *testing.T) {
+	reads := 0
+	w := &Watcher{Hosts: &hosts{names: []string{"app.example.com"}}, Logger: quiet(), Refresh: 10 * time.Minute,
+		Read: func(context.Context, string, string) (*x509.Certificate, error) {
+			reads++
+			return certificate(t, []string{"other.example.com"}, "CA", time.Now().Add(time.Hour)), nil
+		}}
+	now := time.Now()
+	for minute := 0; minute < 10; minute++ {
+		w.pass(context.Background(), now.Add(time.Duration(minute)*time.Minute))
+	}
+	if reads != 1 {
+		t.Fatalf("%d handshakes in ten minutes for a host that presents another name", reads)
+	}
+	w.pass(context.Background(), now.Add(10*time.Minute))
+	if reads != 2 {
+		t.Fatalf("%d handshakes after Refresh", reads)
+	}
+}
