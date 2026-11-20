@@ -17,6 +17,7 @@ import {
   clock,
   deploymentStatus,
   duration,
+  servingStatus,
   shortDate,
   BLUE,
   GREEN,
@@ -644,7 +645,11 @@ export class ApplicationPage {
   );
   protected readonly headline = computed(() => {
     const latest = this.deployments.items().at(0);
-    return latest ? deploymentStatus(latest.state, latest.stop) : null;
+    if (!latest) return null;
+    const status = deploymentStatus(latest.state, latest.stop);
+    // A succeeded deployment says live; the replicas say whether the application still runs.
+    if (status.label !== 'live' || this.replicas.state() !== 'ready') return status;
+    return servingStatus(this.running(), this.replicas.items().length);
   });
   /** The deployment the pipeline shows: the one asked for, the one running, or the latest. */
   protected readonly focus = computed(

@@ -571,6 +571,51 @@ describe('delivery screens', () => {
     expect(sources[0]?.closed).toBe(true);
   });
 
+  describe('the badge follows the replicas once a deployment succeeded (#366)', () => {
+    const replica = (index: number, state: string | null) => ({
+      id: `a${String(index)}`,
+      releaseId: 'r-new',
+      replica: index,
+      nodeId: 'n1',
+      nodeName: 'edge-1',
+      container: `sk-web-r-new-${String(index)}`,
+      state,
+      observedAt: '2026-11-07T12:00:00Z',
+    });
+    const badge = () => element().querySelector('.page-head .pill')?.textContent ?? '';
+    const show = async (replicas: readonly ReturnType<typeof replica>[]) => {
+      routes = {
+        [`GET ${BASE}/applications/${APP}`]: () => json(application),
+        [`GET ${BASE}/applications/${APP}/deployments`]: () =>
+          json({ items: [{ ...deployment('succeeded'), id: 'd-new', releaseId: 'r-new' }] }),
+        [`GET ${BASE}/applications/${APP}/replicas`]: () => json({ items: replicas }),
+      };
+      await harness.navigateByUrl(
+        `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+      );
+      await settle();
+    };
+
+    it('says not running when no replica runs, like the line under it', async () => {
+      await show([replica(0, 'exited')]);
+      expect(badge()).toContain('not running');
+      expect(badge()).not.toContain('live');
+      expect(element().querySelector('.page-head')?.textContent).toContain(
+        '0 of 1 replicas running',
+      );
+    });
+
+    it('says degraded when only some replicas run', async () => {
+      await show([replica(0, 'running'), replica(1, 'exited')]);
+      expect(badge()).toContain('degraded');
+    });
+
+    it('says live when every replica runs', async () => {
+      await show([replica(0, 'running'), replica(1, 'running')]);
+      expect(badge()).toContain('live');
+    });
+  });
+
   it('shows replicas with their server and what the agent last saw', async () => {
     routes = {
       [`GET ${BASE}/applications/${APP}`]: () => json(application),

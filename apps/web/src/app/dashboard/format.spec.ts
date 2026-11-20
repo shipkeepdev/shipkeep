@@ -1,4 +1,4 @@
-import { deploymentStatus, leftLive } from './format';
+import { deploymentStatus, leftLive, servingStatus } from './format';
 
 describe('deployment status', () => {
   it('names a stop for what it does to the application', () => {
@@ -16,5 +16,14 @@ describe('deployment status', () => {
     expect(leftLive({ state: 'succeeded', stop: true })).toBe(false);
     expect(leftLive({ state: 'failed', stop: false })).toBe(false);
     expect(leftLive(undefined)).toBe(false);
+  });
+});
+
+describe('servingStatus', () => {
+  it('follows the replicas once the latest deployment succeeded (#366)', () => {
+    expect(servingStatus(0, 1).label).toBe('not running');
+    expect(servingStatus(0, 0).label).toBe('not running');
+    expect(servingStatus(1, 3).label).toBe('degraded');
+    expect(servingStatus(3, 3).label).toBe('live');
   });
 });
