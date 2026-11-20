@@ -1,10 +1,14 @@
 // Interactions of the landing page. No dependency and no network; only the theme choice is stored.
 (() => {
-  const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // Read on every use: the visitor can change the preference while the page is open.
+  const motion = matchMedia('(prefers-reduced-motion: reduce)');
   const NS = 'http://www.w3.org/2000/svg';
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
-  const every = (ms, fn) => (reduced ? null : setInterval(fn, ms));
+  const every = (ms, fn) =>
+    setInterval(() => {
+      if (!motion.matches) fn();
+    }, ms);
 
   // Theme: the light theme inverts the page, as in the design.
   const themeButtons = $$('[data-theme-toggle]');
@@ -39,16 +43,23 @@
   // Mobile menu.
   const menu = $('#sk-menu');
   const burger = $('.burger');
-  const setMenu = (open) => {
+  // Everything the open menu covers is inert, so focus cannot leave the menu.
+  const covered = [
+    $('#sk-status'),
+    ...[...menu.parentElement.children].filter((el) => el !== menu),
+  ];
+  const setMenu = (open, refocus = true) => {
+    covered.forEach((el) => (el.inert = open));
     menu.hidden = !open;
     burger.setAttribute('aria-expanded', String(open));
     document.body.style.overflow = open ? 'hidden' : '';
     if (open) $('[data-close]', menu).focus();
-    else burger.focus();
+    else if (refocus) burger.focus();
   };
   burger.addEventListener('click', () => setMenu(true));
   $('[data-close]', menu).addEventListener('click', () => setMenu(false));
-  $$('nav a', menu).forEach((link) => link.addEventListener('click', () => setMenu(false)));
+  // A link leads elsewhere on the page: focus follows the link, not the menu button.
+  $$('nav a', menu).forEach((link) => link.addEventListener('click', () => setMenu(false, false)));
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && !menu.hidden) setMenu(false);
   });
@@ -62,9 +73,13 @@
       step.querySelector('.v').textContent = i <= current ? step.dataset.v : '…';
     });
   };
-  let step = reduced ? 6 : 0;
+  let step = motion.matches ? 6 : 0;
   showStep(step);
   every(1300, () => showStep((step = (step + 1) % 7)));
+  // When motion is turned off, the rail shows the finished deployment and stays there.
+  motion.addEventListener('change', () => {
+    if (motion.matches) showStep((step = 6));
+  });
 
   // Gutters: columns of dots, drawn once per size.
   $$('.gut canvas').forEach((canvas) => {
@@ -243,7 +258,7 @@
   let frame = 0;
   const animate = () => {
     const delta = target - open;
-    open = Math.abs(delta) < 0.002 || reduced ? target : open + delta * 0.12;
+    open = Math.abs(delta) < 0.002 || motion.matches ? target : open + delta * 0.12;
     drawAnatomy();
     frame = open === target ? 0 : requestAnimationFrame(animate);
   };
