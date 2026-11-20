@@ -20,6 +20,7 @@ import {
   type DomainDns,
   domainDns,
 } from '../domain/application';
+import { type DomainCertificate, domainCertificate } from '../domain/certificates';
 import { domainsReleased } from '../domain/domain-events';
 
 import {
@@ -28,9 +29,17 @@ import {
   type ApplicationStore,
   type ApplicationTransaction,
   CONTROL_PLANE_HOST,
+  DOMAIN_CERTIFICATE_STORE,
   DOMAIN_RESOLVER,
+  type DomainCertificateStore,
   type DomainResolver,
 } from './ports';
+
+/** What the domain list shows: where the name points, and the certificate nodes serve for it. */
+export interface DomainStatus extends DomainDns {
+  /** The recent reading that expires first, undefined while no node reported one. */
+  readonly certificate: DomainCertificate | undefined;
+}
 
 /**
  * Applications of an environment (SPEC 4, PLAN M3.4b). Defining or changing one needs `deploy.run`
@@ -47,6 +56,7 @@ export class ApplicationCommands {
     private readonly access: TenantAccess,
     private readonly events: DomainEventBus,
     @Inject(CONTROL_PLANE_HOST) private readonly controlPlaneHost: string,
+    @Inject(DOMAIN_CERTIFICATE_STORE) private readonly certificates: DomainCertificateStore,
   ) {}
 
   create(
@@ -138,21 +148,32 @@ export class ApplicationCommands {
     target: ApplicationTarget,
     applicationId: string,
     now = new Date(),
-  ): Promise<DomainDns[]> {
-    const { application, hosts } = await this.scoped(
+  ): Promise<DomainStatus[]> {
+    const { application, hosts, readings } = await this.scoped(
       context,
       'environment.read',
       target,
       async () => {
         const found = await this.store.find(target, applicationId);
         if (!found) throw new NotFoundError('application');
-        return { application: found, hosts: await this.store.hosts(found) };
+        return {
+          application: found,
+          hosts: await this.store.hosts(found),
+          readings: await this.certificates.forApplication(found.id),
+        };
       },
     );
     return Promise.all(
-      (application.config.domains ?? []).map(async (hostname) =>
-        domainDns(hostname, await this.resolver.addresses(hostname), isPublicAddress, hosts, now),
-      ),
+      (application.config.domains ?? []).map(async (hostname) => ({
+        ...domainDns(
+          hostname,
+          await this.resolver.addresses(hostname),
+          isPublicAddress,
+          hosts,
+          now,
+        ),
+        certificate: domainCertificate(readings.get(hostname) ?? [], now),
+      })),
     );
   }
 
