@@ -149,9 +149,9 @@ Action delivery (M1.4a2):
 - An action's history shows a summary, never its raw report: the agent's fixed error texts become reason codes, and a failure refused before anything ran (malformed request, unknown kind, stale lease epoch, invalid input, conflicting idempotency key) is `refused`. Any other text becomes `unknown`. Results keep only validated fields: container id, image digest, health and release exit code.
 - Audit: queueing (`fleet.action.queued`) and every terminal state (`fleet.action.<state>`, with the node as actor).
 - The agent calls `Connect(stream ConnectRequest) returns (stream ConnectResponse)` and keeps it open. It waits at most 10 seconds for Welcome and uses the advertised heartbeat interval (1–10 seconds supported). Outage retries use exponential backoff with jitter (0.5 seconds initially, capped at 30 seconds); a minute-long healthy session resets the backoff. TLS keepalive detects dead connections. A rejected identity or epoch stops connection attempts and requires operator recovery; it never triggers automatic re-enrollment. Renewal persists the new credential generation before reconnecting.
-- `ConnectRequest` (agent to control plane) carries one of: `Hello`, `Heartbeat`, `ActionUpdate`, `StateReport`.
+- `ConnectRequest` (agent to control plane) carries one of: `Hello`, `Heartbeat`, `ActionUpdate`, `StateReport`, `MetricsReport`.
 - `ConnectResponse` (control plane to agent) carries one of: `Welcome`, `ActionRequest`, `CancelAction`, `RoutingTable`, `PeerList`, `LeaseRenewal`, `ConfigUpdate`.
-- Logs and metrics do not go through this stream: agents push them directly to VictoriaLogs and VictoriaMetrics (ADR 0011).
+- Metrics go through this stream as `MetricsReport` (ADR 0024, section 12): the control plane labels them and writes them to VictoriaMetrics. Logs do not go through it; their path is decided with M6.1 (ADR 0011).
 - Every `ActionRequest` carries `action_id` (UUIDv7), `idempotency_key`, `deadline`, `lease_epoch` and exactly one action in a `oneof`.
 - Interactive exec uses a second RPC: when the agent receives `ExecSession`, it opens `ExecStream(stream ExecStreamRequest) returns (stream ExecStreamResponse)` tagged with the `session_id`, carrying stdin, stdout, stderr, resize and exit frames. Browsers reach it through a WebSocket endpoint on the API (`/api/v1/exec/{session_id}`), authenticated and RBAC-checked; the API only relays frames.
 
@@ -738,7 +738,15 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 ## 12. Observability and alerts
 
 - Logs: labels `org`, `project`, `env`, `app`, `service`, `instance`, `node`, `stream`. Search by label and full text. Retention 30 days default.
-- Metrics: CPU, memory, network, disk per container and per node; HTTP request rate, latency and status codes per route from Caddy. Retention 30 days.
+- Metrics (ADR 0024): CPU, memory, network, disk per container and per node; HTTP request rate, latency and status codes per route from Caddy. Retention 30 days.
+  - Every 30 seconds the agent samples:
+    - the node: CPU in use, memory in use and in total, disk in use and in total under Docker's data root, and network bytes received and sent;
+    - each managed container: CPU in use, memory in use and its limit, and network bytes received and sent;
+    - each host name of its routes, from Caddy's `/metrics` with `per_host`: requests by status class, and the sum and count of response durations.
+  - It sends them as a `MetricsReport` on the `Connect` stream, with the session's lease epoch, at most 256 containers and 64 host names, under 60 KiB. A report that does not fit is not sent, and nothing is kept while the stream is down.
+  - The control plane refuses a stale epoch and ignores a report that breaks a bound.
+  - It maps each container name to the node's placed allocation and each host name to a domain of the node's organization, and drops what maps to nothing. It writes the samples to VictoriaMetrics with labels it sets itself: organization, project, environment, application, node and replica. A label the agent sent is never written as it came.
+  - VictoriaMetrics is a service of the control plane's Compose project, on its internal network only, pinned by digest, with 30 days of retention. Only the API queries it, with identifiers it validated for the caller's organization.
 - Alert rule types for MVP: container restarts, unhealthy instances, node suspect or down, CPU or memory above threshold for a window, disk usage above threshold, backup failed, certificate expiring in under 14 days, deployment failed.
 - Channels: email (SMTP), Slack, Discord, Telegram, generic webhook (HMAC signed).
 

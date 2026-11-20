@@ -66,7 +66,7 @@ flowchart TB
 - Note: membership in the `docker` group is root-equivalent. The agent is therefore treated as root in the threat model, which is why its action list is closed and every input is validated.
 - Opens a gRPC bidirectional stream to the control plane over mTLS and keeps it alive with reconnect and backoff.
 - Executes typed actions (see SPEC, "Agent actions"), journals each one in local SQLite, reports results and actual state.
-- Manages: Docker containers, networks and volumes (Docker Engine API); Caddy routes (admin API on a Unix socket); WireGuard interface `shipkeep0`; log and metric shipping.
+- Manages: Docker containers, networks and volumes (Docker Engine API); Caddy routes (admin API on a Unix socket); WireGuard interface `shipkeep0`; log shipping. It samples node, container and route metrics every 30 seconds and sends them on its stream; the control plane labels them and writes them to VictoriaMetrics (ADR 0024).
 - Keeps serving routing from its local cache if the control plane is unreachable.
 
 ### CLI (`cli/`)
