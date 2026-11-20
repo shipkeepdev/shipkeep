@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 )
 
 func firstRoute(t *testing.T, fake *fakeAdmin) Route {
@@ -106,5 +107,41 @@ func TestControlPlaneRouteLeavesTheHostsWithoutTLS(t *testing.T) {
 	}
 	if !slices.Equal(fake.skip, []string{"plain.example.com"}) {
 		t.Fatalf("hosts without TLS = %v", fake.skip)
+	}
+}
+
+// A repair of the control plane's route waits for a route change in progress: between the write of
+// a route with TLS off and the addition of its host to the hosts without TLS, securing old routes
+// would make it answer HTTPS only (#378 review).
+func TestControlPlaneRouteWaitsForARouteChangeInProgress(t *testing.T) {
+	client, fake := admin(t)
+	ctx := context.Background()
+	if err := client.EnsureServer(ctx); err != nil {
+		t.Fatal(err)
+	}
+	plain := Route{ID: RouteID("plain"), Match: []Match{{Host: []string{"plain.example.com"}}}, Handle: []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{{Dial: "10.0.0.2:80"}}}}, Terminal: true}
+	repaired := make(chan error, 1)
+	client.betweenWrites = func() {
+		go func() {
+			_, err := client.EnsureControlPlaneRoute(ctx, ControlPlaneRoute("shipkeep.example.com", "127.0.0.1:8080"))
+			repaired <- err
+		}()
+		// Give the repair every chance to run now, if it could.
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err := client.ApplyRoute(ctx, plain, []string{"plain.example.com"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-repaired; err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	var stored Route
+	if err := json.Unmarshal(fake.routes[RouteID("plain")], &stored); err != nil {
+		t.Fatal(err)
+	}
+	if stored.Match[0].Protocol != "" || !slices.Contains(fake.skip, "plain.example.com") {
+		t.Fatalf("the plain route was secured mid-change: %+v, skip %v", stored.Match, fake.skip)
 	}
 }

@@ -86,12 +86,14 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 		stopReconcile()
 		reconciling.Wait()
 	}()
+	// One Caddy client for the whole agent: its lock orders every read-then-write on routes, so the
+	// control plane's route keeper and the route actions must share it.
+	router, err := caddy.New(a.cfg.Caddy.AdminSocket)
+	if err != nil {
+		return err
+	}
 	// On the machine that hosts the control plane, its route lives in the agent (ADR 0021).
 	if route := a.cfg.ControlPlane.Route; route.Host != "" {
-		router, err := caddy.New(a.cfg.Caddy.AdminSocket)
-		if err != nil {
-			return err
-		}
 		reconciling.Go(func() {
 			keepControlPlaneRoute(reconcileCtx, router, caddy.ControlPlaneRoute(route.Host, route.Upstream), a.cfg.Intervals.Reconcile, time.Second, a.logger)
 		})
@@ -113,7 +115,7 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 		a.logger.Warn("development mode: CA fingerprint pinning may be disabled, never use on a real server")
 	}
 
-	if err := a.runGateway(ctx, store, engine); err != nil && ctx.Err() == nil {
+	if err := a.runGateway(ctx, store, engine, router); err != nil && ctx.Err() == nil {
 		return err
 	}
 

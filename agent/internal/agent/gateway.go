@@ -24,7 +24,7 @@ import (
 	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
-func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *docker.Client) error {
+func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *docker.Client, router *caddy.Client) error {
 	if ctx.Err() != nil {
 		return nil // Parent cancellation is a clean shutdown.
 	}
@@ -71,10 +71,6 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	}
 	epoch := bundle.LeaseEpoch
 	confirmations, err := confirm.NewVerifier(bundle.ConfirmationPublicKey, bundle.OrganizationID, store)
-	if err != nil {
-		return err
-	}
-	router, err := caddy.New(a.cfg.Caddy.AdminSocket)
 	if err != nil {
 		return err
 	}
