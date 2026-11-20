@@ -25,6 +25,7 @@ export const TENANT_TABLES = [
   'allocations',
   'allocation_observations',
   'domains',
+  'domain_certificates',
   'registry_credentials',
 ] as const;
 

@@ -4,6 +4,12 @@ import type {
   ApplicationHost,
   ApplicationTarget,
 } from '../domain/application';
+import type {
+  CertificateChange,
+  CertificateDomain,
+  DomainCertificate,
+  StoredCertificate,
+} from '../domain/certificates';
 
 export const APPLICATION_STORE = Symbol('ApplicationStore');
 /** Every method runs inside `runTenant` for the target's organization. */
@@ -85,4 +91,23 @@ export interface ApplicationTransaction {
 export interface DomainSync {
   readonly taken: string | undefined;
   readonly released: readonly string[];
+}
+
+export const DOMAIN_CERTIFICATE_STORE = Symbol('DomainCertificateStore');
+/** Readings of the certificates nodes serve for domains. Every method runs inside `runTenant`. */
+export interface DomainCertificateStore {
+  /** The organization's domains among these host names, with the node's readings for them. */
+  onNode(
+    organizationId: string,
+    nodeId: string,
+    hostnames: readonly string[],
+  ): Promise<{ domains: CertificateDomain[]; stored: StoredCertificate[] }>;
+  apply(
+    organizationId: string,
+    nodeId: string,
+    changes: readonly CertificateChange[],
+    now: Date,
+  ): Promise<void>;
+  /** Every node's readings for the application's domains, by host name. */
+  forApplication(applicationId: string): Promise<Map<string, DomainCertificate[]>>;
 }
