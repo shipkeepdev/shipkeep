@@ -2,7 +2,7 @@
 //
 //   node main.js account create --email <address>
 //   node main.js account reset-password --email <address>
-//   node main.js organization create --name <name> --slug <slug> --owner <address>
+//   node main.js organization create --name <name> --slug <slug> --owner <address> [--id <uuidv7>]
 //   node main.js server join-token --organization <id>
 //   node main.js server ca-fingerprint
 //
@@ -13,7 +13,7 @@
 import type { Readable, Writable } from 'node:stream';
 
 import type { INestApplicationContext } from '@nestjs/common';
-import { Secret, SYSTEM_ACTOR } from '@shipkeep/domain';
+import { isDomainError, isTenantId, Secret, SYSTEM_ACTOR } from '@shipkeep/domain';
 
 import { IssueJoinToken } from './modules/fleet/application/issue-join-token';
 import {
@@ -27,7 +27,7 @@ export const USAGE = [
   'Usage, on the server that runs the control plane:',
   '  node main.js account create --email <address>',
   '  node main.js account reset-password --email <address>',
-  '  node main.js organization create --name <name> --slug <slug> --owner <address>',
+  '  node main.js organization create --name <name> --slug <slug> --owner <address> [--id <uuidv7>]',
   '  node main.js server join-token --organization <id>',
   '  node main.js server ca-fingerprint',
   'The password is read from standard input: typed without echo on a terminal, or the first line of a pipe.',
@@ -49,9 +49,20 @@ export type OperatorCommand =
       readonly name: string;
       readonly slug: string;
       readonly owner: string;
+      readonly id?: string;
     }
   | { readonly action: 'join-token'; readonly organizationId: string }
   | { readonly action: 'ca-fingerprint' };
+
+/**
+ * The exit status of a failed command: 2 for a command that cannot be read, 3 when the account to
+ * create already exists (an installer resuming its own run treats it as done), 1 otherwise.
+ */
+export function operatorExitCode(error: unknown): number {
+  if (error instanceof OperatorUsageError) return 2;
+  if (isDomainError(error) && error.code === 'account_exists') return 3;
+  return 1;
+}
 
 /** Only the account commands read a password. */
 export function needsPassword(command: OperatorCommand): boolean {
@@ -84,17 +95,22 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
       return { action, email };
   }
   if (group === 'organization' && action === 'create') {
-    const [, , nameFlag, name, slugFlag, slug, ownerFlag, owner, ...rest] = argv;
+    const [, , nameFlag, name, slugFlag, slug, ownerFlag, owner, ...extra] = argv;
     if (
       nameFlag === '--name' &&
       plain(name, 128) &&
       slugFlag === '--slug' &&
       plain(slug, 64) &&
       ownerFlag === '--owner' &&
-      plain(owner, 256) &&
-      rest.length === 0
-    )
-      return { action: 'organization-create', name, slug, owner };
+      plain(owner, 256)
+    ) {
+      if (extra.length === 0) return { action: 'organization-create', name, slug, owner };
+      // An id chosen by the installer, so that a resumed run finds the organization again. A
+      // tenant id, as every organization's: a UUIDv7.
+      const [idFlag, id] = extra;
+      if (extra.length === 2 && idFlag === '--id' && isTenantId(id))
+        return { action: 'organization-create', name, slug, owner, id };
+    }
   }
   if (group === 'server' && action === 'join-token') {
     const [, , flag, organizationId, ...rest] = argv;
@@ -306,7 +322,7 @@ export async function runOperatorCommand(
     const owner = await app.get(OperatorAccountCommands).activeAccountId(command.owner);
     const organization = await app
       .get(OperatorOrganizationCommands)
-      .create({ name: command.name, slug: command.slug }, owner);
+      .create({ name: command.name, slug: command.slug }, owner, new Date(), command.id);
     await confirm(output, fallback, `Organization created: ${organization.id}`);
     return;
   }
