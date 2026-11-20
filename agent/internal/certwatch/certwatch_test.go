@@ -9,12 +9,19 @@ import (
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"errors"
+	"fmt"
 	"io"
 	"log/slog"
 	"math/big"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/timestamppb"
+
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 type hosts struct {
@@ -244,5 +251,53 @@ func TestRemovesC1ControlsFromTheIssuer(t *testing.T) {
 	got := w.Snapshot(time.Now())
 	if len(got) != 2 || got[0].GetIssuer() != "R10" || got[1].GetIssuer() != "R11" {
 		t.Fatalf("snapshot = %v", got)
+	}
+}
+
+// A full workload inventory keeps its place in the state report: the certificates take only the
+// room it leaves, those that expire first before the others.
+func TestWithinKeepsTheInventoryAndTheSoonestExpiries(t *testing.T) {
+	const limit = 60 * 1024 // gateway.MaxReportBytes
+	report := &agentv1.StateReport{}
+	for i := range 256 {
+		report.Containers = append(report.Containers, &agentv1.ContainerStatus{
+			ContainerId: strings.Repeat("f", 64),
+			Name:        "sk-" + strings.Repeat("a", 56) + string(rune('a'+i%26)),
+			State:       agentv1.ContainerStatus_STATE_RUNNING,
+			Labels:      map[string]string{"sk.managed": "true"},
+			StopReason:  "disk_limit",
+		})
+	}
+	base := time.Now()
+	statuses := make([]*agentv1.CertificateStatus, 0, MaxHosts)
+	for i := range MaxHosts {
+		statuses = append(statuses, &agentv1.CertificateStatus{
+			Hostname: fmt.Sprintf("%02d.%s.example.com", i, strings.Repeat("h", 200)),
+			NotAfter: timestamppb.New(base.Add(time.Duration(MaxHosts-i) * time.Hour)),
+			Issuer:   strings.Repeat("i", maxIssuer),
+		})
+	}
+	kept := Within(statuses, limit-64-proto.Size(report))
+	report.Certificates = kept
+	if size := proto.Size(report); size >= limit-64 {
+		t.Fatalf("report of %d bytes", size)
+	}
+	if len(report.GetContainers()) != 256 {
+		t.Fatal("the inventory was cut")
+	}
+	if len(kept) == 0 || len(kept) == MaxHosts {
+		t.Fatalf("kept %d certificates: the budget was not applied", len(kept))
+	}
+	// The latest-indexed hosts expire first: they are the ones kept.
+	for _, status := range kept {
+		if !status.GetNotAfter().AsTime().Before(base.Add(time.Duration(len(kept)+1) * time.Hour)) {
+			t.Fatalf("kept %s, which expires later than one left out", status.GetHostname())
+		}
+	}
+	if !slices.IsSortedFunc(kept, func(a, b *agentv1.CertificateStatus) int { return strings.Compare(a.GetHostname(), b.GetHostname()) }) {
+		t.Fatal("not sorted by host name")
+	}
+	if got := Within(statuses, -1); len(got) != 0 {
+		t.Fatalf("a full report got %d certificates", len(got))
 	}
 }

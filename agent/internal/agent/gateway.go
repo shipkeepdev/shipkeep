@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/shipkeepdev/shipkeep/agent/internal/actions"
 	"github.com/shipkeepdev/shipkeep/agent/internal/caddy"
 	"github.com/shipkeepdev/shipkeep/agent/internal/certwatch"
@@ -124,7 +126,9 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 			if err != nil {
 				return nil, err
 			}
-			report.Certificates = certificates.Snapshot(time.Now())
+			// The containers first: the certificates take the room they leave in the report,
+			// with a margin for the epoch and the time added when it is sent.
+			report.Certificates = certwatch.Within(certificates.Snapshot(time.Now()), gateway.MaxReportBytes-64-proto.Size(report))
 			return report, nil
 		},
 	}

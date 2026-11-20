@@ -949,7 +949,7 @@ export const FR: Readonly<Record<string, string>> = {
   'expires in {n} days': 'expire dans {n} jours',
   'expires today': "expire aujourd'hui",
   'expires tomorrow': 'expire demain',
-  'not issued yet': 'pas encore émis',
+  'no recent reading': 'aucune lecture récente',
   'renewal late, {n} days left': 'renouvellement en retard, {n} jours restants',
   'PostgreSQL 17.2 · Client Lumen · production · srv-par-1 · volume pg-factures-data 18 GiB':
     'PostgreSQL 17.2 · Client Lumen · production · srv-par-1 · volume pg-factures-data 18 Gio',

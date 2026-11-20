@@ -70,7 +70,8 @@ const URGENT_DAYS = 7;
  */
 export function certificateState(domain: DomainStatus, now: Date): CellInput {
   const certificate = domain.certificate;
-  if (!certificate) return state('not issued yet', GREY);
+  // No reading in the last hour: none issued yet, or no server reported it recently.
+  if (!certificate) return state('no recent reading', GREY);
   const days = Math.floor((Date.parse(certificate.notAfter) - now.getTime()) / DAY_MS);
   if (days < 0) return state('expired', RED);
   if (days === 0) return state('expires today', RED);

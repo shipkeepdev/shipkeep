@@ -120,8 +120,8 @@ describe('certificate column', () => {
     return typeof value === 'string' ? { t: value } : value;
   };
 
-  it('says when no server has a certificate for the name yet', () => {
-    expect(cell(null).t).toBe('not issued yet');
+  it('says when no server reported a certificate for the name recently', () => {
+    expect(cell(null).t).toBe('no recent reading');
   });
 
   it('counts the days left, with the colour of how late renewal is', () => {
@@ -147,7 +147,7 @@ describe('certificate column', () => {
     expect(table?.type === 'table' ? table.heads : []).toContain('Certificate');
     for (const text of [
       'Certificate',
-      'not issued yet',
+      'no recent reading',
       '{n} days left',
       'renewal late, {n} days left',
       'expires in {n} days',
