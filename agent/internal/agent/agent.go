@@ -95,7 +95,7 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 	// On the machine that hosts the control plane, its route lives in the agent (ADR 0021).
 	if route := a.cfg.ControlPlane.Route; route.Host != "" {
 		reconciling.Go(func() {
-			keepControlPlaneRoute(reconcileCtx, router, caddy.ControlPlaneRoute(route.Host, route.Upstream), a.cfg.Intervals.Reconcile, time.Second, a.logger)
+			keepControlPlaneRoute(reconcileCtx, router, caddy.ControlPlaneRoutes(route.Host, route.Upstream), a.cfg.Intervals.Reconcile, time.Second, a.logger)
 		})
 	}
 	// The disk budget of each container (ADR 0022), enforced on the node alone as well.

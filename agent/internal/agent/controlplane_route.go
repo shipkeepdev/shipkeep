@@ -10,17 +10,17 @@ import (
 
 // controlPlaneRouter is the part of the Caddy client that keeps the control plane's route.
 type controlPlaneRouter interface {
-	EnsureControlPlaneRoute(ctx context.Context, route caddy.Route) (bool, error)
+	EnsureControlPlaneRoutes(ctx context.Context, routes []caddy.Route) (bool, error)
 }
 
 // keepControlPlaneRoute applies the control plane's route, then checks it every interval and puts
 // it back when Caddy lost or changed it (ADR 0021). It runs from the agent's start, before and
 // independently of enrollment, and keeps running during a control plane outage. While Caddy does
 // not answer, it retries sooner, from retry up to interval.
-func keepControlPlaneRoute(ctx context.Context, router controlPlaneRouter, route caddy.Route, interval, retry time.Duration, logger *slog.Logger) {
+func keepControlPlaneRoute(ctx context.Context, router controlPlaneRouter, routes []caddy.Route, interval, retry time.Duration, logger *slog.Logger) {
 	delay := retry
 	for {
-		changed, err := router.EnsureControlPlaneRoute(ctx, route)
+		changed, err := router.EnsureControlPlaneRoutes(ctx, routes)
 		next := interval
 		switch {
 		case ctx.Err() != nil:
@@ -30,7 +30,7 @@ func keepControlPlaneRoute(ctx context.Context, router controlPlaneRouter, route
 			logger.Warn("control plane route not applied yet; retrying", "error", err, "retry_in", delay.String())
 			next, delay = delay, min(delay*2, interval)
 		case changed:
-			logger.Info("control plane route applied", "host", route.Match[0].Host[0])
+			logger.Info("control plane route applied", "host", routes[0].Match[0].Host[0])
 			delay = retry
 		default:
 			delay = retry

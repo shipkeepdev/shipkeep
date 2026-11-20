@@ -36,20 +36,35 @@ func TestControlPlaneRouteIsFirstAndRepairedOnlyWhenNeeded(t *testing.T) {
 	if err := client.UpsertRoute(ctx, app); err != nil {
 		t.Fatal(err)
 	}
-	want := ControlPlaneRoute("shipkeep.example.com", "127.0.0.1:8080")
-	if strings.HasPrefix(want.ID, idPrefix) {
-		t.Fatal("the control plane's route must be outside the prefix actions use")
+	want := ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080")
+	for _, route := range want {
+		if strings.HasPrefix(route.ID, idPrefix) {
+			t.Fatal("the control plane's routes must be outside the prefix actions use")
+		}
 	}
-	changed, err := client.EnsureControlPlaneRoute(ctx, want)
+	changed, err := client.EnsureControlPlaneRoutes(ctx, want)
 	if err != nil || !changed {
 		t.Fatalf("first apply: changed=%v err=%v", changed, err)
 	}
 	if got := firstRoute(t, fake); got.ID != ControlPlaneRouteID || got.Match[0].Protocol != HTTPS || got.Handle[0].Upstreams[0].Dial != "127.0.0.1:8080" {
 		t.Fatalf("first route = %+v", got)
 	}
+	// Then the redirect of that name on plain HTTP, before the application's wildcard.
+	fake.mu.Lock()
+	order := fake.ordered()
+	var redirect Route
+	_ = json.Unmarshal(fake.routes[ControlPlaneRedirectRouteID], &redirect)
+	fake.mu.Unlock()
+	if len(order) != 3 || order[1] != ControlPlaneRedirectRouteID || order[2] != RouteID("app") {
+		t.Fatalf("route order = %v", order)
+	}
+	if redirect.Match[0].Protocol != "http" || redirect.Handle[0].Handler != "static_response" || redirect.Handle[0].StatusCode != 308 ||
+		redirect.Handle[0].Headers["Location"][0] != "https://{http.request.host}{http.request.uri}" {
+		t.Fatalf("redirect = %+v", redirect)
+	}
 	// Nothing to do when Caddy holds exactly that.
 	writes := len(fake.requests)
-	if changed, err := client.EnsureControlPlaneRoute(ctx, want); err != nil || changed {
+	if changed, err := client.EnsureControlPlaneRoutes(ctx, want); err != nil || changed {
 		t.Fatalf("idempotent apply: changed=%v err=%v", changed, err)
 	}
 	for _, request := range fake.requests[writes:] {
@@ -62,7 +77,7 @@ func TestControlPlaneRouteIsFirstAndRepairedOnlyWhenNeeded(t *testing.T) {
 	fake.order = slices.DeleteFunc(fake.ordered(), func(id string) bool { return id == ControlPlaneRouteID })
 	fake.order = append(fake.order, ControlPlaneRouteID)
 	fake.mu.Unlock()
-	if changed, err := client.EnsureControlPlaneRoute(ctx, want); err != nil || !changed {
+	if changed, err := client.EnsureControlPlaneRoutes(ctx, want); err != nil || !changed {
 		t.Fatalf("repair: changed=%v err=%v", changed, err)
 	}
 	if got := firstRoute(t, fake); got.ID != ControlPlaneRouteID {
@@ -85,8 +100,8 @@ func TestControlPlaneRouteIsFirstAndRepairedOnlyWhenNeeded(t *testing.T) {
 func TestControlPlaneRouteSurvivesALostConfiguration(t *testing.T) {
 	// A fresh Caddy: no apps at all, as after a restart that lost its saved configuration.
 	client, fake := admin(t)
-	want := ControlPlaneRoute("shipkeep.example.com", "127.0.0.1:8080")
-	if _, err := client.EnsureControlPlaneRoute(context.Background(), want); err != nil {
+	want := ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080")
+	if _, err := client.EnsureControlPlaneRoutes(context.Background(), want); err != nil {
 		t.Fatal(err)
 	}
 	if got := firstRoute(t, fake); got.ID != ControlPlaneRouteID {
@@ -102,7 +117,7 @@ func TestControlPlaneRouteLeavesTheHostsWithoutTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	fake.skip = []string{"plain.example.com", "shipkeep.example.com"}
-	if _, err := client.EnsureControlPlaneRoute(ctx, ControlPlaneRoute("shipkeep.example.com", "127.0.0.1:8080")); err != nil {
+	if _, err := client.EnsureControlPlaneRoutes(ctx, ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080")); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(fake.skip, []string{"plain.example.com"}) {
@@ -140,7 +155,7 @@ func TestControlPlaneRouteWaitsForARouteChangeInProgress(t *testing.T) {
 	client.betweenWrites = func() {
 		before := len(requests())
 		go func() {
-			_, err := client.EnsureControlPlaneRoute(ctx, ControlPlaneRoute("shipkeep.example.com", "127.0.0.1:8080"))
+			_, err := client.EnsureControlPlaneRoutes(ctx, ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080"))
 			repaired <- err
 		}()
 		// The repair is running once Caddy got its first request, which comes before the lock.

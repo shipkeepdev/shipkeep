@@ -19,7 +19,7 @@ type routeKeeper struct {
 	applied chan int
 }
 
-func (r *routeKeeper) EnsureControlPlaneRoute(context.Context, caddy.Route) (bool, error) {
+func (r *routeKeeper) EnsureControlPlaneRoutes(context.Context, []caddy.Route) (bool, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.calls++
@@ -38,7 +38,7 @@ func TestTheControlPlaneRouteIsKeptWhileTheAgentRuns(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		keepControlPlaneRoute(ctx, keeper, caddy.ControlPlaneRoute("shipkeep.example.com", "127.0.0.1:8080"), 20*time.Millisecond, time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		keepControlPlaneRoute(ctx, keeper, caddy.ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080"), 20*time.Millisecond, time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	}()
 	deadline := time.After(5 * time.Second)
 	for checks := 0; checks < 3; {
