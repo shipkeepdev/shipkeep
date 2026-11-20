@@ -528,7 +528,7 @@ const LIVE_POLL_MS = 15_000;
                 }}
               </p>
             } @else {
-              <div class="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3.5">
+              <div class="grid gap-3.5 md:grid-cols-2">
                 <sk-metric-chart
                   label="CPU"
                   unit="cores"

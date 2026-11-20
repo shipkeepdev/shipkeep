@@ -15,12 +15,14 @@ export type MetricUnit = 'cores' | 'bytes' | 'perSecond' | 'seconds';
 export function formatMetric(value: number, unit: MetricUnit): string {
   switch (unit) {
     case 'cores':
-      return value < 0.1 ? `${String(Math.round(value * 1000))} m` : `${value.toFixed(2)} CPU`;
+      return value < 0.1 ? `${String(Math.round(value * 1000))} mCPU` : `${value.toFixed(2)} CPU`;
     case 'bytes':
       return bytes(value) ?? '0 MiB';
     case 'perSecond':
       return value < 10 ? `${value.toFixed(1)}/s` : `${String(Math.round(value))}/s`;
     case 'seconds':
+      // Below 10 ms a rounded millisecond would hide the scale: 0.6 ms is not 1 ms.
+      if (value < 0.01) return `${(value * 1000).toFixed(1)} ms`;
       return value < 1 ? `${String(Math.round(value * 1000))} ms` : `${value.toFixed(2)} s`;
   }
 }

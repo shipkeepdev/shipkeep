@@ -2,13 +2,14 @@ import { formatMetric, linePath, scaleTop, sumSeries } from './metric-chart';
 
 describe('formatMetric', () => {
   it('writes each unit as the charts show it', () => {
-    expect(formatMetric(0.042, 'cores')).toBe('42 m');
+    expect(formatMetric(0.042, 'cores')).toBe('42 mCPU');
     expect(formatMetric(1.5, 'cores')).toBe('1.50 CPU');
     expect(formatMetric(256 * 1024 ** 2, 'bytes')).toBe('256 MiB');
     expect(formatMetric(0, 'bytes')).toBe('0 MiB');
     expect(formatMetric(3.25, 'perSecond')).toBe('3.3/s');
     expect(formatMetric(42.4, 'perSecond')).toBe('42/s');
     expect(formatMetric(0.0123, 'seconds')).toBe('12 ms');
+    expect(formatMetric(0.0006, 'seconds')).toBe('0.6 ms');
     expect(formatMetric(1.5, 'seconds')).toBe('1.50 s');
   });
 });
