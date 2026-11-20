@@ -72,6 +72,22 @@ type Option func(*handlerOptions)
 
 type handlerOptions struct {
 	egressUnchecked bool
+	workloads       Workloads
+}
+
+// Workloads places application containers on the machine that hosts the control plane (ADR 0021):
+// in a slice whose memory the installer limits, and first in the kernel's kill order. The values
+// come from the agent's local configuration, never from the control plane.
+type Workloads struct {
+	// Slice is the systemd slice of every container the agent creates; empty keeps Docker's default.
+	Slice string
+	// OOMScoreAdj is the containers' oom_score_adj; nil keeps the kernel's default.
+	OOMScoreAdj *int
+}
+
+// WithWorkloads creates every application and release-task container under w.
+func WithWorkloads(w Workloads) Option {
+	return func(o *handlerOptions) { o.workloads = w }
 }
 
 // WithoutEgressCheck lets pulls run without the daemon going through the egress proxy. Only an
@@ -112,7 +128,7 @@ func dockerHandlers(engine Engine, confirmations Confirmer, prober Prober, inten
 			return healthCheck(engine, prober, req.GetHealthCheck())
 		}, Result: healthResult},
 		"run_release_task": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
-			return releaseTask(engine, req.GetRunReleaseTask())
+			return releaseTask(engine, req.GetRunReleaseTask(), settings.workloads)
 		}, Result: releaseResult},
 		"remove_volume": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return removeVolume(engine, confirmations, req.GetRemoveVolume())
@@ -127,7 +143,7 @@ func dockerHandlers(engine Engine, confirmations Confirmer, prober Prober, inten
 			return ensureVolume(engine, req.GetEnsureVolume())
 		}, Result: resourceResult},
 		"create_container": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
-			return createContainer(engine, req.GetCreateContainer().GetSpec())
+			return createContainer(engine, req.GetCreateContainer().GetSpec(), settings.workloads)
 		}, Result: resourceResult},
 		"start_container": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return startContainer(engine, intents, req.GetStartContainer())
