@@ -22,6 +22,7 @@ import { API_PREFIX } from './platform/http/constants';
 import { installWebApp } from './platform/http/web-app';
 import { buildOpenApiDocument, OPENAPI_JSON_PATH } from './platform/openapi/openapi';
 import {
+  needsPassword,
   OperatorUsageError,
   parseOperatorCommand,
   readPassword,
@@ -63,13 +64,16 @@ async function main(): Promise<void> {
 }
 
 /**
- * `node main.js account ...`: one command of the operator, then exit (ADR 0020). Nothing listens:
+ * `node main.js account|organization|server ...`: one command of the operator, then exit (ADR 0020,
+ * ADR 0021). Nothing listens:
  * no HTTP port, no agent gateway, no deployment worker.
  */
 async function operate(argv: readonly string[]): Promise<void> {
   // Read before anything starts: a mistyped command opens no database connection.
   const command = parseOperatorCommand(argv);
-  const password = await readPassword(process.stdin, process.stderr);
+  const password = needsPassword(command)
+    ? await readPassword(process.stdin, process.stderr)
+    : undefined;
   // The application without its HTTP server, and without its startup lines: the command writes
   // one line, which they would bury. Warnings and errors still show.
   const app = await NestFactory.createApplicationContext(AppModule, { logger: ['error', 'warn'] });
