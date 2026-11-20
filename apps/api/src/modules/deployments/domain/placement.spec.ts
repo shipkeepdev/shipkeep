@@ -113,6 +113,7 @@ describe('placementRequest', () => {
     expect(placeReplicas(request, 3, schedulableNodes([node('edge-1')], new Map(), NOW))).toEqual({
       nodes: ['edge-1', 'edge-1'],
       unplaced: 1,
+      rejections: { 'edge-1': 'cpu' },
     });
   });
 });
@@ -202,6 +203,7 @@ describe('nodeLoads', () => {
     expect(placeReplicas(other, 1, schedulableNodes([oneCore], loads, NOW))).toEqual({
       nodes: [],
       unplaced: 1,
+      rejections: { 'edge-1': 'cpu' },
     });
   });
 
@@ -269,6 +271,7 @@ describe('the machine that hosts the control plane (ADR 0021)', () => {
     expect(placeReplicas({ ...request, spread: 'none' }, 2, [scheduled])).toEqual({
       nodes: ['cp'],
       unplaced: 1,
+      rejections: { cp: 'surge' },
     });
     expect(placeReplica({ ...request, spread: 'none' }, [scheduled])).toEqual({
       placed: true,

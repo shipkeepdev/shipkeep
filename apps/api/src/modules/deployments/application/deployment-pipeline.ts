@@ -6,7 +6,6 @@ import {
   isDomainError,
   type PlacementRejection,
   type PlacementRequest,
-  placeReplica,
   placeReplicas,
   rollBack,
   type RoutingOutcome,
@@ -529,12 +528,11 @@ function schedule(
 ): { readonly nodes: readonly string[] } | { readonly failure: string } {
   const placed = placeReplicas(request, replicas, nodes);
   if (placed.unplaced === 0) return { nodes: placed.nodes };
-  const decision = placeReplica(request, nodes);
-  const reasons = decision.placed
-    ? 'capacity'
-    : Object.entries(decision.rejections)
-        .map(([node, why]) => `${node}: ${REJECTIONS[why] ?? why}`)
-        .join(', ') || 'no nodes';
+  // Why the failing replica was refused, beside the replicas placed before it.
+  const reasons =
+    Object.entries(placed.rejections ?? {})
+      .map(([node, why]) => `${node}: ${REJECTIONS[why] ?? why}`)
+      .join(', ') || 'no nodes';
   return {
     failure: `No node can run replica ${String(replicas - placed.unplaced + 1)} of ${String(replicas)} (${reasons}).`,
   };

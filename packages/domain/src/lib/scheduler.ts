@@ -107,20 +107,26 @@ export function placeReplica(
 
 /**
  * Places `replicas` replicas one after another, each seeing the reservations, ports and spread of
- * the previous ones. Stops at the first replica that cannot be placed.
+ * the previous ones. Stops at the first replica that cannot be placed, and says why each node
+ * refused it, in the state the previous replicas left: not the state before them.
  */
 export function placeReplicas(
   request: PlacementRequest,
   replicas: number,
   nodes: readonly SchedulableNode[],
-): { readonly nodes: readonly string[]; readonly unplaced: number } {
+): {
+  readonly nodes: readonly string[];
+  readonly unplaced: number;
+  readonly rejections?: Readonly<Record<string, PlacementRejection>>;
+} {
   if (!Number.isSafeInteger(replicas) || replicas < 0 || replicas > 1000)
     throw invalid('Replicas must be an integer from 0 to 1000.');
   let state = [...nodes];
   const placed: string[] = [];
   for (let index = 0; index < replicas; index++) {
     const decision = placeReplica(request, state);
-    if (!decision.placed) return { nodes: placed, unplaced: replicas - index };
+    if (!decision.placed)
+      return { nodes: placed, unplaced: replicas - index, rejections: decision.rejections };
     placed.push(decision.node);
     state = state.map((node) =>
       node.name === decision.node

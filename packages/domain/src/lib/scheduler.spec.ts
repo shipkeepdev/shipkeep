@@ -111,7 +111,12 @@ describe('SPEC 6 scheduler examples', () => {
 
   it('spreads replicas, accounts for each placement and reports what does not fit', () => {
     const result = placeReplicas({ ...request, ports: [8080] }, 3, [node('a'), node('b')]);
-    expect(result).toEqual({ nodes: ['a', 'b'], unplaced: 1 });
+    // The third replica is refused for the port its two siblings took, in that state.
+    expect(result).toEqual({
+      nodes: ['a', 'b'],
+      unplaced: 1,
+      rejections: { a: 'ports', b: 'ports' },
+    });
     expect(placeReplicas(request, 3, [node('a'), node('b')]).nodes).toEqual(['a', 'b', 'a']);
   });
 
@@ -294,7 +299,11 @@ describe('disk budgets (ADR 0022)', () => {
       }),
     ];
     const placed = placeReplicas({ ...withDisk, spread: 'none' }, 3, [nodes[0]]);
-    expect(placed).toEqual({ nodes: ['small', 'small'], unplaced: 1 });
+    expect(placed).toEqual({
+      nodes: ['small', 'small'],
+      unplaced: 1,
+      rejections: { small: 'disk' },
+    });
     expect(placeReplicas({ ...withDisk, spread: 'node' }, 3, nodes).unplaced).toBe(0);
   });
 
@@ -333,9 +342,11 @@ describe('replaced replicas on a node with a reservation (ADR 0021)', () => {
     const small = { ...request, resources: { cpuMillis: 1000, memoryBytes: GiB } };
     expect(placeReplica(small, [shared()])).toEqual({ placed: true, node: 'cp' });
     // Each replica placed counts: the second one no longer fits beside the old release.
+    // The second is refused for the overlap, not for capacity: the reason names the failing state.
     expect(placeReplicas({ ...small, spread: 'none' }, 2, [shared()])).toEqual({
       nodes: ['cp'],
       unplaced: 1,
+      rejections: { cp: 'surge' },
     });
   });
 
