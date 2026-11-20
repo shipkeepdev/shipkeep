@@ -11,6 +11,20 @@ describe('formatMetric', () => {
     expect(formatMetric(0.0123, 'seconds')).toBe('12 ms');
     expect(formatMetric(0.0006, 'seconds')).toBe('0.6 ms');
     expect(formatMetric(1.5, 'seconds')).toBe('1.50 s');
+    expect(formatMetric(1.5 * 1024 ** 3, 'bytes')).toBe('1.5 GiB');
+    expect(formatMetric(12 * 1024 ** 3, 'bytes')).toBe('12 GiB');
+  });
+
+  it('writes numbers in the interface language', () => {
+    const french = (value: number, digits: number) =>
+      value.toLocaleString('fr-FR', {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits,
+      });
+    expect(formatMetric(0.0006, 'seconds', french)).toBe('0,6 ms');
+    expect(formatMetric(1.5, 'cores', french)).toBe('1,50 CPU');
+    expect(formatMetric(3.25, 'perSecond', french)).toBe('3,3/s');
+    expect(formatMetric(1.5 * 1024 ** 3, 'bytes', french)).toBe('1,5 GiB');
   });
 });
 

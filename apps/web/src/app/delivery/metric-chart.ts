@@ -1,7 +1,7 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
 
-import { bytes, RED } from '../dashboard/format';
-import { T } from '../ui/i18n';
+import { RED } from '../dashboard/format';
+import { I18n, T } from '../ui/i18n';
 
 /** A point of a series: unix seconds and a value. */
 export interface MetricPoint {
@@ -11,19 +11,28 @@ export interface MetricPoint {
 
 export type MetricUnit = 'cores' | 'bytes' | 'perSecond' | 'seconds';
 
+/** A number with a fixed count of decimals, in the interface language: 0.6 in English, 0,6 in French. */
+export type NumberFormat = (value: number, digits: number) => string;
+
+const ENGLISH: NumberFormat = (value, digits) =>
+  value.toLocaleString('en-US', { minimumFractionDigits: digits, maximumFractionDigits: digits });
+
 /** A value in its unit, as a chart's headline and axis show it. */
-export function formatMetric(value: number, unit: MetricUnit): string {
+export function formatMetric(value: number, unit: MetricUnit, number = ENGLISH): string {
   switch (unit) {
     case 'cores':
-      return value < 0.1 ? `${String(Math.round(value * 1000))} mCPU` : `${value.toFixed(2)} CPU`;
-    case 'bytes':
-      return bytes(value) ?? '0 MiB';
+      return value < 0.1 ? `${number(value * 1000, 0)} mCPU` : `${number(value, 2)} CPU`;
+    case 'bytes': {
+      const gib = value / 1024 ** 3;
+      if (gib >= 1) return `${number(gib, gib >= 10 ? 0 : 1)} GiB`;
+      return `${number(value / 1024 ** 2, 0)} MiB`;
+    }
     case 'perSecond':
-      return value < 10 ? `${value.toFixed(1)}/s` : `${String(Math.round(value))}/s`;
+      return `${number(value, value < 10 ? 1 : 0)}/s`;
     case 'seconds':
       // Below 10 ms a rounded millisecond would hide the scale: 0.6 ms is not 1 ms.
-      if (value < 0.01) return `${(value * 1000).toFixed(1)} ms`;
-      return value < 1 ? `${String(Math.round(value * 1000))} ms` : `${value.toFixed(2)} s`;
+      if (value < 0.01) return `${number(value * 1000, 1)} ms`;
+      return value < 1 ? `${number(value * 1000, 0)} ms` : `${number(value, 2)} s`;
   }
 }
 
@@ -134,6 +143,8 @@ export class MetricChart {
   readonly to = input.required<number>();
   readonly step = input.required<number>();
 
+  private readonly i18n = inject(I18n);
+  private readonly number: NumberFormat = (value, digits) => this.i18n.number(value, digits);
   protected readonly red = RED;
   protected readonly empty = computed(() => this.points().length === 0);
   private readonly top = computed(() => scaleTop([this.points(), this.errors()]));
@@ -147,7 +158,7 @@ export class MetricChart {
   );
   protected readonly latest = computed(() => {
     const last = this.points().at(-1);
-    return last ? formatMetric(last.v, this.unit()) : '—';
+    return last ? formatMetric(last.v, this.unit(), this.number) : '—';
   });
-  protected readonly topLabel = computed(() => formatMetric(this.top(), this.unit()));
+  protected readonly topLabel = computed(() => formatMetric(this.top(), this.unit(), this.number));
 }
