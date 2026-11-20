@@ -1708,6 +1708,9 @@ export const FR: Readonly<Record<string, string>> = {
     '{name} cessera de fonctionner dès sa révocation.',
   '{name}: deployment failed': '{name} : déploiement en échec',
   '{n} / 8 active': '{n} / 8 actives',
+  '{n} agent connected · mTLS': '{n} agent connecté · mTLS',
+  '{n} agent connected · outbound mTLS, no inbound port':
+    '{n} agent connecté · mTLS sortant, aucun port entrant',
   '{n} agents connected · mTLS': '{n} agents connectés · mTLS',
   '{n} agents connected · outbound mTLS, no inbound port':
     '{n} agents connectés · mTLS sortant, aucun port entrant',

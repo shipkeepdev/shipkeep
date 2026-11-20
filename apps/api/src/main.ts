@@ -24,6 +24,7 @@ import { buildOpenApiDocument, OPENAPI_JSON_PATH } from './platform/openapi/open
 import {
   needsPassword,
   OperatorUsageError,
+  operatorExitCode,
   parseOperatorCommand,
   readPassword,
   runThenClose,
@@ -93,7 +94,7 @@ if (operatorArguments.length > 0) {
       const message = refused
         ? error.message
         : 'The command failed. Run it with the settings of the control plane, and check that the database answers.';
-      const code = error instanceof OperatorUsageError ? 2 : 1;
+      const code = operatorExitCode(error);
       // Leave only once the message is handed over: a pipe may take it later than this line.
       void writeLine(process.stderr, message).then(
         () => process.exit(code),

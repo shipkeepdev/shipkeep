@@ -49,6 +49,12 @@ refuse 'Invalid SMTP user' --smtp-user $'user\nname'
 refuse 'Invalid SMTP user' --smtp-user "$long"
 refuse 'Unknown option' --image example.com/other:1
 refuse 'Missing option value' --domain
+# A resumed run takes its settings from the interrupted one, never from options.
+refuse 'Invalid --resume' --resume no
+refuse 'Invalid --resume' --resume "yes;id"
+refuse 'Give --resume yes with --dir only' --resume yes --domain shipkeep.example.com
+refuse 'Give --resume yes with --dir only' --resume yes --smtp-user ''
+refuse 'Run with sudo' --resume yes --dir /opt/shipkeep
 # Email is optional, but its settings come together: a port or a sender without a host is a mistake.
 refuse 'Give --smtp-host' --smtp-port 465
 refuse 'Give --smtp-host' --smtp-from shipkeep@example.com
@@ -72,13 +78,17 @@ check_docker_repository "$installer" "$work/apt"
 mkdir "$work/fresh" "$work/installed" "$work/linked"
 assert_no_installation "$work/fresh"
 : >"$work/installed/.env"
-ln -s /nonexistent "$work/linked/compose.yml"
+ln -s /nonexistent "$work/linked/.env"
 refused assert_no_installation "$work/installed" || die 'an existing settings file was accepted'
 grep -q 'Existing installation' "$work/output" || die 'an existing settings file was refused without saying why'
+grep -q -- '--resume yes' "$work/output" || die 'the refusal did not say how to finish an interrupted installation'
 refused assert_no_installation "$work/linked" || die 'a dangling link was accepted'
+# A run stopped before .env started nothing: its other files are replaced by the next run.
 mkdir "$work/interrupted"
 : >"$work/interrupted/.env.new"
-refused assert_no_installation "$work/interrupted" || die 'a leftover settings draft was accepted'
+: >"$work/interrupted/install-state"
+: >"$work/interrupted/compose.yml"
+assert_no_installation "$work/interrupted" || die 'a run stopped before its settings file cannot be retried'
 
 # A directory that someone other than root can change is refused, and so is anything below it.
 refused assert_root_directory "$work/fresh" || die 'a directory of a regular user was accepted'
@@ -249,6 +259,182 @@ tr '\n' ' ' <"$work/account-arguments" | grep -q 'compose --file compose.yml run
   ! create_first_account
 ) || die 'a refused account creation was reported as done'
 
+# ADR 0021 on one machine: the server installer's system, a Compose that reads !override, and an
+# Engine that keeps ports published on 127.0.0.1 to this machine.
+printf 'ID=ubuntu\nVERSION_ID="24.04"\n' >"$work/noble"
+printf 'ID=debian\nVERSION_ID="12"\n' >"$work/bookworm"
+printf 'ID=ubuntu\nVERSION_ID="22.04"\n' >"$work/jammy"
+ubuntu_noble "$work/noble" || die 'Ubuntu 24.04 was refused'
+for file in bookworm jammy missing; do
+  refused ubuntu_noble "$work/$file" || die "accepted the system of $file"
+done
+for version in 2.24.4 v2.24.4 2.24.10 2.25.0 2.40.3 v5.7.0 2.24.4-desktop.1 3.0.0; do
+  compose_reads_override "$version" || die "Compose $version was refused"
+done
+for version in 2.24.3 v2.24.3 2.9.99 1.29.2 2.24 '' v 'x2.30.0' '2.30.0;id' '99999.0.0'; do
+  refused compose_reads_override "$version" || die "Compose '$version' was accepted"
+done
+for version in 28.0.0 28.5.1 29.1.3 30.0.0-rc.1; do
+  engine_keeps_loopback "$version" || die "Docker Engine $version was refused"
+done
+for version in 27.5.1 20.10.24 26.1.4-ce '' '28' '28.0.0;id'; do
+  refused engine_keeps_loopback "$version" || die "Docker Engine '$version' was accepted"
+done
+
+# Organization ids are tenant ids: UUIDv7, ordered by time.
+for _ in 1 2 3 4 5 6 7 8; do
+  generated=$(new_uuid7)
+  [[ $generated =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || die "not a UUIDv7: $generated"
+done
+stamp=${generated:0:8}${generated:9:4}
+((10#$(date +%s%3N) - 16#$stamp < 60000 && 16#$stamp <= 10#$(date +%s%3N))) || die "the UUIDv7 does not hold the current time: $generated"
+
+# install-state: what --resume yes reads back, and nothing else.
+state=$work/state
+mkdir "$state"
+read_back() (
+  # shellcheck disable=SC2034
+  directory=$state single=0 compose_files='-f compose.yml' domain='' owner_email='' organization='' organization_id='' started=0 account_done=0 organization_done=0 server_done=0 sends_email=0
+  read_state "$state/install-state"
+  printf '%s|%s|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' "$single" "$compose_files" "$domain" "$owner_email" "$organization" "$organization_id" "$started" "$account_done" "$organization_done" "$server_done" "$sends_email"
+)
+uuid=0190a8f2-1c2d-7e3f-8a9b-0c1d2e3f4a5b
+printf 'mode=single\ndomain=shipkeep.example.com\nemail=owner@example.com\nemail_mode=smtp\norganization=Acme Corp\nstarted\naccount\norganization_id=%s\norganization_created\n' "$uuid" >"$state/install-state"
+[[ $(read_back) == "1|-f compose.yml -f compose.single-machine.yml|shipkeep.example.com|owner@example.com|Acme Corp|$uuid|1|1|1|0|1" ]] || die "install-state was not read back: $(read_back)"
+printf 'mode=separate\ndomain=shipkeep.example.com\nemail=owner@example.com\nemail_mode=none\n' >"$state/install-state"
+[[ $(read_back) == '0|-f compose.yml|shipkeep.example.com|owner@example.com||||0|0|0|0|0' || $(read_back) == '0|-f compose.yml|shipkeep.example.com|owner@example.com|||0|0|0|0|0' ]] || die "a separate install-state was not read back: $(read_back)"
+# shellcheck disable=SC2016
+for bad in 'mode=single\ndomain=shipkeep.example.com\nemail=owner@example.com\n' \
+  'mode=separate\ndomain=shipkeep.example.com\n' \
+  'mode=separate\nmode=single\ndomain=shipkeep.example.com\nemail=owner@example.com\n' \
+  'mode=separate\ndomain=$(id).example.com\nemail=owner@example.com\n' \
+  'mode=separate\ndomain=shipkeep.example.com\nemail=owner@example.com\nCOMPOSE_FILE=/etc/x.yml\n' \
+  'mode=separate\ndomain=shipkeep.example.com\nemail=owner@example.com\nemail_mode=sometimes\n' \
+  'mode=separate\ndomain=shipkeep.example.com\nemail=owner@example.com\norganization_id=../../etc\n' \
+  'mode=separate\ndomain=shipkeep.example.com\nemail=owner@example.com\norganization_created=yes\n' \
+  'mode=separate\ndomain=shipkeep.example.com\nemail=owner@example.com\nstarted;id\n'; do
+  # shellcheck disable=SC2059
+  printf "$bad" >"$state/install-state"
+  refused read_back || die "accepted the install-state: $bad"
+done
+printf 'mode=separate\ndomain=shipkeep.example.com\nemail=owner@example.com\n' >"$work/real-state"
+rm -f "$state/install-state"
+ln -s "$work/real-state" "$state/install-state"
+refused read_back || die 'accepted an install-state that is a link'
+rm -f "$state/install-state"
+refused read_back || die 'resumed without an install-state'
+{ printf 'mode=separate\ndomain=shipkeep.example.com\nemail=owner@example.com\n'; repeat 'started\n' 600 | sed 's/\\n/\n/g'; } >"$state/install-state"
+refused read_back || die 'accepted an oversized install-state'
+
+# The steps a resumed run takes, with the commands of Docker and of the server installer replaced:
+# $1 is the state left by the interrupted run, the other arguments set the stand-ins' answers.
+resume_with() (
+  local account_status=$2 server_state=$3 organization_status=$4
+  # shellcheck disable=SC2034
+  directory=$state here="$work/Release Files" single=0 compose_files='-f compose.yml' domain='' owner_email='' organization='' organization_id='' started=0 account_done=0 organization_done=0 server_done=0 sends_email=0 owner_password='' writing=0
+  printf '%b' "$1" >"$state/install-state"
+  read_state "$state/install-state"
+  : >"$work/resume-calls"
+  # shellcheck disable=SC2329
+  compose() { printf 'compose %s\n' "$*" >>"$work/resume-calls"; }
+  # shellcheck disable=SC2329
+  ask_owner_password() { owner_password=asked; }
+  # shellcheck disable=SC2329
+  create_first_account() { printf 'account\n' >>"$work/resume-calls"; return "$account_status"; }
+  # shellcheck disable=SC2329
+  create_organization() { printf 'organization %s\n' "$organization_id" >>"$work/resume-calls"; return "$organization_status"; }
+  # shellcheck disable=SC2329
+  this_server_installed() { return "$server_state"; }
+  # shellcheck disable=SC2329
+  add_this_server() { printf 'server %s\n' "$organization_id" >>"$work/resume-calls"; }
+  # shellcheck disable=SC2329
+  https_answers() { return 0; }
+  # shellcheck disable=SC2329
+  controlplane_slice() { printf 'slice\n' >>"$work/resume-calls"; }
+  trap unfinished EXIT
+  : >"$state/.env"
+  finish
+)
+single_state='mode=single\ndomain=shipkeep.example.com\nemail=owner@example.com\nemail_mode=smtp\norganization=Acme Corp\nstarted\n'
+
+# Stopped after the account was committed: the account is kept, never created a second time.
+resume_with "$single_state" 3 1 0 >"$work/resume-output" 2>&1 || die "a resume over an existing account failed: $(<"$work/resume-output")"
+grep -q 'already exists: it is kept' "$work/resume-output" || die 'the existing account was not said to be kept'
+grep -qx account "$state/install-state" || die 'the kept account was not recorded'
+chosen=$(sed -n 's/^organization_id=//p' "$state/install-state")
+[[ $chosen =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || die "no UUIDv7 organization id was chosen and recorded: $chosen"
+[[ $(<"$work/resume-calls") == "slice"$'\n'"compose up -d"$'\n'"account"$'\n'"organization $chosen"$'\n'"server $chosen" ]] || die "unexpected resumed steps: $(<"$work/resume-calls")"
+[[ $(tail -n 3 "$state/install-state") == "organization_id=$chosen"$'\n'"organization_created"$'\n'"server" ]] || die 'the resumed steps were not recorded in order'
+grep -q 'Other people sign up by themselves' "$work/resume-output" || die 'a resumed installation that sends email said it sends none'
+grep -q 'Shipkeep is running at https://shipkeep.example.com' "$work/resume-output" || die 'the resumed run did not finish'
+# Another refusal of the account stops the run before the organization.
+resume_with "$single_state" 1 1 0 >"$work/resume-output" 2>&1 && die 'a refused account was reported as done'
+! grep -q '^organization' "$work/resume-calls" || die 'the run went on after a refused account'
+
+# Stopped after the organization id was recorded: the same id is used again, so that the command
+# finds the organization the first run committed.
+resume_with "${single_state}account\norganization_id=$uuid\n" 0 1 0 >"$work/resume-output" 2>&1 || die "a resume with a recorded organization id failed: $(<"$work/resume-output")"
+[[ $(<"$work/resume-calls") == "slice"$'\n'"compose up -d"$'\n'"organization $uuid"$'\n'"server $uuid" ]] || die "the recorded organization id was not reused: $(<"$work/resume-calls")"
+
+# The server installer finished before the run stopped: its installation is recorded, not repeated.
+resume_with "${single_state}account\norganization_id=$uuid\norganization_created\n" 0 0 0 >"$work/resume-output" 2>&1 || die "a resume over a finished server install failed: $(<"$work/resume-output")"
+[[ $(<"$work/resume-calls") == "slice"$'\n'"compose up -d" ]] || die "the server installer ran again: $(<"$work/resume-calls")"
+grep -qx server "$state/install-state" || die 'the finished server install was not recorded'
+# An installation that is not this one's stops the run, with what to do.
+resume_with "${single_state}account\norganization_id=$uuid\norganization_created\n" 0 2 0 >"$work/resume-output" 2>&1 && die 'an installation of another control plane was accepted'
+grep -q 'Starting over' "$work/resume-output" || die 'the foreign installation was refused without saying what to do'
+! grep -qx server "$state/install-state" || die 'a foreign installation was recorded'
+# A failed step is not recorded, and the message gives the exact command, quoted for the shell.
+grep -q -- "sudo bash $work/Release\\\\ Files/install.sh --dir $state --resume yes" "$work/resume-output" || die "the failure did not say how to finish: $(<"$work/resume-output")"
+resume_with "${single_state}account\n" 0 1 1 >"$work/resume-output" 2>&1 && die 'a failed organization was reported as done'
+! grep -qx organization_created "$state/install-state" || die 'a failed organization was recorded'
+
+# What an earlier run of the server installer left, read from a tree that stands in for /.
+server=$work/server
+installed() (
+  # shellcheck disable=SC2034
+  domain=shipkeep.example.com organization_id=$uuid
+  status=0
+  this_server_installed "$server" || status=$?
+  printf '%s' "$status"
+)
+mkdir -p "$server/etc/shipkeep" "$server/var/lib/shipkeep" "$server/etc/systemd/system"
+[[ $(installed) == 1 ]] || die 'a machine without a server installation was not seen as such'
+printf "control_plane:\n  address: 'shipkeep.example.com:7443'\n  connect: '127.0.0.1:7443'\n  route:\n    host: 'shipkeep.example.com'\n    upstream: '127.0.0.1:3000'\n" >"$server/etc/shipkeep/agent.yaml"
+: >"$server/etc/systemd/system/shipkeep-agent.service"
+: >"$server/etc/shipkeep/join-token"
+# The server installer stopped before enabling its services: unfinished, not done.
+[[ $(installed) == 2 ]] || die 'an unfinished server installation was taken as done'
+mkdir -p "$server/etc/systemd/system/multi-user.target.wants"
+for unit in shipkeep-agent shipkeep-caddy; do
+  ln -s "/etc/systemd/system/$unit.service" "$server/etc/systemd/system/multi-user.target.wants/$unit.service"
+done
+[[ $(installed) == 2 ]] || die 'a server installation without its egress proxy was taken as done'
+ln -s /etc/systemd/system/shipkeep-egress.service "$server/etc/systemd/system/multi-user.target.wants/shipkeep-egress.service"
+[[ $(installed) == 0 ]] || die 'an installation waiting to enroll was not recognized'
+printf '{"node_id":"n","organization_id":"%s"}' "$uuid" >"$server/var/lib/shipkeep/credentials.json"
+[[ $(installed) == 0 ]] || die 'an enrolled installation was not recognized'
+printf '{"organization_id":"0190a8f2-1c2d-7e3f-8a9b-ffffffffffff"}' >"$server/var/lib/shipkeep/credentials.json"
+[[ $(installed) == 2 ]] || die 'an agent of another organization was accepted'
+printf '{"organization_id":"%s"}' "$uuid" >"$server/var/lib/shipkeep/credentials.json"
+sed -i 's/shipkeep.example.com:7443/other.example.com:7443/' "$server/etc/shipkeep/agent.yaml"
+[[ $(installed) == 2 ]] || die 'an agent of another control plane was accepted'
+rm "$server/etc/shipkeep/agent.yaml"
+ln -s "$work/real-state" "$server/etc/shipkeep/agent.yaml"
+[[ $(installed) == 2 ]] || die 'an agent configuration that is a link was accepted'
+rm "$server/etc/shipkeep/agent.yaml"
+[[ $(installed) == 2 ]] || die 'a unit without its configuration was accepted'
+
+# A run stopped before its settings file says to run again, not to resume.
+(
+  # shellcheck disable=SC2034
+  directory=$work/no-settings writing=1 here=$work
+  mkdir -p "$directory"
+  unfinished
+) 2>"$work/early-stop"
+grep -q 'Run the installer again' "$work/early-stop" || die 'a run stopped before .env did not say to run again'
+! grep -q -- '--resume' "$work/early-stop" || die 'a run stopped before .env pointed at --resume'
+
 # Only the pinned signing key is installed, whatever else the downloaded file holds.
 keys=$work/keys
 mkdir -m 0700 "$keys"
@@ -346,7 +532,7 @@ grep -Eq '^SMTP_HOST=$' "$work/no-email/.env.example" || die 'the example settin
 archive=$(bash deploy/control-plane/build-bundle.sh 1.2.3 "$reference" "$work/bundle")
 [[ $archive == "$work/bundle/shipkeep-control-plane_1.2.3.tar.gz" ]] || die 'unexpected archive name'
 tar -tzf "$archive" | sort >"$work/listing"
-printf 'shipkeep-control-plane/%s\n' '' .env.example Caddyfile LICENSE NOTICE compose.yml image install.sh | cmp -s - "$work/listing" || die 'unexpected bundle content'
+printf 'shipkeep-control-plane/%s\n' '' .env.example Caddyfile LICENSE NOTICE compose.single-machine.yml compose.yml image install.sh | cmp -s - "$work/listing" || die 'unexpected bundle content'
 tar -xzf "$archive" -C "$work"
 cmp -s "$installer" "$work/shipkeep-control-plane/install.sh" || die 'the bundled installer differs'
 [[ -x $work/shipkeep-control-plane/install.sh ]] || die 'the bundled installer is not executable'
@@ -358,4 +544,33 @@ refused bash deploy/control-plane/build-bundle.sh ../1.2.3 "$reference" "$work/b
 refused bash deploy/control-plane/build-bundle.sh 1.2.4 "$reference" "$work/bad" || die 'accepted a tag that is not the version'
 refused bash deploy/control-plane/build-bundle.sh 1.2.3 ghcr.io/shipkeepdev/shipkeep:1.2.3 "$work/bad" || die 'accepted a reference without a digest'
 [[ ! -e $work/bad ]] || die 'a refused bundle left files behind'
+# Single machine (ADR 0021): the answers and the slug of the first organization.
+for answer in yes no y n; do valid_yes_no "$answer" || die "refused the answer $answer"; done
+for answer in '' Yes oui 'yes ' $'yes\n' maybe; do refused valid_yes_no "$answer" || die "accepted the answer $answer"; done
+valid_organization 'Atelier Nord' || die 'refused an organization name'
+valid_organization "$(printf 'a%.0s' {1..80})" || die 'refused 80 characters'
+# shellcheck disable=SC2016
+for name in '' ' Atelier' 'Atelier ' "$(printf 'a%.0s' {1..81})" $'Atelier\nNord' $'Atelier\tNord' 'Café'; do
+  refused valid_organization "$name" || die "accepted the organization name $name"
+done
+[[ $(organization_slug 'Atelier Nord') == atelier-nord ]] || die 'slug of Atelier Nord'
+[[ $(organization_slug '  ACME -- Corp!!  ') == acme-corp ]] || die "slug of ACME: $(organization_slug '  ACME -- Corp!!  ')"
+[[ $(organization_slug '42 Labs') == org-42-labs ]] || die 'a slug must start with a letter'
+[[ $(organization_slug "$(printf 'ab-%.0s' {1..30})") =~ ^[a-z][a-z0-9-]{0,39}$ ]] || die 'a long slug'
+[[ $(organization_slug "$(printf 'ab-%.0s' {1..30})") != *- ]] || die 'a slug ends with a hyphen'
+printf 'cgroup2 /sys/fs/cgroup cgroup2 rw,nsdelegate,memory_recursiveprot 0 0\n' >"$work/mounts"
+cgroup2_recursiveprot "$work/mounts" || die 'memory_recursiveprot not found'
+printf 'cgroup2 /sys/fs/cgroup cgroup2 rw,nsdelegate 0 0\n' >"$work/mounts"
+refused cgroup2_recursiveprot "$work/mounts" || die 'accepted cgroup v2 without memory_recursiveprot'
+printf 'MemTotal:        4028292 kB\n' >"$work/meminfo"
+[[ $(memory_total_bytes "$work/meminfo") == 4124971008 ]] || die 'memory misread'
+# The same values as the server installer, which writes the agent's half of the reservation.
+grep -qxF 'reserved_memory_bytes=1073741824' deploy/install.sh || die 'the installers reserve different memory'
+grep -qxF 'minimum_memory_bytes=3221225472' deploy/install.sh || die 'the installers need different memory'
+# Refused single-machine answers stop before anything is asked or changed.
+for options in '--single-machine maybe' "--single-machine yes --organization $(printf 'a%.0s' {1..81})"; do
+  # shellcheck disable=SC2086 # the options are words on purpose
+  if bash "$installer" $options </dev/null >"$work/output" 2>&1; then die "accepted $options"; fi
+  grep -Eq 'single-machine|organization name' "$work/output" || die "refused $options for another reason: $(cat "$work/output")"
+done
 printf 'Control plane installer checks passed.\n'

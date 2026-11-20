@@ -100,7 +100,44 @@ for info in '{}' '{"HttpProxy":"","HttpsProxy":"","NoProxy":""}' \
   '{"HttpProxy":"http://127.0.0.1:74800","HttpsProxy":"http://127.0.0.1:74800","NoProxy":""}'; do
   refused egress_proxies_applied <<<"$info" || die "accepted $info"
 done
+# Single machine (ADR 0021): memory protection needs cgroup v2 with memory_recursiveprot.
+printf 'cgroup2 /sys/fs/cgroup cgroup2 rw,nosuid,nodev,noexec,relatime,nsdelegate,memory_recursiveprot 0 0\n' >"$work/mounts"
+cgroup2_recursiveprot "$work/mounts" || die 'memory_recursiveprot not found'
+for mounts in 'cgroup2 /sys/fs/cgroup cgroup2 rw,nosuid,nodev,noexec,relatime,nsdelegate 0 0' \
+  'cgroup2 /sys/fs/cgroup/unified cgroup2 rw,memory_recursiveprot 0 0' \
+  'tmpfs /sys/fs/cgroup tmpfs ro,memory_recursiveprot 0 0' \
+  'cgroup2 /sys/fs/cgroup cgroup2 rw,memory_recursiveprotx 0 0' \
+  'cgroup2 /sys/fs/cgroup cgroup2 rw,xmemory_recursiveprot 0 0'; do
+  printf '%s\n' "$mounts" >"$work/mounts"
+  refused cgroup2_recursiveprot "$work/mounts" || die "accepted the mounts $mounts"
+done
+printf 'MemTotal:        4028292 kB\nMemFree: 1 kB\n' >"$work/meminfo"
+[[ $(memory_total_bytes "$work/meminfo") == 4124971008 ]] || die 'memory misread'
+for meminfo in 'MemTotal: 4028292 MB' 'MemTotal: lots kB' 'MemTotal: 1e9 kB' 'MemFree: 4028292 kB'; do
+  printf '%s\n' "$meminfo" >"$work/meminfo"
+  refused memory_total_bytes "$work/meminfo" || die "accepted the meminfo $meminfo"
+done
+valid_local_control_plane 127.0.0.1:3000 || die 'the local control plane address was refused'
+# shellcheck disable=SC2016
+for address in 127.0.0.1 127.0.0.1:0 127.0.0.1:65536 127.0.0.2:3000 0.0.0.0:3000 '[::1]:3000' localhost:3000 \
+  '127.0.0.1:3000 ' $'127.0.0.1:3000\n' '127.0.0.1:$(id)'; do
+  refused valid_local_control_plane "$address" || die "accepted the local control plane $address"
+done
+# The applications get the machine minus the reservation, and a lower CPU weight.
+unit=$(workloads_slice_unit 4294967296) || die 'no workloads slice'
+[[ $unit == *$'\n[Slice]\nMemoryMax=3221225472\nCPUWeight=50' ]] || die "workloads slice: $unit"
+refused workloads_slice_unit 1073741824 || die 'a slice without room was written'
+# A refused single-machine option stops before anything else, and never shows the token.
+for options in '--local-control-plane 0.0.0.0:3000 --agent-file /bin/true' '--local-control-plane 127.0.0.1:3000' \
+  '--local-control-plane 127.0.0.1:3000 --agent-file relative/agent' '--local-control-plane 127.0.0.1:3000 --agent-file /missing/agent'; do
+  # shellcheck disable=SC2086 # the options are words on purpose
+  if printf '%s\n' "$token" | bash deploy/install.sh --control-plane example.com:7443 --ca-fingerprint "sha256:$pin" --origin https://example.com --amd64-sha256 "$pin" --arm64-sha256 "$pin" $options >"$work/output" 2>&1; then
+    die "accepted $options"
+  fi
+  if grep -q "$token" "$work/output"; then die 'the token was shown'; fi
+  grep -Eq 'local control plane|agent file|--agent-file' "$work/output" || die "refused $options for another reason: $(cat "$work/output")"
+done
 # shellcheck source=/dev/null
 . deploy/docker-repository-test.sh
 check_docker_repository deploy/install.sh "$work/apt"
-printf 'Installer input, redaction, signing-key and egress checks passed.\n'
+printf 'Installer input, redaction, signing-key, egress and single-machine checks passed.\n'
