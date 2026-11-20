@@ -232,3 +232,24 @@ func TestSingleMachineSettingsRefuseMaliciousValues(t *testing.T) {
 		}
 	}
 }
+
+// Decoding an overlay never writes into the base it starts from.
+func TestParseLeavesTheBaseAdjustmentAlone(t *testing.T) {
+	t.Parallel()
+	adj := 1000
+	base := config.Default()
+	base.Docker.WorkloadsOOMScoreAdj = &adj
+	cfg, err := config.Parse([]byte(validYAML()+"docker:\n  workloads_oom_score_adj: 0\n"), base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if *cfg.Docker.WorkloadsOOMScoreAdj != 0 || adj != 1000 {
+		t.Fatalf("overlay %d, base %d", *cfg.Docker.WorkloadsOOMScoreAdj, adj)
+	}
+	if _, err := config.Parse([]byte(validYAML()+"docker:\n  workloads_oom_score_adj: 0\n  unknown: x\n"), base); err == nil {
+		t.Fatal("unknown key accepted")
+	}
+	if adj != 1000 {
+		t.Fatalf("a failed decode changed the base to %d", adj)
+	}
+}

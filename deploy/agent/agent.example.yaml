@@ -34,8 +34,11 @@ paths:
 docker:
   host: unix:///var/run/docker.sock # TCP endpoints are refused
   # Optional, only on the machine that hosts the control plane (ADR 0021): the systemd slice of
-  # every application container, which the installer limits in memory, and their oom_score_adj
-  # (0 to 1000), so that the kernel kills an application before the control plane.
+  # every application container and their oom_score_adj (0 to 1000), so that the kernel kills an
+  # application before the control plane. The agent only places containers in the slice: until the
+  # installer's single-machine form exists, create the slice yourself with its MemoryMax (the
+  # machine's memory minus the reservation) and MemoryLow on shipkeep.slice. It needs cgroup v2
+  # mounted with memory_recursiveprot and Docker's systemd cgroup driver.
   # workloads_slice: shipkeep-workloads.slice
   # workloads_oom_score_adj: 1000
 

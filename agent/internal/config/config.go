@@ -177,6 +177,11 @@ func Parse(data []byte, base Config) (Config, error) {
 		return Config{}, fmt.Errorf("file exceeds %d bytes", MaxFileBytes)
 	}
 	cfg := base
+	// A pointer in base would be shared with cfg: decoding would write into the caller's value.
+	if adj := base.Docker.WorkloadsOOMScoreAdj; adj != nil {
+		value := *adj
+		cfg.Docker.WorkloadsOOMScoreAdj = &value
+	}
 	dec := yaml.NewDecoder(strings.NewReader(string(data)))
 	dec.KnownFields(true)
 	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, errEOF(err)) {
