@@ -89,7 +89,13 @@ describe('pipeline store', () => {
       (await tenant((s) => s.load(fixture.organizationId, { applicationId, releaseId: next }))).get(
         nodeId,
       ),
-    ).toEqual({ cpuMillis: 0, memoryBytes: 0, applications: [applicationId] });
+    ).toEqual({
+      cpuMillis: 0,
+      memoryBytes: 0,
+      applications: [applicationId],
+      // Replaced, they still count on a node that hosts the control plane (ADR 0021).
+      replaced: { cpuMillis: 500, memoryBytes: 2 ** 29 },
+    });
     expect(
       (await tenant((s) => s.load(fixture.organizationId, { applicationId, releaseId }))).get(
         nodeId,
