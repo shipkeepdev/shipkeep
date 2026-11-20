@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shipkeepdev/shipkeep/agent/internal/caddy"
 	"github.com/shipkeepdev/shipkeep/agent/internal/config"
 	"github.com/shipkeepdev/shipkeep/agent/internal/diskbudget"
 	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
@@ -85,6 +86,16 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 		stopReconcile()
 		reconciling.Wait()
 	}()
+	// On the machine that hosts the control plane, its route lives in the agent (ADR 0021).
+	if route := a.cfg.ControlPlane.Route; route.Host != "" {
+		router, err := caddy.New(a.cfg.Caddy.AdminSocket)
+		if err != nil {
+			return err
+		}
+		reconciling.Go(func() {
+			keepControlPlaneRoute(reconcileCtx, router, caddy.ControlPlaneRoute(route.Host, route.Upstream), a.cfg.Intervals.Reconcile, time.Second, a.logger)
+		})
+	}
 	// The disk budget of each container (ADR 0022), enforced on the node alone as well.
 	reconciling.Go(func() {
 		diskbudget.Watcher{Engine: engine, State: store, Logger: a.logger}.Run(reconcileCtx)

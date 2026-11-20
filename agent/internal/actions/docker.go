@@ -72,6 +72,13 @@ type Option func(*handlerOptions)
 
 type handlerOptions struct {
 	egressUnchecked bool
+	reservedHosts   []string
+}
+
+// WithReservedHosts refuses every route for these host names, or a wildcard that covers one: the
+// control plane's name on the machine that hosts it (ADR 0021), whose route the agent keeps itself.
+func WithReservedHosts(hosts ...string) Option {
+	return func(o *handlerOptions) { o.reservedHosts = append(o.reservedHosts, hosts...) }
 }
 
 // WithoutEgressCheck lets pulls run without the daemon going through the egress proxy. Only an

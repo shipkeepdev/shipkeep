@@ -93,6 +93,10 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	// Facts are read when the result is built, after the action's context ended.
 	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine) //nolint:contextcheck // see above
 	var options []actions.Option
+	if host := a.cfg.ControlPlane.Route.Host; host != "" {
+		// No application may take the control plane's name (ADR 0021).
+		options = append(options, actions.WithReservedHosts(host))
+	}
 	if a.cfg.Dev {
 		// A development machine has no egress proxy in front of its Docker daemon (ADR 0023).
 		a.logger.Warn("development mode: image pulls do not require the egress proxy")
