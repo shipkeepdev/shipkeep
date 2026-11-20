@@ -60,7 +60,23 @@ type ControlPlane struct {
 type Node struct {
 	// Name overrides the hostname as the node name shown in the UI. Optional.
 	Name string `yaml:"name"`
+	// Reservation is the share of the machine kept for the control plane and the rest of the
+	// system, on the machine that hosts the control plane (ADR 0021). The agent reports it with its
+	// facts, and placement leaves it free. Zero elsewhere.
+	Reservation Reservation `yaml:"reservation"`
 }
+
+// Reservation is an amount of CPU and memory that applications may not use (ADR 0021).
+type Reservation struct {
+	CPUMillis   uint32 `yaml:"cpu_millis"`
+	MemoryBytes uint64 `yaml:"memory_bytes"`
+}
+
+// Limits of a reservation: far above any machine, they only refuse values that are not amounts.
+const (
+	maxReservedCPUMillis   = 1_000_000
+	maxReservedMemoryBytes = 1 << 50
+)
 
 // Paths are the directories the agent owns.
 type Paths struct {
@@ -74,7 +90,18 @@ type Paths struct {
 type Docker struct {
 	// Host is a Docker daemon URL, unix:///var/run/docker.sock by default. TCP without TLS is refused.
 	Host string `yaml:"host"`
+	// WorkloadsSlice, optional, is the systemd slice every application container runs in
+	// (CgroupParent), such as shipkeep-workloads.slice on the machine that hosts the control plane
+	// (ADR 0021). The installer creates it with a memory limit.
+	WorkloadsSlice string `yaml:"workloads_slice"`
+	// WorkloadsOOMScoreAdj, optional, is the oom_score_adj of every application container, from 0
+	// to 1000: 1000 makes the kernel kill an application before the control plane (ADR 0021).
+	WorkloadsOOMScoreAdj *int `yaml:"workloads_oom_score_adj"`
 }
+
+// sliceName is a systemd slice name the agent may give Docker as CgroupParent: lowercase letters,
+// digits and dashes, ending in .slice. A dash makes a child slice, so no leading or doubled dash.
+var sliceName = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+){0,7}\.slice$`)
 
 // Caddy configures the edge proxy admin endpoint (ADR 0005).
 type Caddy struct {
@@ -203,6 +230,18 @@ func (c Config) Validate() error {
 
 	if c.Node.Name != "" && !validNodeName(c.Node.Name) {
 		add("node.name must match ^[a-z][a-z0-9-]{1,38}[a-z0-9]$")
+	}
+	if c.Node.Reservation.CPUMillis > maxReservedCPUMillis {
+		add("node.reservation.cpu_millis must be at most %d", maxReservedCPUMillis)
+	}
+	if c.Node.Reservation.MemoryBytes > maxReservedMemoryBytes {
+		add("node.reservation.memory_bytes must be at most %d", uint64(maxReservedMemoryBytes))
+	}
+	if c.Docker.WorkloadsSlice != "" && (len(c.Docker.WorkloadsSlice) > 128 || !sliceName.MatchString(c.Docker.WorkloadsSlice) || c.Docker.WorkloadsSlice == "system.slice") {
+		add("docker.workloads_slice must be a systemd slice name such as shipkeep-workloads.slice")
+	}
+	if adj := c.Docker.WorkloadsOOMScoreAdj; adj != nil && (*adj < 0 || *adj > 1000) {
+		add("docker.workloads_oom_score_adj must be between 0 and 1000")
 	}
 
 	for name, p := range map[string]string{
