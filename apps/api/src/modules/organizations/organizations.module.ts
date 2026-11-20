@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 
 import { IdentityModule } from '../identity/identity.module';
 
+import { OperatorOrganizationCommands } from './application/operator-organization-commands';
 import { OrganizationCommands } from './application/organization-commands';
 import { ORGANIZATION_STORE } from './application/organization-store';
 import { PrismaOrganizationStore } from './infrastructure/prisma-organization.store';
@@ -41,6 +42,7 @@ import { BindingMutationController } from './interface/binding-mutation.controll
   ],
   providers: [
     OrganizationCommands,
+    OperatorOrganizationCommands,
     ResourceCommands,
     CatalogQueries,
     MembershipCommands,
