@@ -9,5 +9,7 @@ export interface OrganizationRecord extends OrganizationSettings {
 export interface OrganizationStore {
   transaction<T>(organizationId: string, operation: () => Promise<T>): Promise<T>;
   create(record: OrganizationRecord, ownerId: string): Promise<void>;
+  /** The organization, when `ownerId` is one of its owners. Runs inside its `transaction`. */
+  ownedBy(id: string, ownerId: string): Promise<OrganizationRecord | undefined>;
   update(id: string, settings: OrganizationSettings, now: Date): Promise<OrganizationRecord>;
 }

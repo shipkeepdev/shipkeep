@@ -10,8 +10,16 @@ import {
 } from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
-import { APPLICATION_STORE, type ApplicationStore } from '../../apps/application/ports';
-import type { Application, ApplicationTarget } from '../../apps/domain/application';
+import {
+  APPLICATION_STORE,
+  type ApplicationStore,
+  CONTROL_PLANE_HOST,
+} from '../../apps/application/ports';
+import {
+  type Application,
+  type ApplicationTarget,
+  assertDomainsAvailable,
+} from '../../apps/domain/application';
 import { domainsReleased } from '../../apps/domain/domain-events';
 import { ConfirmationVerifier } from '../../confirmations/application/confirmation-verifier';
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
@@ -71,6 +79,7 @@ export class DeploymentCommands {
     private readonly access: TenantAccess,
     private readonly confirmations: ConfirmationVerifier,
     private readonly events: DomainEventBus,
+    @Inject(CONTROL_PLANE_HOST) private readonly controlPlaneHost: string,
   ) {}
 
   deploy(
@@ -85,6 +94,8 @@ export class DeploymentCommands {
       target,
       applicationId,
       async (application) => {
+        // A configuration saved before the control plane's name was refused is refused here.
+        assertDomainsAvailable(application.config, [this.controlPlaneHost]);
         const draft = releaseDraft(application.config);
         const set = await this.secrets.list(target);
         assertSecretsSet(
@@ -135,6 +146,7 @@ export class DeploymentCommands {
         assertRollbackTarget(previous, await this.store.serving(application.id));
         const source = await this.store.release(application.id, previous.releaseId);
         if (!source) throw new NotFoundError('release');
+        assertDomainsAvailable(source.config, [this.controlPlaneHost]);
         const draft = rollbackDraft(source);
         const set = await this.secrets.list(target);
         assertSecretsSet(

@@ -113,6 +113,7 @@ describe('placementRequest', () => {
     expect(placeReplicas(request, 3, schedulableNodes([node('edge-1')], new Map(), NOW))).toEqual({
       nodes: ['edge-1', 'edge-1'],
       unplaced: 1,
+      rejections: { 'edge-1': 'cpu' },
     });
   });
 });
@@ -161,6 +162,7 @@ describe('nodeLoads', () => {
       cpuMillis: 0,
       memoryBytes: 0,
       applications: ['app-a'],
+      replaced: DEFAULT_LIMITS,
     });
     expect(placeReplicas(request, 1, schedulableNodes([oneCore], freed, NOW))).toEqual({
       nodes: ['edge-1'],
@@ -178,7 +180,15 @@ describe('nodeLoads', () => {
     // Only app-a's release 1 is replaced: one replica on edge-1, nothing on edge-2.
     expect(nodeLoads(placed, { applicationId: 'app-a', releaseId: 'release-2' })).toEqual(
       new Map([
-        ['id-edge-1', { cpuMillis: 2000, memoryBytes: 2 ** 30, applications: ['app-a', 'app-b'] }],
+        [
+          'id-edge-1',
+          {
+            cpuMillis: 2000,
+            memoryBytes: 2 ** 30,
+            applications: ['app-a', 'app-b'],
+            replaced: DEFAULT_LIMITS,
+          },
+        ],
         ['id-edge-2', { ...DEFAULT_LIMITS, applications: ['app-b'] }],
       ]),
     );
@@ -193,6 +203,7 @@ describe('nodeLoads', () => {
     expect(placeReplicas(other, 1, schedulableNodes([oneCore], loads, NOW))).toEqual({
       nodes: [],
       unplaced: 1,
+      rejections: { 'edge-1': 'cpu' },
     });
   });
 
@@ -205,5 +216,107 @@ describe('nodeLoads', () => {
         releaseId: 'release-2',
       }),
     ).toEqual(new Map([['id-edge-1', { ...DEFAULT_LIMITS, applications: ['app-b'] }]]));
+  });
+});
+
+/** The single node of a list, or a failed test. */
+function only<T>(items: readonly T[]): T {
+  const [item] = items;
+  if (item === undefined || items.length !== 1)
+    throw new Error(`expected one item, got ${String(items.length)}`);
+  return item;
+}
+
+describe('the machine that hosts the control plane (ADR 0021)', () => {
+  const GiB = 2 ** 30;
+  const request = placementRequest('app-a', {
+    version: 1,
+    name: 'billing-api',
+    build: { type: 'image', image: 'nginx' },
+    run: { port: 80 },
+    resources: { cpu: '1', memory: '1536Mi' },
+  });
+  // 4 CPUs and 4 GiB, of which 0.5 CPU and 1 GiB are kept for the control plane.
+  const shared = node('cp', {
+    facts: {
+      architecture: 'amd64',
+      cpu_count: 4,
+      memory_bytes: 4 * GiB,
+      reserved_cpu_millis: 500,
+      reserved_memory_bytes: GiB,
+    },
+  });
+  const replica = (releaseId: string) => ({
+    nodeId: 'id-cp',
+    applicationId: 'app-a',
+    releaseId,
+    cpuMillis: 1000,
+    memoryBytes: 1.5 * GiB,
+  });
+  const replacing = { applicationId: 'app-a', releaseId: 'release-2' };
+
+  it('schedules on the machine minus the reservation', () => {
+    const scheduled = only(schedulableNodes([shared], new Map(), NOW));
+    expect(scheduled.capacity).toEqual({ cpuMillis: 3500, memoryBytes: 3 * GiB });
+  });
+
+  it('counts the release being replaced and refuses a redeployment that does not fit beside it', () => {
+    const loads = nodeLoads([replica('release-1')], replacing);
+    const scheduled = only(schedulableNodes([shared], loads, NOW));
+    expect(scheduled).toMatchObject({
+      reserved: { cpuMillis: 0, memoryBytes: 0 },
+      surge: { cpuMillis: 1000, memoryBytes: 1.5 * GiB },
+    });
+    // 1.5 GiB old + 1.5 GiB new fits in 3 GiB; a second replica of 1.5 GiB does not.
+    expect(placeReplicas({ ...request, spread: 'none' }, 2, [scheduled])).toEqual({
+      nodes: ['cp'],
+      unplaced: 1,
+      rejections: { cp: 'surge' },
+    });
+    expect(placeReplica({ ...request, spread: 'none' }, [scheduled])).toEqual({
+      placed: true,
+      node: 'cp',
+    });
+    const bigger = { ...request, resources: { cpuMillis: 1000, memoryBytes: 2 * GiB } };
+    expect(placeReplica(bigger, [scheduled])).toEqual({
+      placed: false,
+      rejections: { cp: 'surge' },
+    });
+  });
+
+  it('keeps the usual rule on a node without a reservation', () => {
+    const edge = node('edge', {
+      facts: { architecture: 'amd64', cpu_count: 4, memory_bytes: 3 * GiB },
+    });
+    const loads = nodeLoads([{ ...replica('release-1'), nodeId: 'id-edge' }], replacing);
+    const scheduled = only(schedulableNodes([edge], loads, NOW));
+    expect(scheduled.surge).toBeUndefined();
+    const bigger = { ...request, resources: { cpuMillis: 1000, memoryBytes: 2 * GiB } };
+    expect(placeReplica(bigger, [scheduled])).toEqual({ placed: true, node: 'edge' });
+  });
+
+  it('leaves no room when the reservation is the whole machine, and ignores bad values', () => {
+    const full = node('full', {
+      facts: {
+        architecture: 'amd64',
+        cpu_count: 1,
+        memory_bytes: GiB,
+        reserved_cpu_millis: 2000,
+        reserved_memory_bytes: 2 * GiB,
+      },
+    });
+    const odd = node('odd', {
+      facts: {
+        architecture: 'amd64',
+        cpu_count: 2,
+        memory_bytes: GiB,
+        reserved_cpu_millis: -500,
+        reserved_memory_bytes: 'lots',
+      },
+    });
+    const [fullNode, oddNode] = schedulableNodes([full, odd], new Map(), NOW);
+    expect(fullNode.capacity).toEqual({ cpuMillis: 0, memoryBytes: 0 });
+    expect(oddNode.capacity).toEqual({ cpuMillis: 2000, memoryBytes: GiB });
+    expect(oddNode.surge).toBeUndefined();
   });
 });

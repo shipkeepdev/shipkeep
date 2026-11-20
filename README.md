@@ -37,9 +37,9 @@ Shipkeep is a self-hosted platform to deploy applications, databases and service
 | **Safe by default**     | Snapshots before upgrades, resumable operations, and explicit confirmation for anything destructive.                                                                |
 
 <p align="center">
-  <img src="docs/assets/dashboard-mockup.jpg" alt="Mockup of the Shipkeep dashboard: applications, servers, requests served, deployments and alerts." width="100%">
+  <img src="docs/assets/demo.webp" alt="Shipkeep's web UI: the applications list, then a first deployment of an nginx application followed step by step until it is live, then the servers page with one ready server." width="100%">
   <br>
-  <sub>Design mockup with fictional data.</sub>
+  <sub>A first deployment in the web UI, recorded on 20 November 2026 from <code>main</code>, not released yet. A fresh Ubuntu 24.04 test container was installed with the single-machine installer. Everything shown is real: one server, a real image pulled and started. The wait during the deployment plays 10 times faster.</sub>
 </p>
 
 ## How it works
@@ -86,10 +86,23 @@ shipkeep status --org <id> --project <id> --env <id>
 | Agent, deployment pipeline, rollback, routing through Caddy                                                | Run end to end in containers on one machine: deployments, a rollback and a restart of the server's container succeed. **Not yet run on a real server**                    |
 | Installation: control plane with Docker Compose, servers with one command                                  | Run end to end with the published prerelease on one machine, see the [installation procedure](docs/INSTALL.md). **Not yet on a real server or with a public certificate** |
 | Control plane installer (questions for the DNS name and the first account, email optional, then one run)   | Run from the published prerelease on a test machine. **Not yet with a public certificate**                                                                                |
+| One machine for the control plane and the applications                                                     | On `main`, not released yet: installed and used end to end in a fresh test container, with deployments and a restart of that container. **Not yet on a real server**      |
 | Compose applications                                                                                       | Validator built, not connected yet                                                                                                                                        |
 | Git providers, builds, WireGuard network, failover, managed databases, backups, logs and metrics, previews | Planned, see the [roadmap](docs/PLAN.md)                                                                                                                                  |
 
 Continuous integration runs on every pull request: lint, unit, integration and browser tests, plus security scanners.
+
+## Help wanted
+
+Shipkeep is young, and a few people make a real difference now. What helps most:
+
+- **Install it on a server you can afford to lose, and tell us what breaks.** Real servers on real providers are what the project has seen least. Follow the [installation procedure](docs/INSTALL.md), then [open a bug](https://github.com/shipkeepdev/shipkeep/issues/new?template=bug.yml) with what you ran and what you saw.
+- **Start with a small issue.** Issues labelled [`good first issue`](https://github.com/shipkeepdev/shipkeep/labels/good%20first%20issue) are self-contained and say where to look.
+- **Take on a larger piece.** The agent is written in Go, the control plane in TypeScript with NestJS, the web UI in Angular. Open work includes the [server detail page](https://github.com/shipkeepdev/shipkeep/issues/264) and the [deployment detail page with its full log](https://github.com/shipkeepdev/shipkeep/issues/265) on the web side, and [metrics](https://github.com/shipkeepdev/shipkeep/issues/233) and [log shipping](https://github.com/shipkeepdev/shipkeep/issues/232) across the agent and the control plane. Issues labelled [`help wanted`](https://github.com/shipkeepdev/shipkeep/labels/help%20wanted) are the pieces where help is most needed. Comment on the issue first, so that we agree on the approach before you write code.
+- **Challenge the security model.** Read the [threat model](docs/THREAT_MODEL.md) and tell us where it is wrong. Report vulnerabilities privately, as [SECURITY.md](SECURITY.md) explains.
+- **Ask, suggest and discuss** in [Discussions](https://github.com/shipkeepdev/shipkeep/discussions): ideas, questions and use cases are welcome.
+
+If Shipkeep looks useful to you, a star helps other people who run their own servers find it.
 
 ## Run Shipkeep locally
 

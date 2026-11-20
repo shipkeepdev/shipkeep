@@ -2,22 +2,36 @@
 //
 //   node main.js account create --email <address>
 //   node main.js account reset-password --email <address>
+//   node main.js organization create --name <name> --slug <slug> --owner <address> [--id <uuidv7>]
+//   node main.js server join-token --organization <id>
+//   node main.js server ca-fingerprint
 //
 // The password never comes as an argument or a variable, where other processes could read it: it
-// is typed without echo on a terminal, or is the first line of a pipe.
+// is typed without echo on a terminal, or is the first line of a pipe. The last three are for the
+// single-machine installer (ADR 0021); a join token is a secret and is never written to a terminal.
 
 import type { Readable, Writable } from 'node:stream';
 
 import type { INestApplicationContext } from '@nestjs/common';
-import { Secret } from '@shipkeep/domain';
+import { isDomainError, isTenantId, Secret, SYSTEM_ACTOR } from '@shipkeep/domain';
 
+import { IssueJoinToken } from './modules/fleet/application/issue-join-token';
+import {
+  CERTIFICATE_AUTHORITY,
+  type CertificateAuthority,
+} from './modules/fleet/application/ports';
 import { OperatorAccountCommands } from './modules/identity/application/operator-account-commands';
+import { OperatorOrganizationCommands } from './modules/organizations/application/operator-organization-commands';
 
 export const USAGE = [
   'Usage, on the server that runs the control plane:',
   '  node main.js account create --email <address>',
   '  node main.js account reset-password --email <address>',
+  '  node main.js organization create --name <name> --slug <slug> --owner <address> [--id <uuidv7>]',
+  '  node main.js server join-token --organization <id>',
+  '  node main.js server ca-fingerprint',
   'The password is read from standard input: typed without echo on a terminal, or the first line of a pipe.',
+  "A join token is written to standard output only when it is not a terminal, such as the agent's token file.",
 ].join('\n');
 
 /** A command that cannot be read. Its message is the usage, never what was typed. */
@@ -28,10 +42,34 @@ export class OperatorUsageError extends Error {
   }
 }
 
-export interface OperatorCommand {
-  readonly action: 'create' | 'reset-password';
-  readonly email: string;
+export type OperatorCommand =
+  | { readonly action: 'create' | 'reset-password'; readonly email: string }
+  | {
+      readonly action: 'organization-create';
+      readonly name: string;
+      readonly slug: string;
+      readonly owner: string;
+      readonly id?: string;
+    }
+  | { readonly action: 'join-token'; readonly organizationId: string }
+  | { readonly action: 'ca-fingerprint' };
+
+/**
+ * The exit status of a failed command: 2 for a command that cannot be read, 3 when the account to
+ * create already exists (an installer resuming its own run treats it as done), 1 otherwise.
+ */
+export function operatorExitCode(error: unknown): number {
+  if (error instanceof OperatorUsageError) return 2;
+  if (isDomainError(error) && error.code === 'account_exists') return 3;
+  return 1;
 }
+
+/** Only the account commands read a password. */
+export function needsPassword(command: OperatorCommand): boolean {
+  return command.action === 'create' || command.action === 'reset-password';
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 /** Longest password line accepted: the policy allows 128 characters, of four bytes at most. */
 const MAX_PASSWORD_BYTES = 1024;
@@ -39,20 +77,54 @@ const MAX_PASSWORD_BYTES = 1024;
 const isControl = (character: string): boolean =>
   character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127;
 
+/** A value given on the command line: present, bounded, and free of control characters. */
+const plain = (value: string | undefined, max: number): value is string =>
+  !!value && value.length <= max && !Array.from(value).some(isControl);
+
 /** Reads the arguments after `node main.js`. The list of commands is closed. */
 export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
-  const [group, action, flag, email, ...rest] = argv;
-  if (
-    group !== 'account' ||
-    (action !== 'create' && action !== 'reset-password') ||
-    flag !== '--email' ||
-    !email ||
-    email.length > 256 ||
-    Array.from(email).some(isControl) ||
-    rest.length > 0
-  )
-    throw new OperatorUsageError();
-  return { action, email };
+  const [group, action] = argv;
+  if (group === 'account') {
+    const [, , flag, email, ...rest] = argv;
+    if (
+      (action === 'create' || action === 'reset-password') &&
+      flag === '--email' &&
+      plain(email, 256) &&
+      rest.length === 0
+    )
+      return { action, email };
+  }
+  if (group === 'organization' && action === 'create') {
+    const [, , nameFlag, name, slugFlag, slug, ownerFlag, owner, ...extra] = argv;
+    if (
+      nameFlag === '--name' &&
+      plain(name, 128) &&
+      slugFlag === '--slug' &&
+      plain(slug, 64) &&
+      ownerFlag === '--owner' &&
+      plain(owner, 256)
+    ) {
+      if (extra.length === 0) return { action: 'organization-create', name, slug, owner };
+      // An id chosen by the installer, so that a resumed run finds the organization again. A
+      // tenant id, as every organization's: a UUIDv7.
+      const [idFlag, id] = extra;
+      if (extra.length === 2 && idFlag === '--id' && isTenantId(id))
+        return { action: 'organization-create', name, slug, owner, id };
+    }
+  }
+  if (group === 'server' && action === 'join-token') {
+    const [, , flag, organizationId, ...rest] = argv;
+    if (
+      flag === '--organization' &&
+      // A missing value reads as the text "undefined", which is no id.
+      UUID.test(organizationId) &&
+      rest.length === 0
+    )
+      return { action: 'join-token', organizationId };
+  }
+  if (group === 'server' && action === 'ca-fingerprint' && argv.length === 2)
+    return { action: 'ca-fingerprint' };
+  throw new OperatorUsageError();
 }
 
 type Input = Readable & { isTTY?: boolean; setRawMode?: (raw: boolean) => unknown };
@@ -222,7 +294,7 @@ async function warn(output: Writable, line: string): Promise<void> {
 export async function runThenClose(
   app: INestApplicationContext,
   command: OperatorCommand,
-  password: Secret,
+  password: Secret | undefined,
   output: Writable,
   fallback: Writable,
 ): Promise<void> {
@@ -242,10 +314,37 @@ export async function runThenClose(
 export async function runOperatorCommand(
   app: INestApplicationContext,
   command: OperatorCommand,
-  password: Secret,
+  password: Secret | undefined,
   output: Writable,
   fallback: Writable,
 ): Promise<void> {
+  if (command.action === 'organization-create') {
+    const owner = await app.get(OperatorAccountCommands).activeAccountId(command.owner);
+    const organization = await app
+      .get(OperatorOrganizationCommands)
+      .create({ name: command.name, slug: command.slug }, owner, new Date(), command.id);
+    await confirm(output, fallback, `Organization created: ${organization.id}`);
+    return;
+  }
+  if (command.action === 'join-token') {
+    // Refused before a token exists: a secret on a terminal stays on the screen and in scrollback.
+    if ((output as Writable & { isTTY?: boolean }).isTTY === true)
+      throw new OperatorUsageError(
+        "The join token is a secret: send it to a file, such as the agent's token file, not to a terminal.",
+      );
+    const issued = await app
+      .get(IssueJoinToken)
+      .execute({ organizationId: command.organizationId, actor: SYSTEM_ACTOR });
+    // Never to the other stream, which may be a terminal: an unwritten token expires unused.
+    await writeLine(output, issued.value.expose());
+    return;
+  }
+  if (command.action === 'ca-fingerprint') {
+    const ca = app.get<CertificateAuthority>(CERTIFICATE_AUTHORITY);
+    await confirm(output, fallback, await ca.caFingerprint());
+    return;
+  }
+  if (!password) throw new OperatorUsageError('A password is required on standard input.');
   const accounts = app.get(OperatorAccountCommands);
   if (command.action === 'create') {
     const created = await accounts.create(command.email, password);

@@ -32,6 +32,14 @@ export class PrismaOrganizationStore implements OrganizationStore {
     });
   }
 
+  async ownedBy(id: string, ownerId: string): Promise<OrganizationRecord | undefined> {
+    const record = await this.database.client.organization.findFirst({
+      where: { id, memberships: { some: { userId: ownerId, orgRole: 'owner' } } },
+      select: { id: true, name: true, slug: true, createdAt: true, updatedAt: true },
+    });
+    return record ?? undefined;
+  }
+
   async update(id: string, settings: OrganizationSettings, now: Date): Promise<OrganizationRecord> {
     try {
       const records = await this.database.client.organization.updateManyAndReturn({

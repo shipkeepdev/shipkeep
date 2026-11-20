@@ -32,7 +32,8 @@ export function configureApp(app: INestApplication): INestApplication {
   // This application uses Nest's Express adapter in production and tests.
   const http = app as NestExpressApplication;
   const config = app.get(AppConfig);
-  http.set('trust proxy', config.get('TRUST_PROXY') === 'loopback' ? 'loopback' : false);
+  const trusted = config.get('TRUST_PROXY');
+  http.set('trust proxy', trusted === 'none' ? false : trusted);
   app.use((_request: Request, response: Response, next: NextFunction) => {
     response.setHeader('Cache-Control', 'no-store');
     next();

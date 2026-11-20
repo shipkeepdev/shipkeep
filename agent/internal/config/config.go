@@ -54,13 +54,44 @@ type ControlPlane struct {
 	// loopback IP literal with a port, on the machine that hosts the control plane (ADR 0021). The
 	// gateway certificate is still verified against Address's host and the CA fingerprint.
 	Connect string `yaml:"connect"`
+	// Route, optional, is the control plane's own route on the machine that hosts it (ADR 0021):
+	// the agent keeps it in Caddy from its start, before and independently of enrollment, and no
+	// action can change or remove it.
+	Route LocalRoute `yaml:"route"`
 }
+
+// LocalRoute sends a host name to a loopback address through the node's Caddy.
+type LocalRoute struct {
+	// Host is the control plane's public name, the host of its API_PUBLIC_URL.
+	Host string `yaml:"host"`
+	// Upstream is the loopback address and port the control plane's HTTP port is published on.
+	Upstream string `yaml:"upstream"`
+}
+
+// routeHost is a DNS name of at least two labels, lowercase, without a wildcard.
+var routeHost = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
 
 // Node holds node-level identity overrides.
 type Node struct {
 	// Name overrides the hostname as the node name shown in the UI. Optional.
 	Name string `yaml:"name"`
+	// Reservation is the share of the machine kept for the control plane and the rest of the
+	// system, on the machine that hosts the control plane (ADR 0021). The agent reports it with its
+	// facts, and placement leaves it free. Zero elsewhere.
+	Reservation Reservation `yaml:"reservation"`
 }
+
+// Reservation is an amount of CPU and memory that applications may not use (ADR 0021).
+type Reservation struct {
+	CPUMillis   uint32 `yaml:"cpu_millis"`
+	MemoryBytes uint64 `yaml:"memory_bytes"`
+}
+
+// Limits of a reservation: far above any machine, they only refuse values that are not amounts.
+const (
+	maxReservedCPUMillis   = 1_000_000
+	maxReservedMemoryBytes = 1 << 50
+)
 
 // Paths are the directories the agent owns.
 type Paths struct {
@@ -74,7 +105,18 @@ type Paths struct {
 type Docker struct {
 	// Host is a Docker daemon URL, unix:///var/run/docker.sock by default. TCP without TLS is refused.
 	Host string `yaml:"host"`
+	// WorkloadsSlice, optional, is the systemd slice every application container runs in
+	// (CgroupParent), such as shipkeep-workloads.slice on the machine that hosts the control plane
+	// (ADR 0021). The installer creates it with a memory limit.
+	WorkloadsSlice string `yaml:"workloads_slice"`
+	// WorkloadsOOMScoreAdj, optional, is the oom_score_adj of every application container, from 0
+	// to 1000: 1000 makes the kernel kill an application before the control plane (ADR 0021).
+	WorkloadsOOMScoreAdj *int `yaml:"workloads_oom_score_adj"`
 }
+
+// sliceName is a systemd slice name the agent may give Docker as CgroupParent: lowercase letters,
+// digits and dashes, ending in .slice. A dash makes a child slice, so no leading or doubled dash.
+var sliceName = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+){0,7}\.slice$`)
 
 // Caddy configures the edge proxy admin endpoint (ADR 0005).
 type Caddy struct {
@@ -150,6 +192,11 @@ func Parse(data []byte, base Config) (Config, error) {
 		return Config{}, fmt.Errorf("file exceeds %d bytes", MaxFileBytes)
 	}
 	cfg := base
+	// A pointer in base would be shared with cfg: decoding would write into the caller's value.
+	if adj := base.Docker.WorkloadsOOMScoreAdj; adj != nil {
+		value := *adj
+		cfg.Docker.WorkloadsOOMScoreAdj = &value
+	}
 	dec := yaml.NewDecoder(strings.NewReader(string(data)))
 	dec.KnownFields(true)
 	if err := dec.Decode(&cfg); err != nil && !errors.Is(err, errEOF(err)) {
@@ -184,6 +231,15 @@ func (c Config) Validate() error {
 		add("control_plane.address: %v", err)
 	}
 
+	if route := c.ControlPlane.Route; route != (LocalRoute{}) {
+		if len(route.Host) > 253 || !routeHost.MatchString(route.Host) {
+			add("control_plane.route.host must be a lowercase DNS name such as shipkeep.example.com")
+		}
+		if !gateway.LoopbackConnect(route.Upstream) {
+			add("control_plane.route.upstream must be a loopback address with a port, such as 127.0.0.1:8080")
+		}
+	}
+
 	if c.ControlPlane.Connect != "" && !gateway.LoopbackConnect(c.ControlPlane.Connect) {
 		add("control_plane.connect must be a loopback address with a port, such as 127.0.0.1:7443 or [::1]:7443")
 	}
@@ -203,6 +259,18 @@ func (c Config) Validate() error {
 
 	if c.Node.Name != "" && !validNodeName(c.Node.Name) {
 		add("node.name must match ^[a-z][a-z0-9-]{1,38}[a-z0-9]$")
+	}
+	if c.Node.Reservation.CPUMillis > maxReservedCPUMillis {
+		add("node.reservation.cpu_millis must be at most %d", maxReservedCPUMillis)
+	}
+	if c.Node.Reservation.MemoryBytes > maxReservedMemoryBytes {
+		add("node.reservation.memory_bytes must be at most %d", uint64(maxReservedMemoryBytes))
+	}
+	if c.Docker.WorkloadsSlice != "" && (len(c.Docker.WorkloadsSlice) > 128 || !sliceName.MatchString(c.Docker.WorkloadsSlice) || c.Docker.WorkloadsSlice == "system.slice") {
+		add("docker.workloads_slice must be a systemd slice name such as shipkeep-workloads.slice")
+	}
+	if adj := c.Docker.WorkloadsOOMScoreAdj; adj != nil && (*adj < 0 || *adj > 1000) {
+		add("docker.workloads_oom_score_adj must be between 0 and 1000")
 	}
 
 	for name, p := range map[string]string{
