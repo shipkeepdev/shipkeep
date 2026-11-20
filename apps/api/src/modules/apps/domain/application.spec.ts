@@ -216,6 +216,10 @@ describe("the control plane's name (ADR 0021)", () => {
         'shipkeep.example.com',
       ]);
     }).toThrow(expect.objectContaining({ code: 'domain_reserved' }));
+    // An API_PUBLIC_URL with a final dot names the same host.
+    expect(() => {
+      assertDomainsAvailable(config(['shipkeep.example.com']), ['shipkeep.example.com.']);
+    }).toThrow(expect.objectContaining({ code: 'domain_reserved' }));
     // Host names compare without case, as DNS does.
     expect(() => {
       assertDomainsAvailable(config(['shipkeep.example.com']), ['Shipkeep.Example.com']);

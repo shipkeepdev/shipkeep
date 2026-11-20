@@ -76,8 +76,10 @@ export function applicationConfig(value: unknown): ApplicationConfig {
  * `reserved` holds the host of `API_PUBLIC_URL`. Wildcards are refused earlier.
  */
 export function assertDomainsAvailable(config: ShipkeepConfig, reserved: readonly string[]): void {
-  const names = reserved.map((name) => name.toLowerCase());
-  const taken = config.domains?.find((hostname) => names.includes(hostname.toLowerCase()));
+  // DNS compares without case, and a name with one final dot is the same absolute name.
+  const plain = (name: string) => name.toLowerCase().replace(/\.$/, '');
+  const names = reserved.map(plain);
+  const taken = config.domains?.find((hostname) => names.includes(plain(hostname)));
   if (taken !== undefined)
     throw new InvalidInputError(
       'domain_reserved',
