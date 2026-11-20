@@ -67,6 +67,9 @@ export interface ApplicationStore {
   hosts(application: Pick<Application, 'id' | 'organizationId'>): Promise<ApplicationHost[]>;
 }
 
+/** The control plane's own host name, from `API_PUBLIC_URL`, which no application may claim. */
+export const CONTROL_PLANE_HOST = Symbol('CONTROL_PLANE_HOST');
+
 export const DOMAIN_RESOLVER = Symbol('DomainResolver');
 /** Looks up a hostname's addresses; undefined when the lookup itself failed. */
 export interface DomainResolver {
