@@ -33,8 +33,9 @@ export class RouteCrumbs {
   private readonly crumbs = inject(PageCrumbs);
   private page: string | undefined;
 
-  apply(root: ActivatedRouteSnapshot): void {
-    let route = root;
+  /** `snapshot` may be any route of the state: the key always starts from its root. */
+  apply(snapshot: ActivatedRouteSnapshot): void {
+    let route = snapshot.root;
     const chain = [key(route)];
     while (route.firstChild) {
       route = route.firstChild;

@@ -14,16 +14,21 @@ import { PageCrumbs, RouteCrumbs } from './page-crumbs';
 function state(
   pages: readonly { path: string; params?: Record<string, string>; crumbs?: string[] }[],
 ): RouterStateSnapshot {
-  let child: ActivatedRouteSnapshot | null = null;
-  for (const page of [...pages].reverse()) {
-    child = {
-      routeConfig: { path: page.path },
-      params: page.params ?? {},
-      data: page.crumbs ? { crumbs: page.crumbs } : {},
-      firstChild: child,
-    } as unknown as ActivatedRouteSnapshot;
-  }
-  return { root: child } as unknown as RouterStateSnapshot;
+  const nodes = pages.map(
+    (page) =>
+      ({
+        routeConfig: { path: page.path },
+        params: page.params ?? {},
+        data: page.crumbs ? { crumbs: page.crumbs } : {},
+        firstChild: null,
+        root: null,
+      }) as { firstChild: unknown; root: unknown },
+  );
+  nodes.forEach((node, index) => {
+    node.firstChild = nodes[index + 1] ?? null;
+    node.root = nodes[0];
+  });
+  return { root: nodes[0] } as unknown as RouterStateSnapshot;
 }
 
 const applicationPage = (applicationId: string) =>
@@ -63,6 +68,17 @@ describe('the trail a route puts in the top bar', () => {
 
   it('stays when the navigation keeps the page and its parameters, such as a section in the query', () => {
     events.next(new ResolveEnd(1, '/a', '/a', applicationPage('app-1')));
+    crumbs.set([{ label: 'storefront', raw: true }]);
+    events.next(
+      new ResolveEnd(2, '/a?section=domains', '/a?section=domains', applicationPage('app-1')),
+    );
+    expect(labels()).toEqual(['storefront']);
+  });
+
+  it('keeps the trail when the layout applied its own route first, on a section change', () => {
+    // The layout starts from its own route, one level below the root that ResolveEnd gives.
+    const created = applicationPage('app-1');
+    TestBed.inject(RouteCrumbs).apply(created.root.firstChild as ActivatedRouteSnapshot);
     crumbs.set([{ label: 'storefront', raw: true }]);
     events.next(
       new ResolveEnd(2, '/a?section=domains', '/a?section=domains', applicationPage('app-1')),
