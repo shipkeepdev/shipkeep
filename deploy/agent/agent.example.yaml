@@ -27,6 +27,12 @@ control_plane:
 node:
   # Optional. Defaults to the hostname.
   name: ''
+  # Optional, only on the machine that hosts the control plane (ADR 0021): the CPU and memory kept
+  # for the control plane and the system. The agent reports it with its facts, and placement
+  # leaves it free.
+  # reservation:
+  #   cpu_millis: 500
+  #   memory_bytes: 1073741824
 
 paths:
   state_dir: /var/lib/shipkeep # SQLite state, operation journal, certificates (mode 0700)
@@ -34,6 +40,14 @@ paths:
 
 docker:
   host: unix:///var/run/docker.sock # TCP endpoints are refused
+  # Optional, only on the machine that hosts the control plane (ADR 0021): the systemd slice of
+  # every application container and their oom_score_adj (0 to 1000), so that the kernel kills an
+  # application before the control plane. The agent only places containers in the slice: until the
+  # installer's single-machine form exists, create the slice yourself with its MemoryMax (the
+  # machine's memory minus the reservation) and MemoryLow on shipkeep.slice. It needs cgroup v2
+  # mounted with memory_recursiveprot and Docker's systemd cgroup driver.
+  # workloads_slice: shipkeep-workloads.slice
+  # workloads_oom_score_adj: 1000
 
 caddy:
   admin_socket: /run/shipkeep/caddy-admin.sock

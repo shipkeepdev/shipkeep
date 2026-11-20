@@ -22,8 +22,8 @@ var errSpecConflict = errors.New("container exists with a different specificatio
 
 // createContainer creates (never starts) a container from a fully validated spec. A replay finds
 // the same container through its name and fingerprint; a different spec under the same name fails.
-func createContainer(engine Engine, spec *agentv1.ContainerSpec) (journal.Plan, error) {
-	name, config, err := containerConfig(spec)
+func createContainer(engine Engine, spec *agentv1.ContainerSpec, workloads Workloads) (journal.Plan, error) {
+	name, config, err := containerConfig(spec, workloads)
 	if err != nil {
 		return journal.Plan{}, err
 	}

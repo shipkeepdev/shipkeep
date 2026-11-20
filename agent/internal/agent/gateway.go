@@ -37,7 +37,8 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		name = hostname
 	}
 	// Capacity facts (CPU, memory, disk) feed scheduling (SPEC 6); the configured name wins.
-	facts := actions.Facts(ctx, a.cfg.Paths.StateDir, engine)
+	reservation := actions.Reservation{CPUMillis: a.cfg.Node.Reservation.CPUMillis, MemoryBytes: a.cfg.Node.Reservation.MemoryBytes}
+	facts := actions.Facts(ctx, a.cfg.Paths.StateDir, engine, reservation)
 	facts.Hostname = name
 	bundle, err := credentials.Load(a.cfg.Paths.StateDir, a.cfg.ControlPlane.CAFingerprint)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -87,8 +88,8 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		<-secured
 	}()
 	// Facts are read when the result is built, after the action's context ended.
-	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine) //nolint:contextcheck // see above
-	var options []actions.Option
+	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine, reservation) //nolint:contextcheck // see above
+	options := []actions.Option{actions.WithWorkloads(actions.Workloads{Slice: a.cfg.Docker.WorkloadsSlice, OOMScoreAdj: a.cfg.Docker.WorkloadsOOMScoreAdj})}
 	if host := a.cfg.ControlPlane.Route.Host; host != "" {
 		// No application may take the control plane's name (ADR 0021).
 		options = append(options, actions.WithReservedHosts(host))

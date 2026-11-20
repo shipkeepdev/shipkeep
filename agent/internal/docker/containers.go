@@ -57,6 +57,10 @@ type HostConfig struct {
 	Init           bool              `json:"Init"`
 	LogConfig      map[string]any    `json:"LogConfig,omitempty"`
 	Tmpfs          map[string]string `json:"Tmpfs,omitempty"`
+	// CgroupParent is a systemd slice with the systemd cgroup driver (ADR 0021).
+	CgroupParent string `json:"CgroupParent,omitempty"`
+	// OomScoreAdj is set only when the agent's configuration names one (ADR 0021).
+	OomScoreAdj *int `json:"OomScoreAdj,omitempty"`
 }
 
 // Mount is a volume or tmpfs mount; the bind type is never produced by the agent.

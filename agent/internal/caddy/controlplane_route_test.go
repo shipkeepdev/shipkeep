@@ -121,13 +121,38 @@ func TestControlPlaneRouteWaitsForARouteChangeInProgress(t *testing.T) {
 	}
 	plain := Route{ID: RouteID("plain"), Match: []Match{{Host: []string{"plain.example.com"}}}, Handle: []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{{Dial: "10.0.0.2:80"}}}}, Terminal: true}
 	repaired := make(chan error, 1)
+	requests := func() []string {
+		fake.mu.Lock()
+		defer fake.mu.Unlock()
+		return slices.Clone(fake.requests)
+	}
+	// Polls until seen holds, or fails after a bound: a regression must not hang the test.
+	waitFor := func(seen func([]string) bool) bool {
+		deadline := time.Now().Add(2 * time.Second)
+		for time.Now().Before(deadline) {
+			if seen(requests()) {
+				return true
+			}
+			time.Sleep(time.Millisecond)
+		}
+		return false
+	}
 	client.betweenWrites = func() {
+		before := len(requests())
 		go func() {
 			_, err := client.EnsureControlPlaneRoute(ctx, ControlPlaneRoute("shipkeep.example.com", "127.0.0.1:8080"))
 			repaired <- err
 		}()
-		// Give the repair every chance to run now, if it could.
-		time.Sleep(50 * time.Millisecond)
+		// The repair is running once Caddy got its first request, which comes before the lock.
+		if !waitFor(func(r []string) bool { return len(r) > before }) {
+			t.Error("the repair never started")
+			return
+		}
+		// Under the lock, the repair reads the routes. It must not before the change ends.
+		routes := "GET /config/apps/http/servers/" + Server + "/routes"
+		if waitFor(func(r []string) bool { return slices.Contains(r[before:], routes) }) {
+			t.Error("the repair read the routes in the middle of a route change")
+		}
 	}
 	if err := client.ApplyRoute(ctx, plain, []string{"plain.example.com"}, nil); err != nil {
 		t.Fatal(err)
