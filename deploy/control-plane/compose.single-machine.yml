@@ -1,0 +1,49 @@
+# The control plane and applications on one machine (ADR 0021), on top of compose.yml:
+#
+#   docker compose -f compose.yml -f compose.single-machine.yml up -d
+#
+# The server's own Caddy (shipkeep-caddy, installed with the agent) owns ports 80 and 443. It
+# reaches the control plane on loopback, through the route the agent keeps for it. The control
+# plane's containers run in shipkeep-controlplane.slice, which the installer creates and protects
+# (MemoryLow), and PostgreSQL, the API and the namespace they share are the last the kernel kills.
+# Without this file nothing changes: two machines stay installed as before.
+services:
+  net:
+    # Replaces the ports of compose.yml: the control plane's HTTP port on loopback only, for the
+    # host's Caddy and nothing else, and the agent gateway on every address, so that more servers
+    # can be added later.
+    ports: !override ['127.0.0.1:3000:3000', '7443:7443']
+    cgroup_parent: shipkeep-controlplane.slice
+    oom_score_adj: -900
+
+  control-plane:
+    environment:
+      # The host's Caddy reaches the API through the gateway of the network below, and only it:
+      # the port is published on loopback. Forwarding headers from that address are trusted.
+      TRUST_PROXY: 172.31.250.1
+    cgroup_parent: shipkeep-controlplane.slice
+    oom_score_adj: -900
+
+  postgres:
+    cgroup_parent: shipkeep-controlplane.slice
+    oom_score_adj: -900
+
+  kek:
+    cgroup_parent: shipkeep-controlplane.slice
+
+  migrate:
+    cgroup_parent: shipkeep-controlplane.slice
+
+  database-role:
+    cgroup_parent: shipkeep-controlplane.slice
+
+  caddy:
+    # The server's Caddy serves the control plane on a single machine: this one never starts.
+    profiles: ['two-machines']
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.31.250.0/24
+          gateway: 172.31.250.1
