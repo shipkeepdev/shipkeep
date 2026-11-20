@@ -1,3 +1,5 @@
+import { isIP } from 'node:net';
+
 import { Secret } from '@shipkeep/domain';
 import { z } from 'zod';
 
@@ -6,6 +8,16 @@ const nodeEnv = z.enum(['development', 'test', 'production']).default('developme
 const port = z.coerce.number().int().min(1).max(65535);
 
 const httpUrl = z.url({ protocol: /^https?$/ });
+
+/**
+ * Whom the API trusts for forwarding headers: nobody, its own loopback, or one address. One address
+ * is the gateway of the control plane's Compose network on a single machine, through which the
+ * host's Caddy reaches it (ADR 0021). Never a range or a list.
+ */
+const trustProxy = z.union([
+  z.enum(['none', 'loopback']),
+  z.string().refine((value) => isIP(value) !== 0, 'must be none, loopback or one IP address'),
+]);
 
 /**
  * Optional SMTP settings: empty counts as unset. A compose file cannot omit a variable, it can
@@ -27,7 +39,7 @@ export const configSchema = z
   .object({
     NODE_ENV: nodeEnv,
     API_PORT: port.default(3000),
-    TRUST_PROXY: z.enum(['none', 'loopback']).default('none'),
+    TRUST_PROXY: trustProxy.default('none'),
     API_PUBLIC_URL: httpUrl
       .refine((value) => {
         const url = new URL(value);

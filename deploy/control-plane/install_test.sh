@@ -346,7 +346,7 @@ grep -Eq '^SMTP_HOST=$' "$work/no-email/.env.example" || die 'the example settin
 archive=$(bash deploy/control-plane/build-bundle.sh 1.2.3 "$reference" "$work/bundle")
 [[ $archive == "$work/bundle/shipkeep-control-plane_1.2.3.tar.gz" ]] || die 'unexpected archive name'
 tar -tzf "$archive" | sort >"$work/listing"
-printf 'shipkeep-control-plane/%s\n' '' .env.example Caddyfile LICENSE NOTICE compose.yml image install.sh | cmp -s - "$work/listing" || die 'unexpected bundle content'
+printf 'shipkeep-control-plane/%s\n' '' .env.example Caddyfile LICENSE NOTICE compose.single-machine.yml compose.yml image install.sh | cmp -s - "$work/listing" || die 'unexpected bundle content'
 tar -xzf "$archive" -C "$work"
 cmp -s "$installer" "$work/shipkeep-control-plane/install.sh" || die 'the bundled installer differs'
 [[ -x $work/shipkeep-control-plane/install.sh ]] || die 'the bundled installer is not executable'
