@@ -309,3 +309,52 @@ describe('disk budgets (ADR 0022)', () => {
       );
   });
 });
+
+describe('replaced replicas on a node with a reservation (ADR 0021)', () => {
+  // 2 CPUs and 3 GiB left beside the reservation; the release being replaced uses 1 CPU and 2 GiB.
+  const shared = (overrides: Partial<SchedulableNode> = {}) =>
+    node('cp', {
+      capacity: { cpuMillis: 2000, memoryBytes: 3 * GiB },
+      surge: { cpuMillis: 1000, memoryBytes: 2 * GiB },
+      ...overrides,
+    });
+  const big = { ...request, resources: { cpuMillis: 1000, memoryBytes: 2 * GiB } };
+
+  it('refuses a new release that does not fit beside the one it replaces, and says so', () => {
+    expect(placeReplica(big, [shared()])).toEqual({ placed: false, rejections: { cp: 'surge' } });
+    // Without the release being replaced, the same replica fits: the reason is the overlap.
+    expect(placeReplica(big, [shared({ surge: { cpuMillis: 0, memoryBytes: 0 } })])).toEqual({
+      placed: true,
+      node: 'cp',
+    });
+  });
+
+  it('places a new release that fits beside the one it replaces', () => {
+    const small = { ...request, resources: { cpuMillis: 1000, memoryBytes: GiB } };
+    expect(placeReplica(small, [shared()])).toEqual({ placed: true, node: 'cp' });
+    // Each replica placed counts: the second one no longer fits beside the old release.
+    expect(placeReplicas({ ...small, spread: 'none' }, 2, [shared()])).toEqual({
+      nodes: ['cp'],
+      unplaced: 1,
+    });
+  });
+
+  it('keeps cpu and memory as reasons when the replica does not fit even alone', () => {
+    const huge = { ...request, resources: { cpuMillis: 3000, memoryBytes: GiB } };
+    expect(placeReplica(huge, [shared()])).toEqual({ placed: false, rejections: { cp: 'cpu' } });
+  });
+
+  it('places elsewhere when another node has room', () => {
+    expect(placeReplica(big, [shared(), node('edge')])).toEqual({ placed: true, node: 'edge' });
+  });
+
+  it('refuses a surge that is not an amount', () => {
+    for (const surge of [
+      { cpuMillis: -1, memoryBytes: 0 },
+      { cpuMillis: 0, memoryBytes: 1.5 },
+    ])
+      expect(() => placeReplica(request, [shared({ surge })])).toThrow(
+        'Invalid scheduling state for node cp.',
+      );
+  });
+});

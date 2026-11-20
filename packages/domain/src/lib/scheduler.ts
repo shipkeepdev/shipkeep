@@ -15,6 +15,12 @@ export interface SchedulableNode {
   readonly capacity: Resources;
   /** Sum of reservations of workloads already placed on the node. */
   readonly reserved: Resources;
+  /**
+   * Replicas the deployment replaces that still run on the node until it ends, on a node that
+   * reports a control plane reservation (ADR 0021). Elsewhere it is absent: the new release takes
+   * the room of the one it replaces.
+   */
+  readonly surge?: Resources;
   readonly usedPorts: readonly number[];
   /** Apps with at least one replica on the node. */
   readonly apps: readonly string[];
@@ -57,6 +63,7 @@ export type PlacementRejection =
   | 'not_allowed'
   | 'cpu'
   | 'memory'
+  | 'surge'
   | 'disk'
   | 'ports'
   | 'volume';
@@ -157,6 +164,15 @@ function reject(
     node.reserved.memoryBytes + request.resources.memoryBytes > node.capacity.memoryBytes
   )
     return 'memory';
+  // On a node that hosts the control plane, both releases run together during switch-then-drain.
+  const surge = node.surge ?? { cpuMillis: 0, memoryBytes: 0 };
+  if (
+    node.reserved.cpuMillis + surge.cpuMillis + request.resources.cpuMillis >
+      node.capacity.cpuMillis ||
+    node.reserved.memoryBytes + surge.memoryBytes + request.resources.memoryBytes >
+      node.capacity.memoryBytes
+  )
+    return 'surge';
   // Free disk must hold the replica's budget, the budgets already planned there and a margin.
   if (
     request.diskBytes !== undefined &&
@@ -211,6 +227,7 @@ function assertNode(node: SchedulableNode): void {
     !node.name ||
     !validResources(node.capacity) ||
     !validResources(node.reserved) ||
+    (node.surge !== undefined && !validResources(node.surge)) ||
     !optionalAmount(node.diskFreeBytes) ||
     !optionalAmount(node.diskPlannedBytes) ||
     !node.usedPorts.every(validPort)
