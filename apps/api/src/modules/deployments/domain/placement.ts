@@ -1,5 +1,5 @@
 import type { ShipkeepConfig } from '@shipkeep/config-schema';
-import type { PlacementRequest, SchedulableNode } from '@shipkeep/domain';
+import type { PlacementRequest, Resources, SchedulableNode } from '@shipkeep/domain';
 
 import { observedStatus } from '../../fleet/domain/node';
 
@@ -20,6 +20,11 @@ export interface NodeLoad {
   readonly cpuMillis: number;
   readonly memoryBytes: number;
   readonly applications: readonly string[];
+  /**
+   * Replicas the deployment replaces, which `cpuMillis` and `memoryBytes` leave out. Present only
+   * when there are some; they count again on a node with a control plane reservation (ADR 0021).
+   */
+  readonly replaced?: Resources;
 }
 
 /**
@@ -30,8 +35,10 @@ const ARCHITECTURES = ['amd64', 'arm64'] as const;
 
 /**
  * Scheduler view of the organization's nodes (SPEC 6), keyed by node name. Capacity comes from the
- * agent's facts; a node without them has no capacity, so the scheduler skips it (`architecture`,
- * `cpu` or `memory`) and still places on the others.
+ * agent's facts, minus the control plane reservation it reports (ADR 0021); a node without them has
+ * no capacity, so the scheduler skips it (`architecture`, `cpu` or `memory`) and still places on
+ * the others. On a node with a reservation, the replicas a deployment replaces still count until it
+ * ends (`surge`): both releases run there during switch-then-drain, beside the control plane.
  * Liveness is read at `now` (SPEC 5.2), so a node whose heartbeats stopped is not ready.
  */
 export function schedulableNodes(
@@ -43,6 +50,11 @@ export function schedulableNodes(
     .filter((node) => node.status !== 'removed')
     .map((node) => {
       const used = load.get(node.id);
+      const reservation = {
+        cpuMillis: amount(node.facts['reserved_cpu_millis']),
+        memoryBytes: amount(node.facts['reserved_memory_bytes']),
+      };
+      const hostsControlPlane = reservation.cpuMillis > 0 || reservation.memoryBytes > 0;
       return {
         name: node.name,
         status: observedStatus(
@@ -56,10 +68,17 @@ export function schedulableNodes(
           typeof node.facts['architecture'] === 'string' ? node.facts['architecture'] : '',
         labels: node.labels,
         capacity: {
-          cpuMillis: wholeNumber(node.facts['cpu_count']) * 1000,
-          memoryBytes: wholeNumber(node.facts['memory_bytes']),
+          cpuMillis: Math.max(
+            0,
+            wholeNumber(node.facts['cpu_count']) * 1000 - reservation.cpuMillis,
+          ),
+          memoryBytes: Math.max(
+            0,
+            wholeNumber(node.facts['memory_bytes']) - reservation.memoryBytes,
+          ),
         },
         reserved: { cpuMillis: used?.cpuMillis ?? 0, memoryBytes: used?.memoryBytes ?? 0 },
+        ...(hostsControlPlane && used?.replaced ? { surge: used.replaced } : {}),
         // Replicas expose ports on Docker networks only; nothing binds host ports.
         usedPorts: [],
         apps: used?.applications ?? [],
@@ -90,7 +109,8 @@ export interface ReplacingRelease {
  * `replacing` replaces reserve nothing: they stop when it succeeds, and its own replicas are
  * removed when it fails, so only one of the two releases keeps its reservation. Counting both
  * would refuse every new release of an application on a node that the application fills. They
- * still count in `applications`, which only ranks nodes for spread.
+ * still count in `applications`, which only ranks nodes for spread, and in `replaced`, which
+ * `schedulableNodes` counts on a node that hosts the control plane (ADR 0021).
  *
  * `replicas` must come from one read: taking the replaced replicas from an earlier read could
  * free the room of replicas that were stopped in between, and so free it twice.
@@ -106,12 +126,21 @@ export function nodeLoads(
       replacing !== undefined &&
       replica.applicationId === replacing.applicationId &&
       replica.releaseId !== replacing.releaseId;
+    const before = current.replaced ?? { cpuMillis: 0, memoryBytes: 0 };
     loads.set(replica.nodeId, {
       cpuMillis: current.cpuMillis + (replaced ? 0 : replica.cpuMillis),
       memoryBytes: current.memoryBytes + (replaced ? 0 : replica.memoryBytes),
       applications: current.applications.includes(replica.applicationId)
         ? current.applications
         : [...current.applications, replica.applicationId],
+      ...(replaced || current.replaced
+        ? {
+            replaced: {
+              cpuMillis: before.cpuMillis + (replaced ? replica.cpuMillis : 0),
+              memoryBytes: before.memoryBytes + (replaced ? replica.memoryBytes : 0),
+            },
+          }
+        : {}),
     });
   }
   return loads;
@@ -145,6 +174,11 @@ function withDiskFree(bytes: number | undefined): { diskFreeBytes?: number } {
 /** The free disk a node reported; undefined when it reported none it can be trusted with. */
 function diskFree(value: string | number | undefined): number | undefined {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined;
+}
+
+/** A reported amount that may be zero; anything else counts as none. */
+function amount(value: string | number | undefined): number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0;
 }
 
 function wholeNumber(value: string | number | undefined): number {
