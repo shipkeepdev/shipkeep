@@ -26,6 +26,17 @@ const (
 
 var hostname = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$`)
 
+// withoutPort removes a port from a host label: Caddy labels a request by its Host header, which
+// may carry one (shop.example.com:443) for the same route. Anything else is returned as it came,
+// for the host name check to judge.
+func withoutPort(host string) string {
+	name, port, found := strings.Cut(host, ":")
+	if !found || port == "" || len(port) > 5 || strings.Trim(port, "0123456789") != "" {
+		return host
+	}
+	return name
+}
+
 // hostTotals reads, from Caddy's metrics in the Prometheus text format, the responses of each host
 // name by status class and the sum of their durations. It reads only the two series it needs and
 // skips any line it cannot read: Caddy writes this text, but the agent trusts no input it parses.
@@ -45,7 +56,7 @@ func hostTotals(text []byte) []*agentv1.HostMetrics {
 		if !ok {
 			continue
 		}
-		host := labels["host"]
+		host := withoutPort(labels["host"])
 		code := labels["code"]
 		if !hostname.MatchString(host) {
 			continue

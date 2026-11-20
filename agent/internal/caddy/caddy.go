@@ -424,19 +424,20 @@ func (c *Client) get(ctx context.Context, path string, out any) (bool, error) {
 }
 
 // EnableRequestMetrics turns on Caddy's request metrics per host name (ADR 0024), once: Caddy then
-// labels the requests of each host of its routes, and never a name a client made up.
+// labels the requests of each host of its routes, and never a name a client made up. Only the
+// per_host key is written when the settings exist, so any other metrics setting stays as it is.
 func (c *Client) EnableRequestMetrics(ctx context.Context) error {
-	want := map[string]bool{"per_host": true}
-	var current map[string]bool
+	var current map[string]json.RawMessage
 	found, err := c.get(ctx, "/config/apps/http/metrics", &current)
 	if err != nil {
 		return fmt.Errorf("read caddy metrics settings: %w", err)
 	}
 	switch {
 	case !found:
-		err = c.do(ctx, http.MethodPut, "/config/apps/http/metrics", want, nil)
-	case !current["per_host"]:
-		err = c.do(ctx, http.MethodPatch, "/config/apps/http/metrics", want, nil)
+		err = c.do(ctx, http.MethodPut, "/config/apps/http/metrics", map[string]bool{"per_host": true}, nil)
+	case string(bytes.TrimSpace(current["per_host"])) != "true":
+		// POST sets one key of an object, whether it is there or not; PATCH would need it there.
+		err = c.do(ctx, http.MethodPost, "/config/apps/http/metrics/per_host", true, nil)
 	}
 	if err != nil {
 		return fmt.Errorf("enable caddy request metrics: %w", err)

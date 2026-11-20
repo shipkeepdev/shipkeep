@@ -1,6 +1,7 @@
 package caddy
 
 import (
+	"encoding/json"
 	"io"
 	"net"
 	"net/http"
@@ -40,6 +41,14 @@ func (m *metricsAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/config/apps/http/metrics":
 		m.writes = append(m.writes, r.Method)
 		m.settings = strings.TrimSpace(string(body))
+	case r.Method == http.MethodPost && r.URL.Path == "/config/apps/http/metrics/per_host":
+		// Caddy sets that one key and keeps the others.
+		m.writes = append(m.writes, "POST per_host")
+		settings := map[string]json.RawMessage{}
+		_ = json.Unmarshal([]byte(m.settings), &settings)
+		settings["per_host"] = json.RawMessage(strings.TrimSpace(string(body)))
+		out, _ := json.Marshal(settings)
+		m.settings = string(out)
 	default:
 		http.Error(w, "unexpected", http.StatusBadRequest)
 	}
@@ -67,7 +76,8 @@ func metricsClient(t *testing.T, handler http.Handler) *Client {
 	return client
 }
 
-// Per-host metrics are turned on once: created when missing, corrected when off, left alone when on.
+// Per-host metrics are turned on once: created when missing, corrected when off, left alone when on;
+// correcting them keeps every other metrics setting.
 func TestEnablesPerHostRequestMetricsOnce(t *testing.T) {
 	admin := &metricsAdmin{}
 	client := metricsClient(t, admin)
@@ -79,11 +89,18 @@ func TestEnablesPerHostRequestMetricsOnce(t *testing.T) {
 	if len(admin.writes) != 1 || admin.writes[0] != http.MethodPut || admin.settings != `{"per_host":true}` {
 		t.Fatalf("writes %v, settings %s", admin.writes, admin.settings)
 	}
-	admin.settings = `{"per_host":false}`
+	admin.settings = `{"otlp":true,"per_host":false}`
 	if err := client.EnableRequestMetrics(t.Context()); err != nil {
 		t.Fatal(err)
 	}
-	if admin.writes[1] != http.MethodPatch || admin.settings != `{"per_host":true}` {
+	if admin.writes[1] != "POST per_host" || admin.settings != `{"otlp":true,"per_host":true}` {
+		t.Fatalf("writes %v, settings %s", admin.writes, admin.settings)
+	}
+	admin.settings = `{"otlp":true}`
+	if err := client.EnableRequestMetrics(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if len(admin.writes) != 3 || admin.settings != `{"otlp":true,"per_host":true}` {
 		t.Fatalf("writes %v, settings %s", admin.writes, admin.settings)
 	}
 }
