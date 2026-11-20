@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  ConflictError,
   createEvent,
   organizationSettings,
   type OrganizationSettingsInput,
@@ -20,6 +21,9 @@ import {
  * installer creates the first one for the account it created (ADR 0020). No route reaches this:
  * it runs from the command line of the control plane (`operator.ts`), by someone who already
  * holds the database and the key-encryption key. The audit names the system as actor.
+ *
+ * Given an `id`, creating is idempotent: the installer chooses the id and records it before the
+ * call, so that a run interrupted after the commit finds the same organization again.
  */
 @Injectable()
 export class OperatorOrganizationCommands {
@@ -32,14 +36,27 @@ export class OperatorOrganizationCommands {
     input: OrganizationSettingsInput,
     ownerId: string,
     now = new Date(),
+    id?: string,
   ): Promise<OrganizationRecord> {
     const organization = {
       ...organizationSettings(input),
-      id: uuidv7(),
+      id: id ?? uuidv7(),
       createdAt: now,
       updatedAt: now,
     };
-    await this.store.transaction(organization.id, async () => {
+    return this.store.transaction(organization.id, async () => {
+      if (id !== undefined) {
+        // Read in that organization's own tenant context, as row security requires.
+        const existing = await this.store.ownedBy(id, ownerId);
+        if (existing) {
+          if (existing.slug !== organization.slug)
+            throw new ConflictError(
+              'organization_id_taken',
+              'An organization with this id already exists with another slug.',
+            );
+          return existing;
+        }
+      }
       await this.store.create(organization, ownerId);
       await this.events.publish([
         createEvent({
@@ -51,7 +68,7 @@ export class OperatorOrganizationCommands {
           payload: { name: organization.name, slug: organization.slug, ownerId },
         }),
       ]);
+      return organization;
     });
-    return organization;
   }
 }
