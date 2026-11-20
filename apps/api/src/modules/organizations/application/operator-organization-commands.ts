@@ -47,17 +47,18 @@ export class OperatorOrganizationCommands {
     return this.store.transaction(organization.id, async () => {
       if (id !== undefined) {
         // Read in that organization's own tenant context, as row security requires.
-        const existing = await this.store.ownedBy(id, ownerId);
-        if (existing) {
-          if (existing.slug !== organization.slug)
-            throw new ConflictError(
-              'organization_id_taken',
-              'An organization with this id already exists with another slug.',
-            );
-          return existing;
-        }
+        const existing = await this.existing(id, ownerId, organization.slug);
+        if (existing) return existing;
       }
-      await this.store.create(organization, ownerId);
+      try {
+        await this.store.create(organization, ownerId);
+      } catch (error: unknown) {
+        // A concurrent call with the same id committed first: its organization is this one.
+        const existing =
+          id === undefined ? undefined : await this.existing(id, ownerId, organization.slug);
+        if (existing) return existing;
+        throw error;
+      }
       await this.events.publish([
         createEvent({
           type: 'organization.created',
@@ -70,5 +71,20 @@ export class OperatorOrganizationCommands {
       ]);
       return organization;
     });
+  }
+
+  /** The organization with this id owned by the owner, refused when its slug is another. */
+  private async existing(
+    id: string,
+    ownerId: string,
+    slug: string,
+  ): Promise<OrganizationRecord | undefined> {
+    const existing = await this.store.ownedBy(id, ownerId);
+    if (existing && existing.slug !== slug)
+      throw new ConflictError(
+        'organization_id_taken',
+        'An organization with this id already exists with another slug.',
+      );
+    return existing;
   }
 }

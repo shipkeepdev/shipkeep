@@ -118,6 +118,19 @@ describe('operator commands of the single-machine installer (ADR 0021)', () => {
         '--id',
         ORG.toUpperCase(),
       ],
+      // A UUIDv4 is no tenant id: the organization would be out of reach of every tenant route.
+      [
+        'organization',
+        'create',
+        '--name',
+        'A',
+        '--slug',
+        'a',
+        '--owner',
+        'o@example.com',
+        '--id',
+        '3f1c2d4e-5a6b-4c7d-8e9f-0a1b2c3d4e5f',
+      ],
       [
         'organization',
         'create',
