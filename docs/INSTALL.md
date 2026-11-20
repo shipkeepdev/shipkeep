@@ -7,7 +7,7 @@ A Shipkeep installation has two kinds of machines:
 - **One control plane**: the web UI, the API and PostgreSQL. It runs with Docker Compose, and an installer sets it up, below.
 - **One or more servers** that run your applications. Each runs the Shipkeep agent, which connects out to the control plane. The Servers page gives the command that installs it.
 
-Use a separate machine for the control plane. It listens on ports 80 and 443, which a server running applications also needs for its own Caddy.
+One machine can be both: the installer asks whether applications also run on the machine of the control plane, and says yes by default (see [One machine for everything](#one-machine-for-everything)). A separate machine for the control plane stays possible, and is safer when the applications run code you trust less than the control plane.
 
 ## What you need
 
@@ -125,6 +125,21 @@ The installer only automates these steps. They need Docker Engine and the Compos
    docker compose -f compose.yml run --rm --no-deps control-plane node main.js account create --email you@example.com
    ```
 
+## One machine for everything
+
+When the installer asks **Run applications on this machine too?** and you answer yes (the default, or `--single-machine yes`), it also makes this machine a server (ADR 0021):
+
+- It asks for the name of the first organization (or `--organization`), creates it with the first account as owner, and installs the agent and the server's Caddy from the control plane image, enrolled over loopback with a join token that never shows on the screen.
+- The server's Caddy owns ports 80 and 443. The control plane runs without its own Caddy and listens on `127.0.0.1:3000` only; the agent keeps its route in Caddy, puts it back if Caddy loses it, and refuses that name to applications.
+- 0.5 CPU and 1 GiB stay reserved for the control plane: applications are placed in what is left, and a redeployment whose old and new releases do not fit together beside the reservation is refused before anything starts, with the reason.
+- PostgreSQL and the API run in `shipkeep-controlplane.slice`, protected up to the reservation, and are the last processes the kernel kills; applications run in `shipkeep-workloads.slice`, limited to the rest of the memory, and are the first.
+
+It needs at least 2 CPUs and 3 GiB of memory, cgroup v2 mounted with `memory_recursiveprot` (systemd 247 or later, as on Ubuntu 24.04) and Docker's `systemd` cgroup driver (the default with cgroup v2). The installer checks all of them first and refuses the single-machine form otherwise; answer no to install the control plane alone.
+
+On such a machine, give Docker Compose both files: `sudo docker compose -f compose.yml -f compose.single-machine.yml <command>`, for example to upgrade. The certificate comes from the server's Caddy: `sudo journalctl -u shipkeep-caddy` shows its reasons.
+
+The control plane and the applications then share a kernel: an application that escapes its container reaches the key-encryption key and the database. Use two machines for code you do not trust as much as the control plane.
+
 ## Accounts without email
 
 An installation whose `.env` has no `SMTP_HOST` sends no email. Nobody can sign up or ask for a reset link there: the sign-up and "forgot password" requests are refused, and accounts are handled on the machine that runs the control plane. Whoever can run these commands already holds the database and the key-encryption key.
@@ -203,7 +218,7 @@ The installer does not upgrade. In the installation directory, replace `compose.
 - **The installer stopped while starting the stack:** it prints the command that finishes the installation. Keep `.env`: the database is created with the passwords it holds, and the installer will not run a second time on this directory.
 - **`migrate` or `database-role` exited with an error:** `docker compose logs migrate database-role`. A changed `POSTGRES_APP_PASSWORD` is the usual cause: an existing login keeps its password, so put the original value back.
 - **`control-plane` keeps restarting:** `docker compose logs control-plane`. The first line names every invalid or missing setting.
-- **No certificate:** the DNS name must point at this machine and ports 80 and 443 must be reachable from the internet. `docker compose logs caddy` shows the reason. The installer exits with an error when the certificate has not arrived after two minutes; the control plane is running all the same, and Caddy keeps trying, so nothing has to be run again.
+- **No certificate:** the DNS name must point at this machine and ports 80 and 443 must be reachable from the internet. `docker compose logs caddy` shows the reason, or `sudo journalctl -u shipkeep-caddy` on [one machine for everything](#one-machine-for-everything). The installer exits with an error when the certificate has not arrived after two minutes; the control plane is running all the same, and Caddy keeps trying, so nothing has to be run again.
 - **Starting over, on a machine you can afford to lose:** `docker compose down --volumes` in the installation directory, then remove that directory. This deletes the database and the key-encryption key, and with them everything Shipkeep stored.
 
 ## What has been tested

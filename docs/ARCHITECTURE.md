@@ -55,6 +55,7 @@ flowchart TB
 - The server that hosts the control plane is always an enrolled node with the roles `control-plane` and `builder`. Its agent runs and supervises the control plane containers (API, PostgreSQL, registry, VictoriaLogs, VictoriaMetrics) and `buildkitd`, exactly like user workloads.
 - This gives the control plane the same supervision, logs, metrics and backups as user apps, and puts the registry and the observability stack on the WireGuard network.
 - Control plane maintenance (database backups, upgrades) runs through typed agent actions on that node (`DumpDatabase`, `UpgradeControlPlane`). The NestJS process never spawns processes.
+- Today the control plane runs with Docker Compose, on its own machine or on a machine that is also a server (ADR 0021). In the second form the server's Caddy owns ports 80 and 443 and the agent keeps the control plane's route, first among the routes, from its own configuration; the control plane listens on loopback, its containers run in `shipkeep-controlplane.slice` and applications in `shipkeep-workloads.slice`, and placement leaves the reservation free.
 
 ### Agent (`agent/`)
 
