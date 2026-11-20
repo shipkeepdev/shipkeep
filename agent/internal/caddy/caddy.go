@@ -423,6 +423,51 @@ func (c *Client) get(ctx context.Context, path string, out any) (bool, error) {
 	return true, nil
 }
 
+// EnableRequestMetrics turns on Caddy's request metrics per host name (ADR 0024), once: Caddy then
+// labels the requests of each host of its routes, and never a name a client made up.
+func (c *Client) EnableRequestMetrics(ctx context.Context) error {
+	want := map[string]bool{"per_host": true}
+	var current map[string]bool
+	found, err := c.get(ctx, "/config/apps/http/metrics", &current)
+	if err != nil {
+		return fmt.Errorf("read caddy metrics settings: %w", err)
+	}
+	switch {
+	case !found:
+		err = c.do(ctx, http.MethodPut, "/config/apps/http/metrics", want, nil)
+	case !current["per_host"]:
+		err = c.do(ctx, http.MethodPatch, "/config/apps/http/metrics", want, nil)
+	}
+	if err != nil {
+		return fmt.Errorf("enable caddy request metrics: %w", err)
+	}
+	return nil
+}
+
+// RequestMetrics returns Caddy's metrics, in the Prometheus text format, at most maxBody bytes.
+func (c *Client) RequestMetrics(ctx context.Context) ([]byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://caddy/metrics", nil)
+	if err != nil {
+		return nil, fmt.Errorf("build caddy request: %w", err)
+	}
+	response, err := c.http.Do(request)
+	if err != nil {
+		return nil, fmt.Errorf("caddy GET: %w", err)
+	}
+	defer response.Body.Close() //nolint:errcheck // read-only body
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("caddy GET: status %d", response.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, maxBody+1))
+	if err != nil {
+		return nil, fmt.Errorf("read caddy metrics: %w", err)
+	}
+	if len(data) > maxBody {
+		return nil, errors.New("caddy metrics too large")
+	}
+	return data, nil
+}
+
 func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
 	var reader io.Reader
 	if body != nil {

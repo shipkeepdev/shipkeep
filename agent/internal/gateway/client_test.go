@@ -48,6 +48,11 @@ type testGateway struct {
 	cancel  atomic.Pointer[agentv1.CancelAction]
 	updates chan *agentv1.ActionUpdate
 	reports chan *agentv1.StateReport
+	// acceptsMetrics is announced in Welcome; metrics reports are forwarded to metrics, and one
+	// received without it counts in unexpected, as a gateway that does not know them would refuse.
+	acceptsMetrics atomic.Bool
+	metrics        chan *agentv1.MetricsReport
+	unexpected     atomic.Int32
 	// authority is the :authority of the last enrollment request.
 	authority atomic.Pointer[string]
 }

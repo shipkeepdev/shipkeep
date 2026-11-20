@@ -29,7 +29,7 @@ func (g *testGateway) Connect(stream grpc.BidiStreamingServer[agentv1.ConnectReq
 		return status.Error(codes.InvalidArgument, "missing Hello")
 	}
 	g.connects.Add(1)
-	if err := stream.Send(&agentv1.ConnectResponse{Msg: &agentv1.ConnectResponse_Welcome{Welcome: &agentv1.Welcome{NodeId: testNode, LeaseEpoch: 1, HeartbeatInterval: durationpb.New(time.Second)}}}); err != nil {
+	if err := stream.Send(&agentv1.ConnectResponse{Msg: &agentv1.ConnectResponse_Welcome{Welcome: &agentv1.Welcome{NodeId: testNode, LeaseEpoch: 1, HeartbeatInterval: durationpb.New(time.Second), Metrics: g.acceptsMetrics.Load()}}}); err != nil {
 		return err
 	}
 	if g.disconnect.Swap(false) {
@@ -52,6 +52,20 @@ func (g *testGateway) Connect(stream grpc.BidiStreamingServer[agentv1.ConnectReq
 		}
 		if update := request.GetActionUpdate(); update != nil && g.updates != nil {
 			g.updates <- update
+			continue
+		}
+		if sample := request.GetMetricsReport(); sample != nil {
+			if !g.acceptsMetrics.Load() {
+				g.unexpected.Add(1)
+				continue
+			}
+			if g.metrics != nil {
+				select {
+				case g.metrics <- sample:
+				case <-stream.Context().Done():
+					return nil
+				}
+			}
 			continue
 		}
 		if report := request.GetStateReport(); report != nil && g.reports != nil {
@@ -267,5 +281,51 @@ func TestRunnerDeliversActionsAndForwardsUpdates(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("cancellation not delivered")
+	}
+}
+
+// Metrics go only to a control plane whose Welcome says it accepts them (ADR 0024), with the
+// session's epoch; an older one never receives a frame it does not know.
+func TestRunnerSendsMetricsOnlyWhenTheControlPlaneAcceptsThem(t *testing.T) {
+	for _, accepts := range []bool{true, false} {
+		address, server := startGateway(t, true)
+		server.acceptsMetrics.Store(accepts)
+		server.metrics = make(chan *agentv1.MetricsReport, 8)
+		bundle, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+		if err != nil {
+			t.Fatal(err)
+		}
+		runner := Runner{
+			Endpoint: Endpoint{Address: address}, StateDir: t.TempDir(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
+			MetricsInterval: 20 * time.Millisecond,
+			Metrics: func(context.Context) (*agentv1.MetricsReport, error) {
+				return &agentv1.MetricsReport{Node: &agentv1.NodeMetrics{CpuCores: 2}}, nil
+			},
+		}
+		ctx, cancel := context.WithCancel(t.Context())
+		stopped := make(chan error, 1)
+		go func() { stopped <- runner.Run(ctx, bundle) }()
+		if accepts {
+			select {
+			case sample := <-server.metrics:
+				if sample.GetLeaseEpoch() != 1 || sample.GetNode().GetCpuCores() != 2 {
+					t.Fatalf("sample = %v", sample)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("no metrics report was sent")
+			}
+		} else {
+			deadline := time.Now().Add(5 * time.Second)
+			for server.heartbeats.Load() < 2 && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
+			if server.heartbeats.Load() < 2 || server.unexpected.Load() != 0 {
+				t.Fatalf("heartbeats %d, metrics sent to a gateway that refuses them %d", server.heartbeats.Load(), server.unexpected.Load())
+			}
+		}
+		cancel()
+		if err := <-stopped; err != nil {
+			t.Fatal(err)
+		}
 	}
 }
