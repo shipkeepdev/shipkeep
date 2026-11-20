@@ -72,14 +72,40 @@ func TestSkipsCaddyLinesItCannotRead(t *testing.T) {
 	}
 }
 
-func TestKeepsAtMostMaxHosts(t *testing.T) {
+func TestReadsEveryHostSortedByName(t *testing.T) {
 	var text strings.Builder
 	for i := range MaxHosts + 10 {
-		fmt.Fprintf(&text, "caddy_http_request_duration_seconds_count{code=\"200\",host=\"h%03d.example.com\"} 1\n", i)
+		fmt.Fprintf(&text, "caddy_http_request_duration_seconds_count{code=\"200\",host=\"h%03d.example.com\"} 1\n", MaxHosts+9-i)
 	}
 	hosts := hostTotals([]byte(text.String()))
-	if len(hosts) != MaxHosts || hosts[0].GetHost() != "h000.example.com" {
+	if len(hosts) != MaxHosts+10 || hosts[0].GetHost() != "h000.example.com" {
 		t.Fatalf("%d hosts, first %s", len(hosts), hosts[0].GetHost())
+	}
+}
+
+// Past the bound, each sample takes the next items: every one is reported within a few samples,
+// none is left out for good.
+func TestRotatesThroughItemsPastTheBound(t *testing.T) {
+	items := make([]int, 10)
+	for i := range items {
+		items[i] = i
+	}
+	offset := 0
+	seen := map[int]int{}
+	for range 3 {
+		picked := rotate(items, 4, &offset)
+		if len(picked) != 4 {
+			t.Fatalf("picked %v", picked)
+		}
+		for _, item := range picked {
+			seen[item]++
+		}
+	}
+	if len(seen) != 10 {
+		t.Fatalf("after ceil(10/4) samples, seen %v", seen)
+	}
+	if got := rotate(items[:3], 4, &offset); len(got) != 3 || offset != 0 {
+		t.Fatalf("a list within the bound: %v, offset %d", got, offset)
 	}
 }
 
@@ -226,15 +252,20 @@ func TestSendsWhatItCouldSample(t *testing.T) {
 	}
 }
 
-func TestKeepsAtMostMaxContainers(t *testing.T) {
+func TestKeepsAtMostMaxContainersAndRotates(t *testing.T) {
 	engine := &fakeEngine{stats: map[string]docker.ContainerStats{}}
 	for i := range MaxContainers + 20 {
 		id := fmt.Sprint(i)
 		engine.summaries = append(engine.summaries, docker.ContainerSummary{ID: id, Names: []string{fmt.Sprintf("/sk-app-%04d", i)}, State: "running"})
 		engine.stats[id] = stats(1, 1, 0, 1)
 	}
-	report, err := (&Sampler{Containers: engine, Proc: proc(t), Logger: quiet()}).Sample(t.Context())
-	if err != nil || len(report.GetContainers()) != MaxContainers || report.GetContainers()[0].GetName() != "sk-app-0000" {
-		t.Fatalf("%d containers, err %v", len(report.GetContainers()), err)
+	sampler := &Sampler{Containers: engine, Proc: proc(t), Logger: quiet()}
+	first, err := sampler.Sample(t.Context())
+	if err != nil || len(first.GetContainers()) != MaxContainers || first.GetContainers()[0].GetName() != "sk-app-0000" {
+		t.Fatalf("%d containers, err %v", len(first.GetContainers()), err)
+	}
+	second, err := sampler.Sample(t.Context())
+	if err != nil || len(second.GetContainers()) != MaxContainers || second.GetContainers()[0].GetName() != fmt.Sprintf("sk-app-%04d", MaxContainers) {
+		t.Fatalf("the second sample did not start past the first: %s", second.GetContainers()[0].GetName())
 	}
 }

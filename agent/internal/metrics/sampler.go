@@ -44,6 +44,26 @@ type Sampler struct {
 
 	mu       sync.Mutex
 	dataRoot string
+	// Where the next sample starts in the lists of containers and hosts, when they are longer than
+	// a report carries (see rotate).
+	containerOffset, hostOffset int
+}
+
+// rotate returns at most limit items of a list sorted by name, starting at *offset and wrapping
+// around, and moves *offset past them. A list within the limit is returned whole. Past it, every
+// item is reported at least once every ceil(len/limit) samples: none is left out for good.
+func rotate[T any](items []T, limit int, offset *int) []T {
+	if len(items) <= limit {
+		*offset = 0
+		return items
+	}
+	start := *offset % len(items)
+	picked := make([]T, 0, limit)
+	for i := range limit {
+		picked = append(picked, items[(start+i)%len(items)])
+	}
+	*offset = (start + limit) % len(items)
+	return picked
 }
 
 const (
@@ -125,7 +145,8 @@ func (s *Sampler) root(ctx context.Context) (string, error) {
 	return root, nil
 }
 
-// containers samples the running managed containers, a few at a time, at most MaxContainers.
+// containers samples the running managed containers, a few at a time, at most MaxContainers
+// of them in one report (see rotate).
 // A container whose stats fail is left out: it may have stopped between the list and its stats.
 func (s *Sampler) containers(ctx context.Context) ([]*agentv1.ContainerMetrics, error) {
 	summaries, err := s.Containers.ManagedContainers(ctx)
@@ -144,9 +165,9 @@ func (s *Sampler) containers(ctx context.Context) ([]*agentv1.ContainerMetrics, 
 		}
 	}
 	slices.SortFunc(targets, func(a, b target) int { return strings.Compare(a.name, b.name) })
-	if len(targets) > MaxContainers {
-		targets = targets[:MaxContainers]
-	}
+	s.mu.Lock()
+	targets = rotate(targets, MaxContainers, &s.containerOffset)
+	s.mu.Unlock()
 	results := make([]*agentv1.ContainerMetrics, len(targets))
 	slots := make(chan struct{}, parallel)
 	var wait sync.WaitGroup
@@ -185,5 +206,7 @@ func (s *Sampler) hosts(ctx context.Context) ([]*agentv1.HostMetrics, error) {
 	if err != nil {
 		return nil, err
 	}
-	return hostTotals(text), nil
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return rotate(hostTotals(text), MaxHosts, &s.hostOffset), nil
 }

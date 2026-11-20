@@ -29,7 +29,7 @@ var hostname = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$`)
 // hostTotals reads, from Caddy's metrics in the Prometheus text format, the responses of each host
 // name by status class and the sum of their durations. It reads only the two series it needs and
 // skips any line it cannot read: Caddy writes this text, but the agent trusts no input it parses.
-// It keeps at most MaxHosts names, the first in alphabetical order.
+// It returns every host, sorted by name: the sampler picks those a report carries.
 func hostTotals(text []byte) []*agentv1.HostMetrics {
 	byHost := map[string]*agentv1.HostMetrics{}
 	for _, raw := range bytes.Split(text, []byte("\n")) {
@@ -78,9 +78,6 @@ func hostTotals(text []byte) []*agentv1.HostMetrics {
 		hosts = append(hosts, totals)
 	}
 	slices.SortFunc(hosts, func(a, b *agentv1.HostMetrics) int { return strings.Compare(a.GetHost(), b.GetHost()) })
-	if len(hosts) > MaxHosts {
-		hosts = hosts[:MaxHosts]
-	}
 	return hosts
 }
 
