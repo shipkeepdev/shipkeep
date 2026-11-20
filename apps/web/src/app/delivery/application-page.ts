@@ -39,7 +39,6 @@ import { Collection } from '../workspace/collection';
 import {
   APP_SAMPLES,
   APP_SECTIONS,
-  SAMPLE_CHARTS,
   SAMPLE_LOGS,
   SAMPLE_TERMINAL,
   type SectionCopy,
@@ -49,13 +48,16 @@ import { ApplicationDanger } from './application-danger';
 import { configSection } from './config-sections';
 import { ConfigurationEditor } from './configuration-editor';
 import { LiveEvents } from './live-events';
+import { MetricChart, sumSeries } from './metric-chart';
 import { ReleaseHistory } from './release-history';
 import {
   type Application,
+  type ApplicationMetrics,
   DeliveryApi,
   type Deployment,
   type DomainStatus,
   type EnvironmentRef,
+  type MetricsRange,
   type Release,
   type Replica,
   type SecretMetadata,
@@ -94,6 +96,7 @@ const LIVE_POLL_MS = 15_000;
     Brand,
     ConfigurationEditor,
     Icon,
+    MetricChart,
     PreviewPill,
     ReleaseHistory,
     RouterLink,
@@ -496,28 +499,74 @@ const LIVE_POLL_MS = 15_000;
           [hidden]="tab() !== 'metrics'"
           class="flex flex-col gap-3"
         >
-          <sk-preview-pill class="self-start" />
-          <div class="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3.5">
-            @for (c of charts; track c.label) {
-              <div class="card px-[18px] py-4">
-                <div class="flex items-baseline justify-between">
-                  <span class="text-[13px] text-fg3">{{ c.label | t }}</span
-                  ><span class="text-[20px] tracking-[-0.02em]">{{ c.v | t }}</span>
-                </div>
-                <div class="mt-3.5 flex h-[90px] items-end gap-[3px]">
-                  @for (b of c.bars; track $index) {
-                    <span
-                      class="flex-1 rounded-t-[2px]"
-                      [style.height]="b.h"
-                      [style.background]="
-                        b.hot ? 'oklch(0.68 0.17 25)' : b.last ? '#EDEDEF' : '#2A2A30'
-                      "
-                    ></span>
-                  }
-                </div>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <p class="text-[12.5px] text-mute">
+              {{ 'Measured by the agents every 30 seconds, kept for 30 days.' | t }}
+            </p>
+            <div class="seg" role="group" [attr.aria-label]="'Period' | t">
+              @for (r of metricsRanges; track r) {
+                <button
+                  type="button"
+                  class="font-mono"
+                  [attr.aria-pressed]="metricsRange() === r"
+                  (click)="metricsRange.set(r)"
+                >
+                  {{ r }}
+                </button>
+              }
+            </div>
+          </div>
+          @if (metricsFailed()) {
+            <p class="card px-[18px] py-4 text-[13px] text-mute" role="status">
+              {{ 'Metrics could not be read. They are tried again in 30 seconds.' | t }}
+            </p>
+          } @else if (metrics(); as m) {
+            @if (!m.kept) {
+              <p class="card px-[18px] py-4 text-[13px] text-mute" role="status">
+                {{
+                  'This installation keeps no metrics: its control plane has no metrics store.' | t
+                }}
+              </p>
+            } @else {
+              <div class="grid grid-cols-[repeat(auto-fit,minmax(280px,1fr))] gap-3.5">
+                <sk-metric-chart
+                  label="CPU"
+                  unit="cores"
+                  [points]="m.cpu[0]?.points ?? []"
+                  [from]="seconds(m.from)"
+                  [to]="seconds(m.to)"
+                  [step]="m.stepSeconds"
+                />
+                <sk-metric-chart
+                  label="Memory"
+                  unit="bytes"
+                  [points]="m.memory[0]?.points ?? []"
+                  [from]="seconds(m.from)"
+                  [to]="seconds(m.to)"
+                  [step]="m.stepSeconds"
+                />
+                <sk-metric-chart
+                  label="Requests · 5xx in red"
+                  unit="perSecond"
+                  [points]="requests()"
+                  [errors]="serverErrors()"
+                  [from]="seconds(m.from)"
+                  [to]="seconds(m.to)"
+                  [step]="m.stepSeconds"
+                />
+                <sk-metric-chart
+                  label="Response time · mean"
+                  unit="seconds"
+                  [points]="m.duration[0]?.points ?? []"
+                  [from]="seconds(m.from)"
+                  [to]="seconds(m.to)"
+                  [step]="m.stepSeconds"
+                />
               </div>
             }
-          </div>
+          } @else if (tab() === 'metrics') {
+            <p class="text-[12.5px] text-mute" role="status">{{ 'Loading…' | t }}</p>
+          }
         </div>
       }
     </div>
@@ -544,7 +593,17 @@ export class ApplicationPage {
   ]);
   protected readonly menu = APP_SECTIONS;
   protected readonly terminal = SAMPLE_TERMINAL;
-  protected readonly charts = SAMPLE_CHARTS;
+  protected readonly metricsRanges: readonly MetricsRange[] = ['1h', '24h', '7d'];
+  protected readonly metricsRange = signal<MetricsRange>('1h');
+  protected readonly metrics = signal<ApplicationMetrics | null>(null);
+  protected readonly metricsFailed = signal(false);
+  /** Requests per second of every status class, added together. */
+  protected readonly requests = computed(() => sumSeries(this.metrics()?.requests ?? []));
+  protected readonly serverErrors = computed(
+    () =>
+      this.metrics()?.requests.find((series) => series.labels['status'] === '5xx')?.points ?? [],
+  );
+  protected readonly seconds = (at: string): number => Date.parse(at) / 1000;
   protected readonly status = deploymentStatus;
   protected readonly duration = duration;
   protected readonly clock = clock;
@@ -730,6 +789,32 @@ export class ApplicationPage {
       ++this.loadRevision;
       clearTimeout(this.timer);
       clearInterval(ticking);
+    });
+    // Metrics load while their tab is open, and again every 30 seconds, as the agents sample.
+    effect((onCleanup) => {
+      if (this.tab() !== 'metrics') return;
+      const environment = this.environment();
+      const applicationId = this.applicationId();
+      const range = this.metricsRange();
+      let stale = false;
+      const load = async () => {
+        try {
+          const answer = await this.api.metrics(environment, applicationId, range);
+          if (stale) return;
+          this.metrics.set(answer);
+          this.metricsFailed.set(false);
+        } catch {
+          if (!stale) this.metricsFailed.set(true);
+        }
+      };
+      void load();
+      const every = setInterval(() => {
+        void load();
+      }, 30_000);
+      onCleanup(() => {
+        stale = true;
+        clearInterval(every);
+      });
     });
     effect(() => {
       void this.load(this.environment(), this.applicationId());

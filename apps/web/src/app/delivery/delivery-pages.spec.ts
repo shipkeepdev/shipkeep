@@ -822,6 +822,57 @@ describe('delivery screens', () => {
     expect(configText()).not.toContain('Load older actions');
   });
 
+  it('charts the metrics of the period chosen, and says when the installation keeps none', async () => {
+    const t0 = 1_795_000_000;
+    const series = (values: number[], labels: Record<string, string> = {}) => ({
+      labels,
+      points: values.map((v, index) => ({ t: t0 + index * 30, v })),
+    });
+    let kept = true;
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: [] }),
+      [`GET ${BASE}/applications/${APP}/metrics`]: () =>
+        json({
+          kept,
+          range: query.get('range'),
+          stepSeconds: 30,
+          from: new Date(t0 * 1000).toISOString(),
+          to: new Date((t0 + 60) * 1000).toISOString(),
+          cpu: kept ? [series([0.01, 0.25, 0.5])] : [],
+          memory: kept ? [series([64 * 1024 ** 2, 128 * 1024 ** 2, 256 * 1024 ** 2])] : [],
+          requests: kept
+            ? [series([2, 3, 4], { status: '2xx' }), series([0, 1, 1], { status: '5xx' })]
+            : [],
+          duration: [],
+        }),
+    };
+    const metricsCalls = () => requests.filter((r) => r.path.endsWith('/metrics'));
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+    );
+    await settle();
+    // Nothing is read while the tab is closed.
+    expect(metricsCalls()).toHaveLength(0);
+    element().querySelector<HTMLButtonElement>('#tab-metrics')?.click();
+    await settle();
+    const panel = () => element().querySelector('#panel-metrics')?.textContent ?? '';
+    expect(metricsCalls()).toHaveLength(1);
+    expect(panel()).toContain('0.50 CPU');
+    expect(panel()).toContain('256 MiB');
+    // Requests add every status class; the latest point is 4 + 1.
+    expect(panel()).toContain('5.0/s');
+    expect(panel()).toContain('No data for this period yet.');
+    expect(element().querySelectorAll('#panel-metrics svg path').length).toBe(4);
+
+    await click('24h');
+    expect(query.get('range')).toBe('24h');
+
+    kept = false;
+    await click('7d');
+    expect(panel()).toContain('This installation keeps no metrics');
+  });
+
   it('compares a release with the previous one', async () => {
     const release = (number: number, port: number) => ({
       id: `r${String(number)}`,
