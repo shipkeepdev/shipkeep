@@ -17,7 +17,7 @@ Stack: Go (agent and CLI), TypeScript with NestJS (API) and Angular (web UI), Po
 - [Source code on GitHub](https://github.com/shipkeepdev/shipkeep): README, issues and roadmap
 - [Installation guide](https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md): how to install the prerelease, and what was tested
 - [Releases](https://github.com/shipkeepdev/shipkeep/releases)
-- [Website (English)](https://shipkeep.vercel.app/en): features, comparison with Coolify, Dokploy and Kamal, FAQ
+- [Website (English)](https://shipkeep.vercel.app/en): features, comparison with Coolify, Dokploy and Kamal, pricing
 - [Website (French)](https://shipkeep.vercel.app/)
 
 ## Docs
