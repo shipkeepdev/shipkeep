@@ -1516,6 +1516,7 @@ export const FR: Readonly<Record<string, string>> = {
   'expires {date}': 'expire le {date}',
   "factures-pdf is a local volume: this app's replicas stay on srv-par-1 until it is migrated to S3.":
     "factures-pdf est un volume local : les répliques de cette app restent sur srv-par-1 tant qu'il n'est pas migré vers S3.",
+  degraded: 'dégradée',
   failed: 'échec',
   'failed · Nov 1': 'échec · 1 nov.',
   'failed · S3 403': 'échec · S3 403',
@@ -1554,6 +1555,7 @@ export const FR: Readonly<Record<string, string>> = {
   linked: 'liée',
   'linked · pg-factures': 'lié · pg-factures',
   live: 'en ligne',
+  'not running': 'ne tourne pas',
   'lookup failed': 'résolution impossible',
   'malformed request': 'requête mal formée',
   'managed by Shipkeep': 'géré par Shipkeep',
