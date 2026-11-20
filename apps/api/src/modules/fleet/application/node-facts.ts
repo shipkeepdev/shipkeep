@@ -20,5 +20,7 @@ export function factsFromProto(facts: ProtoNodeFacts | undefined): Record<string
     caddy_version: facts.caddyVersion,
     wireguard_version: facts.wireguardVersion,
     agent_version: facts.agentVersion,
+    reserved_cpu_millis: facts.reservedCpuMillis,
+    reserved_memory_bytes: facts.reservedMemoryBytes,
   };
 }

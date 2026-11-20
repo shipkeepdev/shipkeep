@@ -15,6 +15,7 @@ import {
   type Application,
   applicationConfig,
   type ApplicationTarget,
+  assertDomainsAvailable,
   assertSameName,
   type DomainDns,
   domainDns,
@@ -26,6 +27,7 @@ import {
   APPLICATION_TRANSACTION,
   type ApplicationStore,
   type ApplicationTransaction,
+  CONTROL_PLANE_HOST,
   DOMAIN_RESOLVER,
   type DomainResolver,
 } from './ports';
@@ -44,6 +46,7 @@ export class ApplicationCommands {
     private readonly accounts: AccountMutationAuthority,
     private readonly access: TenantAccess,
     private readonly events: DomainEventBus,
+    @Inject(CONTROL_PLANE_HOST) private readonly controlPlaneHost: string,
   ) {}
 
   create(
@@ -53,6 +56,7 @@ export class ApplicationCommands {
     now = new Date(),
   ): Promise<Application> {
     const config = applicationConfig(document);
+    assertDomainsAvailable(config.config, [this.controlPlaneHost]);
     return this.scoped(context, 'deploy.run', target, async () => {
       const created = await this.store.create(
         target,
@@ -82,6 +86,7 @@ export class ApplicationCommands {
     now = new Date(),
   ): Promise<Application> {
     const config = applicationConfig(document);
+    assertDomainsAvailable(config.config, [this.controlPlaneHost]);
     return this.scoped(context, 'deploy.run', target, async () => {
       const found = await this.store.find(target, applicationId);
       // The application's row lock orders this change with a deployment, which takes it before it

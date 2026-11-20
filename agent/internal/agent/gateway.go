@@ -24,7 +24,7 @@ import (
 	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
-func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *docker.Client) error {
+func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *docker.Client, router *caddy.Client) error {
 	if ctx.Err() != nil {
 		return nil // Parent cancellation is a clean shutdown.
 	}
@@ -37,7 +37,8 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		name = hostname
 	}
 	// Capacity facts (CPU, memory, disk) feed scheduling (SPEC 6); the configured name wins.
-	facts := actions.Facts(ctx, a.cfg.Paths.StateDir, engine)
+	reservation := actions.Reservation{CPUMillis: a.cfg.Node.Reservation.CPUMillis, MemoryBytes: a.cfg.Node.Reservation.MemoryBytes}
+	facts := actions.Facts(ctx, a.cfg.Paths.StateDir, engine, reservation)
 	facts.Hostname = name
 	bundle, err := credentials.Load(a.cfg.Paths.StateDir, a.cfg.ControlPlane.CAFingerprint)
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
@@ -74,10 +75,6 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	if err != nil {
 		return err
 	}
-	router, err := caddy.New(a.cfg.Caddy.AdminSocket)
-	if err != nil {
-		return err
-	}
 	// Secures the routes an older agent wrote, without waiting for the next deployment. Caddy may
 	// still be starting, so it is retried until it succeeds; it stops with this gateway run.
 	secureCtx, stopSecuring := context.WithCancel(ctx)
@@ -91,8 +88,12 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		<-secured
 	}()
 	// Facts are read when the result is built, after the action's context ended.
-	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine) //nolint:contextcheck // see above
-	var options []actions.Option
+	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine, reservation) //nolint:contextcheck // see above
+	options := []actions.Option{actions.WithWorkloads(actions.Workloads{Slice: a.cfg.Docker.WorkloadsSlice, OOMScoreAdj: a.cfg.Docker.WorkloadsOOMScoreAdj})}
+	if host := a.cfg.ControlPlane.Route.Host; host != "" {
+		// No application may take the control plane's name (ADR 0021).
+		options = append(options, actions.WithReservedHosts(host))
+	}
 	if a.cfg.Dev {
 		// A development machine has no egress proxy in front of its Docker daemon (ADR 0023).
 		a.logger.Warn("development mode: image pulls do not require the egress proxy")

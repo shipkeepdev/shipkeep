@@ -70,6 +70,24 @@ export function applicationConfig(value: unknown): ApplicationConfig {
   return { name: config.name, source: 'image', config, canonical };
 }
 
+/**
+ * An application cannot serve the control plane's name (ADR 0021): on the machine that hosts both,
+ * the agent keeps that name's route for the control plane, and refuses it to applications too.
+ * `reserved` holds the host of `API_PUBLIC_URL`. Wildcards are refused earlier.
+ */
+export function assertDomainsAvailable(config: ShipkeepConfig, reserved: readonly string[]): void {
+  // DNS compares without case, and a name with one final dot is the same absolute name.
+  const plain = (name: string) => name.toLowerCase().replace(/\.$/, '');
+  const names = reserved.map(plain);
+  const taken = config.domains?.find((hostname) => names.includes(plain(hostname)));
+  if (taken !== undefined)
+    throw new InvalidInputError(
+      'domain_reserved',
+      "This domain is the control plane's own address and cannot serve an application.",
+      { hostname: taken },
+    );
+}
+
 /** A configuration update may change anything but the name, which identifies the application. */
 export function assertSameName(
   application: Pick<Application, 'name'>,
