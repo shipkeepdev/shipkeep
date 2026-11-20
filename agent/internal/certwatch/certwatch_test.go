@@ -65,7 +65,7 @@ func TestReadsEachHostOnceUntilItIsStale(t *testing.T) {
 	if reads["a.example.com"] != 2 {
 		t.Fatalf("not read again once stale: %v", reads)
 	}
-	got := w.Snapshot()
+	got := w.Snapshot(time.Now())
 	if len(got) != 2 || got[0].GetHostname() != "a.example.com" || !got[0].GetNotAfter().AsTime().Equal(expiry) || got[0].GetIssuer() != "Example CA" {
 		t.Fatalf("snapshot = %v", got)
 	}
@@ -81,7 +81,7 @@ func TestReportsNothingForAHostWithoutItsCertificate(t *testing.T) {
 			return certificate(t, []string{"other.example.com"}, "CA", time.Now().Add(time.Hour)), nil
 		}}
 	w.pass(context.Background(), time.Now())
-	if got := w.Snapshot(); len(got) != 0 {
+	if got := w.Snapshot(time.Now()); len(got) != 0 {
 		t.Fatalf("reported %v", got)
 	}
 }
@@ -94,12 +94,12 @@ func TestForgetsHostsNoLongerRoutedAndKeepsReadingsWhenCaddyIsDown(t *testing.T)
 	w.pass(context.Background(), time.Now())
 	list.err = errors.New("caddy starting")
 	w.pass(context.Background(), time.Now())
-	if len(w.Snapshot()) != 2 {
+	if len(w.Snapshot(time.Now())) != 2 {
 		t.Fatal("readings dropped while Caddy did not answer")
 	}
 	list.names, list.err = []string{"b.example.com"}, nil
 	w.pass(context.Background(), time.Now())
-	if got := w.Snapshot(); len(got) != 1 || got[0].GetHostname() != "b.example.com" {
+	if got := w.Snapshot(time.Now()); len(got) != 1 || got[0].GetHostname() != "b.example.com" {
 		t.Fatalf("snapshot = %v", got)
 	}
 }
@@ -114,7 +114,7 @@ func TestBoundsHostsAndIssuer(t *testing.T) {
 		return certificate(t, []string{host}, long, time.Now().Add(time.Hour)), nil
 	}}
 	w.pass(context.Background(), time.Now())
-	got := w.Snapshot()
+	got := w.Snapshot(time.Now())
 	if len(got) > MaxHosts {
 		t.Fatalf("%d readings", len(got))
 	}
@@ -178,12 +178,12 @@ func TestKeepsTheReadingWhenTheHandshakeFails(t *testing.T) {
 	w.pass(context.Background(), now)
 	answer = "down"
 	w.pass(context.Background(), now.Add(time.Minute))
-	if got := w.Snapshot(); len(got) != 1 {
+	if got := w.Snapshot(time.Now()); len(got) != 1 {
 		t.Fatalf("a failed handshake dropped the reading: %v", got)
 	}
 	answer = "other"
 	w.pass(context.Background(), now.Add(2*time.Minute))
-	if got := w.Snapshot(); len(got) != 0 {
+	if got := w.Snapshot(time.Now()); len(got) != 0 {
 		t.Fatalf("a certificate for another name was kept: %v", got)
 	}
 }
@@ -206,5 +206,43 @@ func TestRetriesAFailedHostOnlyAfterRefresh(t *testing.T) {
 	w.pass(context.Background(), now.Add(10*time.Minute))
 	if reads != 2 {
 		t.Fatalf("%d handshakes after Refresh", reads)
+	}
+}
+
+// While Caddy's routes stay unreadable, a reading is kept for a while, then no longer reported:
+// the control plane would otherwise refresh it forever.
+func TestStopsReportingAReadingNeverRefreshed(t *testing.T) {
+	list := &hosts{names: []string{"app.example.com"}}
+	w := &Watcher{Hosts: list, Logger: quiet(), Refresh: 10 * time.Minute, Read: func(_ context.Context, _ string, host string) (*x509.Certificate, error) {
+		return certificate(t, []string{host}, "CA", time.Now().Add(time.Hour)), nil
+	}}
+	read := time.Now()
+	w.pass(context.Background(), read)
+	list.err = errors.New("admin API down")
+	for minute := 1; minute <= 40; minute++ {
+		w.pass(context.Background(), read.Add(time.Duration(minute)*time.Minute))
+	}
+	if got := w.Snapshot(read.Add(29 * time.Minute)); len(got) != 1 {
+		t.Fatalf("a recent reading was dropped: %v", got)
+	}
+	if got := w.Snapshot(read.Add(30 * time.Minute)); len(got) != 0 {
+		t.Fatalf("a reading unrefreshed for three refresh delays was still reported: %v", got)
+	}
+}
+
+// A C1 control in one issuer is removed there, and the other certificates are untouched: the
+// control plane refuses a whole report for one such character.
+func TestRemovesC1ControlsFromTheIssuer(t *testing.T) {
+	w := &Watcher{Hosts: &hosts{names: []string{"a.example.com", "b.example.com"}}, Logger: quiet(), Read: func(_ context.Context, _ string, host string) (*x509.Certificate, error) {
+		name := "R11"
+		if host == "a.example.com" {
+			name = "R\u008510\u009b"
+		}
+		return certificate(t, []string{host}, name, time.Now().Add(time.Hour)), nil
+	}}
+	w.pass(context.Background(), time.Now())
+	got := w.Snapshot(time.Now())
+	if len(got) != 2 || got[0].GetIssuer() != "R10" || got[1].GetIssuer() != "R11" {
+		t.Fatalf("snapshot = %v", got)
 	}
 }

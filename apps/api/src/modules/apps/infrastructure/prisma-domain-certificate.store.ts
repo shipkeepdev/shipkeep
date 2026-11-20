@@ -9,9 +9,6 @@ import type {
   StoredCertificate,
 } from '../domain/certificates';
 
-/** Readings of every node for every domain of one application stay far below this bound. */
-const MAX_READINGS = 5000;
-
 @Injectable()
 export class PrismaDomainCertificateStore implements DomainCertificateStore {
   constructor(private readonly database: PrismaUnitOfWork) {}
@@ -48,22 +45,24 @@ export class PrismaDomainCertificateStore implements DomainCertificateStore {
     }
   }
 
-  async forApplication(applicationId: string): Promise<Map<string, DomainCertificate[]>> {
-    const rows = await this.database.client.domainCertificate.findMany({
-      where: { domain: { applicationId } },
-      select: {
-        notAfter: true,
-        issuer: true,
-        observedAt: true,
-        domain: { select: { hostname: true } },
-      },
-      orderBy: [{ domainId: 'asc' }, { nodeId: 'asc' }],
-      take: MAX_READINGS,
-    });
-    const readings = new Map<string, DomainCertificate[]>();
-    for (const { domain, ...reading } of rows) {
-      readings.set(domain.hostname, [...(readings.get(domain.hostname) ?? []), reading]);
-    }
-    return readings;
+  async forApplication(
+    organizationId: string,
+    applicationId: string,
+    freshSince: Date,
+  ): Promise<Map<string, DomainCertificate>> {
+    // One row per domain, whatever the number of nodes: the recent reading that expires first.
+    const rows = await this.database.client.$queryRaw<
+      { hostname: string; notAfter: Date; issuer: string; observedAt: Date }[]
+    >`
+      SELECT DISTINCT ON (c.domain_id)
+        d.hostname, c.not_after AS "notAfter", c.issuer, c.observed_at AS "observedAt"
+      FROM domain_certificates c
+      JOIN domains d ON d.organization_id = c.organization_id AND d.id = c.domain_id
+      WHERE c.organization_id = ${organizationId}::uuid
+        AND d.application_id = ${applicationId}::uuid
+        AND c.observed_at > ${freshSince}
+      ORDER BY c.domain_id, c.not_after ASC, c.node_id ASC
+    `;
+    return new Map(rows.map(({ hostname, ...reading }) => [hostname, reading] as const));
   }
 }

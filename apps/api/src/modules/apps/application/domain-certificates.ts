@@ -18,7 +18,7 @@ import {
 /** The agent reports at most this many names (certwatch.MaxHosts). */
 const MAX_CERTIFICATES = 64;
 const MAX_ISSUER_BYTES = 64;
-const HOSTNAME = /^(?:\*\.)?[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/;
+const LABEL = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
 // Certificates outside this range are not ones a public or internal CA issues.
 const EARLIEST = Date.UTC(2000, 0, 1);
 const LATEST = Date.UTC(2200, 0, 1);
@@ -32,8 +32,7 @@ export function reportedCertificates(report: StateReport): ReportedCertificate[]
   const certificates: ReportedCertificate[] = [];
   for (const certificate of report.certificates) {
     const hostname = certificate.hostname.toLowerCase().replace(/\.$/, '');
-    if (hostname.length > 253 || !HOSTNAME.test(hostname) || hostname.includes('..'))
-      return undefined;
+    if (!validHostname(hostname)) return undefined;
     if (!certificate.notAfter) return undefined;
     const notAfter = timestampDate(certificate.notAfter);
     const time = notAfter.getTime();
@@ -44,6 +43,14 @@ export function reportedCertificates(report: StateReport): ReportedCertificate[]
     certificates.push({ hostname, notAfter, issuer });
   }
   return certificates;
+}
+
+/** A DNS name of at most 253 bytes, each label of 1 to 63, a leading `*` label allowed. */
+function validHostname(hostname: string): boolean {
+  if (hostname.length > 253) return false;
+  const labels = hostname.split('.');
+  if (labels[0] === '*') labels.shift();
+  return labels.length >= 2 && labels.every((label) => LABEL.test(label));
 }
 
 function hasControl(value: string): boolean {

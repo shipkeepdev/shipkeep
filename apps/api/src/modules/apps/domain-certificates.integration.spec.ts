@@ -93,6 +93,14 @@ describe('domain certificates with PostgreSQL', () => {
         { node_id: first, issuer: 'R10' },
         { node_id: second, issuer: 'R11' },
       ]);
+      // A reading no node refreshed in the last hour no longer counts, even if it expires first.
+      await admin.query(
+        "UPDATE domain_certificates SET observed_at = now() - interval '2 hours' WHERE node_id = $1",
+        [second],
+      );
+      expect((await listed()).items[0]?.certificate).toEqual(
+        expect.objectContaining({ notAfter: renewed.toISOString(), issuer: 'R10' }),
+      );
     } finally {
       await admin.end();
     }
