@@ -58,6 +58,19 @@ export class OperatorAccountCommands {
   }
 
   /**
+   * The id of an active account, to name the owner of what an operator command creates
+   * (ADR 0021). A disabled account owns nothing new.
+   */
+  async activeAccountId(emailInput: string): Promise<string> {
+    const email = normalizeEmail(emailInput);
+    const found = await this.store.findUserByEmail(email);
+    if (!found) throw new NotFoundError('Account');
+    if (found.status !== 'active')
+      throw new ConflictError('account_not_active', 'This account is not active.');
+    return found.id;
+  }
+
+  /**
    * Gives an account a new password. Its sessions, its API tokens and the links it was sent stop
    * working, and an account that never confirmed its address becomes active. A second factor
    * stays as it is: its recovery codes are the way back.
