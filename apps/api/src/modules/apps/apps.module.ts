@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { AppConfig } from '../../platform/config/app-config';
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { ConfirmationsModule } from '../confirmations/confirmations.module';
 import { IdentityModule } from '../identity/identity.module';
@@ -7,7 +8,12 @@ import { TenantAccessModule } from '../organizations/tenant-access.module';
 
 import { ApplicationCommands } from './application/application-commands';
 import { ApplicationConfirmationTarget } from './application/application-confirmation-target';
-import { APPLICATION_STORE, APPLICATION_TRANSACTION, DOMAIN_RESOLVER } from './application/ports';
+import {
+  APPLICATION_STORE,
+  APPLICATION_TRANSACTION,
+  CONTROL_PLANE_HOST,
+  DOMAIN_RESOLVER,
+} from './application/ports';
 import { DnsDomainResolver } from './infrastructure/dns-domain.resolver';
 import { PrismaApplicationStore } from './infrastructure/prisma-application.store';
 import { ApplicationController } from './interface/application.controller';
@@ -22,7 +28,12 @@ import { ApplicationController } from './interface/application.controller';
     { provide: APPLICATION_STORE, useClass: PrismaApplicationStore },
     { provide: APPLICATION_TRANSACTION, useExisting: PrismaUnitOfWork },
     { provide: DOMAIN_RESOLVER, useClass: DnsDomainResolver },
+    {
+      provide: CONTROL_PLANE_HOST,
+      useFactory: (config: AppConfig) => new URL(config.get('API_PUBLIC_URL')).hostname,
+      inject: [AppConfig],
+    },
   ],
-  exports: [APPLICATION_STORE],
+  exports: [APPLICATION_STORE, CONTROL_PLANE_HOST],
 })
 export class AppsModule {}
