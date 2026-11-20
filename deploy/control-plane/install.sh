@@ -288,6 +288,64 @@ ask_owner_password() {
   done
 }
 
+# Ubuntu 24.04, the system the server installer supports, read from the os-release file $1.
+ubuntu_noble() {
+  local ID='' VERSION_ID=''
+  [[ -f $1 ]] || return 1
+  # shellcheck source=/dev/null
+  . "$1"
+  [[ $ID == ubuntu && $VERSION_ID == 24.04 ]]
+}
+
+# Docker Compose 2.24.4 is the first to read `!override`, which compose.single-machine.yml uses to
+# replace the published ports. $1 is what `docker compose version --short` says.
+compose_reads_override() {
+  local major minor patch
+  [[ ${1#v} =~ ^([0-9]{1,4})\.([0-9]{1,4})\.([0-9]{1,4})([-+].*)?$ ]] || return 1
+  major=$((10#${BASH_REMATCH[1]})) minor=$((10#${BASH_REMATCH[2]})) patch=$((10#${BASH_REMATCH[3]}))
+  ((major > 2 || (major == 2 && (minor > 24 || (minor == 24 && patch >= 4)))))
+}
+
+# The steps done after the settings file, one per line in install-state, so that `--resume yes`
+# runs only the ones left. It holds nothing secret: the settings of the run and the steps done.
+record() {
+  printf '%s\n' "$1" >>"$directory/install-state" || fail "Cannot write $directory/install-state."
+}
+
+# Reads install-state ($1), refusing anything the installer did not write.
+read_state() {
+  local line key value mode=''
+  [[ -f $1 && ! -L $1 ]] || fail "No installation to resume in $directory."
+  (($(wc -c <"$1") <= 4096)) || fail "$1 is not the installer's."
+  while IFS= read -r line; do
+    # The checks below run their own matches: the value is taken first.
+    key=${line%%=*} value=${line#*=}
+    [[ $line == *=* ]] || value=''
+    case $key in
+      mode) [[ -z $mode && $value =~ ^(single|separate)$ ]] || fail "$1 is not the installer's."
+        mode=$value
+        [[ $mode == separate ]] || single=1 compose_files='-f compose.yml -f compose.single-machine.yml' ;;
+      domain) valid_domain "$value" || fail "$1 is not the installer's."
+        domain=$value ;;
+      email) valid_address "$value" || fail "$1 is not the installer's."
+        owner_email=$value ;;
+      organization) valid_organization "$value" || fail "$1 is not the installer's."
+        organization=$value ;;
+      organization_id) [[ $value =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || fail "$1 is not the installer's."
+        organization_id=$value ;;
+      started) [[ $line == started ]] || fail "$1 is not the installer's."
+        started=1 ;;
+      account) [[ $line == account ]] || fail "$1 is not the installer's."
+        account_done=1 ;;
+      server) [[ $line == server ]] || fail "$1 is not the installer's."
+        server_done=1 ;;
+      *) fail "$1 is not the installer's." ;;
+    esac
+  done <"$1"
+  [[ -n $mode && -n $domain && -n $owner_email ]] || fail "$1 is not the installer's."
+  ((!single)) || [[ -n $organization ]] || fail "$1 is not the installer's."
+}
+
 # Creates the first account with the command line of the control plane (ADR 0020). The password
 # goes on standard input: an argument or a variable could be read by other processes.
 create_first_account() {
@@ -353,9 +411,7 @@ REPO
 # installer does). Elsewhere the operator installs Docker.
 install_docker() {
   local package
-  # shellcheck source=/dev/null
-  [[ -r /etc/os-release ]] && . /etc/os-release
-  [[ ${ID:-} == ubuntu && ${VERSION_ID:-} == 24.04 && -d /run/systemd/system ]] || fail 'Docker is not installed. Install Docker Engine and its Compose plugin (https://docs.docker.com/engine/install/), then run this installer again.'
+  ubuntu_noble /etc/os-release && [[ -d /run/systemd/system ]] || fail 'Docker is not installed. Install Docker Engine and its Compose plugin (https://docs.docker.com/engine/install/), then run this installer again.'
   for package in docker.io podman-docker containerd runc; do
     ! dpkg-query -W -f='${Status}' "$package" 2>/dev/null | grep -q 'install ok installed' || fail 'Conflicting Docker packages; reconcile them manually.'
   done
@@ -383,22 +439,28 @@ https_answers() {
   ' "$1" "$( ((single)) && printf 172.31.250.1 || printf 127.0.0.1)" >/dev/null 2>&1
 }
 
-# Printed when the run stops after the settings file is written: its passwords must be kept.
+# Printed when the run stops after the settings file is written and before the last step: its
+# passwords must be kept, and the steps left are run by the same installer.
 unfinished() {
-  ((!writing)) || printf 'shipkeep-install: the installation did not finish. Keep %s/.env: it holds the database passwords. Once the cause is fixed, finish with: cd %s && sudo docker compose %s up -d\n' "$directory" "$directory" "$compose_files" >&2
+  ((!writing)) || printf 'shipkeep-install: the installation did not finish. Keep %s/.env: it holds the database passwords. Once the cause is fixed, finish with: sudo bash %s/install.sh --dir %s --resume yes\n' "$directory" "$here" "$directory" >&2
 }
 
-# ADR 0021: the first organization, then this machine enrolled in it as a server, with the agent
-# and the installer of the control plane's own image. The join token goes from the control plane
-# to the server installer through a pipe, never on a terminal or in a file of this script.
-add_this_server() {
-  local said organization_id fingerprint manifest installer amd64 arm64 digest work status
+# ADR 0021: the first organization, owned by the first account. Sets organization_id.
+create_organization() {
+  local said
   said=$(compose run --rm --no-deps -T control-plane node main.js organization create --name "$organization" --slug "$(organization_slug "$organization")" --owner "$owner_email") || {
     printf 'shipkeep-install: the control plane is running, but the organization %s was not created.\n' "$organization" >&2
     return 1
   }
   organization_id=${said##* }
-  [[ $organization_id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]] || return 1
+  [[ $organization_id =~ ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$ ]]
+}
+
+# ADR 0021: this machine enrolled in organization_id as a server, with the agent and the installer
+# of the control plane's own image. The join token goes from the control plane to the server
+# installer through a pipe, never on a terminal or in a file of this script.
+add_this_server() {
+  local fingerprint manifest installer amd64 arm64 digest work status
   fingerprint=$(compose run --rm --no-deps -T control-plane node main.js server ca-fingerprint) || return 1
   [[ $fingerprint =~ ^sha256:[a-f0-9]{64}$ ]] || return 1
   manifest=$(compose run --rm --no-deps -T --entrypoint cat control-plane /app/web/browser/install/manifest.json) || return 1
@@ -420,9 +482,78 @@ add_this_server() {
     bash "$work/install.sh" --control-plane "$domain:7443" --ca-fingerprint "$fingerprint" --origin "https://$domain" \
       --amd64-sha256 "$amd64" --arm64-sha256 "$arm64" --local-control-plane 127.0.0.1:3000 --agent-file "$work/agent" || status=$?
   rm -rf -- "$work"
-  ((status == 0)) || printf 'shipkeep-install: the control plane is running, but this server was not added; add one from the Servers page.\n' >&2
+  ((status == 0)) || printf 'shipkeep-install: the control plane is running, but this machine was not added as a server.\n' >&2
   return "$status"
 }
+
+# Everything after the settings file. Each step is recorded once done, so that `--resume yes`
+# runs only those left; the wait for the certificate is not a step: Caddy keeps trying alone.
+finish() {
+  local attempt=0
+  writing=1
+  if ((!started)); then
+    printf 'Downloading the images...\n'
+    compose pull
+  fi
+  printf 'Starting the control plane...\n'
+  compose up -d
+  ((started)) || record started
+  if ((!account_done)); then
+    [[ -n $owner_password ]] || ask_owner_password
+    printf 'Creating the account %s...\n' "$owner_email"
+    if ! create_first_account; then
+      unset owner_password
+      printf 'shipkeep-install: the control plane is running, but the first account was not created.\n' >&2
+      exit 1
+    fi
+    record account
+  fi
+  unset owner_password
+  if ((single)); then
+    if [[ -z $organization_id ]]; then
+      create_organization || exit 1
+      record "organization_id=$organization_id"
+    fi
+    if ((!server_done)); then
+      add_this_server || exit 1
+      record server
+    fi
+  fi
+  writing=0
+
+  printf 'Waiting for the HTTPS certificate of %s...\n' "$domain"
+  until https_answers "$domain"; do
+    attempt=$((attempt + 1))
+    if ((attempt >= 24)); then
+      printf 'The control plane is running, but https://%s does not answer with a valid certificate yet.\n' "$domain" >&2
+      printf 'Check that %s points at this machine and that ports 80 and 443 are reachable from the internet.\n' "$domain" >&2
+      if ((single)); then
+        printf 'Caddy keeps trying by itself: do not run this installer again. Its reasons are in: sudo journalctl -u shipkeep-caddy\n' >&2
+      else
+        printf 'Caddy keeps trying by itself: do not run this installer again. Its reasons are in: cd %s && sudo docker compose -f compose.yml logs caddy\n' "$directory" >&2
+      fi
+      exit 1
+    fi
+    sleep 5
+  done
+  printf '\nShipkeep is running at https://%s\n' "$domain"
+  printf 'Sign in with %s and the password you chose.\n' "$owner_email"
+  if [[ -n $smtp_host ]]; then
+    printf 'Other people sign up by themselves: their confirmation code arrives by email.\n'
+  else
+    printf 'This installation sends no email: more accounts and lost passwords are handled on this server.\n'
+    printf 'See https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md#accounts-without-email\n'
+  fi
+  if ((single)); then
+    printf 'This machine is also a server of the organization %s: deploy applications to it from the Servers page.\n' "$organization"
+    printf 'The compose files and their settings are in %s; give both files to Docker Compose: cd %s && sudo docker compose %s ...\n' "$directory" "$directory" "$compose_files"
+    printf 'Keep .env private: it holds the database passwords.\n'
+  else
+    printf 'The compose file and its settings are in %s. Keep .env private: it holds the database passwords.\n' "$directory"
+  fi
+  printf 'Back up the key-encryption key now: https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md#back-up-the-key-encryption-key\n'
+}
+
 
 main() {
   umask 077
@@ -433,6 +564,7 @@ main() {
   domain='' owner_email='' owner_password=''
   smtp_host='' smtp_port='' smtp_from='' smtp_user='' smtp_password=''
   single_answer='' single=0 organization='' compose_files='-f compose.yml'
+  resume='' started=0 account_done=0 server_done=0 organization_id=''
   while (($#)); do
     (($# >= 2)) || fail 'Missing option value.'
     case "$1" in
@@ -441,11 +573,12 @@ main() {
       --email) owner_email=$2 ;;
       --single-machine) single_answer=$2 ;;
       --organization) organization=$2 ;;
+      --resume) resume=$2 ;;
       --smtp-host) smtp_host=$2 ;;
       --smtp-port) smtp_port=$2 ;;
       --smtp-from) smtp_from=$2 ;;
       --smtp-user) smtp_user=$2 user_given=1 ;;
-      *) fail 'Unknown option. Options: --dir, --domain, --email, --single-machine yes|no, --organization, and for an installation that sends email --smtp-host, --smtp-port, --smtp-from, --smtp-user.' ;;
+      *) fail 'Unknown option. Options: --dir, --domain, --email, --single-machine yes|no, --organization, --resume yes, and for an installation that sends email --smtp-host, --smtp-port, --smtp-from, --smtp-user.' ;;
     esac
     shift 2
   done
@@ -453,6 +586,9 @@ main() {
   [[ -z $domain ]] || valid_domain "$domain" || fail 'Invalid domain: a lowercase DNS name is required, for example shipkeep.example.com.'
   [[ -z $owner_email ]] || valid_address "$owner_email" || fail 'Invalid email address.'
   [[ -z $single_answer ]] || valid_yes_no "$single_answer" || fail 'Invalid --single-machine: yes or no.'
+  [[ -z $resume || $resume == yes ]] || fail 'Invalid --resume: yes.'
+  # The settings of an interrupted run come from its directory; options would contradict them.
+  [[ -z $resume || (-z $domain$owner_email$single_answer$organization$smtp_host$smtp_port$smtp_from && $user_given == 0) ]] || fail 'Give --resume yes with --dir only: the other settings are those of the interrupted run.'
   [[ -z $organization ]] || valid_organization "$organization" || fail 'Invalid organization name: 1 to 80 printable characters.'
   [[ -z $smtp_host ]] || valid_smtp_host "$smtp_host" || fail 'Invalid SMTP host.'
   [[ -z $smtp_port ]] || valid_port "$smtp_port" || fail 'Invalid SMTP port.'
@@ -466,6 +602,15 @@ main() {
   [[ $(uname -s) == Linux ]] || fail 'A Linux machine is required.'
   case $(uname -m) in x86_64 | aarch64) ;; *) fail 'Unsupported architecture: the image is built for amd64 and arm64.' ;; esac
   here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+  if [[ -n $resume ]]; then
+    assert_root_directory "$directory"
+    [[ -f $directory/.env && ! -L $directory/.env ]] || fail "No installation to resume in $directory."
+    read_state "$directory/install-state"
+    trap unfinished EXIT
+    cd -- "$directory"
+    finish
+    return 0
+  fi
   read_image "$here/image"
   for file in compose.yml compose.single-machine.yml Caddyfile; do
     [[ -f $here/$file && ! -L $here/$file ]] || fail "Run this installer from a release bundle: $file is missing."
@@ -495,6 +640,11 @@ main() {
   fi
   if [[ $single_answer == y* ]]; then
     single=1 compose_files='-f compose.yml -f compose.single-machine.yml'
+    # The server installer runs at the end, once the account exists: its own refusals come first.
+    ubuntu_noble /etc/os-release && [[ -d /run/systemd/system ]] || fail 'Applications on this machine need Ubuntu 24.04 with systemd, as every server does. Run with --single-machine no and add a separate server.'
+    if command -v docker >/dev/null; then
+      compose_reads_override "$(docker compose version --short 2>/dev/null)" || fail 'Applications on this machine need Docker Compose 2.24.4 or later. Upgrade the Compose plugin, then run this installer again: nothing was changed.'
+    fi
     (($(nproc) >= 2)) || fail 'Applications on this machine need at least 2 CPUs. Run with --single-machine no and add a separate server.'
     memory=$(memory_total_bytes /proc/meminfo) || fail 'Cannot read the memory of this machine.'
     ((memory >= minimum_memory_bytes)) || fail 'Applications on this machine need at least 3 GiB of memory. Run with --single-machine no and add a separate server.'
@@ -546,6 +696,7 @@ main() {
   if ((single)); then
     # With the cgroupfs driver, cgroup_parent is a plain path and no slice would hold the containers.
     [[ $(docker info --format '{{.CgroupDriver}}') == systemd ]] || fail "Applications on this machine need Docker's systemd cgroup driver."
+    compose_reads_override "$(docker compose version --short 2>/dev/null)" || fail 'Applications on this machine need Docker Compose 2.24.4 or later.'
     # PostgreSQL and the API run in this slice, protected up to the reservation (ADR 0021). Its
     # parent, shipkeep.slice, gets the same protection from the server installer.
     printf '[Unit]\nDescription=Shipkeep: the control plane on the machine that also runs applications\nBefore=slices.target\n[Slice]\nMemoryLow=%d\n' "$reserved_memory_bytes" >/etc/systemd/system/shipkeep-controlplane.slice
@@ -566,55 +717,15 @@ main() {
   mv -- "$directory/.env.new" "$directory/.env"
   unset smtp_password admin_password app_password
   cd -- "$directory"
-  printf 'Downloading %s...\n' "${image%%@*}"
-  compose pull
-  printf 'Starting the control plane...\n'
-  compose up -d
-  writing=0
-
-  printf 'Creating the account %s...\n' "$owner_email"
-  if ! create_first_account; then
-    unset owner_password
-    printf 'shipkeep-install: the control plane is running, but the first account was not created. Create it with:\n' >&2
-    printf '  cd %s && sudo docker compose %s run --rm --no-deps control-plane node main.js account create --email %s\n' "$directory" "$compose_files" "$owner_email" >&2
-    exit 1
-  fi
-  unset owner_password
-  if ((single)); then
-    add_this_server || exit 1
-  fi
-
-  printf 'Waiting for the HTTPS certificate of %s...\n' "$domain"
-  until https_answers "$domain"; do
-    attempt=$((attempt + 1))
-    if ((attempt >= 24)); then
-      printf 'The control plane is running, but https://%s does not answer with a valid certificate yet.\n' "$domain" >&2
-      printf 'Check that %s points at this machine and that ports 80 and 443 are reachable from the internet.\n' "$domain" >&2
-      if ((single)); then
-        printf 'Caddy keeps trying by itself: do not run this installer again. Its reasons are in: sudo journalctl -u shipkeep-caddy\n' >&2
-      else
-        printf 'Caddy keeps trying by itself: do not run this installer again. Its reasons are in: cd %s && sudo docker compose -f compose.yml logs caddy\n' "$directory" >&2
-      fi
-      exit 1
-    fi
-    sleep 5
-  done
-  printf '\nShipkeep is running at https://%s\n' "$domain"
-  printf 'Sign in with %s and the password you chose.\n' "$owner_email"
-  if [[ -n $smtp_host ]]; then
-    printf 'Other people sign up by themselves: their confirmation code arrives by email.\n'
-  else
-    printf 'This installation sends no email: more accounts and lost passwords are handled on this server.\n'
-    printf 'See https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md#accounts-without-email\n'
-  fi
-  if ((single)); then
-    printf 'This machine is also a server of the organization %s: deploy applications to it from the Servers page.\n' "$organization"
-    printf 'The compose files and their settings are in %s; give both files to Docker Compose: cd %s && sudo docker compose %s ...\n' "$directory" "$directory" "$compose_files"
-    printf 'Keep .env private: it holds the database passwords.\n'
-  else
-    printf 'The compose file and its settings are in %s. Keep .env private: it holds the database passwords.\n' "$directory"
-  fi
-  printf 'Back up the key-encryption key now: https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md#back-up-the-key-encryption-key\n'
+  # What --resume yes needs to finish: nothing secret.
+  set -o noclobber
+  {
+    printf 'mode=%s\n' "$( ((single)) && printf single || printf separate)"
+    printf 'domain=%s\nemail=%s\n' "$domain" "$owner_email"
+    ((!single)) || printf 'organization=%s\n' "$organization"
+  } >"$directory/install-state" || fail "Cannot create $directory/install-state."
+  set +o noclobber
+  finish
 }
 
 if [[ ${BASH_SOURCE[0]} == "$0" ]]; then main "$@"; fi
