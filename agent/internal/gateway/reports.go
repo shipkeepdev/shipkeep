@@ -10,6 +10,10 @@ import (
 	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
+// MaxReportBytes bounds a state report: a larger one is not sent, and the control plane keeps the
+// last observation it had.
+const MaxReportBytes = 60 * 1024
+
 // reportStates samples independently of the stream writer, keeping heartbeats responsive.
 // A fresh session starts with a full snapshot. Changes are sampled every second, with a full
 // refresh every 30 seconds. Collection failures retain the last good observation remotely and are
@@ -23,7 +27,7 @@ func (r *Runner) reportStates(ctx context.Context, epoch uint64, output chan<- *
 		collectCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		report, err := r.Report(collectCtx)
 		cancel()
-		if err == nil && report != nil && proto.Size(report) < 60*1024 {
+		if err == nil && report != nil && proto.Size(report) < MaxReportBytes {
 			if failing {
 				failing = false
 				r.Logger.Info("state report collection recovered")

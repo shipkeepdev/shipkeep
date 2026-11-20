@@ -298,7 +298,7 @@ const line = (input: string | CodeLine): CodeLine =>
           @if (x.icon) {
             <sk-icon [name]="x.icon" class="text-[15px] text-mute" />
           }
-          <span class="truncate">{{ x.t | t }}</span>
+          <span class="truncate">{{ x.t | t: x.values }}</span>
         </span>
       }
     </ng-template>

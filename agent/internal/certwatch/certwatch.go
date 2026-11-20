@@ -4,6 +4,7 @@
 package certwatch
 
 import (
+	"cmp"
 	"context"
 	"crypto/tls"
 	"crypto/x509"
@@ -13,6 +14,8 @@ import (
 	"sync"
 	"time"
 
+	"google.golang.org/protobuf/encoding/protowire"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
@@ -158,6 +161,33 @@ func (w *Watcher) Snapshot(now time.Time) []*agentv1.CertificateStatus {
 	})
 	return statuses
 }
+
+// Within returns the readings that fit in budget bytes of a state report, those that expire first
+// before the others, sorted by host name. The workload inventory comes first in a report: the
+// certificates take only the room it leaves.
+func Within(statuses []*agentv1.CertificateStatus, budget int) []*agentv1.CertificateStatus {
+	bySoonest := slices.Clone(statuses)
+	slices.SortStableFunc(bySoonest, func(a, b *agentv1.CertificateStatus) int {
+		return a.GetNotAfter().AsTime().Compare(b.GetNotAfter().AsTime())
+	})
+	kept := make([]*agentv1.CertificateStatus, 0, len(bySoonest))
+	for _, status := range bySoonest {
+		// The field's tag, the entry's length, then the entry itself.
+		size := protowire.SizeTag(certificatesField) + protowire.SizeBytes(proto.Size(status))
+		if size > budget {
+			break
+		}
+		budget -= size
+		kept = append(kept, status)
+	}
+	slices.SortFunc(kept, func(a, b *agentv1.CertificateStatus) int {
+		return cmp.Compare(a.GetHostname(), b.GetHostname())
+	})
+	return kept
+}
+
+// certificatesField is the number of StateReport.certificates, read from the generated code.
+var certificatesField = (&agentv1.StateReport{}).ProtoReflect().Descriptor().Fields().ByName("certificates").Number()
 
 func issuer(certificate *x509.Certificate) string {
 	name := certificate.Issuer.CommonName

@@ -628,6 +628,7 @@ export class ApplicationPage {
         secrets: this.secrets(),
         domains: this.domains.items(),
         replicas: this.replicas.items(),
+        now: this.drawnAt(),
       }) ?? { title: key, desc: '', blocks: [] }
     );
   });
@@ -715,11 +716,20 @@ export class ApplicationPage {
   );
   private timer: ReturnType<typeof setTimeout> | undefined;
   private loadRevision = 0;
+  /**
+   * The time the sections are drawn at, moved on every minute: a certificate's days left change on
+   * a page left open, even when no data does.
+   */
+  private readonly drawnAt = signal(new Date());
 
   constructor() {
+    const ticking = setInterval(() => {
+      this.drawnAt.set(new Date());
+    }, 60_000);
     inject(DestroyRef).onDestroy(() => {
       ++this.loadRevision;
       clearTimeout(this.timer);
+      clearInterval(ticking);
     });
     effect(() => {
       void this.load(this.environment(), this.applicationId());

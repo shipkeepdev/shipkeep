@@ -942,9 +942,15 @@ export const FR: Readonly<Record<string, string>> = {
   Placement: 'Placement',
   'Placement labels': 'Étiquettes de placement',
   Platform: 'Plateforme',
-  'Point each domain at a public address of a server running this application. Administrators set these addresses on the Servers page. Certificates are issued automatically once it answers on ports 80 and 443.':
-    "Faites pointer chaque domaine vers une adresse publique d'un serveur qui fait tourner l'application. Les administrateurs renseignent ces adresses dans la page Serveurs. Les certificats sont émis automatiquement dès qu'il répond sur les ports 80 et 443.",
+  'Point each domain at a public address of a server running this application. Administrators set these addresses on the Servers page. Certificates are issued automatically once it answers on ports 80 and 443, and renewed about 30 days before they expire. The certificate shown is the one that expires first among the servers.':
+    "Faites pointer chaque domaine vers une adresse publique d'un serveur qui fait tourner l'application. Les administrateurs renseignent ces adresses dans la page Serveurs. Les certificats sont émis automatiquement dès qu'il répond sur les ports 80 et 443, puis renouvelés environ 30 jours avant leur expiration. Le certificat affiché est celui qui expire le premier parmi les serveurs.",
   'Points at': 'Pointe vers',
+  '{n} days left': '{n} jours restants',
+  'expires in {n} days': 'expire dans {n} jours',
+  'expires today': "expire aujourd'hui",
+  'expires tomorrow': 'expire demain',
+  'no recent reading': 'aucune lecture récente',
+  'renewal late, {n} days left': 'renouvellement en retard, {n} jours restants',
   'PostgreSQL 17.2 · Client Lumen · production · srv-par-1 · volume pg-factures-data 18 GiB':
     'PostgreSQL 17.2 · Client Lumen · production · srv-par-1 · volume pg-factures-data 18 Gio',
   'Postgres, auth and storage.': 'Postgres, auth et stockage.',
