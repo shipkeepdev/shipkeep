@@ -54,7 +54,22 @@ type ControlPlane struct {
 	// loopback IP literal with a port, on the machine that hosts the control plane (ADR 0021). The
 	// gateway certificate is still verified against Address's host and the CA fingerprint.
 	Connect string `yaml:"connect"`
+	// Route, optional, is the control plane's own route on the machine that hosts it (ADR 0021):
+	// the agent keeps it in Caddy from its start, before and independently of enrollment, and no
+	// action can change or remove it.
+	Route LocalRoute `yaml:"route"`
 }
+
+// LocalRoute sends a host name to a loopback address through the node's Caddy.
+type LocalRoute struct {
+	// Host is the control plane's public name, the host of its API_PUBLIC_URL.
+	Host string `yaml:"host"`
+	// Upstream is the loopback address and port the control plane's HTTP port is published on.
+	Upstream string `yaml:"upstream"`
+}
+
+// routeHost is a DNS name of at least two labels, lowercase, without a wildcard.
+var routeHost = regexp.MustCompile(`^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$`)
 
 // Node holds node-level identity overrides.
 type Node struct {
@@ -182,6 +197,15 @@ func (c Config) Validate() error {
 		add("control_plane.address is required")
 	} else if err := validateHostPort(c.ControlPlane.Address); err != nil {
 		add("control_plane.address: %v", err)
+	}
+
+	if route := c.ControlPlane.Route; route != (LocalRoute{}) {
+		if len(route.Host) > 253 || !routeHost.MatchString(route.Host) {
+			add("control_plane.route.host must be a lowercase DNS name such as shipkeep.example.com")
+		}
+		if !gateway.LoopbackConnect(route.Upstream) {
+			add("control_plane.route.upstream must be a loopback address with a port, such as 127.0.0.1:8080")
+		}
 	}
 
 	if c.ControlPlane.Connect != "" && !gateway.LoopbackConnect(c.ControlPlane.Connect) {

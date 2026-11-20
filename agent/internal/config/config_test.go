@@ -168,3 +168,44 @@ func TestConnectOnLoopbackIsValid(t *testing.T) {
 		}
 	}
 }
+
+// The control plane's route on the machine that hosts it (ADR 0021).
+func TestControlPlaneRouteSettings(t *testing.T) {
+	t.Parallel()
+	valid := validYAML() + "  route:\n    host: shipkeep.example.com\n    upstream: 127.0.0.1:8080\n"
+	cfg, err := config.Parse([]byte(valid), config.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cfg.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.ControlPlane.Route.Host != "shipkeep.example.com" || cfg.ControlPlane.Route.Upstream != "127.0.0.1:8080" {
+		t.Fatalf("not read: %+v", cfg.ControlPlane.Route)
+	}
+	for name, route := range map[string]string{
+		"public upstream":       "    host: shipkeep.example.com\n    upstream: 203.0.113.5:8080\n",
+		"private upstream":      "    host: shipkeep.example.com\n    upstream: 10.0.0.2:8080\n",
+		"name as upstream":      "    host: shipkeep.example.com\n    upstream: localhost:8080\n",
+		"upstream without port": "    host: shipkeep.example.com\n    upstream: 127.0.0.1\n",
+		"upstream port zero":    "    host: shipkeep.example.com\n    upstream: 127.0.0.1:0\n",
+		"host only":             "    host: shipkeep.example.com\n",
+		"upstream only":         "    upstream: 127.0.0.1:8080\n",
+		"wildcard host":         "    host: \"*.example.com\"\n    upstream: 127.0.0.1:8080\n",
+		"uppercase host":        "    host: Shipkeep.example.com\n    upstream: 127.0.0.1:8080\n",
+		"single label":          "    host: shipkeep\n    upstream: 127.0.0.1:8080\n",
+		"host with port":        "    host: shipkeep.example.com:443\n    upstream: 127.0.0.1:8080\n",
+		"host with path":        "    host: shipkeep.example.com/admin\n    upstream: 127.0.0.1:8080\n",
+		"ip host":               "    host: 203.0.113.5\n    upstream: 127.0.0.1:8080\n",
+		"newline in host":       "    host: \"shipkeep.example.com\\nx\"\n    upstream: 127.0.0.1:8080\n",
+		"oversized host":        "    host: " + strings.Repeat("a", 250) + ".example.com\n    upstream: 127.0.0.1:8080\n",
+	} {
+		cfg, err := config.Parse([]byte(validYAML()+"  route:\n"+route), config.Default())
+		if err != nil {
+			continue
+		}
+		if err := cfg.Validate(); err == nil {
+			t.Errorf("%s: accepted", name)
+		}
+	}
+}
