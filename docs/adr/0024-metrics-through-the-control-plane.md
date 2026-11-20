@@ -27,7 +27,8 @@ The maintainer chose to send metrics through the control plane.
 - **The agent sends a `MetricsReport` on the existing `Connect` stream.** It is a new case of `ConnectRequest`, not an action: the closed action list does not change. The report carries the session's lease epoch, at most 256 containers and 64 host names, and stays under 60 KiB like a state report. Nothing is kept while the stream is down: metrics describe the past, not the desired state, and an outage shows as a gap.
 - **The control plane writes the samples to VictoriaMetrics with labels it sets itself:**
   - It checks the epoch and bounds of the report, like those of a state report.
-  - It maps each container name to the node's placed allocation, which gives organization, project, environment, application and replica. It maps each host name to a domain of the node's organization.
+  - It maps each container name to the node's placed allocation, which gives organization, project, environment, application and replica.
+  - It maps each host name to a domain whose application has a placed allocation on that node, which also gives the domain's host name as a label: route samples of two domains of one application stay apart. A host name routed only on another node of the organization is dropped, so a node cannot report traffic for another node's workload.
   - Samples that map to nothing are dropped. A label the agent sent is never written as it came.
 - **VictoriaMetrics runs as a service of the control plane's Compose project:**
   - on its internal network only, with no published port;
