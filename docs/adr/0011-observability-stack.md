@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-03
+- Amended by: ADR 0024 (metrics go through the control plane)
 
 ## Context
 
