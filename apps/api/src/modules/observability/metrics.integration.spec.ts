@@ -203,8 +203,10 @@ describe('metrics with PostgreSQL and VictoriaMetrics', () => {
     expect(traffic(viewer, '2xx')).toBeGreaterThan(0);
     expect(traffic(viewer, '4xx')).toBe(0);
     expect(await requests('member')).toEqual([]);
-    // Totals over the whole period include the latest samples: 60 requests each for the two
-    // environments the owner reads (100 to 160), only those of the readable one for the viewer.
+    // Totals over the whole period, read at its end, count every sample, the latest included: each
+    // counter appeared in the period, so VictoriaMetrics counts it from zero up to its last value,
+    // 160 requests and 1 second for the viewer's environment, 160 more requests for the hidden one.
+    // Adding up the chart's 30-second steps would give 45 requests: that is not what is read.
     const totals = async (actor: 'owner' | 'environmentViewer' | 'member') =>
       (await fixture.get(organization, actor).expect(200)).body as {
         totalRequests: number;
@@ -212,9 +214,10 @@ describe('metrics with PostgreSQL and VictoriaMetrics', () => {
       };
     const ownerTotals = await totals('owner');
     const viewerTotals = await totals('environmentViewer');
-    expect(ownerTotals.totalRequests).toBeGreaterThan(viewerTotals.totalRequests);
-    expect(viewerTotals.totalRequests).toBeGreaterThan(0);
-    expect(viewerTotals.meanSeconds).not.toBeNull();
+    expect(ownerTotals.totalRequests).toBeCloseTo(320, 6);
+    expect(ownerTotals.meanSeconds).toBeCloseTo(1 / 320, 9);
+    expect(viewerTotals.totalRequests).toBeCloseTo(160, 6);
+    expect(viewerTotals.meanSeconds).toBeCloseTo(1 / 160, 9);
     expect(await totals('member')).toMatchObject({ totalRequests: 0, meanSeconds: null });
     await fixture.get(organization, 'outsider').expect(404);
   });
