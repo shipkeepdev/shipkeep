@@ -106,6 +106,7 @@ describe('workspace pages', () => {
               session: {
                 userId: 'u',
                 email: 'person@example.com',
+                displayName: null,
                 expiresAt: '2030-01-01T00:00:00Z',
                 extra: 'secret',
               },
@@ -130,6 +131,7 @@ describe('workspace pages', () => {
     expect(TestBed.inject(SessionStore).profile()).toEqual({
       userId: 'u',
       email: 'person@example.com',
+      displayName: null,
       expiresAt: '2030-01-01T00:00:00Z',
     });
   });

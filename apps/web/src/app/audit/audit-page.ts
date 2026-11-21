@@ -322,7 +322,7 @@ export class AuditPage {
     if (event.actorKind === 'system') return this.i18n.t('system');
     if (event.actorKind === 'node') return this.i18n.t('agent');
     if (event.actorKind === 'api_token') return this.i18n.t('API token');
-    return (event.actorId && this.shell.emails().get(event.actorId)) || this.i18n.t('user');
+    return (event.actorId && this.shell.names().get(event.actorId)) || this.i18n.t('user');
   }
   /** Removals in red, access and secrets in blue, the rest neutral, as in the design. */
   protected tone(action: string): string {

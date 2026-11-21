@@ -164,6 +164,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/auth/profile": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["setDisplayName"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/auth/register": {
         readonly parameters: {
             readonly query?: never;
@@ -1368,6 +1384,7 @@ export type components = {
             readonly createdAt: string;
             /** @enum {string|null} */
             readonly directRole: "admin" | "developer" | "viewer" | null;
+            readonly displayName: string | null;
             /** Format: email */
             readonly email: string;
             /** Format: uuid */
@@ -1436,15 +1453,6 @@ export type components = {
             readonly slug: string;
             readonly totp?: string;
         };
-        readonly CredentialsDto: {
-            /**
-             * Format: email
-             * @example person@example.com
-             */
-            readonly email: string;
-            /** Format: password */
-            readonly password: string;
-        };
         readonly DeleteApplicationDto: {
             /** @description Confirmation token for `application.delete` on this application (SPEC 3.6). */
             readonly confirmation: string;
@@ -1474,6 +1482,10 @@ export type components = {
         readonly DeploymentListDto: {
             /** @description Most recent first, at most 50. */
             readonly items: readonly components["schemas"]["DeploymentDto"][];
+        };
+        readonly DisplayNameDto: {
+            /** @description The name to show; empty or null removes it. Trimmed, at most 64 characters. */
+            readonly displayName: string | null;
         };
         readonly DomainCertificateDto: {
             /** @description The issuer's common name, or its organization, at most 64 bytes. */
@@ -1625,6 +1637,7 @@ export type components = {
             readonly active: boolean;
             /** Format: date-time */
             readonly createdAt: string;
+            readonly displayName: string | null;
             /** Format: email */
             readonly email: string;
             /** Format: uuid */
@@ -1655,6 +1668,8 @@ export type components = {
             readonly password: string;
         };
         readonly MfaRecoveryDto: {
+            /** @description The name the account shows instead of its address; null when it has none. */
+            readonly displayName: string | null;
             /** Format: email */
             readonly email: string;
             /** Format: date-time */
@@ -1847,6 +1862,17 @@ export type components = {
             readonly recovery?: string;
             readonly totp?: string;
         };
+        readonly RegisterDto: {
+            /**
+             * Format: email
+             * @example person@example.com
+             */
+            readonly email: string;
+            /** @description The name to show instead of the address. Trimmed, at most 64 characters. */
+            readonly name?: string;
+            /** Format: password */
+            readonly password: string;
+        };
         readonly RegistryCredentialsDto: {
             /** Format: date-time */
             readonly createdAt: string;
@@ -1952,6 +1978,8 @@ export type components = {
             readonly items: readonly components["schemas"]["SecretDto"][];
         };
         readonly SessionDto: {
+            /** @description The name the account shows instead of its address; null when it has none. */
+            readonly displayName: string | null;
             /** Format: email */
             readonly email: string;
             /** Format: date-time */
@@ -2296,6 +2324,32 @@ export interface operations {
             };
         };
     };
+    readonly setDisplayName: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                readonly Origin: string;
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["DisplayNameDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionDto"];
+                };
+            };
+        };
+    };
     readonly register: {
         readonly parameters: {
             readonly query?: never;
@@ -2310,7 +2364,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["CredentialsDto"];
+                readonly "application/json": components["schemas"]["RegisterDto"];
             };
         };
         readonly responses: {

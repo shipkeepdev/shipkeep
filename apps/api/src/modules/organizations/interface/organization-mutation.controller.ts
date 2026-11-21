@@ -1,3 +1,4 @@
+import { sessionDto } from '../../identity/interface/identity.dto';
 import { Body, Controller, Param, Req, Res, UseInterceptors } from '@nestjs/common';
 import { ApiCreatedResponse, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { Secret } from '@shipkeep/domain';
@@ -49,11 +50,7 @@ export class OrganizationMutationController {
     setSessionCookies(response, result.session, cookiePolicy(this.config.get('API_PUBLIC_URL')));
     return {
       organization: organizationDto(result.organization),
-      session: {
-        userId: result.session.userId,
-        email: result.session.email,
-        expiresAt: result.session.expiresAt.toISOString(),
-      },
+      session: sessionDto(result.session),
     };
   }
 
