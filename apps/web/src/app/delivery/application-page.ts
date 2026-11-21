@@ -62,6 +62,7 @@ import {
   type Replica,
   type SecretMetadata,
 } from './delivery-api';
+import { startTarget } from './start-target';
 
 const STEPS: readonly { label: string; states: readonly string[] }[] = [
   { label: 'Queued', states: ['queued'] },
@@ -758,21 +759,8 @@ export class ApplicationPage {
       };
     });
   });
-  /**
-   * After a stop, the deployment that ran the version the stop stopped: starting the application
-   * deploys that version again (SPEC 5.1, issue #256). Null while anything else serves.
-   */
-  protected readonly startable = computed(() => {
-    const latest = this.deployments.items().find((item) => item.state === 'succeeded');
-    if (latest?.stop !== true) return null;
-    return (
-      this.deployments
-        .items()
-        .find(
-          (item) => !item.stop && item.releaseId === latest.releaseId && this.canRollBack(item),
-        ) ?? null
-    );
-  });
+  /** After a stop, the deployment to roll back to in order to start the application again. */
+  protected readonly startable = computed(() => startTarget(this.deployments.items()));
   /** The version before the one serving now, offered as a one-click rollback. */
   protected readonly previous = computed(
     () => this.deployments.items().find((d) => this.canRollBack(d)) ?? null,

@@ -341,7 +341,7 @@ describe('delivery screens', () => {
         [`GET ${BASE}/applications/${APP}`]: () => json(application),
         [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: deployments }),
         [`GET ${BASE}/applications/${APP}/replicas`]: () => json({ items: replicas }),
-        [`POST ${BASE}/applications/${APP}/deployments/d-new/rollback`]: () =>
+        [`POST ${BASE}/applications/${APP}/deployments/d-stop/rollback`]: () =>
           json(
             { release: { id: 'r-start' }, deployment: { ...deployment('queued'), id: 'd-start' } },
             201,
@@ -404,7 +404,7 @@ describe('delivery screens', () => {
       expect(button('Stop')).toBeUndefined();
       // Starting deploys again the version the stop stopped.
       await click('Start');
-      expect(posts().at(-1)).toBe(`${BASE}/applications/${APP}/deployments/d-new/rollback`);
+      expect(posts().at(-1)).toBe(`${BASE}/applications/${APP}/deployments/d-stop/rollback`);
       expect(deploymentsText()).toContain('stop');
       // The deployment card shows the stop as a stop, with its own two steps.
       const card = element().querySelector('#panel-deployments .card')?.textContent ?? '';
