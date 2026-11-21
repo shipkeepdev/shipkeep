@@ -88,15 +88,36 @@ describe('organization danger zone', () => {
     expect(element.querySelector('form')).toBeNull();
   });
 
-  it('points to Members & access when no admin can take ownership', async () => {
+  it('points to Members & access when no active admin can take ownership', async () => {
     const { element, button, settle } = await render('owner', [
       member('m1', 'me@example.com', 'owner'),
+      { ...member('m2', 'ada@example.com', 'admin'), active: false },
       member('m4', 'sam@example.com', 'member'),
     ]);
     button('Transfer').click();
     await settle();
     expect(element.textContent).toContain('Make a member an admin first.');
     expect(element.querySelector('form')).toBeNull();
+  });
+
+  it('forgets a typed password when the form is cancelled', async () => {
+    const { element, button, settle } = await render('owner', [
+      member('m1', 'me@example.com', 'owner'),
+      member('m2', 'ada@example.com', 'admin'),
+    ]);
+    button('Transfer').click();
+    await settle();
+    const typed = element.querySelector('#transfer-ownership-password') as HTMLInputElement;
+    typed.value = 'correct horse battery staple';
+    typed.dispatchEvent(new Event('input'));
+    await settle();
+    button('Cancel').click();
+    await settle();
+    button('Transfer').click();
+    await settle();
+    expect((element.querySelector('#transfer-ownership-password') as HTMLInputElement).value).toBe(
+      '',
+    );
   });
 
   it('lets only an owner start a transfer, and keeps deletion unavailable', async () => {

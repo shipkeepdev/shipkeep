@@ -162,6 +162,9 @@ export class OrganizationDanger {
 
   protected close(): void {
     this.#revision++;
+    // A cancelled password or code must not wait in the form for the next opening.
+    this.form.controls.password.reset('');
+    this.form.controls.code.reset('');
     this.open.set(false);
     this.admins.set(null);
     this.failed.set(false);
@@ -181,7 +184,7 @@ export class OrganizationDanger {
       let cursor: string | undefined;
       for (let page = 0; page < PAGES; page++) {
         const { items, nextCursor } = await this.api.members(organizationId, cursor);
-        found.push(...items.filter((member) => member.orgRole === 'admin'));
+        found.push(...items.filter((member) => member.active && member.orgRole === 'admin'));
         if (!nextCursor) break;
         cursor = nextCursor;
       }
