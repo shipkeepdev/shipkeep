@@ -184,7 +184,11 @@ export class MetricsQueries {
         return { environments: readable, partial: false };
       after = last.id;
     }
-    return { environments: readable, partial: true };
+    // The cap was reached: partial only when an environment is left unchecked.
+    const left = await this.transaction.runTenant(organizationId, () =>
+      this.targets.environments(organizationId, 1, after),
+    );
+    return { environments: readable, partial: left.length > 0 };
   }
 
   /** Each named query's series; a null query reads nothing and answers no series. */

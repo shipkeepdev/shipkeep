@@ -158,6 +158,14 @@ describe('MetricsQueries.organization', () => {
     expect(answer.totalRequests).toBe(0);
   });
 
+  it('is complete at exactly two thousand environments, partial at one more', async () => {
+    const full = queries('member', many(2000), new Set([id(1999)]));
+    expect((await full.service.organization(context, ORG, '24h')).partial).toBe(false);
+    expect(full.sent.every((query) => query.includes(id(1999)))).toBe(true);
+    const over = queries('member', many(2001), new Set([id(1999)]));
+    expect((await over.service.organization(context, ORG, '24h')).partial).toBe(true);
+  });
+
   it('is complete for a member who reads every environment of a small organization', async () => {
     const { service } = queries('member', many(3), new Set([id(0), id(1), id(2)]));
     expect((await service.organization(context, ORG, '24h')).partial).toBe(false);

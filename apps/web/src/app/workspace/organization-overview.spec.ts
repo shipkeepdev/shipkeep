@@ -202,6 +202,13 @@ describe('organization overview', () => {
     expect(chart).toContain('Covers 100 of the environments you can read.');
   });
 
+  it('gives each count of the summary its own form', async () => {
+    await open();
+    expect(element().querySelector('.page-sub')?.textContent.trim()).toBe(
+      '1 project · 1 environment · 0 servers',
+    );
+  });
+
   it('says what to do next when no server is connected, and not otherwise', async () => {
     await open();
     expect(element().querySelector('.next-step')?.textContent).toContain('No server connected');
