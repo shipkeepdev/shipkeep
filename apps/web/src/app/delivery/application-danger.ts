@@ -32,17 +32,30 @@ import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-a
     <div class="overflow-hidden rounded-2xl border border-[rgb(255_92_92/35%)] bg-black">
       <div class="flex items-center justify-between gap-4 px-5 py-4 max-sm:flex-wrap">
         <div>
-          <div class="text-[13.5px]">{{ 'Stop the application' | t }}</div>
+          <div class="text-[13.5px]">
+            {{ (startable() ? 'Start the application' : 'Stop the application') | t }}
+          </div>
           <div class="mt-[3px] text-[12px] text-mute2">
             {{
               (running()
                 ? 'Its routes and replicas are removed, and their room on the servers is freed. Releases and history are kept; deploying starts it again.'
-                : 'It has no running replica.'
+                : startable()
+                  ? 'It is stopped. Starting it deploys again the version it ran before the stop.'
+                  : 'It has no running replica.'
               ) | t
             }}
           </div>
         </div>
-        @if (stopping()) {
+        @if (startable() && !running()) {
+          <button
+            class="btn"
+            type="button"
+            [disabled]="busy() || deploying()"
+            (click)="start.emit()"
+          >
+            {{ 'Start' | t }}
+          </button>
+        } @else if (stopping()) {
           <div class="flex flex-wrap gap-2.5">
             <button class="btn btn-danger" type="button" [disabled]="busy()" (click)="stop()">
               {{ (runner.busy() ? 'Stopping…' : 'Stop it now') | t }}
@@ -116,6 +129,10 @@ export class ApplicationDanger {
   readonly application = input.required<Pick<Application, 'id' | 'name'>>();
   /** True while a replica of the application is placed on a server. */
   readonly running = input.required<boolean>();
+  /** True when the application was stopped and the version it ran can be started again. */
+  readonly startable = input(false);
+  /** Start was clicked: the page deploys the stopped version again. */
+  readonly start = output();
   /** True while a deployment of the application, a stop included, has not finished. */
   readonly deploying = input.required<boolean>();
   /** A stop was queued: the page reloads the deployments and follows it. */

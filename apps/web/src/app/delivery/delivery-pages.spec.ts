@@ -341,6 +341,11 @@ describe('delivery screens', () => {
         [`GET ${BASE}/applications/${APP}`]: () => json(application),
         [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: deployments }),
         [`GET ${BASE}/applications/${APP}/replicas`]: () => json({ items: replicas }),
+        [`POST ${BASE}/applications/${APP}/deployments/d-stop/rollback`]: () =>
+          json(
+            { release: { id: 'r-start' }, deployment: { ...deployment('queued'), id: 'd-start' } },
+            201,
+          ),
         [`POST ${BASE}/applications/${APP}/stop`]: () => {
           const stopping = {
             ...deployment('queued'),
@@ -381,8 +386,6 @@ describe('delivery screens', () => {
       sources[0]?.emit({ applicationId: APP });
       await settle();
       expect(element().querySelector('.page-head .pill')?.textContent).toContain('stopped');
-      expect(configText()).toContain('It has no running replica.');
-      expect(button('Stop')?.disabled).toBe(true);
       expect(button('Delete')?.disabled).toBe(false);
       // The version that ran before the stop can be started again; the stop itself cannot.
       expect(
@@ -390,6 +393,18 @@ describe('delivery screens', () => {
           b.textContent.includes('Roll back'),
         ),
       ).toHaveLength(1);
+      // The header and the danger zone offer to start that version, not to roll back to it.
+      const head = element().querySelector('.page-head')?.textContent ?? '';
+      expect(head).toContain('Start r-new');
+      expect(head).not.toContain('Roll back');
+      expect(configText()).toContain(
+        'Starting it deploys again the version it ran before the stop.',
+      );
+      expect(button('Start')?.disabled).toBe(false);
+      expect(button('Stop')).toBeUndefined();
+      // Starting deploys again the version the stop stopped.
+      await click('Start');
+      expect(posts().at(-1)).toBe(`${BASE}/applications/${APP}/deployments/d-stop/rollback`);
       expect(deploymentsText()).toContain('stop');
       // The deployment card shows the stop as a stop, with its own two steps.
       const card = element().querySelector('#panel-deployments .card')?.textContent ?? '';
