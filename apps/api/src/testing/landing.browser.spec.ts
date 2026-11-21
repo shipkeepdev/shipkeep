@@ -83,20 +83,26 @@ async function serve(): Promise<{ server: Server; origin: string }> {
 
 /** Issue #209: the landing page under its production CSP, in both languages. */
 describe('landing page in Chromium', () => {
-  let browser: Browser;
-  let server: Server;
+  let browser: Browser | undefined;
+  let server: Server | undefined;
   let origin: string;
   beforeAll(async () => {
     ({ server, origin } = await serve());
     browser = await chromium.launch();
   });
   afterAll(async () => {
-    await browser.close();
-    await new Promise((resolve) => server.close(resolve));
+    // The server goes even when Chromium never started or fails to close.
+    try {
+      await browser?.close();
+    } finally {
+      const listening = server;
+      if (listening) await new Promise((resolve) => listening.close(resolve));
+    }
   });
 
   /** A page whose third-party requests (fonts, icons, logos) are answered locally. */
   async function open(path: string, width = 1440): Promise<{ page: Page; problems: string[] }> {
+    if (!browser) throw new Error('Chromium did not start');
     const context = await browser.newContext({
       viewport: { width, height: 900 },
       reducedMotion: 'reduce',
