@@ -1288,6 +1288,120 @@
         ]
       }
     },
+    "/api/v1/auth/sessions": {
+      "get": {
+        "operationId": "listSessions",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountSessionListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/revoke-others": {
+      "post": {
+        "operationId": "revokeOtherSessions",
+        "parameters": [
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsRevokedDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "identity"
+        ]
+      }
+    },
+    "/api/v1/auth/sessions/{sessionId}/revoke": {
+      "post": {
+        "operationId": "revokeSession",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/join-tokens": {
       "post": {
         "operationId": "issueJoinToken",
@@ -5632,6 +5746,90 @@
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "AccountSessionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "current": {
+            "type": "boolean",
+            "description": "True for the session that made this request."
+          },
+          "browser": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Browser read from the session's User-Agent, among known names; null otherwise."
+          },
+          "system": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "System read from the session's User-Agent, among known names; null otherwise."
+          },
+          "ip": {
+            "type": "string",
+            "description": "Address the session signed in from."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "current",
+          "browser",
+          "system",
+          "ip",
+          "createdAt",
+          "lastSeenAt",
+          "expiresAt"
+        ]
+      },
+      "AccountSessionListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AccountSessionDto"
+            }
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when the account has more live sessions than the 100 most recently active listed."
+          }
+        },
+        "required": [
+          "items",
+          "truncated"
+        ]
+      },
+      "SessionsRevokedDto": {
+        "type": "object",
+        "properties": {
+          "revoked": {
+            "type": "number",
+            "description": "How many other sessions were ended."
+          }
+        },
+        "required": [
+          "revoked"
         ]
       },
       "JoinTokenIssuedDto": {
