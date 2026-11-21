@@ -9,6 +9,8 @@ export type DomainStatus = Schema<'DomainDto'>;
 export type Replica = Schema<'ReplicaDto'>;
 export type Release = Schema<'ReleaseDto'>;
 export type AgentAction = Schema<'AgentActionDto'>;
+export type ApplicationMetrics = Schema<'ApplicationMetricsDto'>;
+export type MetricsRange = '1h' | '24h' | '7d';
 
 /** Agent actions per page on the application screen. */
 export const AGENT_ACTION_PAGE = 20;
@@ -103,6 +105,19 @@ export class DeliveryApi extends WorkspaceApi {
             query: { limit: AGENT_ACTION_PAGE, ...(cursor ? { cursor } : {}) },
           },
         },
+      ),
+    );
+  }
+  /** CPU, memory, requests by status and mean response time over the period (ADR 0024). */
+  async metrics(
+    environment: EnvironmentRef,
+    applicationId: string,
+    range: MetricsRange,
+  ): Promise<ApplicationMetrics> {
+    return this.required(() =>
+      this.client.GET(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/metrics',
+        { params: { path: { ...environment, applicationId }, query: { range } } },
       ),
     );
   }

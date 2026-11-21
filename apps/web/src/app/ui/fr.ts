@@ -341,6 +341,7 @@ export const FR: Readonly<Record<string, string>> = {
   'BuildImage → srv-ams-6 · rootless BuildKit': 'BuildImage → srv-ams-6 · BuildKit rootless',
   'Builds run on srv-ams-6': 'Les builds vont sur srv-ams-6',
   'CA fingerprint': 'Empreinte CA',
+  CPU: 'CPU',
   'CPU · 3 replicas': 'CPU · 3 répliques',
   'Caddy 2.9 · live': 'Caddy 2.9 · en ligne',
   'Caddy is driven by the agent over a Unix socket. Routes only point to healthy instances.':
@@ -779,6 +780,8 @@ export const FR: Readonly<Record<string, string>> = {
     'Bases gérées, volumes et sauvegardes chiffrées vers votre stockage S3.',
   'Marketing site': 'Site vitrine',
   'Marketing site · production': 'Site vitrine · production',
+  'Measured by the agents every 30 seconds, kept for 30 days.':
+    'Mesurées par les agents toutes les 30 secondes, conservées 30 jours.',
   Member: 'Membre',
   'Member added.': 'Membre ajouté.',
   'Member removed.': 'Membre retiré.',
@@ -787,6 +790,8 @@ export const FR: Readonly<Record<string, string>> = {
   Memory: 'Mémoire',
   'Message queue.': 'File de messages.',
   'Metric alert': 'Alerte de métrique',
+  'Metrics could not be read. They are tried again in 30 seconds.':
+    "Les métriques n'ont pas pu être lues. Nouvel essai dans 30 secondes.",
   Metrics: 'Métriques',
   'Missed backup': 'Sauvegarde manquée',
   Modified: 'Modifié',
@@ -820,6 +825,7 @@ export const FR: Readonly<Record<string, string>> = {
   'No authenticator on this account? Then the email or password was wrong: go back to sign in.':
     "Pas d'application d'authentification sur ce compte ? Alors l'e-mail ou le mot de passe était faux : revenez à la connexion.",
   'No configuration changes to save.': 'Aucun changement de configuration à enregistrer.',
+  'No data for this period yet.': 'Pas encore de données sur cette période.',
   'No deployment yet.': 'Aucun déploiement.',
   'No domain yet. Add one under domains: in shipkeep.yml.':
     'Aucun domaine. Ajoutez-en un sous domains: dans shipkeep.yml.',
@@ -1040,12 +1046,14 @@ export const FR: Readonly<Record<string, string>> = {
   Requests: 'Requêtes',
   'Requests / min': 'Requêtes / min',
   'Requests served · all apps': 'Requêtes servies · toutes apps',
+  'Requests · 5xx in red': 'Requêtes · 5xx en rouge',
   'Required approvals': 'Approbations requises',
   Rescan: 'Relancer le scan',
   'Resend code': 'Renvoyer le code',
   'Resend the code': 'Renvoyer le code',
   Resource: 'Ressource',
   'Resource limits': 'Limites de ressources',
+  'Response time · mean': 'Temps de réponse · moyen',
   Resources: 'Ressources',
   Restart: 'Redémarrer',
   Restore: 'Restaurer',
@@ -1295,6 +1303,8 @@ export const FR: Readonly<Record<string, string>> = {
   'This environment could not be loaded.': "Cet environnement n'a pas pu être chargé.",
   'This expiry is too close. Cancel and start a new token request.':
     'Cette expiration est trop proche. Annulez et recommencez la demande de jeton.',
+  'This installation keeps no metrics: its control plane has no metrics store.':
+    "Cette installation ne conserve aucune métrique : son plan de contrôle n'a pas de stockage de métriques.",
   'This installation sends no email': "Cette installation n'envoie pas d'e-mail",
   'This installation sends no email: its administrator creates accounts and resets passwords.':
     "Cette installation n'envoie pas d'e-mail : son administrateur crée les comptes et réinitialise les mots de passe.",

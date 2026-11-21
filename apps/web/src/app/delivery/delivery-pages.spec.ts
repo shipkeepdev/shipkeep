@@ -822,6 +822,100 @@ describe('delivery screens', () => {
     expect(configText()).not.toContain('Load older actions');
   });
 
+  it('charts the metrics of the period chosen, and says when the installation keeps none', async () => {
+    const t0 = 1_795_000_000;
+    const series = (values: number[], labels: Record<string, string> = {}) => ({
+      labels,
+      points: values.map((v, index) => ({ t: t0 + index * 30, v })),
+    });
+    let kept = true;
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: [] }),
+      [`GET ${BASE}/applications/${APP}/metrics`]: () =>
+        json({
+          kept,
+          range: query.get('range'),
+          stepSeconds: 30,
+          from: new Date(t0 * 1000).toISOString(),
+          to: new Date((t0 + 60) * 1000).toISOString(),
+          cpu: kept ? [series([0.01, 0.25, 0.5])] : [],
+          memory: kept ? [series([64 * 1024 ** 2, 128 * 1024 ** 2, 256 * 1024 ** 2])] : [],
+          requests: kept
+            ? [series([2, 3, 4], { status: '2xx' }), series([0, 1, 1], { status: '5xx' })]
+            : [],
+          duration: [],
+        }),
+    };
+    const metricsCalls = () => requests.filter((r) => r.path.endsWith('/metrics'));
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+    );
+    await settle();
+    // Nothing is read while the tab is closed.
+    expect(metricsCalls()).toHaveLength(0);
+    element().querySelector<HTMLButtonElement>('#tab-metrics')?.click();
+    await settle();
+    const panel = () => element().querySelector('#panel-metrics')?.textContent ?? '';
+    expect(metricsCalls()).toHaveLength(1);
+    expect(panel()).toContain('0.50 CPU');
+    expect(panel()).toContain('256 MiB');
+    // Requests add every status class; the latest point is 4 + 1.
+    expect(panel()).toContain('5.0/s');
+    expect(panel()).toContain('No data for this period yet.');
+    expect(element().querySelectorAll('#panel-metrics svg path').length).toBe(4);
+
+    await click('24h');
+    expect(query.get('range')).toBe('24h');
+
+    kept = false;
+    await click('7d');
+    expect(panel()).toContain('This installation keeps no metrics');
+  });
+
+  it('clears the charts of a period as soon as another is chosen', async () => {
+    let release: (() => void) | undefined;
+    const answer = (cpu: number) =>
+      json({
+        kept: true,
+        range: query.get('range'),
+        stepSeconds: 30,
+        from: new Date(1_795_000_000_000).toISOString(),
+        to: new Date(1_795_000_060_000).toISOString(),
+        cpu: [{ labels: {}, points: [{ t: 1_795_000_000, v: cpu }] }],
+        memory: [],
+        requests: [],
+        duration: [],
+      });
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: [] }),
+      [`GET ${BASE}/applications/${APP}/metrics`]: () =>
+        query.get('range') === '24h'
+          ? new Promise<Response>((resolve) => {
+              release = () => {
+                resolve(answer(0.5));
+              };
+            })
+          : answer(0.25),
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+    );
+    await settle();
+    element().querySelector<HTMLButtonElement>('#tab-metrics')?.click();
+    await settle();
+    const panel = () => element().querySelector('#panel-metrics')?.textContent ?? '';
+    expect(panel()).toContain('0.25 CPU');
+    await click('24h');
+    // The 1 h charts are gone while the 24 h answer is on its way.
+    expect(panel()).not.toContain('0.25 CPU');
+    expect(panel()).toContain('Loading…');
+    release?.();
+    await settle();
+    expect(panel()).toContain('0.50 CPU');
+  });
+
   it('compares a release with the previous one', async () => {
     const release = (number: number, port: number) => ({
       id: `r${String(number)}`,
