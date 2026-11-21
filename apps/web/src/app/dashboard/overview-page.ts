@@ -191,11 +191,14 @@ export class OverviewPage {
     return [...failed, ...nodes];
   });
 
-  protected readonly summary = computed(() => ({
-    projects: this.store.projectCount(),
-    environments: this.store.environmentCount(),
-    servers: this.store.nodes()?.length ?? 0,
-  }));
+  /** "1 project · 2 environments · 0 servers", each count with the form its language gives it. */
+  protected readonly summary = computed(() =>
+    [
+      this.i18n.count(this.store.projectCount(), '{n} project', '{n} projects'),
+      this.i18n.count(this.store.environmentCount(), '{n} environment', '{n} environments'),
+      this.i18n.count(this.store.nodes()?.length ?? 0, '{n} server', '{n} servers'),
+    ].join(' · '),
+  );
 
   constructor() {
     effect(() => {

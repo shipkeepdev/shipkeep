@@ -19,7 +19,7 @@ import { IdentityRequestError } from '../identity/identity-api';
 import { Icon } from '../shell/icon';
 import { type IconName } from '../shell/icons';
 import { ShellContext } from '../shell/shell-context';
-import { T } from '../ui/i18n';
+import { I18n, T } from '../ui/i18n';
 import { OrganizationSettings } from './organization-settings';
 import { RegistryCredentials } from './registry-credentials';
 import { type Organization, WorkspaceApi } from './workspace-api';
@@ -56,10 +56,7 @@ const DANGER: Block = {
         <div class="min-w-0">
           <h1 class="page-title">{{ organization()?.name ?? '…' }}</h1>
           <div class="mt-1.5 text-[13px] text-mute2">
-            {{
-              'Organization · {members} members · {projects} projects'
-                | t: { members: shell.members() ?? '—', projects: shell.projects().length }
-            }}
+            {{ summary() }}
           </div>
         </div>
       </div>
@@ -143,6 +140,15 @@ export class OrganizationPage {
   private readonly api = inject(WorkspaceApi);
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   protected readonly shell = inject(ShellContext);
+  private readonly i18n = inject(I18n);
+  /** "Organization · 1 member · 3 projects", each count with the form its language gives it. */
+  protected readonly summary = computed(() =>
+    [
+      this.i18n.t('Organization'),
+      this.i18n.count(this.shell.members(), '{n} member', '{n} members'),
+      this.i18n.count(this.shell.projects().length, '{n} project', '{n} projects'),
+    ].join(' · '),
+  );
   readonly organizationId = input.required<string>();
   protected readonly sections = SECTIONS;
   protected readonly danger = DANGER;
