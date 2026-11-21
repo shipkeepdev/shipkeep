@@ -137,3 +137,37 @@ func TestRunnerTransmitsStateReportsAfterWelcome(t *testing.T) {
 		t.Fatal("reporter did not stop")
 	}
 }
+
+// A sample that fails or does not fit is skipped, and the next one goes out with the epoch.
+func TestMetricsSkipFailedAndOversizedSamples(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		calls := 0
+		var logs bytes.Buffer
+		r := Runner{Logger: slog.New(slog.NewTextHandler(&logs, nil)), Metrics: func(context.Context) (*agentv1.MetricsReport, error) {
+			calls++
+			switch calls {
+			case 1:
+				return nil, errors.New("docker down")
+			case 2:
+				return &agentv1.MetricsReport{Hosts: []*agentv1.HostMetrics{{Host: strings.Repeat("h", MaxReportBytes)}}}, nil
+			}
+			return &agentv1.MetricsReport{Node: &agentv1.NodeMetrics{CpuCores: 3}}, nil
+		}}
+		output := make(chan *agentv1.MetricsReport, 4)
+		ticker := time.NewTicker(30 * time.Second)
+		defer ticker.Stop()
+		done := make(chan struct{})
+		go func() { defer close(done); r.reportMetrics(ctx, 9, output, ticker.C) }()
+		sample := <-output
+		if calls != 3 || sample.GetLeaseEpoch() != 9 || sample.GetNode().GetCpuCores() != 3 {
+			t.Fatalf("calls %d, sample %v", calls, sample)
+		}
+		if strings.Count(logs.String(), "metrics not sampled") != 1 || !strings.Contains(logs.String(), "metrics sampled again") {
+			t.Fatalf("logs = %s", logs.String())
+		}
+		cancel()
+		<-done
+	})
+}

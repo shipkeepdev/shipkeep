@@ -429,6 +429,7 @@ type ConnectRequest struct {
 	//	*ConnectRequest_Heartbeat
 	//	*ConnectRequest_ActionUpdate
 	//	*ConnectRequest_StateReport
+	//	*ConnectRequest_MetricsReport
 	Msg           isConnectRequest_Msg `protobuf_oneof:"msg"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -507,6 +508,15 @@ func (x *ConnectRequest) GetStateReport() *StateReport {
 	return nil
 }
 
+func (x *ConnectRequest) GetMetricsReport() *MetricsReport {
+	if x != nil {
+		if x, ok := x.Msg.(*ConnectRequest_MetricsReport); ok {
+			return x.MetricsReport
+		}
+	}
+	return nil
+}
+
 type isConnectRequest_Msg interface {
 	isConnectRequest_Msg()
 }
@@ -527,6 +537,11 @@ type ConnectRequest_StateReport struct {
 	StateReport *StateReport `protobuf:"bytes,4,opt,name=state_report,json=stateReport,proto3,oneof"`
 }
 
+type ConnectRequest_MetricsReport struct {
+	// Sent only when the Welcome of the session set `metrics` (ADR 0024).
+	MetricsReport *MetricsReport `protobuf:"bytes,5,opt,name=metrics_report,json=metricsReport,proto3,oneof"`
+}
+
 func (*ConnectRequest_Hello) isConnectRequest_Msg() {}
 
 func (*ConnectRequest_Heartbeat) isConnectRequest_Msg() {}
@@ -534,6 +549,8 @@ func (*ConnectRequest_Heartbeat) isConnectRequest_Msg() {}
 func (*ConnectRequest_ActionUpdate) isConnectRequest_Msg() {}
 
 func (*ConnectRequest_StateReport) isConnectRequest_Msg() {}
+
+func (*ConnectRequest_MetricsReport) isConnectRequest_Msg() {}
 
 // Control plane to agent.
 type ConnectResponse struct {
@@ -1262,6 +1279,371 @@ func (x *CertificateStatus) GetIssuer() string {
 	return ""
 }
 
+// What a node measured, sampled every 30 seconds (ADR 0024). Counters are cumulative since the
+// node, the container or Caddy started: the control plane writes them as counters, and rates come
+// from their differences. A counter that goes back means a restart.
+type MetricsReport struct {
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	LeaseEpoch uint64                 `protobuf:"varint,1,opt,name=lease_epoch,json=leaseEpoch,proto3" json:"lease_epoch,omitempty"`
+	SampledAt  *timestamppb.Timestamp `protobuf:"bytes,2,opt,name=sampled_at,json=sampledAt,proto3" json:"sampled_at,omitempty"`
+	Node       *NodeMetrics           `protobuf:"bytes,3,opt,name=node,proto3" json:"node,omitempty"`
+	// Managed containers that run, at most 256.
+	Containers []*ContainerMetrics `protobuf:"bytes,4,rep,name=containers,proto3" json:"containers,omitempty"`
+	// Host names of the node's routes, at most 64.
+	Hosts         []*HostMetrics `protobuf:"bytes,5,rep,name=hosts,proto3" json:"hosts,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *MetricsReport) Reset() {
+	*x = MetricsReport{}
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[13]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MetricsReport) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MetricsReport) ProtoMessage() {}
+
+func (x *MetricsReport) ProtoReflect() protoreflect.Message {
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[13]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MetricsReport.ProtoReflect.Descriptor instead.
+func (*MetricsReport) Descriptor() ([]byte, []int) {
+	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{13}
+}
+
+func (x *MetricsReport) GetLeaseEpoch() uint64 {
+	if x != nil {
+		return x.LeaseEpoch
+	}
+	return 0
+}
+
+func (x *MetricsReport) GetSampledAt() *timestamppb.Timestamp {
+	if x != nil {
+		return x.SampledAt
+	}
+	return nil
+}
+
+func (x *MetricsReport) GetNode() *NodeMetrics {
+	if x != nil {
+		return x.Node
+	}
+	return nil
+}
+
+func (x *MetricsReport) GetContainers() []*ContainerMetrics {
+	if x != nil {
+		return x.Containers
+	}
+	return nil
+}
+
+func (x *MetricsReport) GetHosts() []*HostMetrics {
+	if x != nil {
+		return x.Hosts
+	}
+	return nil
+}
+
+type NodeMetrics struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// CPU time spent outside idle and I/O wait, all cores together.
+	CpuSeconds       float64 `protobuf:"fixed64,1,opt,name=cpu_seconds,json=cpuSeconds,proto3" json:"cpu_seconds,omitempty"`
+	CpuCores         uint32  `protobuf:"varint,2,opt,name=cpu_cores,json=cpuCores,proto3" json:"cpu_cores,omitempty"`
+	MemoryUsedBytes  uint64  `protobuf:"varint,3,opt,name=memory_used_bytes,json=memoryUsedBytes,proto3" json:"memory_used_bytes,omitempty"`
+	MemoryTotalBytes uint64  `protobuf:"varint,4,opt,name=memory_total_bytes,json=memoryTotalBytes,proto3" json:"memory_total_bytes,omitempty"`
+	// The file system of Docker's data root.
+	DiskUsedBytes  uint64 `protobuf:"varint,5,opt,name=disk_used_bytes,json=diskUsedBytes,proto3" json:"disk_used_bytes,omitempty"`
+	DiskTotalBytes uint64 `protobuf:"varint,6,opt,name=disk_total_bytes,json=diskTotalBytes,proto3" json:"disk_total_bytes,omitempty"`
+	// Physical interfaces only: loopback, bridges and container interfaces are left out.
+	NetworkReceivedBytes uint64 `protobuf:"varint,7,opt,name=network_received_bytes,json=networkReceivedBytes,proto3" json:"network_received_bytes,omitempty"`
+	NetworkSentBytes     uint64 `protobuf:"varint,8,opt,name=network_sent_bytes,json=networkSentBytes,proto3" json:"network_sent_bytes,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *NodeMetrics) Reset() {
+	*x = NodeMetrics{}
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[14]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *NodeMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*NodeMetrics) ProtoMessage() {}
+
+func (x *NodeMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[14]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use NodeMetrics.ProtoReflect.Descriptor instead.
+func (*NodeMetrics) Descriptor() ([]byte, []int) {
+	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{14}
+}
+
+func (x *NodeMetrics) GetCpuSeconds() float64 {
+	if x != nil {
+		return x.CpuSeconds
+	}
+	return 0
+}
+
+func (x *NodeMetrics) GetCpuCores() uint32 {
+	if x != nil {
+		return x.CpuCores
+	}
+	return 0
+}
+
+func (x *NodeMetrics) GetMemoryUsedBytes() uint64 {
+	if x != nil {
+		return x.MemoryUsedBytes
+	}
+	return 0
+}
+
+func (x *NodeMetrics) GetMemoryTotalBytes() uint64 {
+	if x != nil {
+		return x.MemoryTotalBytes
+	}
+	return 0
+}
+
+func (x *NodeMetrics) GetDiskUsedBytes() uint64 {
+	if x != nil {
+		return x.DiskUsedBytes
+	}
+	return 0
+}
+
+func (x *NodeMetrics) GetDiskTotalBytes() uint64 {
+	if x != nil {
+		return x.DiskTotalBytes
+	}
+	return 0
+}
+
+func (x *NodeMetrics) GetNetworkReceivedBytes() uint64 {
+	if x != nil {
+		return x.NetworkReceivedBytes
+	}
+	return 0
+}
+
+func (x *NodeMetrics) GetNetworkSentBytes() uint64 {
+	if x != nil {
+		return x.NetworkSentBytes
+	}
+	return 0
+}
+
+type ContainerMetrics struct {
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// The container's name, `sk-...`: the control plane maps it to its allocation.
+	Name       string  `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	CpuSeconds float64 `protobuf:"fixed64,2,opt,name=cpu_seconds,json=cpuSeconds,proto3" json:"cpu_seconds,omitempty"`
+	// In use, without the page cache that the kernel can reclaim.
+	MemoryUsedBytes      uint64 `protobuf:"varint,3,opt,name=memory_used_bytes,json=memoryUsedBytes,proto3" json:"memory_used_bytes,omitempty"`
+	MemoryLimitBytes     uint64 `protobuf:"varint,4,opt,name=memory_limit_bytes,json=memoryLimitBytes,proto3" json:"memory_limit_bytes,omitempty"`
+	NetworkReceivedBytes uint64 `protobuf:"varint,5,opt,name=network_received_bytes,json=networkReceivedBytes,proto3" json:"network_received_bytes,omitempty"`
+	NetworkSentBytes     uint64 `protobuf:"varint,6,opt,name=network_sent_bytes,json=networkSentBytes,proto3" json:"network_sent_bytes,omitempty"`
+	unknownFields        protoimpl.UnknownFields
+	sizeCache            protoimpl.SizeCache
+}
+
+func (x *ContainerMetrics) Reset() {
+	*x = ContainerMetrics{}
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[15]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ContainerMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ContainerMetrics) ProtoMessage() {}
+
+func (x *ContainerMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[15]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ContainerMetrics.ProtoReflect.Descriptor instead.
+func (*ContainerMetrics) Descriptor() ([]byte, []int) {
+	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{15}
+}
+
+func (x *ContainerMetrics) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *ContainerMetrics) GetCpuSeconds() float64 {
+	if x != nil {
+		return x.CpuSeconds
+	}
+	return 0
+}
+
+func (x *ContainerMetrics) GetMemoryUsedBytes() uint64 {
+	if x != nil {
+		return x.MemoryUsedBytes
+	}
+	return 0
+}
+
+func (x *ContainerMetrics) GetMemoryLimitBytes() uint64 {
+	if x != nil {
+		return x.MemoryLimitBytes
+	}
+	return 0
+}
+
+func (x *ContainerMetrics) GetNetworkReceivedBytes() uint64 {
+	if x != nil {
+		return x.NetworkReceivedBytes
+	}
+	return 0
+}
+
+func (x *ContainerMetrics) GetNetworkSentBytes() uint64 {
+	if x != nil {
+		return x.NetworkSentBytes
+	}
+	return 0
+}
+
+// Requests Caddy answered for one host name, by status class.
+type HostMetrics struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Host          string                 `protobuf:"bytes,1,opt,name=host,proto3" json:"host,omitempty"`
+	Responses_2Xx uint64                 `protobuf:"varint,2,opt,name=responses_2xx,json=responses2xx,proto3" json:"responses_2xx,omitempty"`
+	Responses_3Xx uint64                 `protobuf:"varint,3,opt,name=responses_3xx,json=responses3xx,proto3" json:"responses_3xx,omitempty"`
+	Responses_4Xx uint64                 `protobuf:"varint,4,opt,name=responses_4xx,json=responses4xx,proto3" json:"responses_4xx,omitempty"`
+	Responses_5Xx uint64                 `protobuf:"varint,5,opt,name=responses_5xx,json=responses5xx,proto3" json:"responses_5xx,omitempty"`
+	// Any other status, 1xx included.
+	ResponsesOther uint64 `protobuf:"varint,6,opt,name=responses_other,json=responsesOther,proto3" json:"responses_other,omitempty"`
+	// The sum of their durations; with the count of all responses, the average.
+	DurationSeconds float64 `protobuf:"fixed64,7,opt,name=duration_seconds,json=durationSeconds,proto3" json:"duration_seconds,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
+}
+
+func (x *HostMetrics) Reset() {
+	*x = HostMetrics{}
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[16]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *HostMetrics) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*HostMetrics) ProtoMessage() {}
+
+func (x *HostMetrics) ProtoReflect() protoreflect.Message {
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[16]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use HostMetrics.ProtoReflect.Descriptor instead.
+func (*HostMetrics) Descriptor() ([]byte, []int) {
+	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{16}
+}
+
+func (x *HostMetrics) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *HostMetrics) GetResponses_2Xx() uint64 {
+	if x != nil {
+		return x.Responses_2Xx
+	}
+	return 0
+}
+
+func (x *HostMetrics) GetResponses_3Xx() uint64 {
+	if x != nil {
+		return x.Responses_3Xx
+	}
+	return 0
+}
+
+func (x *HostMetrics) GetResponses_4Xx() uint64 {
+	if x != nil {
+		return x.Responses_4Xx
+	}
+	return 0
+}
+
+func (x *HostMetrics) GetResponses_5Xx() uint64 {
+	if x != nil {
+		return x.Responses_5Xx
+	}
+	return 0
+}
+
+func (x *HostMetrics) GetResponsesOther() uint64 {
+	if x != nil {
+		return x.ResponsesOther
+	}
+	return 0
+}
+
+func (x *HostMetrics) GetDurationSeconds() float64 {
+	if x != nil {
+		return x.DurationSeconds
+	}
+	return 0
+}
+
 // Reply to Hello.
 type Welcome struct {
 	state             protoimpl.MessageState `protogen:"open.v1"`
@@ -1270,13 +1652,16 @@ type Welcome struct {
 	LeaseExpiresAt    *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=lease_expires_at,json=leaseExpiresAt,proto3" json:"lease_expires_at,omitempty"`
 	HeartbeatInterval *durationpb.Duration   `protobuf:"bytes,4,opt,name=heartbeat_interval,json=heartbeatInterval,proto3" json:"heartbeat_interval,omitempty"`
 	ServerTime        *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=server_time,json=serverTime,proto3" json:"server_time,omitempty"`
-	unknownFields     protoimpl.UnknownFields
-	sizeCache         protoimpl.SizeCache
+	// The control plane accepts MetricsReport on this stream (ADR 0024). An older one does not, and
+	// the agent sends none.
+	Metrics       bool `protobuf:"varint,6,opt,name=metrics,proto3" json:"metrics,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *Welcome) Reset() {
 	*x = Welcome{}
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[13]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1288,7 +1673,7 @@ func (x *Welcome) String() string {
 func (*Welcome) ProtoMessage() {}
 
 func (x *Welcome) ProtoReflect() protoreflect.Message {
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[13]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1301,7 +1686,7 @@ func (x *Welcome) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Welcome.ProtoReflect.Descriptor instead.
 func (*Welcome) Descriptor() ([]byte, []int) {
-	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{13}
+	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *Welcome) GetNodeId() string {
@@ -1337,6 +1722,13 @@ func (x *Welcome) GetServerTime() *timestamppb.Timestamp {
 		return x.ServerTime
 	}
 	return nil
+}
+
+func (x *Welcome) GetMetrics() bool {
+	if x != nil {
+		return x.Metrics
+	}
+	return false
 }
 
 // One action to execute. Exactly one field of `action` is set.
@@ -1381,7 +1773,7 @@ type ActionRequest struct {
 
 func (x *ActionRequest) Reset() {
 	*x = ActionRequest{}
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[14]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1393,7 +1785,7 @@ func (x *ActionRequest) String() string {
 func (*ActionRequest) ProtoMessage() {}
 
 func (x *ActionRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[14]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1406,7 +1798,7 @@ func (x *ActionRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ActionRequest.ProtoReflect.Descriptor instead.
 func (*ActionRequest) Descriptor() ([]byte, []int) {
-	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{14}
+	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *ActionRequest) GetActionId() string {
@@ -1803,7 +2195,7 @@ type CancelAction struct {
 
 func (x *CancelAction) Reset() {
 	*x = CancelAction{}
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[15]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1815,7 +2207,7 @@ func (x *CancelAction) String() string {
 func (*CancelAction) ProtoMessage() {}
 
 func (x *CancelAction) ProtoReflect() protoreflect.Message {
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[15]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1828,7 +2220,7 @@ func (x *CancelAction) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CancelAction.ProtoReflect.Descriptor instead.
 func (*CancelAction) Descriptor() ([]byte, []int) {
-	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{15}
+	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *CancelAction) GetActionId() string {
@@ -1858,7 +2250,7 @@ type RoutingTable struct {
 
 func (x *RoutingTable) Reset() {
 	*x = RoutingTable{}
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[16]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1870,7 +2262,7 @@ func (x *RoutingTable) String() string {
 func (*RoutingTable) ProtoMessage() {}
 
 func (x *RoutingTable) ProtoReflect() protoreflect.Message {
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[16]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1883,7 +2275,7 @@ func (x *RoutingTable) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RoutingTable.ProtoReflect.Descriptor instead.
 func (*RoutingTable) Descriptor() ([]byte, []int) {
-	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{16}
+	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *RoutingTable) GetVersion() uint64 {
@@ -1917,7 +2309,7 @@ type PeerList struct {
 
 func (x *PeerList) Reset() {
 	*x = PeerList{}
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[17]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1929,7 +2321,7 @@ func (x *PeerList) String() string {
 func (*PeerList) ProtoMessage() {}
 
 func (x *PeerList) ProtoReflect() protoreflect.Message {
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[17]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1942,7 +2334,7 @@ func (x *PeerList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PeerList.ProtoReflect.Descriptor instead.
 func (*PeerList) Descriptor() ([]byte, []int) {
-	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{17}
+	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *PeerList) GetVersion() uint64 {
@@ -1969,7 +2361,7 @@ type LeaseRenewal struct {
 
 func (x *LeaseRenewal) Reset() {
 	*x = LeaseRenewal{}
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[18]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1981,7 +2373,7 @@ func (x *LeaseRenewal) String() string {
 func (*LeaseRenewal) ProtoMessage() {}
 
 func (x *LeaseRenewal) ProtoReflect() protoreflect.Message {
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[18]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1994,7 +2386,7 @@ func (x *LeaseRenewal) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use LeaseRenewal.ProtoReflect.Descriptor instead.
 func (*LeaseRenewal) Descriptor() ([]byte, []int) {
-	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{18}
+	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *LeaseRenewal) GetEpoch() uint64 {
@@ -2028,7 +2420,7 @@ type ConfigUpdate struct {
 
 func (x *ConfigUpdate) Reset() {
 	*x = ConfigUpdate{}
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[19]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2040,7 +2432,7 @@ func (x *ConfigUpdate) String() string {
 func (*ConfigUpdate) ProtoMessage() {}
 
 func (x *ConfigUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[19]
+	mi := &file_shipkeep_agent_v1_gateway_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2053,7 +2445,7 @@ func (x *ConfigUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ConfigUpdate.ProtoReflect.Descriptor instead.
 func (*ConfigUpdate) Descriptor() ([]byte, []int) {
-	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{19}
+	return file_shipkeep_agent_v1_gateway_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ConfigUpdate) GetLogLevel() string {
@@ -2116,12 +2508,13 @@ const file_shipkeep_agent_v1_gateway_proto_rawDesc = "" +
 	"\acsr_pem\x18\x01 \x01(\tR\x06csrPem\"w\n" +
 	"\x18RenewCertificateResponse\x12\x19\n" +
 	"\bcert_pem\x18\x01 \x01(\tR\acertPem\x12@\n" +
-	"\x0ecert_not_after\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\fcertNotAfter\"\x94\x02\n" +
+	"\x0ecert_not_after\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\fcertNotAfter\"\xdf\x02\n" +
 	"\x0eConnectRequest\x120\n" +
 	"\x05hello\x18\x01 \x01(\v2\x18.shipkeep.agent.v1.HelloH\x00R\x05hello\x12<\n" +
 	"\theartbeat\x18\x02 \x01(\v2\x1c.shipkeep.agent.v1.HeartbeatH\x00R\theartbeat\x12F\n" +
 	"\raction_update\x18\x03 \x01(\v2\x1f.shipkeep.agent.v1.ActionUpdateH\x00R\factionUpdate\x12C\n" +
-	"\fstate_report\x18\x04 \x01(\v2\x1e.shipkeep.agent.v1.StateReportH\x00R\vstateReportB\x05\n" +
+	"\fstate_report\x18\x04 \x01(\v2\x1e.shipkeep.agent.v1.StateReportH\x00R\vstateReport\x12I\n" +
+	"\x0emetrics_report\x18\x05 \x01(\v2 .shipkeep.agent.v1.MetricsReportH\x00R\rmetricsReportB\x05\n" +
 	"\x03msg\"\xf7\x03\n" +
 	"\x0fConnectResponse\x126\n" +
 	"\awelcome\x18\x01 \x01(\v2\x1a.shipkeep.agent.v1.WelcomeH\x00R\awelcome\x12I\n" +
@@ -2197,7 +2590,43 @@ const file_shipkeep_agent_v1_gateway_proto_rawDesc = "" +
 	"\x11CertificateStatus\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x127\n" +
 	"\tnot_after\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\bnotAfter\x12\x16\n" +
-	"\x06issuer\x18\x03 \x01(\tR\x06issuer\"\x90\x02\n" +
+	"\x06issuer\x18\x03 \x01(\tR\x06issuer\"\x9a\x02\n" +
+	"\rMetricsReport\x12\x1f\n" +
+	"\vlease_epoch\x18\x01 \x01(\x04R\n" +
+	"leaseEpoch\x129\n" +
+	"\n" +
+	"sampled_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\tsampledAt\x122\n" +
+	"\x04node\x18\x03 \x01(\v2\x1e.shipkeep.agent.v1.NodeMetricsR\x04node\x12C\n" +
+	"\n" +
+	"containers\x18\x04 \x03(\v2#.shipkeep.agent.v1.ContainerMetricsR\n" +
+	"containers\x124\n" +
+	"\x05hosts\x18\x05 \x03(\v2\x1e.shipkeep.agent.v1.HostMetricsR\x05hosts\"\xdb\x02\n" +
+	"\vNodeMetrics\x12\x1f\n" +
+	"\vcpu_seconds\x18\x01 \x01(\x01R\n" +
+	"cpuSeconds\x12\x1b\n" +
+	"\tcpu_cores\x18\x02 \x01(\rR\bcpuCores\x12*\n" +
+	"\x11memory_used_bytes\x18\x03 \x01(\x04R\x0fmemoryUsedBytes\x12,\n" +
+	"\x12memory_total_bytes\x18\x04 \x01(\x04R\x10memoryTotalBytes\x12&\n" +
+	"\x0fdisk_used_bytes\x18\x05 \x01(\x04R\rdiskUsedBytes\x12(\n" +
+	"\x10disk_total_bytes\x18\x06 \x01(\x04R\x0ediskTotalBytes\x124\n" +
+	"\x16network_received_bytes\x18\a \x01(\x04R\x14networkReceivedBytes\x12,\n" +
+	"\x12network_sent_bytes\x18\b \x01(\x04R\x10networkSentBytes\"\x85\x02\n" +
+	"\x10ContainerMetrics\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1f\n" +
+	"\vcpu_seconds\x18\x02 \x01(\x01R\n" +
+	"cpuSeconds\x12*\n" +
+	"\x11memory_used_bytes\x18\x03 \x01(\x04R\x0fmemoryUsedBytes\x12,\n" +
+	"\x12memory_limit_bytes\x18\x04 \x01(\x04R\x10memoryLimitBytes\x124\n" +
+	"\x16network_received_bytes\x18\x05 \x01(\x04R\x14networkReceivedBytes\x12,\n" +
+	"\x12network_sent_bytes\x18\x06 \x01(\x04R\x10networkSentBytes\"\x89\x02\n" +
+	"\vHostMetrics\x12\x12\n" +
+	"\x04host\x18\x01 \x01(\tR\x04host\x12#\n" +
+	"\rresponses_2xx\x18\x02 \x01(\x04R\fresponses2xx\x12#\n" +
+	"\rresponses_3xx\x18\x03 \x01(\x04R\fresponses3xx\x12#\n" +
+	"\rresponses_4xx\x18\x04 \x01(\x04R\fresponses4xx\x12#\n" +
+	"\rresponses_5xx\x18\x05 \x01(\x04R\fresponses5xx\x12'\n" +
+	"\x0fresponses_other\x18\x06 \x01(\x04R\x0eresponsesOther\x12)\n" +
+	"\x10duration_seconds\x18\a \x01(\x01R\x0fdurationSeconds\"\xaa\x02\n" +
 	"\aWelcome\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1f\n" +
 	"\vlease_epoch\x18\x02 \x01(\x04R\n" +
@@ -2205,7 +2634,8 @@ const file_shipkeep_agent_v1_gateway_proto_rawDesc = "" +
 	"\x10lease_expires_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x0eleaseExpiresAt\x12H\n" +
 	"\x12heartbeat_interval\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\x11heartbeatInterval\x12;\n" +
 	"\vserver_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
-	"serverTime\"\xf0\x0e\n" +
+	"serverTime\x12\x18\n" +
+	"\ametrics\x18\x06 \x01(\bR\ametrics\"\xf0\x0e\n" +
 	"\rActionRequest\x12\x1b\n" +
 	"\taction_id\x18\x01 \x01(\tR\bactionId\x12'\n" +
 	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\x12(\n" +
@@ -2289,7 +2719,7 @@ func file_shipkeep_agent_v1_gateway_proto_rawDescGZIP() []byte {
 }
 
 var file_shipkeep_agent_v1_gateway_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_shipkeep_agent_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 21)
+var file_shipkeep_agent_v1_gateway_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
 var file_shipkeep_agent_v1_gateway_proto_goTypes = []any{
 	(OperationState)(0),              // 0: shipkeep.agent.v1.OperationState
 	(ContainerStatus_State)(0),       // 1: shipkeep.agent.v1.ContainerStatus.State
@@ -2306,119 +2736,128 @@ var file_shipkeep_agent_v1_gateway_proto_goTypes = []any{
 	(*VolumeStatus)(nil),             // 12: shipkeep.agent.v1.VolumeStatus
 	(*StateReport)(nil),              // 13: shipkeep.agent.v1.StateReport
 	(*CertificateStatus)(nil),        // 14: shipkeep.agent.v1.CertificateStatus
-	(*Welcome)(nil),                  // 15: shipkeep.agent.v1.Welcome
-	(*ActionRequest)(nil),            // 16: shipkeep.agent.v1.ActionRequest
-	(*CancelAction)(nil),             // 17: shipkeep.agent.v1.CancelAction
-	(*RoutingTable)(nil),             // 18: shipkeep.agent.v1.RoutingTable
-	(*PeerList)(nil),                 // 19: shipkeep.agent.v1.PeerList
-	(*LeaseRenewal)(nil),             // 20: shipkeep.agent.v1.LeaseRenewal
-	(*ConfigUpdate)(nil),             // 21: shipkeep.agent.v1.ConfigUpdate
-	nil,                              // 22: shipkeep.agent.v1.ContainerStatus.LabelsEntry
-	(*NodeFacts)(nil),                // 23: shipkeep.agent.v1.NodeFacts
-	(*timestamppb.Timestamp)(nil),    // 24: google.protobuf.Timestamp
-	(*ActionResult)(nil),             // 25: shipkeep.agent.v1.ActionResult
-	(*durationpb.Duration)(nil),      // 26: google.protobuf.Duration
-	(*EnsureNetwork)(nil),            // 27: shipkeep.agent.v1.EnsureNetwork
-	(*PullImage)(nil),                // 28: shipkeep.agent.v1.PullImage
-	(*BuildImage)(nil),               // 29: shipkeep.agent.v1.BuildImage
-	(*CreateContainer)(nil),          // 30: shipkeep.agent.v1.CreateContainer
-	(*StartContainer)(nil),           // 31: shipkeep.agent.v1.StartContainer
-	(*StopContainer)(nil),            // 32: shipkeep.agent.v1.StopContainer
-	(*RemoveContainer)(nil),          // 33: shipkeep.agent.v1.RemoveContainer
-	(*EnsureVolume)(nil),             // 34: shipkeep.agent.v1.EnsureVolume
-	(*RemoveVolume)(nil),             // 35: shipkeep.agent.v1.RemoveVolume
-	(*HealthCheck)(nil),              // 36: shipkeep.agent.v1.HealthCheck
-	(*UpsertRoute)(nil),              // 37: shipkeep.agent.v1.UpsertRoute
-	(*RemoveRoute)(nil),              // 38: shipkeep.agent.v1.RemoveRoute
-	(*RunReleaseTask)(nil),           // 39: shipkeep.agent.v1.RunReleaseTask
-	(*ExecSession)(nil),              // 40: shipkeep.agent.v1.ExecSession
-	(*BackupVolume)(nil),             // 41: shipkeep.agent.v1.BackupVolume
-	(*RestoreVolume)(nil),            // 42: shipkeep.agent.v1.RestoreVolume
-	(*DumpDatabase)(nil),             // 43: shipkeep.agent.v1.DumpDatabase
-	(*RestoreDatabase)(nil),          // 44: shipkeep.agent.v1.RestoreDatabase
-	(*ConfigurePeers)(nil),           // 45: shipkeep.agent.v1.ConfigurePeers
-	(*CollectFacts)(nil),             // 46: shipkeep.agent.v1.CollectFacts
-	(*UpgradeAgent)(nil),             // 47: shipkeep.agent.v1.UpgradeAgent
-	(*StopStatefulWorkloads)(nil),    // 48: shipkeep.agent.v1.StopStatefulWorkloads
-	(*UpgradeControlPlane)(nil),      // 49: shipkeep.agent.v1.UpgradeControlPlane
-	(*Route)(nil),                    // 50: shipkeep.agent.v1.Route
-	(*WireGuardPeer)(nil),            // 51: shipkeep.agent.v1.WireGuardPeer
-	(*ExecStreamRequest)(nil),        // 52: shipkeep.agent.v1.ExecStreamRequest
-	(*ExecStreamResponse)(nil),       // 53: shipkeep.agent.v1.ExecStreamResponse
+	(*MetricsReport)(nil),            // 15: shipkeep.agent.v1.MetricsReport
+	(*NodeMetrics)(nil),              // 16: shipkeep.agent.v1.NodeMetrics
+	(*ContainerMetrics)(nil),         // 17: shipkeep.agent.v1.ContainerMetrics
+	(*HostMetrics)(nil),              // 18: shipkeep.agent.v1.HostMetrics
+	(*Welcome)(nil),                  // 19: shipkeep.agent.v1.Welcome
+	(*ActionRequest)(nil),            // 20: shipkeep.agent.v1.ActionRequest
+	(*CancelAction)(nil),             // 21: shipkeep.agent.v1.CancelAction
+	(*RoutingTable)(nil),             // 22: shipkeep.agent.v1.RoutingTable
+	(*PeerList)(nil),                 // 23: shipkeep.agent.v1.PeerList
+	(*LeaseRenewal)(nil),             // 24: shipkeep.agent.v1.LeaseRenewal
+	(*ConfigUpdate)(nil),             // 25: shipkeep.agent.v1.ConfigUpdate
+	nil,                              // 26: shipkeep.agent.v1.ContainerStatus.LabelsEntry
+	(*NodeFacts)(nil),                // 27: shipkeep.agent.v1.NodeFacts
+	(*timestamppb.Timestamp)(nil),    // 28: google.protobuf.Timestamp
+	(*ActionResult)(nil),             // 29: shipkeep.agent.v1.ActionResult
+	(*durationpb.Duration)(nil),      // 30: google.protobuf.Duration
+	(*EnsureNetwork)(nil),            // 31: shipkeep.agent.v1.EnsureNetwork
+	(*PullImage)(nil),                // 32: shipkeep.agent.v1.PullImage
+	(*BuildImage)(nil),               // 33: shipkeep.agent.v1.BuildImage
+	(*CreateContainer)(nil),          // 34: shipkeep.agent.v1.CreateContainer
+	(*StartContainer)(nil),           // 35: shipkeep.agent.v1.StartContainer
+	(*StopContainer)(nil),            // 36: shipkeep.agent.v1.StopContainer
+	(*RemoveContainer)(nil),          // 37: shipkeep.agent.v1.RemoveContainer
+	(*EnsureVolume)(nil),             // 38: shipkeep.agent.v1.EnsureVolume
+	(*RemoveVolume)(nil),             // 39: shipkeep.agent.v1.RemoveVolume
+	(*HealthCheck)(nil),              // 40: shipkeep.agent.v1.HealthCheck
+	(*UpsertRoute)(nil),              // 41: shipkeep.agent.v1.UpsertRoute
+	(*RemoveRoute)(nil),              // 42: shipkeep.agent.v1.RemoveRoute
+	(*RunReleaseTask)(nil),           // 43: shipkeep.agent.v1.RunReleaseTask
+	(*ExecSession)(nil),              // 44: shipkeep.agent.v1.ExecSession
+	(*BackupVolume)(nil),             // 45: shipkeep.agent.v1.BackupVolume
+	(*RestoreVolume)(nil),            // 46: shipkeep.agent.v1.RestoreVolume
+	(*DumpDatabase)(nil),             // 47: shipkeep.agent.v1.DumpDatabase
+	(*RestoreDatabase)(nil),          // 48: shipkeep.agent.v1.RestoreDatabase
+	(*ConfigurePeers)(nil),           // 49: shipkeep.agent.v1.ConfigurePeers
+	(*CollectFacts)(nil),             // 50: shipkeep.agent.v1.CollectFacts
+	(*UpgradeAgent)(nil),             // 51: shipkeep.agent.v1.UpgradeAgent
+	(*StopStatefulWorkloads)(nil),    // 52: shipkeep.agent.v1.StopStatefulWorkloads
+	(*UpgradeControlPlane)(nil),      // 53: shipkeep.agent.v1.UpgradeControlPlane
+	(*Route)(nil),                    // 54: shipkeep.agent.v1.Route
+	(*WireGuardPeer)(nil),            // 55: shipkeep.agent.v1.WireGuardPeer
+	(*ExecStreamRequest)(nil),        // 56: shipkeep.agent.v1.ExecStreamRequest
+	(*ExecStreamResponse)(nil),       // 57: shipkeep.agent.v1.ExecStreamResponse
 }
 var file_shipkeep_agent_v1_gateway_proto_depIdxs = []int32{
-	23, // 0: shipkeep.agent.v1.EnrollRequest.facts:type_name -> shipkeep.agent.v1.NodeFacts
-	24, // 1: shipkeep.agent.v1.EnrollResponse.cert_not_after:type_name -> google.protobuf.Timestamp
-	24, // 2: shipkeep.agent.v1.RenewCertificateResponse.cert_not_after:type_name -> google.protobuf.Timestamp
+	27, // 0: shipkeep.agent.v1.EnrollRequest.facts:type_name -> shipkeep.agent.v1.NodeFacts
+	28, // 1: shipkeep.agent.v1.EnrollResponse.cert_not_after:type_name -> google.protobuf.Timestamp
+	28, // 2: shipkeep.agent.v1.RenewCertificateResponse.cert_not_after:type_name -> google.protobuf.Timestamp
 	8,  // 3: shipkeep.agent.v1.ConnectRequest.hello:type_name -> shipkeep.agent.v1.Hello
 	9,  // 4: shipkeep.agent.v1.ConnectRequest.heartbeat:type_name -> shipkeep.agent.v1.Heartbeat
 	10, // 5: shipkeep.agent.v1.ConnectRequest.action_update:type_name -> shipkeep.agent.v1.ActionUpdate
 	13, // 6: shipkeep.agent.v1.ConnectRequest.state_report:type_name -> shipkeep.agent.v1.StateReport
-	15, // 7: shipkeep.agent.v1.ConnectResponse.welcome:type_name -> shipkeep.agent.v1.Welcome
-	16, // 8: shipkeep.agent.v1.ConnectResponse.action_request:type_name -> shipkeep.agent.v1.ActionRequest
-	17, // 9: shipkeep.agent.v1.ConnectResponse.cancel_action:type_name -> shipkeep.agent.v1.CancelAction
-	18, // 10: shipkeep.agent.v1.ConnectResponse.routing_table:type_name -> shipkeep.agent.v1.RoutingTable
-	19, // 11: shipkeep.agent.v1.ConnectResponse.peer_list:type_name -> shipkeep.agent.v1.PeerList
-	20, // 12: shipkeep.agent.v1.ConnectResponse.lease_renewal:type_name -> shipkeep.agent.v1.LeaseRenewal
-	21, // 13: shipkeep.agent.v1.ConnectResponse.config_update:type_name -> shipkeep.agent.v1.ConfigUpdate
-	23, // 14: shipkeep.agent.v1.Hello.facts:type_name -> shipkeep.agent.v1.NodeFacts
-	24, // 15: shipkeep.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
-	0,  // 16: shipkeep.agent.v1.ActionUpdate.state:type_name -> shipkeep.agent.v1.OperationState
-	25, // 17: shipkeep.agent.v1.ActionUpdate.result:type_name -> shipkeep.agent.v1.ActionResult
-	24, // 18: shipkeep.agent.v1.ActionUpdate.updated_at:type_name -> google.protobuf.Timestamp
-	1,  // 19: shipkeep.agent.v1.ContainerStatus.state:type_name -> shipkeep.agent.v1.ContainerStatus.State
-	24, // 20: shipkeep.agent.v1.ContainerStatus.started_at:type_name -> google.protobuf.Timestamp
-	22, // 21: shipkeep.agent.v1.ContainerStatus.labels:type_name -> shipkeep.agent.v1.ContainerStatus.LabelsEntry
-	11, // 22: shipkeep.agent.v1.StateReport.containers:type_name -> shipkeep.agent.v1.ContainerStatus
-	12, // 23: shipkeep.agent.v1.StateReport.volumes:type_name -> shipkeep.agent.v1.VolumeStatus
-	24, // 24: shipkeep.agent.v1.StateReport.observed_at:type_name -> google.protobuf.Timestamp
-	14, // 25: shipkeep.agent.v1.StateReport.certificates:type_name -> shipkeep.agent.v1.CertificateStatus
-	24, // 26: shipkeep.agent.v1.CertificateStatus.not_after:type_name -> google.protobuf.Timestamp
-	24, // 27: shipkeep.agent.v1.Welcome.lease_expires_at:type_name -> google.protobuf.Timestamp
-	26, // 28: shipkeep.agent.v1.Welcome.heartbeat_interval:type_name -> google.protobuf.Duration
-	24, // 29: shipkeep.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
-	27, // 30: shipkeep.agent.v1.ActionRequest.ensure_network:type_name -> shipkeep.agent.v1.EnsureNetwork
-	28, // 31: shipkeep.agent.v1.ActionRequest.pull_image:type_name -> shipkeep.agent.v1.PullImage
-	29, // 32: shipkeep.agent.v1.ActionRequest.build_image:type_name -> shipkeep.agent.v1.BuildImage
-	30, // 33: shipkeep.agent.v1.ActionRequest.create_container:type_name -> shipkeep.agent.v1.CreateContainer
-	31, // 34: shipkeep.agent.v1.ActionRequest.start_container:type_name -> shipkeep.agent.v1.StartContainer
-	32, // 35: shipkeep.agent.v1.ActionRequest.stop_container:type_name -> shipkeep.agent.v1.StopContainer
-	33, // 36: shipkeep.agent.v1.ActionRequest.remove_container:type_name -> shipkeep.agent.v1.RemoveContainer
-	34, // 37: shipkeep.agent.v1.ActionRequest.ensure_volume:type_name -> shipkeep.agent.v1.EnsureVolume
-	35, // 38: shipkeep.agent.v1.ActionRequest.remove_volume:type_name -> shipkeep.agent.v1.RemoveVolume
-	36, // 39: shipkeep.agent.v1.ActionRequest.health_check:type_name -> shipkeep.agent.v1.HealthCheck
-	37, // 40: shipkeep.agent.v1.ActionRequest.upsert_route:type_name -> shipkeep.agent.v1.UpsertRoute
-	38, // 41: shipkeep.agent.v1.ActionRequest.remove_route:type_name -> shipkeep.agent.v1.RemoveRoute
-	39, // 42: shipkeep.agent.v1.ActionRequest.run_release_task:type_name -> shipkeep.agent.v1.RunReleaseTask
-	40, // 43: shipkeep.agent.v1.ActionRequest.exec_session:type_name -> shipkeep.agent.v1.ExecSession
-	41, // 44: shipkeep.agent.v1.ActionRequest.backup_volume:type_name -> shipkeep.agent.v1.BackupVolume
-	42, // 45: shipkeep.agent.v1.ActionRequest.restore_volume:type_name -> shipkeep.agent.v1.RestoreVolume
-	43, // 46: shipkeep.agent.v1.ActionRequest.dump_database:type_name -> shipkeep.agent.v1.DumpDatabase
-	44, // 47: shipkeep.agent.v1.ActionRequest.restore_database:type_name -> shipkeep.agent.v1.RestoreDatabase
-	45, // 48: shipkeep.agent.v1.ActionRequest.configure_peers:type_name -> shipkeep.agent.v1.ConfigurePeers
-	46, // 49: shipkeep.agent.v1.ActionRequest.collect_facts:type_name -> shipkeep.agent.v1.CollectFacts
-	47, // 50: shipkeep.agent.v1.ActionRequest.upgrade_agent:type_name -> shipkeep.agent.v1.UpgradeAgent
-	48, // 51: shipkeep.agent.v1.ActionRequest.stop_stateful_workloads:type_name -> shipkeep.agent.v1.StopStatefulWorkloads
-	49, // 52: shipkeep.agent.v1.ActionRequest.upgrade_control_plane:type_name -> shipkeep.agent.v1.UpgradeControlPlane
-	50, // 53: shipkeep.agent.v1.RoutingTable.routes:type_name -> shipkeep.agent.v1.Route
-	24, // 54: shipkeep.agent.v1.RoutingTable.generated_at:type_name -> google.protobuf.Timestamp
-	51, // 55: shipkeep.agent.v1.PeerList.peers:type_name -> shipkeep.agent.v1.WireGuardPeer
-	24, // 56: shipkeep.agent.v1.LeaseRenewal.expires_at:type_name -> google.protobuf.Timestamp
-	26, // 57: shipkeep.agent.v1.ConfigUpdate.heartbeat_interval:type_name -> google.protobuf.Duration
-	26, // 58: shipkeep.agent.v1.ConfigUpdate.reconcile_interval:type_name -> google.protobuf.Duration
-	2,  // 59: shipkeep.agent.v1.AgentGatewayService.Enroll:input_type -> shipkeep.agent.v1.EnrollRequest
-	4,  // 60: shipkeep.agent.v1.AgentGatewayService.RenewCertificate:input_type -> shipkeep.agent.v1.RenewCertificateRequest
-	6,  // 61: shipkeep.agent.v1.AgentGatewayService.Connect:input_type -> shipkeep.agent.v1.ConnectRequest
-	52, // 62: shipkeep.agent.v1.AgentGatewayService.ExecStream:input_type -> shipkeep.agent.v1.ExecStreamRequest
-	3,  // 63: shipkeep.agent.v1.AgentGatewayService.Enroll:output_type -> shipkeep.agent.v1.EnrollResponse
-	5,  // 64: shipkeep.agent.v1.AgentGatewayService.RenewCertificate:output_type -> shipkeep.agent.v1.RenewCertificateResponse
-	7,  // 65: shipkeep.agent.v1.AgentGatewayService.Connect:output_type -> shipkeep.agent.v1.ConnectResponse
-	53, // 66: shipkeep.agent.v1.AgentGatewayService.ExecStream:output_type -> shipkeep.agent.v1.ExecStreamResponse
-	63, // [63:67] is the sub-list for method output_type
-	59, // [59:63] is the sub-list for method input_type
-	59, // [59:59] is the sub-list for extension type_name
-	59, // [59:59] is the sub-list for extension extendee
-	0,  // [0:59] is the sub-list for field type_name
+	15, // 7: shipkeep.agent.v1.ConnectRequest.metrics_report:type_name -> shipkeep.agent.v1.MetricsReport
+	19, // 8: shipkeep.agent.v1.ConnectResponse.welcome:type_name -> shipkeep.agent.v1.Welcome
+	20, // 9: shipkeep.agent.v1.ConnectResponse.action_request:type_name -> shipkeep.agent.v1.ActionRequest
+	21, // 10: shipkeep.agent.v1.ConnectResponse.cancel_action:type_name -> shipkeep.agent.v1.CancelAction
+	22, // 11: shipkeep.agent.v1.ConnectResponse.routing_table:type_name -> shipkeep.agent.v1.RoutingTable
+	23, // 12: shipkeep.agent.v1.ConnectResponse.peer_list:type_name -> shipkeep.agent.v1.PeerList
+	24, // 13: shipkeep.agent.v1.ConnectResponse.lease_renewal:type_name -> shipkeep.agent.v1.LeaseRenewal
+	25, // 14: shipkeep.agent.v1.ConnectResponse.config_update:type_name -> shipkeep.agent.v1.ConfigUpdate
+	27, // 15: shipkeep.agent.v1.Hello.facts:type_name -> shipkeep.agent.v1.NodeFacts
+	28, // 16: shipkeep.agent.v1.Heartbeat.sent_at:type_name -> google.protobuf.Timestamp
+	0,  // 17: shipkeep.agent.v1.ActionUpdate.state:type_name -> shipkeep.agent.v1.OperationState
+	29, // 18: shipkeep.agent.v1.ActionUpdate.result:type_name -> shipkeep.agent.v1.ActionResult
+	28, // 19: shipkeep.agent.v1.ActionUpdate.updated_at:type_name -> google.protobuf.Timestamp
+	1,  // 20: shipkeep.agent.v1.ContainerStatus.state:type_name -> shipkeep.agent.v1.ContainerStatus.State
+	28, // 21: shipkeep.agent.v1.ContainerStatus.started_at:type_name -> google.protobuf.Timestamp
+	26, // 22: shipkeep.agent.v1.ContainerStatus.labels:type_name -> shipkeep.agent.v1.ContainerStatus.LabelsEntry
+	11, // 23: shipkeep.agent.v1.StateReport.containers:type_name -> shipkeep.agent.v1.ContainerStatus
+	12, // 24: shipkeep.agent.v1.StateReport.volumes:type_name -> shipkeep.agent.v1.VolumeStatus
+	28, // 25: shipkeep.agent.v1.StateReport.observed_at:type_name -> google.protobuf.Timestamp
+	14, // 26: shipkeep.agent.v1.StateReport.certificates:type_name -> shipkeep.agent.v1.CertificateStatus
+	28, // 27: shipkeep.agent.v1.CertificateStatus.not_after:type_name -> google.protobuf.Timestamp
+	28, // 28: shipkeep.agent.v1.MetricsReport.sampled_at:type_name -> google.protobuf.Timestamp
+	16, // 29: shipkeep.agent.v1.MetricsReport.node:type_name -> shipkeep.agent.v1.NodeMetrics
+	17, // 30: shipkeep.agent.v1.MetricsReport.containers:type_name -> shipkeep.agent.v1.ContainerMetrics
+	18, // 31: shipkeep.agent.v1.MetricsReport.hosts:type_name -> shipkeep.agent.v1.HostMetrics
+	28, // 32: shipkeep.agent.v1.Welcome.lease_expires_at:type_name -> google.protobuf.Timestamp
+	30, // 33: shipkeep.agent.v1.Welcome.heartbeat_interval:type_name -> google.protobuf.Duration
+	28, // 34: shipkeep.agent.v1.Welcome.server_time:type_name -> google.protobuf.Timestamp
+	31, // 35: shipkeep.agent.v1.ActionRequest.ensure_network:type_name -> shipkeep.agent.v1.EnsureNetwork
+	32, // 36: shipkeep.agent.v1.ActionRequest.pull_image:type_name -> shipkeep.agent.v1.PullImage
+	33, // 37: shipkeep.agent.v1.ActionRequest.build_image:type_name -> shipkeep.agent.v1.BuildImage
+	34, // 38: shipkeep.agent.v1.ActionRequest.create_container:type_name -> shipkeep.agent.v1.CreateContainer
+	35, // 39: shipkeep.agent.v1.ActionRequest.start_container:type_name -> shipkeep.agent.v1.StartContainer
+	36, // 40: shipkeep.agent.v1.ActionRequest.stop_container:type_name -> shipkeep.agent.v1.StopContainer
+	37, // 41: shipkeep.agent.v1.ActionRequest.remove_container:type_name -> shipkeep.agent.v1.RemoveContainer
+	38, // 42: shipkeep.agent.v1.ActionRequest.ensure_volume:type_name -> shipkeep.agent.v1.EnsureVolume
+	39, // 43: shipkeep.agent.v1.ActionRequest.remove_volume:type_name -> shipkeep.agent.v1.RemoveVolume
+	40, // 44: shipkeep.agent.v1.ActionRequest.health_check:type_name -> shipkeep.agent.v1.HealthCheck
+	41, // 45: shipkeep.agent.v1.ActionRequest.upsert_route:type_name -> shipkeep.agent.v1.UpsertRoute
+	42, // 46: shipkeep.agent.v1.ActionRequest.remove_route:type_name -> shipkeep.agent.v1.RemoveRoute
+	43, // 47: shipkeep.agent.v1.ActionRequest.run_release_task:type_name -> shipkeep.agent.v1.RunReleaseTask
+	44, // 48: shipkeep.agent.v1.ActionRequest.exec_session:type_name -> shipkeep.agent.v1.ExecSession
+	45, // 49: shipkeep.agent.v1.ActionRequest.backup_volume:type_name -> shipkeep.agent.v1.BackupVolume
+	46, // 50: shipkeep.agent.v1.ActionRequest.restore_volume:type_name -> shipkeep.agent.v1.RestoreVolume
+	47, // 51: shipkeep.agent.v1.ActionRequest.dump_database:type_name -> shipkeep.agent.v1.DumpDatabase
+	48, // 52: shipkeep.agent.v1.ActionRequest.restore_database:type_name -> shipkeep.agent.v1.RestoreDatabase
+	49, // 53: shipkeep.agent.v1.ActionRequest.configure_peers:type_name -> shipkeep.agent.v1.ConfigurePeers
+	50, // 54: shipkeep.agent.v1.ActionRequest.collect_facts:type_name -> shipkeep.agent.v1.CollectFacts
+	51, // 55: shipkeep.agent.v1.ActionRequest.upgrade_agent:type_name -> shipkeep.agent.v1.UpgradeAgent
+	52, // 56: shipkeep.agent.v1.ActionRequest.stop_stateful_workloads:type_name -> shipkeep.agent.v1.StopStatefulWorkloads
+	53, // 57: shipkeep.agent.v1.ActionRequest.upgrade_control_plane:type_name -> shipkeep.agent.v1.UpgradeControlPlane
+	54, // 58: shipkeep.agent.v1.RoutingTable.routes:type_name -> shipkeep.agent.v1.Route
+	28, // 59: shipkeep.agent.v1.RoutingTable.generated_at:type_name -> google.protobuf.Timestamp
+	55, // 60: shipkeep.agent.v1.PeerList.peers:type_name -> shipkeep.agent.v1.WireGuardPeer
+	28, // 61: shipkeep.agent.v1.LeaseRenewal.expires_at:type_name -> google.protobuf.Timestamp
+	30, // 62: shipkeep.agent.v1.ConfigUpdate.heartbeat_interval:type_name -> google.protobuf.Duration
+	30, // 63: shipkeep.agent.v1.ConfigUpdate.reconcile_interval:type_name -> google.protobuf.Duration
+	2,  // 64: shipkeep.agent.v1.AgentGatewayService.Enroll:input_type -> shipkeep.agent.v1.EnrollRequest
+	4,  // 65: shipkeep.agent.v1.AgentGatewayService.RenewCertificate:input_type -> shipkeep.agent.v1.RenewCertificateRequest
+	6,  // 66: shipkeep.agent.v1.AgentGatewayService.Connect:input_type -> shipkeep.agent.v1.ConnectRequest
+	56, // 67: shipkeep.agent.v1.AgentGatewayService.ExecStream:input_type -> shipkeep.agent.v1.ExecStreamRequest
+	3,  // 68: shipkeep.agent.v1.AgentGatewayService.Enroll:output_type -> shipkeep.agent.v1.EnrollResponse
+	5,  // 69: shipkeep.agent.v1.AgentGatewayService.RenewCertificate:output_type -> shipkeep.agent.v1.RenewCertificateResponse
+	7,  // 70: shipkeep.agent.v1.AgentGatewayService.Connect:output_type -> shipkeep.agent.v1.ConnectResponse
+	57, // 71: shipkeep.agent.v1.AgentGatewayService.ExecStream:output_type -> shipkeep.agent.v1.ExecStreamResponse
+	68, // [68:72] is the sub-list for method output_type
+	64, // [64:68] is the sub-list for method input_type
+	64, // [64:64] is the sub-list for extension type_name
+	64, // [64:64] is the sub-list for extension extendee
+	0,  // [0:64] is the sub-list for field type_name
 }
 
 func init() { file_shipkeep_agent_v1_gateway_proto_init() }
@@ -2433,6 +2872,7 @@ func file_shipkeep_agent_v1_gateway_proto_init() {
 		(*ConnectRequest_Heartbeat)(nil),
 		(*ConnectRequest_ActionUpdate)(nil),
 		(*ConnectRequest_StateReport)(nil),
+		(*ConnectRequest_MetricsReport)(nil),
 	}
 	file_shipkeep_agent_v1_gateway_proto_msgTypes[5].OneofWrappers = []any{
 		(*ConnectResponse_Welcome)(nil),
@@ -2443,7 +2883,7 @@ func file_shipkeep_agent_v1_gateway_proto_init() {
 		(*ConnectResponse_LeaseRenewal)(nil),
 		(*ConnectResponse_ConfigUpdate)(nil),
 	}
-	file_shipkeep_agent_v1_gateway_proto_msgTypes[14].OneofWrappers = []any{
+	file_shipkeep_agent_v1_gateway_proto_msgTypes[18].OneofWrappers = []any{
 		(*ActionRequest_EnsureNetwork)(nil),
 		(*ActionRequest_PullImage)(nil),
 		(*ActionRequest_BuildImage)(nil),
@@ -2474,7 +2914,7 @@ func file_shipkeep_agent_v1_gateway_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_shipkeep_agent_v1_gateway_proto_rawDesc), len(file_shipkeep_agent_v1_gateway_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   21,
+			NumMessages:   25,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

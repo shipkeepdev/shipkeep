@@ -20,7 +20,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file shipkeep/agent/v1/gateway.proto.
  */
 export const file_shipkeep_agent_v1_gateway: GenFile = /*@__PURE__*/
-  fileDesc("Ch9zaGlwa2VlcC9hZ2VudC92MS9nYXRld2F5LnByb3RvEhFzaGlwa2VlcC5hZ2VudC52MSJ9Cg1FbnJvbGxSZXF1ZXN0EhcKCmpvaW5fdG9rZW4YASABKAlCA4ABARIPCgdjc3JfcGVtGAIgASgJEisKBWZhY3RzGAMgASgLMhwuc2hpcGtlZXAuYWdlbnQudjEuTm9kZUZhY3RzEhUKDWFnZW50X3ZlcnNpb24YBCABKAki3AEKDkVucm9sbFJlc3BvbnNlEhAKCGNlcnRfcGVtGAEgASgJEg4KBmNhX3BlbRgCIAEoCRIPCgdub2RlX2lkGAMgASgJEhcKD29yZ2FuaXphdGlvbl9pZBgEIAEoCRIUCgx3aXJlZ3VhcmRfaXAYBSABKAkSEwoLbGVhc2VfZXBvY2gYBiABKAQSHwoXY29uZmlybWF0aW9uX3B1YmxpY19rZXkYByABKAkSMgoOY2VydF9ub3RfYWZ0ZXIYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIioKF1JlbmV3Q2VydGlmaWNhdGVSZXF1ZXN0Eg8KB2Nzcl9wZW0YASABKAkiYAoYUmVuZXdDZXJ0aWZpY2F0ZVJlc3BvbnNlEhAKCGNlcnRfcGVtGAEgASgJEjIKDmNlcnRfbm90X2FmdGVyGAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCLnAQoOQ29ubmVjdFJlcXVlc3QSKQoFaGVsbG8YASABKAsyGC5zaGlwa2VlcC5hZ2VudC52MS5IZWxsb0gAEjEKCWhlYXJ0YmVhdBgCIAEoCzIcLnNoaXBrZWVwLmFnZW50LnYxLkhlYXJ0YmVhdEgAEjgKDWFjdGlvbl91cGRhdGUYAyABKAsyHy5zaGlwa2VlcC5hZ2VudC52MS5BY3Rpb25VcGRhdGVIABI2CgxzdGF0ZV9yZXBvcnQYBCABKAsyHi5zaGlwa2VlcC5hZ2VudC52MS5TdGF0ZVJlcG9ydEgAQgUKA21zZyKdAwoPQ29ubmVjdFJlc3BvbnNlEi0KB3dlbGNvbWUYASABKAsyGi5zaGlwa2VlcC5hZ2VudC52MS5XZWxjb21lSAASOgoOYWN0aW9uX3JlcXVlc3QYAiABKAsyIC5zaGlwa2VlcC5hZ2VudC52MS5BY3Rpb25SZXF1ZXN0SAASOAoNY2FuY2VsX2FjdGlvbhgDIAEoCzIfLnNoaXBrZWVwLmFnZW50LnYxLkNhbmNlbEFjdGlvbkgAEjgKDXJvdXRpbmdfdGFibGUYBCABKAsyHy5zaGlwa2VlcC5hZ2VudC52MS5Sb3V0aW5nVGFibGVIABIwCglwZWVyX2xpc3QYBSABKAsyGy5zaGlwa2VlcC5hZ2VudC52MS5QZWVyTGlzdEgAEjgKDWxlYXNlX3JlbmV3YWwYBiABKAsyHy5zaGlwa2VlcC5hZ2VudC52MS5MZWFzZVJlbmV3YWxIABI4Cg1jb25maWdfdXBkYXRlGAcgASgLMh8uc2hpcGtlZXAuYWdlbnQudjEuQ29uZmlnVXBkYXRlSABCBQoDbXNnIsMBCgVIZWxsbxIPCgdub2RlX2lkGAEgASgJEhUKDWFnZW50X3ZlcnNpb24YAiABKAkSKwoFZmFjdHMYAyABKAsyHC5zaGlwa2VlcC5hZ2VudC52MS5Ob2RlRmFjdHMSEwoLbGVhc2VfZXBvY2gYBCABKAQSFwoPcm91dGluZ192ZXJzaW9uGAUgASgEEhkKEXBlZXJfbGlzdF92ZXJzaW9uGAYgASgEEhwKFGluX2ZsaWdodF9hY3Rpb25faWRzGAcgAygJIk0KCUhlYXJ0YmVhdBIrCgdzZW50X2F0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBITCgtsZWFzZV9lcG9jaBgCIAEoBCLjAQoMQWN0aW9uVXBkYXRlEhEKCWFjdGlvbl9pZBgBIAEoCRIwCgVzdGF0ZRgCIAEoDjIhLnNoaXBrZWVwLmFnZW50LnYxLk9wZXJhdGlvblN0YXRlEgwKBHN0ZXAYAyABKAkSEAoIYXR0ZW1wdHMYBCABKA0SDQoFZXJyb3IYBSABKAkSLwoGcmVzdWx0GAYgASgLMh8uc2hpcGtlZXAuYWdlbnQudjEuQWN0aW9uUmVzdWx0Ei4KCnVwZGF0ZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIu4DCg9Db250YWluZXJTdGF0dXMSFAoMY29udGFpbmVyX2lkGAEgASgJEgwKBG5hbWUYAiABKAkSNwoFc3RhdGUYAyABKA4yKC5zaGlwa2VlcC5hZ2VudC52MS5Db250YWluZXJTdGF0dXMuU3RhdGUSDwoHaGVhbHRoeRgEIAEoCBIVCg1yZXN0YXJ0X2NvdW50GAUgASgNEi4KCnN0YXJ0ZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhEKCWV4aXRfY29kZRgHIAEoBRI+CgZsYWJlbHMYCCADKAsyLi5zaGlwa2VlcC5hZ2VudC52MS5Db250YWluZXJTdGF0dXMuTGFiZWxzRW50cnkSEwoLc3RvcF9yZWFzb24YCSABKAkaLQoLTGFiZWxzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASKOAQoFU3RhdGUSFQoRU1RBVEVfVU5TUEVDSUZJRUQQABIRCg1TVEFURV9DUkVBVEVEEAESEQoNU1RBVEVfUlVOTklORxACEhAKDFNUQVRFX1BBVVNFRBADEhQKEFNUQVRFX1JFU1RBUlRJTkcQBBIQCgxTVEFURV9FWElURUQQBRIOCgpTVEFURV9ERUFEEAYiMAoMVm9sdW1lU3RhdHVzEgwKBG5hbWUYASABKAkSEgoKc2l6ZV9ieXRlcxgCIAEoBCKtAgoLU3RhdGVSZXBvcnQSNgoKY29udGFpbmVycxgBIAMoCzIiLnNoaXBrZWVwLmFnZW50LnYxLkNvbnRhaW5lclN0YXR1cxIwCgd2b2x1bWVzGAIgAygLMh8uc2hpcGtlZXAuYWdlbnQudjEuVm9sdW1lU3RhdHVzEhcKD3JvdXRpbmdfdmVyc2lvbhgDIAEoBBIZChFwZWVyX2xpc3RfdmVyc2lvbhgEIAEoBBITCgtsZWFzZV9lcG9jaBgFIAEoBBIvCgtvYnNlcnZlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASOgoMY2VydGlmaWNhdGVzGAcgAygLMiQuc2hpcGtlZXAuYWdlbnQudjEuQ2VydGlmaWNhdGVTdGF0dXMiZAoRQ2VydGlmaWNhdGVTdGF0dXMSEAoIaG9zdG5hbWUYASABKAkSLQoJbm90X2FmdGVyGAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIOCgZpc3N1ZXIYAyABKAkizQEKB1dlbGNvbWUSDwoHbm9kZV9pZBgBIAEoCRITCgtsZWFzZV9lcG9jaBgCIAEoBBI0ChBsZWFzZV9leHBpcmVzX2F0GAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBI1ChJoZWFydGJlYXRfaW50ZXJ2YWwYBCABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24SLwoLc2VydmVyX3RpbWUYBSABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIt8LCg1BY3Rpb25SZXF1ZXN0EhEKCWFjdGlvbl9pZBgBIAEoCRIXCg9pZGVtcG90ZW5jeV9rZXkYAiABKAkSGAoQZGVhZGxpbmVfdW5peF9tcxgDIAEoAxITCgtsZWFzZV9lcG9jaBgEIAEoBBI6Cg5lbnN1cmVfbmV0d29yaxgKIAEoCzIgLnNoaXBrZWVwLmFnZW50LnYxLkVuc3VyZU5ldHdvcmtIABIyCgpwdWxsX2ltYWdlGAsgASgLMhwuc2hpcGtlZXAuYWdlbnQudjEuUHVsbEltYWdlSAASNAoLYnVpbGRfaW1hZ2UYDCABKAsyHS5zaGlwa2VlcC5hZ2VudC52MS5CdWlsZEltYWdlSAASPgoQY3JlYXRlX2NvbnRhaW5lchgNIAEoCzIiLnNoaXBrZWVwLmFnZW50LnYxLkNyZWF0ZUNvbnRhaW5lckgAEjwKD3N0YXJ0X2NvbnRhaW5lchgOIAEoCzIhLnNoaXBrZWVwLmFnZW50LnYxLlN0YXJ0Q29udGFpbmVySAASOgoOc3RvcF9jb250YWluZXIYDyABKAsyIC5zaGlwa2VlcC5hZ2VudC52MS5TdG9wQ29udGFpbmVySAASPgoQcmVtb3ZlX2NvbnRhaW5lchgQIAEoCzIiLnNoaXBrZWVwLmFnZW50LnYxLlJlbW92ZUNvbnRhaW5lckgAEjgKDWVuc3VyZV92b2x1bWUYESABKAsyHy5zaGlwa2VlcC5hZ2VudC52MS5FbnN1cmVWb2x1bWVIABI4Cg1yZW1vdmVfdm9sdW1lGBIgASgLMh8uc2hpcGtlZXAuYWdlbnQudjEuUmVtb3ZlVm9sdW1lSAASNgoMaGVhbHRoX2NoZWNrGBMgASgLMh4uc2hpcGtlZXAuYWdlbnQudjEuSGVhbHRoQ2hlY2tIABI2Cgx1cHNlcnRfcm91dGUYFCABKAsyHi5zaGlwa2VlcC5hZ2VudC52MS5VcHNlcnRSb3V0ZUgAEjYKDHJlbW92ZV9yb3V0ZRgVIAEoCzIeLnNoaXBrZWVwLmFnZW50LnYxLlJlbW92ZVJvdXRlSAASPQoQcnVuX3JlbGVhc2VfdGFzaxgWIAEoCzIhLnNoaXBrZWVwLmFnZW50LnYxLlJ1blJlbGVhc2VUYXNrSAASNgoMZXhlY19zZXNzaW9uGBcgASgLMh4uc2hpcGtlZXAuYWdlbnQudjEuRXhlY1Nlc3Npb25IABI4Cg1iYWNrdXBfdm9sdW1lGBggASgLMh8uc2hpcGtlZXAuYWdlbnQudjEuQmFja3VwVm9sdW1lSAASOgoOcmVzdG9yZV92b2x1bWUYGSABKAsyIC5zaGlwa2VlcC5hZ2VudC52MS5SZXN0b3JlVm9sdW1lSAASOAoNZHVtcF9kYXRhYmFzZRgaIAEoCzIfLnNoaXBrZWVwLmFnZW50LnYxLkR1bXBEYXRhYmFzZUgAEj4KEHJlc3RvcmVfZGF0YWJhc2UYGyABKAsyIi5zaGlwa2VlcC5hZ2VudC52MS5SZXN0b3JlRGF0YWJhc2VIABI8Cg9jb25maWd1cmVfcGVlcnMYHCABKAsyIS5zaGlwa2VlcC5hZ2VudC52MS5Db25maWd1cmVQZWVyc0gAEjgKDWNvbGxlY3RfZmFjdHMYHSABKAsyHy5zaGlwa2VlcC5hZ2VudC52MS5Db2xsZWN0RmFjdHNIABI4Cg11cGdyYWRlX2FnZW50GB4gASgLMh8uc2hpcGtlZXAuYWdlbnQudjEuVXBncmFkZUFnZW50SAASSwoXc3RvcF9zdGF0ZWZ1bF93b3JrbG9hZHMYHyABKAsyKC5zaGlwa2VlcC5hZ2VudC52MS5TdG9wU3RhdGVmdWxXb3JrbG9hZHNIABJHChV1cGdyYWRlX2NvbnRyb2xfcGxhbmUYICABKAsyJi5zaGlwa2VlcC5hZ2VudC52MS5VcGdyYWRlQ29udHJvbFBsYW5lSABCCAoGYWN0aW9uIjEKDENhbmNlbEFjdGlvbhIRCglhY3Rpb25faWQYASABKAkSDgoGcmVhc29uGAIgASgJInsKDFJvdXRpbmdUYWJsZRIPCgd2ZXJzaW9uGAEgASgEEigKBnJvdXRlcxgCIAMoCzIYLnNoaXBrZWVwLmFnZW50LnYxLlJvdXRlEjAKDGdlbmVyYXRlZF9hdBgDIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXAiTAoIUGVlckxpc3QSDwoHdmVyc2lvbhgBIAEoBBIvCgVwZWVycxgCIAMoCzIgLnNoaXBrZWVwLmFnZW50LnYxLldpcmVHdWFyZFBlZXIiTQoMTGVhc2VSZW5ld2FsEg0KBWVwb2NoGAEgASgEEi4KCmV4cGlyZXNfYXQYAiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIsABCgxDb25maWdVcGRhdGUSEQoJbG9nX2xldmVsGAEgASgJEjUKEmhlYXJ0YmVhdF9pbnRlcnZhbBgCIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhI1ChJyZWNvbmNpbGVfaW50ZXJ2YWwYAyABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24SFQoNbG9nc19lbmRwb2ludBgEIAEoCRIYChBtZXRyaWNzX2VuZHBvaW50GAUgASgJKogCCg5PcGVyYXRpb25TdGF0ZRIfChtPUEVSQVRJT05fU1RBVEVfVU5TUEVDSUZJRUQQABIbChdPUEVSQVRJT05fU1RBVEVfUEVORElORxABEhsKF09QRVJBVElPTl9TVEFURV9SVU5OSU5HEAISHQoZT1BFUkFUSU9OX1NUQVRFX1NVQ0NFRURFRBADEhoKFk9QRVJBVElPTl9TVEFURV9GQUlMRUQQBBIdChlPUEVSQVRJT05fU1RBVEVfQ0FOQ0VMTEVEEAUSIAocT1BFUkFUSU9OX1NUQVRFX0NPTVBFTlNBVElORxAGEh8KG09QRVJBVElPTl9TVEFURV9DT01QRU5TQVRFRBAHMoYDChNBZ2VudEdhdGV3YXlTZXJ2aWNlEk0KBkVucm9sbBIgLnNoaXBrZWVwLmFnZW50LnYxLkVucm9sbFJlcXVlc3QaIS5zaGlwa2VlcC5hZ2VudC52MS5FbnJvbGxSZXNwb25zZRJrChBSZW5ld0NlcnRpZmljYXRlEiouc2hpcGtlZXAuYWdlbnQudjEuUmVuZXdDZXJ0aWZpY2F0ZVJlcXVlc3QaKy5zaGlwa2VlcC5hZ2VudC52MS5SZW5ld0NlcnRpZmljYXRlUmVzcG9uc2USVAoHQ29ubmVjdBIhLnNoaXBrZWVwLmFnZW50LnYxLkNvbm5lY3RSZXF1ZXN0GiIuc2hpcGtlZXAuYWdlbnQudjEuQ29ubmVjdFJlc3BvbnNlKAEwARJdCgpFeGVjU3RyZWFtEiQuc2hpcGtlZXAuYWdlbnQudjEuRXhlY1N0cmVhbVJlcXVlc3QaJS5zaGlwa2VlcC5hZ2VudC52MS5FeGVjU3RyZWFtUmVzcG9uc2UoATABQs4BChVjb20uc2hpcGtlZXAuYWdlbnQudjFCDEdhdGV3YXlQcm90b1ABWkFnaXRodWIuY29tL3NoaXBrZWVwZGV2L3NoaXBrZWVwL2xpYi9nZW4vc2hpcGtlZXAvYWdlbnQvdjE7YWdlbnR2MaICA1NBWKoCEVNoaXBrZWVwLkFnZW50LlYxygIRU2hpcGtlZXBcQWdlbnRcVjHiAh1TaGlwa2VlcFxBZ2VudFxWMVxHUEJNZXRhZGF0YeoCE1NoaXBrZWVwOjpBZ2VudDo6VjFiBnByb3RvMw", [file_google_protobuf_duration, file_google_protobuf_timestamp, file_shipkeep_agent_v1_actions, file_shipkeep_agent_v1_exec]);
+  fileDesc("Ch9zaGlwa2VlcC9hZ2VudC92MS9nYXRld2F5LnByb3RvEhFzaGlwa2VlcC5hZ2VudC52MSJ9Cg1FbnJvbGxSZXF1ZXN0EhcKCmpvaW5fdG9rZW4YASABKAlCA4ABARIPCgdjc3JfcGVtGAIgASgJEisKBWZhY3RzGAMgASgLMhwuc2hpcGtlZXAuYWdlbnQudjEuTm9kZUZhY3RzEhUKDWFnZW50X3ZlcnNpb24YBCABKAki3AEKDkVucm9sbFJlc3BvbnNlEhAKCGNlcnRfcGVtGAEgASgJEg4KBmNhX3BlbRgCIAEoCRIPCgdub2RlX2lkGAMgASgJEhcKD29yZ2FuaXphdGlvbl9pZBgEIAEoCRIUCgx3aXJlZ3VhcmRfaXAYBSABKAkSEwoLbGVhc2VfZXBvY2gYBiABKAQSHwoXY29uZmlybWF0aW9uX3B1YmxpY19rZXkYByABKAkSMgoOY2VydF9ub3RfYWZ0ZXIYCCABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIioKF1JlbmV3Q2VydGlmaWNhdGVSZXF1ZXN0Eg8KB2Nzcl9wZW0YASABKAkiYAoYUmVuZXdDZXJ0aWZpY2F0ZVJlc3BvbnNlEhAKCGNlcnRfcGVtGAEgASgJEjIKDmNlcnRfbm90X2FmdGVyGAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCKjAgoOQ29ubmVjdFJlcXVlc3QSKQoFaGVsbG8YASABKAsyGC5zaGlwa2VlcC5hZ2VudC52MS5IZWxsb0gAEjEKCWhlYXJ0YmVhdBgCIAEoCzIcLnNoaXBrZWVwLmFnZW50LnYxLkhlYXJ0YmVhdEgAEjgKDWFjdGlvbl91cGRhdGUYAyABKAsyHy5zaGlwa2VlcC5hZ2VudC52MS5BY3Rpb25VcGRhdGVIABI2CgxzdGF0ZV9yZXBvcnQYBCABKAsyHi5zaGlwa2VlcC5hZ2VudC52MS5TdGF0ZVJlcG9ydEgAEjoKDm1ldHJpY3NfcmVwb3J0GAUgASgLMiAuc2hpcGtlZXAuYWdlbnQudjEuTWV0cmljc1JlcG9ydEgAQgUKA21zZyKdAwoPQ29ubmVjdFJlc3BvbnNlEi0KB3dlbGNvbWUYASABKAsyGi5zaGlwa2VlcC5hZ2VudC52MS5XZWxjb21lSAASOgoOYWN0aW9uX3JlcXVlc3QYAiABKAsyIC5zaGlwa2VlcC5hZ2VudC52MS5BY3Rpb25SZXF1ZXN0SAASOAoNY2FuY2VsX2FjdGlvbhgDIAEoCzIfLnNoaXBrZWVwLmFnZW50LnYxLkNhbmNlbEFjdGlvbkgAEjgKDXJvdXRpbmdfdGFibGUYBCABKAsyHy5zaGlwa2VlcC5hZ2VudC52MS5Sb3V0aW5nVGFibGVIABIwCglwZWVyX2xpc3QYBSABKAsyGy5zaGlwa2VlcC5hZ2VudC52MS5QZWVyTGlzdEgAEjgKDWxlYXNlX3JlbmV3YWwYBiABKAsyHy5zaGlwa2VlcC5hZ2VudC52MS5MZWFzZVJlbmV3YWxIABI4Cg1jb25maWdfdXBkYXRlGAcgASgLMh8uc2hpcGtlZXAuYWdlbnQudjEuQ29uZmlnVXBkYXRlSABCBQoDbXNnIsMBCgVIZWxsbxIPCgdub2RlX2lkGAEgASgJEhUKDWFnZW50X3ZlcnNpb24YAiABKAkSKwoFZmFjdHMYAyABKAsyHC5zaGlwa2VlcC5hZ2VudC52MS5Ob2RlRmFjdHMSEwoLbGVhc2VfZXBvY2gYBCABKAQSFwoPcm91dGluZ192ZXJzaW9uGAUgASgEEhkKEXBlZXJfbGlzdF92ZXJzaW9uGAYgASgEEhwKFGluX2ZsaWdodF9hY3Rpb25faWRzGAcgAygJIk0KCUhlYXJ0YmVhdBIrCgdzZW50X2F0GAEgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBITCgtsZWFzZV9lcG9jaBgCIAEoBCLjAQoMQWN0aW9uVXBkYXRlEhEKCWFjdGlvbl9pZBgBIAEoCRIwCgVzdGF0ZRgCIAEoDjIhLnNoaXBrZWVwLmFnZW50LnYxLk9wZXJhdGlvblN0YXRlEgwKBHN0ZXAYAyABKAkSEAoIYXR0ZW1wdHMYBCABKA0SDQoFZXJyb3IYBSABKAkSLwoGcmVzdWx0GAYgASgLMh8uc2hpcGtlZXAuYWdlbnQudjEuQWN0aW9uUmVzdWx0Ei4KCnVwZGF0ZWRfYXQYByABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIu4DCg9Db250YWluZXJTdGF0dXMSFAoMY29udGFpbmVyX2lkGAEgASgJEgwKBG5hbWUYAiABKAkSNwoFc3RhdGUYAyABKA4yKC5zaGlwa2VlcC5hZ2VudC52MS5Db250YWluZXJTdGF0dXMuU3RhdGUSDwoHaGVhbHRoeRgEIAEoCBIVCg1yZXN0YXJ0X2NvdW50GAUgASgNEi4KCnN0YXJ0ZWRfYXQYBiABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEhEKCWV4aXRfY29kZRgHIAEoBRI+CgZsYWJlbHMYCCADKAsyLi5zaGlwa2VlcC5hZ2VudC52MS5Db250YWluZXJTdGF0dXMuTGFiZWxzRW50cnkSEwoLc3RvcF9yZWFzb24YCSABKAkaLQoLTGFiZWxzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASKOAQoFU3RhdGUSFQoRU1RBVEVfVU5TUEVDSUZJRUQQABIRCg1TVEFURV9DUkVBVEVEEAESEQoNU1RBVEVfUlVOTklORxACEhAKDFNUQVRFX1BBVVNFRBADEhQKEFNUQVRFX1JFU1RBUlRJTkcQBBIQCgxTVEFURV9FWElURUQQBRIOCgpTVEFURV9ERUFEEAYiMAoMVm9sdW1lU3RhdHVzEgwKBG5hbWUYASABKAkSEgoKc2l6ZV9ieXRlcxgCIAEoBCKtAgoLU3RhdGVSZXBvcnQSNgoKY29udGFpbmVycxgBIAMoCzIiLnNoaXBrZWVwLmFnZW50LnYxLkNvbnRhaW5lclN0YXR1cxIwCgd2b2x1bWVzGAIgAygLMh8uc2hpcGtlZXAuYWdlbnQudjEuVm9sdW1lU3RhdHVzEhcKD3JvdXRpbmdfdmVyc2lvbhgDIAEoBBIZChFwZWVyX2xpc3RfdmVyc2lvbhgEIAEoBBITCgtsZWFzZV9lcG9jaBgFIAEoBBIvCgtvYnNlcnZlZF9hdBgGIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASOgoMY2VydGlmaWNhdGVzGAcgAygLMiQuc2hpcGtlZXAuYWdlbnQudjEuQ2VydGlmaWNhdGVTdGF0dXMiZAoRQ2VydGlmaWNhdGVTdGF0dXMSEAoIaG9zdG5hbWUYASABKAkSLQoJbm90X2FmdGVyGAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIOCgZpc3N1ZXIYAyABKAki6gEKDU1ldHJpY3NSZXBvcnQSEwoLbGVhc2VfZXBvY2gYASABKAQSLgoKc2FtcGxlZF9hdBgCIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASLAoEbm9kZRgDIAEoCzIeLnNoaXBrZWVwLmFnZW50LnYxLk5vZGVNZXRyaWNzEjcKCmNvbnRhaW5lcnMYBCADKAsyIy5zaGlwa2VlcC5hZ2VudC52MS5Db250YWluZXJNZXRyaWNzEi0KBWhvc3RzGAUgAygLMh4uc2hpcGtlZXAuYWdlbnQudjEuSG9zdE1ldHJpY3Mi2wEKC05vZGVNZXRyaWNzEhMKC2NwdV9zZWNvbmRzGAEgASgBEhEKCWNwdV9jb3JlcxgCIAEoDRIZChFtZW1vcnlfdXNlZF9ieXRlcxgDIAEoBBIaChJtZW1vcnlfdG90YWxfYnl0ZXMYBCABKAQSFwoPZGlza191c2VkX2J5dGVzGAUgASgEEhgKEGRpc2tfdG90YWxfYnl0ZXMYBiABKAQSHgoWbmV0d29ya19yZWNlaXZlZF9ieXRlcxgHIAEoBBIaChJuZXR3b3JrX3NlbnRfYnl0ZXMYCCABKAQiqAEKEENvbnRhaW5lck1ldHJpY3MSDAoEbmFtZRgBIAEoCRITCgtjcHVfc2Vjb25kcxgCIAEoARIZChFtZW1vcnlfdXNlZF9ieXRlcxgDIAEoBBIaChJtZW1vcnlfbGltaXRfYnl0ZXMYBCABKAQSHgoWbmV0d29ya19yZWNlaXZlZF9ieXRlcxgFIAEoBBIaChJuZXR3b3JrX3NlbnRfYnl0ZXMYBiABKAQiqgEKC0hvc3RNZXRyaWNzEgwKBGhvc3QYASABKAkSFQoNcmVzcG9uc2VzXzJ4eBgCIAEoBBIVCg1yZXNwb25zZXNfM3h4GAMgASgEEhUKDXJlc3BvbnNlc180eHgYBCABKAQSFQoNcmVzcG9uc2VzXzV4eBgFIAEoBBIXCg9yZXNwb25zZXNfb3RoZXIYBiABKAQSGAoQZHVyYXRpb25fc2Vjb25kcxgHIAEoASLeAQoHV2VsY29tZRIPCgdub2RlX2lkGAEgASgJEhMKC2xlYXNlX2Vwb2NoGAIgASgEEjQKEGxlYXNlX2V4cGlyZXNfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wEjUKEmhlYXJ0YmVhdF9pbnRlcnZhbBgEIAEoCzIZLmdvb2dsZS5wcm90b2J1Zi5EdXJhdGlvbhIvCgtzZXJ2ZXJfdGltZRgFIAEoCzIaLmdvb2dsZS5wcm90b2J1Zi5UaW1lc3RhbXASDwoHbWV0cmljcxgGIAEoCCLfCwoNQWN0aW9uUmVxdWVzdBIRCglhY3Rpb25faWQYASABKAkSFwoPaWRlbXBvdGVuY3lfa2V5GAIgASgJEhgKEGRlYWRsaW5lX3VuaXhfbXMYAyABKAMSEwoLbGVhc2VfZXBvY2gYBCABKAQSOgoOZW5zdXJlX25ldHdvcmsYCiABKAsyIC5zaGlwa2VlcC5hZ2VudC52MS5FbnN1cmVOZXR3b3JrSAASMgoKcHVsbF9pbWFnZRgLIAEoCzIcLnNoaXBrZWVwLmFnZW50LnYxLlB1bGxJbWFnZUgAEjQKC2J1aWxkX2ltYWdlGAwgASgLMh0uc2hpcGtlZXAuYWdlbnQudjEuQnVpbGRJbWFnZUgAEj4KEGNyZWF0ZV9jb250YWluZXIYDSABKAsyIi5zaGlwa2VlcC5hZ2VudC52MS5DcmVhdGVDb250YWluZXJIABI8Cg9zdGFydF9jb250YWluZXIYDiABKAsyIS5zaGlwa2VlcC5hZ2VudC52MS5TdGFydENvbnRhaW5lckgAEjoKDnN0b3BfY29udGFpbmVyGA8gASgLMiAuc2hpcGtlZXAuYWdlbnQudjEuU3RvcENvbnRhaW5lckgAEj4KEHJlbW92ZV9jb250YWluZXIYECABKAsyIi5zaGlwa2VlcC5hZ2VudC52MS5SZW1vdmVDb250YWluZXJIABI4Cg1lbnN1cmVfdm9sdW1lGBEgASgLMh8uc2hpcGtlZXAuYWdlbnQudjEuRW5zdXJlVm9sdW1lSAASOAoNcmVtb3ZlX3ZvbHVtZRgSIAEoCzIfLnNoaXBrZWVwLmFnZW50LnYxLlJlbW92ZVZvbHVtZUgAEjYKDGhlYWx0aF9jaGVjaxgTIAEoCzIeLnNoaXBrZWVwLmFnZW50LnYxLkhlYWx0aENoZWNrSAASNgoMdXBzZXJ0X3JvdXRlGBQgASgLMh4uc2hpcGtlZXAuYWdlbnQudjEuVXBzZXJ0Um91dGVIABI2CgxyZW1vdmVfcm91dGUYFSABKAsyHi5zaGlwa2VlcC5hZ2VudC52MS5SZW1vdmVSb3V0ZUgAEj0KEHJ1bl9yZWxlYXNlX3Rhc2sYFiABKAsyIS5zaGlwa2VlcC5hZ2VudC52MS5SdW5SZWxlYXNlVGFza0gAEjYKDGV4ZWNfc2Vzc2lvbhgXIAEoCzIeLnNoaXBrZWVwLmFnZW50LnYxLkV4ZWNTZXNzaW9uSAASOAoNYmFja3VwX3ZvbHVtZRgYIAEoCzIfLnNoaXBrZWVwLmFnZW50LnYxLkJhY2t1cFZvbHVtZUgAEjoKDnJlc3RvcmVfdm9sdW1lGBkgASgLMiAuc2hpcGtlZXAuYWdlbnQudjEuUmVzdG9yZVZvbHVtZUgAEjgKDWR1bXBfZGF0YWJhc2UYGiABKAsyHy5zaGlwa2VlcC5hZ2VudC52MS5EdW1wRGF0YWJhc2VIABI+ChByZXN0b3JlX2RhdGFiYXNlGBsgASgLMiIuc2hpcGtlZXAuYWdlbnQudjEuUmVzdG9yZURhdGFiYXNlSAASPAoPY29uZmlndXJlX3BlZXJzGBwgASgLMiEuc2hpcGtlZXAuYWdlbnQudjEuQ29uZmlndXJlUGVlcnNIABI4Cg1jb2xsZWN0X2ZhY3RzGB0gASgLMh8uc2hpcGtlZXAuYWdlbnQudjEuQ29sbGVjdEZhY3RzSAASOAoNdXBncmFkZV9hZ2VudBgeIAEoCzIfLnNoaXBrZWVwLmFnZW50LnYxLlVwZ3JhZGVBZ2VudEgAEksKF3N0b3Bfc3RhdGVmdWxfd29ya2xvYWRzGB8gASgLMiguc2hpcGtlZXAuYWdlbnQudjEuU3RvcFN0YXRlZnVsV29ya2xvYWRzSAASRwoVdXBncmFkZV9jb250cm9sX3BsYW5lGCAgASgLMiYuc2hpcGtlZXAuYWdlbnQudjEuVXBncmFkZUNvbnRyb2xQbGFuZUgAQggKBmFjdGlvbiIxCgxDYW5jZWxBY3Rpb24SEQoJYWN0aW9uX2lkGAEgASgJEg4KBnJlYXNvbhgCIAEoCSJ7CgxSb3V0aW5nVGFibGUSDwoHdmVyc2lvbhgBIAEoBBIoCgZyb3V0ZXMYAiADKAsyGC5zaGlwa2VlcC5hZ2VudC52MS5Sb3V0ZRIwCgxnZW5lcmF0ZWRfYXQYAyABKAsyGi5nb29nbGUucHJvdG9idWYuVGltZXN0YW1wIkwKCFBlZXJMaXN0Eg8KB3ZlcnNpb24YASABKAQSLwoFcGVlcnMYAiADKAsyIC5zaGlwa2VlcC5hZ2VudC52MS5XaXJlR3VhcmRQZWVyIk0KDExlYXNlUmVuZXdhbBINCgVlcG9jaBgBIAEoBBIuCgpleHBpcmVzX2F0GAIgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcCLAAQoMQ29uZmlnVXBkYXRlEhEKCWxvZ19sZXZlbBgBIAEoCRI1ChJoZWFydGJlYXRfaW50ZXJ2YWwYAiABKAsyGS5nb29nbGUucHJvdG9idWYuRHVyYXRpb24SNQoScmVjb25jaWxlX2ludGVydmFsGAMgASgLMhkuZ29vZ2xlLnByb3RvYnVmLkR1cmF0aW9uEhUKDWxvZ3NfZW5kcG9pbnQYBCABKAkSGAoQbWV0cmljc19lbmRwb2ludBgFIAEoCSqIAgoOT3BlcmF0aW9uU3RhdGUSHwobT1BFUkFUSU9OX1NUQVRFX1VOU1BFQ0lGSUVEEAASGwoXT1BFUkFUSU9OX1NUQVRFX1BFTkRJTkcQARIbChdPUEVSQVRJT05fU1RBVEVfUlVOTklORxACEh0KGU9QRVJBVElPTl9TVEFURV9TVUNDRUVERUQQAxIaChZPUEVSQVRJT05fU1RBVEVfRkFJTEVEEAQSHQoZT1BFUkFUSU9OX1NUQVRFX0NBTkNFTExFRBAFEiAKHE9QRVJBVElPTl9TVEFURV9DT01QRU5TQVRJTkcQBhIfChtPUEVSQVRJT05fU1RBVEVfQ09NUEVOU0FURUQQBzKGAwoTQWdlbnRHYXRld2F5U2VydmljZRJNCgZFbnJvbGwSIC5zaGlwa2VlcC5hZ2VudC52MS5FbnJvbGxSZXF1ZXN0GiEuc2hpcGtlZXAuYWdlbnQudjEuRW5yb2xsUmVzcG9uc2USawoQUmVuZXdDZXJ0aWZpY2F0ZRIqLnNoaXBrZWVwLmFnZW50LnYxLlJlbmV3Q2VydGlmaWNhdGVSZXF1ZXN0Gisuc2hpcGtlZXAuYWdlbnQudjEuUmVuZXdDZXJ0aWZpY2F0ZVJlc3BvbnNlElQKB0Nvbm5lY3QSIS5zaGlwa2VlcC5hZ2VudC52MS5Db25uZWN0UmVxdWVzdBoiLnNoaXBrZWVwLmFnZW50LnYxLkNvbm5lY3RSZXNwb25zZSgBMAESXQoKRXhlY1N0cmVhbRIkLnNoaXBrZWVwLmFnZW50LnYxLkV4ZWNTdHJlYW1SZXF1ZXN0GiUuc2hpcGtlZXAuYWdlbnQudjEuRXhlY1N0cmVhbVJlc3BvbnNlKAEwAULOAQoVY29tLnNoaXBrZWVwLmFnZW50LnYxQgxHYXRld2F5UHJvdG9QAVpBZ2l0aHViLmNvbS9zaGlwa2VlcGRldi9zaGlwa2VlcC9saWIvZ2VuL3NoaXBrZWVwL2FnZW50L3YxO2FnZW50djGiAgNTQViqAhFTaGlwa2VlcC5BZ2VudC5WMcoCEVNoaXBrZWVwXEFnZW50XFYx4gIdU2hpcGtlZXBcQWdlbnRcVjFcR1BCTWV0YWRhdGHqAhNTaGlwa2VlcDo6QWdlbnQ6OlYxYgZwcm90bzM", [file_google_protobuf_duration, file_google_protobuf_timestamp, file_shipkeep_agent_v1_actions, file_shipkeep_agent_v1_exec]);
 
 /**
  * @generated from message shipkeep.agent.v1.EnrollRequest
@@ -184,6 +184,14 @@ export type ConnectRequest = Message<"shipkeep.agent.v1.ConnectRequest"> & {
      */
     value: StateReport;
     case: "stateReport";
+  } | {
+    /**
+     * Sent only when the Welcome of the session set `metrics` (ADR 0024).
+     *
+     * @generated from field: shipkeep.agent.v1.MetricsReport metrics_report = 5;
+     */
+    value: MetricsReport;
+    case: "metricsReport";
   } | { case: undefined; value?: undefined };
 };
 
@@ -601,6 +609,208 @@ export const CertificateStatusSchema: GenMessage<CertificateStatus> = /*@__PURE_
   messageDesc(file_shipkeep_agent_v1_gateway, 12);
 
 /**
+ * What a node measured, sampled every 30 seconds (ADR 0024). Counters are cumulative since the
+ * node, the container or Caddy started: the control plane writes them as counters, and rates come
+ * from their differences. A counter that goes back means a restart.
+ *
+ * @generated from message shipkeep.agent.v1.MetricsReport
+ */
+export type MetricsReport = Message<"shipkeep.agent.v1.MetricsReport"> & {
+  /**
+   * @generated from field: uint64 lease_epoch = 1;
+   */
+  leaseEpoch: bigint;
+
+  /**
+   * @generated from field: google.protobuf.Timestamp sampled_at = 2;
+   */
+  sampledAt?: Timestamp | undefined;
+
+  /**
+   * @generated from field: shipkeep.agent.v1.NodeMetrics node = 3;
+   */
+  node?: NodeMetrics | undefined;
+
+  /**
+   * Managed containers that run, at most 256.
+   *
+   * @generated from field: repeated shipkeep.agent.v1.ContainerMetrics containers = 4;
+   */
+  containers: ContainerMetrics[];
+
+  /**
+   * Host names of the node's routes, at most 64.
+   *
+   * @generated from field: repeated shipkeep.agent.v1.HostMetrics hosts = 5;
+   */
+  hosts: HostMetrics[];
+};
+
+/**
+ * Describes the message shipkeep.agent.v1.MetricsReport.
+ * Use `create(MetricsReportSchema)` to create a new message.
+ */
+export const MetricsReportSchema: GenMessage<MetricsReport> = /*@__PURE__*/
+  messageDesc(file_shipkeep_agent_v1_gateway, 13);
+
+/**
+ * @generated from message shipkeep.agent.v1.NodeMetrics
+ */
+export type NodeMetrics = Message<"shipkeep.agent.v1.NodeMetrics"> & {
+  /**
+   * CPU time spent outside idle and I/O wait, all cores together.
+   *
+   * @generated from field: double cpu_seconds = 1;
+   */
+  cpuSeconds: number;
+
+  /**
+   * @generated from field: uint32 cpu_cores = 2;
+   */
+  cpuCores: number;
+
+  /**
+   * @generated from field: uint64 memory_used_bytes = 3;
+   */
+  memoryUsedBytes: bigint;
+
+  /**
+   * @generated from field: uint64 memory_total_bytes = 4;
+   */
+  memoryTotalBytes: bigint;
+
+  /**
+   * The file system of Docker's data root.
+   *
+   * @generated from field: uint64 disk_used_bytes = 5;
+   */
+  diskUsedBytes: bigint;
+
+  /**
+   * @generated from field: uint64 disk_total_bytes = 6;
+   */
+  diskTotalBytes: bigint;
+
+  /**
+   * Physical interfaces only: loopback, bridges and container interfaces are left out.
+   *
+   * @generated from field: uint64 network_received_bytes = 7;
+   */
+  networkReceivedBytes: bigint;
+
+  /**
+   * @generated from field: uint64 network_sent_bytes = 8;
+   */
+  networkSentBytes: bigint;
+};
+
+/**
+ * Describes the message shipkeep.agent.v1.NodeMetrics.
+ * Use `create(NodeMetricsSchema)` to create a new message.
+ */
+export const NodeMetricsSchema: GenMessage<NodeMetrics> = /*@__PURE__*/
+  messageDesc(file_shipkeep_agent_v1_gateway, 14);
+
+/**
+ * @generated from message shipkeep.agent.v1.ContainerMetrics
+ */
+export type ContainerMetrics = Message<"shipkeep.agent.v1.ContainerMetrics"> & {
+  /**
+   * The container's name, `sk-...`: the control plane maps it to its allocation.
+   *
+   * @generated from field: string name = 1;
+   */
+  name: string;
+
+  /**
+   * @generated from field: double cpu_seconds = 2;
+   */
+  cpuSeconds: number;
+
+  /**
+   * In use, without the page cache that the kernel can reclaim.
+   *
+   * @generated from field: uint64 memory_used_bytes = 3;
+   */
+  memoryUsedBytes: bigint;
+
+  /**
+   * @generated from field: uint64 memory_limit_bytes = 4;
+   */
+  memoryLimitBytes: bigint;
+
+  /**
+   * @generated from field: uint64 network_received_bytes = 5;
+   */
+  networkReceivedBytes: bigint;
+
+  /**
+   * @generated from field: uint64 network_sent_bytes = 6;
+   */
+  networkSentBytes: bigint;
+};
+
+/**
+ * Describes the message shipkeep.agent.v1.ContainerMetrics.
+ * Use `create(ContainerMetricsSchema)` to create a new message.
+ */
+export const ContainerMetricsSchema: GenMessage<ContainerMetrics> = /*@__PURE__*/
+  messageDesc(file_shipkeep_agent_v1_gateway, 15);
+
+/**
+ * Requests Caddy answered for one host name, by status class.
+ *
+ * @generated from message shipkeep.agent.v1.HostMetrics
+ */
+export type HostMetrics = Message<"shipkeep.agent.v1.HostMetrics"> & {
+  /**
+   * @generated from field: string host = 1;
+   */
+  host: string;
+
+  /**
+   * @generated from field: uint64 responses_2xx = 2;
+   */
+  responses2xx: bigint;
+
+  /**
+   * @generated from field: uint64 responses_3xx = 3;
+   */
+  responses3xx: bigint;
+
+  /**
+   * @generated from field: uint64 responses_4xx = 4;
+   */
+  responses4xx: bigint;
+
+  /**
+   * @generated from field: uint64 responses_5xx = 5;
+   */
+  responses5xx: bigint;
+
+  /**
+   * Any other status, 1xx included.
+   *
+   * @generated from field: uint64 responses_other = 6;
+   */
+  responsesOther: bigint;
+
+  /**
+   * The sum of their durations; with the count of all responses, the average.
+   *
+   * @generated from field: double duration_seconds = 7;
+   */
+  durationSeconds: number;
+};
+
+/**
+ * Describes the message shipkeep.agent.v1.HostMetrics.
+ * Use `create(HostMetricsSchema)` to create a new message.
+ */
+export const HostMetricsSchema: GenMessage<HostMetrics> = /*@__PURE__*/
+  messageDesc(file_shipkeep_agent_v1_gateway, 16);
+
+/**
  * Reply to Hello.
  *
  * @generated from message shipkeep.agent.v1.Welcome
@@ -630,6 +840,14 @@ export type Welcome = Message<"shipkeep.agent.v1.Welcome"> & {
    * @generated from field: google.protobuf.Timestamp server_time = 5;
    */
   serverTime?: Timestamp | undefined;
+
+  /**
+   * The control plane accepts MetricsReport on this stream (ADR 0024). An older one does not, and
+   * the agent sends none.
+   *
+   * @generated from field: bool metrics = 6;
+   */
+  metrics: boolean;
 };
 
 /**
@@ -637,7 +855,7 @@ export type Welcome = Message<"shipkeep.agent.v1.Welcome"> & {
  * Use `create(WelcomeSchema)` to create a new message.
  */
 export const WelcomeSchema: GenMessage<Welcome> = /*@__PURE__*/
-  messageDesc(file_shipkeep_agent_v1_gateway, 13);
+  messageDesc(file_shipkeep_agent_v1_gateway, 17);
 
 /**
  * One action to execute. Exactly one field of `action` is set.
@@ -820,7 +1038,7 @@ export type ActionRequest = Message<"shipkeep.agent.v1.ActionRequest"> & {
  * Use `create(ActionRequestSchema)` to create a new message.
  */
 export const ActionRequestSchema: GenMessage<ActionRequest> = /*@__PURE__*/
-  messageDesc(file_shipkeep_agent_v1_gateway, 14);
+  messageDesc(file_shipkeep_agent_v1_gateway, 18);
 
 /**
  * @generated from message shipkeep.agent.v1.CancelAction
@@ -842,7 +1060,7 @@ export type CancelAction = Message<"shipkeep.agent.v1.CancelAction"> & {
  * Use `create(CancelActionSchema)` to create a new message.
  */
 export const CancelActionSchema: GenMessage<CancelAction> = /*@__PURE__*/
-  messageDesc(file_shipkeep_agent_v1_gateway, 15);
+  messageDesc(file_shipkeep_agent_v1_gateway, 19);
 
 /**
  * Full routing table for the organization (ADR 0006). Agents cache it and serve from the cache
@@ -872,7 +1090,7 @@ export type RoutingTable = Message<"shipkeep.agent.v1.RoutingTable"> & {
  * Use `create(RoutingTableSchema)` to create a new message.
  */
 export const RoutingTableSchema: GenMessage<RoutingTable> = /*@__PURE__*/
-  messageDesc(file_shipkeep_agent_v1_gateway, 16);
+  messageDesc(file_shipkeep_agent_v1_gateway, 20);
 
 /**
  * @generated from message shipkeep.agent.v1.PeerList
@@ -894,7 +1112,7 @@ export type PeerList = Message<"shipkeep.agent.v1.PeerList"> & {
  * Use `create(PeerListSchema)` to create a new message.
  */
 export const PeerListSchema: GenMessage<PeerList> = /*@__PURE__*/
-  messageDesc(file_shipkeep_agent_v1_gateway, 17);
+  messageDesc(file_shipkeep_agent_v1_gateway, 21);
 
 /**
  * @generated from message shipkeep.agent.v1.LeaseRenewal
@@ -916,7 +1134,7 @@ export type LeaseRenewal = Message<"shipkeep.agent.v1.LeaseRenewal"> & {
  * Use `create(LeaseRenewalSchema)` to create a new message.
  */
 export const LeaseRenewalSchema: GenMessage<LeaseRenewal> = /*@__PURE__*/
-  messageDesc(file_shipkeep_agent_v1_gateway, 18);
+  messageDesc(file_shipkeep_agent_v1_gateway, 22);
 
 /**
  * Runtime configuration the control plane can adjust without a restart.
@@ -961,7 +1179,7 @@ export type ConfigUpdate = Message<"shipkeep.agent.v1.ConfigUpdate"> & {
  * Use `create(ConfigUpdateSchema)` to create a new message.
  */
 export const ConfigUpdateSchema: GenMessage<ConfigUpdate> = /*@__PURE__*/
-  messageDesc(file_shipkeep_agent_v1_gateway, 19);
+  messageDesc(file_shipkeep_agent_v1_gateway, 23);
 
 /**
  * Lifecycle states of an operation in the agent journal (SPEC section 3.4).

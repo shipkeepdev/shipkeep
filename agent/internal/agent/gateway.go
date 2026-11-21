@@ -21,6 +21,7 @@ import (
 	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
 	"github.com/shipkeepdev/shipkeep/agent/internal/gateway"
 	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
+	"github.com/shipkeepdev/shipkeep/agent/internal/metrics"
 	"github.com/shipkeepdev/shipkeep/agent/internal/reporting"
 	"github.com/shipkeepdev/shipkeep/lib/buildinfo"
 	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
@@ -115,8 +116,11 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		options = append(options, actions.WithoutEgressCheck())
 	}
 	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts, options...), Epoch: func() uint64 { return epoch }}
+	// Node, container and route metrics, sent on the stream when the control plane accepts them.
+	sampler := &metrics.Sampler{Containers: engine, Requests: router, Proc: "/proc", Sys: "/sys", Logger: a.logger}
 	runner := gateway.Runner{
 		Endpoint: a.endpoint(), StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher,
+		Metrics: sampler.Sample,
 		Report: func(ctx context.Context) (*agentv1.StateReport, error) {
 			reasons, err := store.StopReasons(ctx)
 			if err != nil {

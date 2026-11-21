@@ -46,6 +46,10 @@ type Runner struct {
 	Actions ActionHandler
 	// Report is enabled by the daemon once the control plane supports state-report ingestion.
 	Report func(context.Context) (*agentv1.StateReport, error)
+	// Metrics samples a metrics report (ADR 0024), sent every MetricsInterval when the session's
+	// Welcome says the control plane accepts them; nil sends none.
+	Metrics         func(context.Context) (*agentv1.MetricsReport, error)
+	MetricsInterval time.Duration
 
 	// inflight tracks running actions so Run returns only after they stopped.
 	inflight sync.WaitGroup
@@ -197,6 +201,7 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 	handshake := time.NewTimer(10 * time.Second)
 	defer handshake.Stop()
 	var interval time.Duration
+	acceptsMetrics := false
 	select {
 	case <-ctx.Done():
 		return fmt.Errorf("agent stream cancelled: %w", ctx.Err())
@@ -217,8 +222,24 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 		if interval < time.Second || interval > 10*time.Second {
 			return errors.New("heartbeat interval outside supported range")
 		}
+		acceptsMetrics = welcome.GetMetrics()
 	}
 	r.Logger.Info("agent connected", "node_id", bundle.NodeID)
+	samples := make(chan *agentv1.MetricsReport)
+	if r.Metrics != nil && acceptsMetrics {
+		every := r.MetricsInterval
+		if every <= 0 {
+			every = 30 * time.Second
+		}
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			ticker := time.NewTicker(every)
+			defer ticker.Stop()
+			r.reportMetrics(streamCtx, bundle.LeaseEpoch, samples, ticker.C)
+		}()
+		defer func() { cancel(); <-done }()
+	}
 	reports := make(chan *agentv1.StateReport)
 	if r.Report != nil {
 		done := make(chan struct{})
@@ -262,6 +283,10 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 		case report := <-reports:
 			if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_StateReport{StateReport: report}}); err != nil {
 				return sendFailure(streamCtx, "send state report", err, incoming)
+			}
+		case sample := <-samples:
+			if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_MetricsReport{MetricsReport: sample}}); err != nil {
+				return sendFailure(streamCtx, "send metrics report", err, incoming)
 			}
 		case frame := <-incoming:
 			if frame.err != nil {
