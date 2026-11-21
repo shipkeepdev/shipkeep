@@ -597,6 +597,8 @@ export class ApplicationPage {
   protected readonly metricsRange = signal<MetricsRange>('1h');
   protected readonly metrics = signal<ApplicationMetrics | null>(null);
   protected readonly metricsFailed = signal(false);
+  /** The application and period the metrics shown belong to. */
+  private metricsKey: string | null = null;
   /** Requests per second of every status class, added together. */
   protected readonly requests = computed(() => sumSeries(this.metrics()?.requests ?? []));
   protected readonly serverErrors = computed(
@@ -796,15 +798,26 @@ export class ApplicationPage {
       const environment = this.environment();
       const applicationId = this.applicationId();
       const range = this.metricsRange();
+      // Charts of another application or period are cleared at once, never shown under this one;
+      // reopening the tab on the same ones keeps them until the next answer.
+      const key = [environment.environmentId, applicationId, range].join('/');
+      if (key !== this.metricsKey) {
+        this.metricsKey = key;
+        this.metrics.set(null);
+        this.metricsFailed.set(false);
+      }
       let stale = false;
+      // Only the latest request may answer: a slow older one never replaces a newer answer.
+      let latest = 0;
       const load = async () => {
+        const request = ++latest;
         try {
           const answer = await this.api.metrics(environment, applicationId, range);
-          if (stale) return;
+          if (stale || request !== latest) return;
           this.metrics.set(answer);
           this.metricsFailed.set(false);
         } catch {
-          if (!stale) this.metricsFailed.set(true);
+          if (!stale && request === latest) this.metricsFailed.set(true);
         }
       };
       void load();
