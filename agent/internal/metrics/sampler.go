@@ -28,7 +28,7 @@ type Containers interface {
 
 // Requests is the part of the Caddy client the sampler uses.
 type Requests interface {
-	EnableRequestMetrics(ctx context.Context) error
+	EnableRequestMetrics(ctx context.Context) (bool, error)
 	RequestMetrics(ctx context.Context) ([]byte, error)
 }
 
@@ -208,8 +208,13 @@ func (s *Sampler) containers(ctx context.Context) ([]*agentv1.ContainerMetrics, 
 }
 
 func (s *Sampler) hosts(ctx context.Context) ([]*agentv1.HostMetrics, error) {
-	if err := s.Requests.EnableRequestMetrics(ctx); err != nil {
+	on, err := s.Requests.EnableRequestMetrics(ctx)
+	if err != nil {
 		return nil, err
+	}
+	if !on {
+		// A route lets clients choose the host label: no route metrics until it is gone.
+		return []*agentv1.HostMetrics{}, nil
 	}
 	text, err := s.Requests.RequestMetrics(ctx)
 	if err != nil {

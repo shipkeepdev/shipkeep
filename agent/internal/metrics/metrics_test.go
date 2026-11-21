@@ -231,11 +231,13 @@ type fakeCaddy struct {
 	text    string
 	err     error
 	enabled int
+	// unsafe says per-host metrics stay off, as for a route without the Host bound.
+	unsafe bool
 }
 
-func (f *fakeCaddy) EnableRequestMetrics(context.Context) error {
+func (f *fakeCaddy) EnableRequestMetrics(context.Context) (bool, error) {
 	f.enabled++
-	return f.err
+	return !f.unsafe, f.err
 }
 func (f *fakeCaddy) RequestMetrics(context.Context) ([]byte, error) { return []byte(f.text), f.err }
 
@@ -282,6 +284,16 @@ func TestSamplesRunningManagedContainersAndHosts(t *testing.T) {
 	}
 	if report.GetNode().GetDiskTotalBytes() == 0 {
 		t.Fatal("no disk size")
+	}
+}
+
+// While a route lets clients choose the host label, per-host metrics are off and no host is read,
+// without failing the rest of the sample.
+func TestReportsNoHostWhilePerHostMetricsAreOff(t *testing.T) {
+	sampler := &Sampler{Containers: &fakeEngine{}, Requests: &fakeCaddy{text: caddyText, unsafe: true}, Proc: proc(t), Logger: quiet()}
+	report, err := sampler.Sample(t.Context())
+	if err != nil || len(report.GetHosts()) != 0 || report.GetNode() == nil {
+		t.Fatalf("report = %v, err = %v", report, err)
 	}
 }
 
