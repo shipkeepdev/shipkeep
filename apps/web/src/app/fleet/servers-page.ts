@@ -21,6 +21,7 @@ import { required } from '../workspace/validators';
 
 import { FleetApi, type FleetNode, type JoinToken } from './fleet-api';
 import { InstallCommand } from './install-command';
+import { NodeMetricsPanel } from './node-metrics';
 import { PublicAddressesEditor } from './public-addresses-editor';
 
 /** The agent configuration for a new server (deploy/agent/agent.example.yaml). */
@@ -43,7 +44,7 @@ const COLUMNS =
  */
 @Component({
   selector: 'sk-servers-page',
-  imports: [ConfirmByName, PublicAddressesEditor, ReactiveFormsModule, T],
+  imports: [ConfirmByName, NodeMetricsPanel, PublicAddressesEditor, ReactiveFormsModule, T],
   providers: [MutationRunner, PrivateClipboard],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -185,6 +186,10 @@ const COLUMNS =
           }
         </div>
       </div>
+
+      @if (nodes.items().length) {
+        <sk-node-metrics [organizationId]="organizationId()" [nodes]="nodes.items()" />
+      }
 
       @if (removing(); as node) {
         <sk-confirm-by-name

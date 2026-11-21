@@ -1,8 +1,10 @@
 import { Injectable } from '@angular/core';
 
+import type { MetricsRange } from '../delivery/delivery-api';
 import { type Schema, WorkspaceApi } from '../workspace/workspace-api';
 
 export type FleetNode = Schema<'NodeDto'>;
+export type NodeMetrics = Schema<'NodeMetricsDto'>;
 export type JoinToken = Schema<'JoinTokenIssuedDto'>;
 
 /**
@@ -57,6 +59,14 @@ export class FleetApi extends WorkspaceApi {
       this.client.POST('/api/v1/organizations/{organizationId}/nodes/{nodeId}/public-addresses', {
         body: { publicAddresses: [...publicAddresses] },
         params: { path: { organizationId, nodeId }, header: this.browser() },
+      }),
+    );
+  }
+  /** CPU, memory, disk and network of a server over the period (ADR 0024). */
+  nodeMetrics(organizationId: string, nodeId: string, range: MetricsRange): Promise<NodeMetrics> {
+    return this.required(() =>
+      this.client.GET('/api/v1/organizations/{organizationId}/nodes/{nodeId}/metrics', {
+        params: { path: { organizationId, nodeId }, query: { range } },
       }),
     );
   }
