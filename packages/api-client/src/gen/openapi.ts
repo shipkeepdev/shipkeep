@@ -1636,6 +1636,8 @@ export type components = {
             readonly kept: boolean;
             /** @description Mean response time over the whole period, in seconds; null without any request. */
             readonly meanSeconds: number | null;
+            /** @description True when the caller reads more environments than one query covers (100, or 2 000 checked): the values are for a part of them. */
+            readonly partial: boolean;
             /** @enum {string} */
             readonly range: "1h" | "24h" | "7d" | "30d";
             /** @description Requests per second over the environments the caller may read, one series per `status` class. */
