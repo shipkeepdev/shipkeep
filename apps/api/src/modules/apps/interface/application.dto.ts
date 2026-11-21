@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsObject, Length, Matches } from 'class-validator';
+import { IsObject, IsString, Length, Matches, MaxLength } from 'class-validator';
 
 import type { Application } from '../domain/application';
 
@@ -41,6 +41,22 @@ export class ApplicationDto {
 }
 export class ApplicationListDto {
   @ApiProperty({ type: [ApplicationDto] }) items!: ApplicationDto[];
+}
+
+export class CloneEnvironmentDto {
+  @ApiProperty({ description: 'Name of the new environment (same rules as for creation).' })
+  @IsString()
+  @MaxLength(64)
+  name!: string;
+}
+export class ClonedEnvironmentDto {
+  @ApiProperty({ format: 'uuid' }) environmentId!: string;
+  @ApiProperty() name!: string;
+  @ApiProperty({
+    type: [ApplicationDto],
+    description: 'The copied applications: not deployed, without domains.',
+  })
+  applications!: ApplicationDto[];
 }
 
 export class DomainCertificateDto {

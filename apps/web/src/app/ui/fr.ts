@@ -91,10 +91,14 @@ export const FR: Readonly<Record<string, string>> = {
   '3. Start shipkeep-agent. It checks the fingerprint, enrolls, then deletes the token.':
     "3. Démarrez shipkeep-agent. Il vérifie l'empreinte, s'inscrit, puis supprime le jeton.",
   Actions: 'Actions',
-  'Another admin becomes an owner, and you become an admin.':
-    'Un autre admin devient propriétaire, et vous devenez admin.',
+  'Applications and their configuration are copied, not deployed. Domains, secret values and data stay here: set the secrets in the new environment before deploying.':
+    'Les applications et leur configuration sont copiées, sans être déployées. Les domaines, les valeurs des secrets et les données restent ici : définissez les secrets dans le nouvel environnement avant de déployer.',
   'As the image names it, with its port if it has one. Docker Hub is docker.io.':
     "Tel que l'image le nomme, avec son port s'il en a un. Docker Hub s'écrit docker.io.",
+  'Clone {name}': 'Cloner {name}',
+  'Cloning…': 'Clonage…',
+  'Another admin becomes an owner, and you become an admin.':
+    'Un autre admin devient propriétaire, et vous devenez admin.',
   'Deleting an organization is not available yet.':
     "La suppression d'une organisation n'est pas encore disponible.",
   'Deployments of this organization pull private images with the credentials stored for the registry of the image. A password is encrypted and never shown again: it can only be replaced.':
@@ -102,6 +106,9 @@ export const FR: Readonly<Record<string, string>> = {
   'Its administrator creates accounts and resets passwords, on the server that runs Shipkeep.':
     'Son administrateur crée les comptes et réinitialise les mots de passe, sur le serveur qui exécute Shipkeep.',
   'Keep them': 'Les garder',
+  'Lowercase letters, digits and hyphens, starting with a letter.':
+    'Lettres minuscules, chiffres et tirets, en commençant par une lettre.',
+  'New environment name': 'Nom du nouvel environnement',
   'New owner': 'Nouveau propriétaire',
   'No account, or a lost password? Ask the administrator of this installation.':
     "Pas de compte, ou mot de passe perdu ? Demandez à l'administrateur de cette installation.",
