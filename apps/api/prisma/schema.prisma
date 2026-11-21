@@ -15,6 +15,7 @@ model User {
   id              String              @id @db.Uuid
   email           String              @unique @db.Citext
   passwordHash    String              @map("password_hash") @db.VarChar(256)
+  displayName     String?             @map("display_name") @db.VarChar(64)
   status          String              @default("pending") @db.VarChar(16)
   emailVerifiedAt DateTime?           @map("email_verified_at") @db.Timestamptz(6)
   securityVersion Int                 @default(0) @map("security_version")

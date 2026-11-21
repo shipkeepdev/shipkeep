@@ -19,6 +19,7 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | POST | `/auth/mfa/recovery` | account | - |  |  |  |  |  |  |  |  |  |  |  |
 | POST | `/auth/mfa/setup` | account | - |  |  |  |  |  |  |  |  |  |  |  |
 | GET | `/auth/options` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |
+| POST | `/auth/profile` | account | - |  |  |  |  |  |  |  |  |  |  |  |
 | POST | `/auth/register` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |
 | POST | `/auth/reset` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |
 | POST | `/auth/reset/request` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |

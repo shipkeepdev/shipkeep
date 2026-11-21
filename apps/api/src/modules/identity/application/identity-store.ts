@@ -13,6 +13,8 @@ export interface IdentityStore {
   insertUser(user: UserRecord): Promise<boolean>;
   activateUser(id: string, now: Date): Promise<void>;
   changePassword(id: string, hash: Secret, now: Date): Promise<void>;
+  /** Sets or removes (null) the name the account shows. */
+  setDisplayName(id: string, name: string | null, now: Date): Promise<void>;
   advanceSecurityVersion(id: string, now: Date): Promise<number>;
   insertToken(token: IdentityTokenRecord): Promise<void>;
   findToken(hash: string): Promise<IdentityTokenRecord | null>;

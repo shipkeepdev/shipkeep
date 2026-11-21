@@ -342,7 +342,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CredentialsDto"
+                "$ref": "#/components/schemas/RegisterDto"
               }
             }
           }
@@ -1285,6 +1285,59 @@
         ],
         "tags": [
           "api-tokens"
+        ]
+      }
+    },
+    "/api/v1/auth/profile": {
+      "post": {
+        "operationId": "setDisplayName",
+        "parameters": [
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisplayNameDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "identity"
         ]
       }
     },
@@ -4895,7 +4948,7 @@
           "nextCursor"
         ]
       },
-      "CredentialsDto": {
+      "RegisterDto": {
         "type": "object",
         "properties": {
           "email": {
@@ -4910,6 +4963,11 @@
             "maxLength": 128,
             "writeOnly": true,
             "format": "password"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "The name to show instead of the address. Trimmed, at most 64 characters."
           }
         },
         "required": [
@@ -5019,6 +5077,13 @@
             "type": "string",
             "format": "email"
           },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name the account shows instead of its address; null when it has none."
+          },
           "expiresAt": {
             "type": "string",
             "format": "date-time"
@@ -5027,6 +5092,7 @@
         "required": [
           "userId",
           "email",
+          "displayName",
           "expiresAt"
         ]
       },
@@ -5136,6 +5202,13 @@
             "type": "string",
             "format": "email"
           },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name the account shows instead of its address; null when it has none."
+          },
           "expiresAt": {
             "type": "string",
             "format": "date-time"
@@ -5153,6 +5226,7 @@
         "required": [
           "userId",
           "email",
+          "displayName",
           "expiresAt",
           "recoveryCodes"
         ]
@@ -5565,6 +5639,22 @@
         "required": [
           "items",
           "nextCursor"
+        ]
+      },
+      "DisplayNameDto": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256,
+            "description": "The name to show; empty or null removes it. Trimmed, at most 64 characters."
+          }
+        },
+        "required": [
+          "displayName"
         ]
       },
       "JoinTokenIssuedDto": {
@@ -7268,6 +7358,12 @@
             "type": "string",
             "format": "email"
           },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "active": {
             "type": "boolean"
           }
@@ -7280,6 +7376,7 @@
           "userId",
           "orgRole",
           "email",
+          "displayName",
           "active"
         ]
       },
@@ -7340,6 +7437,12 @@
             "type": "string",
             "format": "email"
           },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "active": {
             "type": "boolean"
           },
@@ -7392,6 +7495,7 @@
           "userId",
           "orgRole",
           "email",
+          "displayName",
           "active",
           "role",
           "source",

@@ -13,6 +13,7 @@ export class MembershipDto extends ResourceDto {
 }
 export class MemberViewDto extends MembershipDto {
   @ApiProperty({ format: 'email' }) email!: string;
+  @ApiProperty({ type: String, nullable: true }) displayName!: string | null;
   @ApiProperty() active!: boolean;
 }
 export class BindingViewDto extends MemberViewDto {
@@ -48,6 +49,7 @@ export function memberViewDto(view: MemberView): MemberViewDto {
     userId: view.userId,
     orgRole: view.orgRole,
     email: view.email,
+    displayName: view.displayName,
     active: view.active,
     createdAt: view.createdAt.toISOString(),
     updatedAt: view.updatedAt.toISOString(),
@@ -60,6 +62,7 @@ export function bindingViewDto(view: BindingView): BindingViewDto {
     userId: view.userId,
     orgRole: view.orgRole,
     email: view.email,
+    displayName: view.displayName,
     active: view.active,
     createdAt: view.createdAt.toISOString(),
     updatedAt: view.updatedAt.toISOString(),

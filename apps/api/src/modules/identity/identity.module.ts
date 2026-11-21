@@ -10,6 +10,7 @@ import { AccountMutationAuthority } from './application/account-mutation-authori
 import { ApiTokenCommands } from './application/api-token-commands';
 import { ProjectApiTokenCommands } from './application/project-api-token-commands';
 import { ProjectApiTokenController } from './interface/project-api-token.controller';
+import { ProfileController } from './interface/profile.controller';
 import { ApiTokenAuthentication } from './application/api-token-authentication';
 import { API_TOKEN_AUTHORITY } from './application/api-token-authority';
 import { LiveApiTokenAuthority } from './application/live-api-token-authority';
@@ -19,6 +20,7 @@ import { IDENTITY_MAILER, IDENTITY_SECRETS, PASSWORD_HASHER } from './applicatio
 import { IDENTITY_STORE } from './application/identity-store';
 import { IDENTITY_THROTTLE } from './application/identity-throttle';
 import { OperatorAccountCommands } from './application/operator-account-commands';
+import { ProfileCommands } from './application/profile-commands';
 import { SessionCommands } from './application/session-commands';
 import { MFA_CRYPTO } from './application/mfa-crypto';
 import { MfaCommands } from './application/mfa-commands';
@@ -44,7 +46,13 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
 
 @Module({
   imports: [JobsModule, TenantAccessModule],
-  controllers: [IdentityController, MfaController, ApiTokenController, ProjectApiTokenController],
+  controllers: [
+    IdentityController,
+    MfaController,
+    ApiTokenController,
+    ProjectApiTokenController,
+    ProfileController,
+  ],
   providers: [
     AccountCommands,
     AccountMutationAuthority,
@@ -65,6 +73,7 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
     IdentityMailWorker,
     { provide: IDENTITY_STORE, useClass: PrismaIdentityStore },
     OperatorAccountCommands,
+    ProfileCommands,
     { provide: PASSWORD_HASHER, useClass: PasswordHasher },
     {
       provide: IDENTITY_SECRETS,
