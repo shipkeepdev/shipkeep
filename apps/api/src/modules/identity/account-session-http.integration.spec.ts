@@ -1,6 +1,7 @@
 import type { Server } from 'node:http';
 
 import { Secret } from '@shipkeep/domain';
+import { Client } from 'pg';
 import request from 'supertest';
 import { v7 as uuidv7 } from 'uuid';
 
@@ -45,6 +46,40 @@ describe('account sessions HTTP acceptance', () => {
   afterAll(async () => {
     await fixture.close();
   });
+  /** Live sessions for `email` without signing in each time, through the administrative login. */
+  async function addSessions(email: string, count: number): Promise<void> {
+    const admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+    try {
+      await admin.query(
+        `INSERT INTO user_sessions (id, user_id, token_hash, csrf_hash, security_version,
+           created_at, updated_at, last_seen_at, expires_at, ip, user_agent)
+         SELECT gen_random_uuid(), u.id, md5(random()::text) || md5(random()::text),
+           md5(random()::text) || md5(random()::text), u.security_version,
+           now(), now(), now(), now() + interval '1 day', '203.0.113.9', 'curl/8.9.0'
+         FROM users u, generate_series(1, $2) WHERE u.email = $1`,
+        [email, count],
+      );
+    } finally {
+      await admin.end();
+    }
+  }
+  /** Moves a session an hour back in activity, so newer ones are listed before it. */
+  async function idleFor(email: string, userAgent: string): Promise<void> {
+    const admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+    try {
+      await admin.query(
+        `UPDATE user_sessions s
+         SET created_at = now() - interval '2 hours', last_seen_at = now() - interval '1 hour',
+           expires_at = now() + interval '1 day'
+         FROM users u WHERE u.id = s.user_id AND u.email = $1 AND s.user_agent = $2`,
+        [email, userAgent],
+      );
+    } finally {
+      await admin.end();
+    }
+  }
   beforeEach(async () => {
     await prisma.identityThrottle.deleteMany();
   });
@@ -180,5 +215,41 @@ describe('account sessions HTTP acceptance', () => {
     expect(listed.items).toHaveLength(1);
     const audited = await auditLog().findMany({ where: { action: 'identity.sessions_revoked' } });
     expect(audited.some((event) => (event.metadata as { count?: number }).count === 2)).toBe(true);
+  });
+
+  it('lists the 100 most recently active sessions, and ends the unlisted ones too', async () => {
+    const email = await account();
+    const mine = await signIn(email, 'curl/8.0.0');
+    const unlisted = await signIn(email, 'curl/8.1.0');
+    await idleFor(email, 'curl/8.1.0');
+    type Listed = { items: { current: boolean }[]; truncated: boolean };
+    await addSessions(email, 98);
+    const full = (await list(mine).expect(200)).body as Listed;
+    expect(full.items).toHaveLength(100);
+    expect(full.truncated).toBe(false);
+
+    await addSessions(email, 1);
+    const cut = (await list(mine).expect(200)).body as Listed;
+    expect(cut.items).toHaveLength(100);
+    expect(cut.truncated).toBe(true);
+    expect(cut.items.filter((item) => item.current)).toHaveLength(1);
+
+    const answer = await http()
+      .post('/api/v1/auth/sessions/revoke-others')
+      .set('Origin', origin)
+      .set('Cookie', mine.cookie)
+      .set('X-Shipkeep-CSRF', mine.csrf)
+      .send({})
+      .expect(200);
+    expect(answer.body).toEqual({ revoked: 100 });
+    await http().get('/api/v1/auth/session').set('Cookie', unlisted.cookie).expect(401);
+    await http().get('/api/v1/auth/session').set('Cookie', mine.cookie).expect(200);
+    const after = (await list(mine).expect(200)).body as Listed;
+    expect(after).toMatchObject({ truncated: false });
+    expect(after.items).toHaveLength(1);
+    const audited = await auditLog().findMany({ where: { action: 'identity.sessions_revoked' } });
+    expect(audited.some((event) => (event.metadata as { count?: number }).count === 100)).toBe(
+      true,
+    );
   });
 });
