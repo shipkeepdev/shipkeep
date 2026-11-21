@@ -20,6 +20,7 @@ const metrics: OrganizationMetrics = {
   ],
   totalRequests: 1050,
   meanSeconds: 0.0314,
+  partial: false,
   duration: [
     {
       labels: {},

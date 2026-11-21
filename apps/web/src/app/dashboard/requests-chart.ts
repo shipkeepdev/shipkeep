@@ -110,6 +110,11 @@ export function areaPath(
             <span class="text-[12.5px] text-mute2">{{ 'mean {value}' | t: { value: m } }}</span>
           }
         </div>
+        @if (partial()) {
+          <div class="mt-1 text-[12px] text-dim">
+            {{ 'Covers 100 of the environments you can read.' | t }}
+          </div>
+        }
       </div>
       <div class="seg" role="group" [attr.aria-label]="'Period' | t">
         @for (p of periods; track p.value) {
@@ -256,9 +261,19 @@ export class RequestsChart {
     if (!metrics) return 'Loading…';
     if (!metrics.kept)
       return 'This installation keeps no metrics: its control plane has no metrics store.';
-    if (this.steps().length === 0) return 'No requests measured in this period yet.';
+    if (this.steps().length === 0)
+      // The totals read the latest samples at once; the chart's steps come a step later.
+      return (metrics.totalRequests ?? 0) > 0
+        ? 'Requests measured in the last minutes are charted at the next step.'
+        : 'No requests measured in this period yet.';
     return null;
   });
+  /** The headline needs an answer from a metrics store, not chart points. */
+  private readonly measured = computed(() => {
+    const metrics = this.metrics();
+    return !this.failed() && metrics?.kept ? metrics : null;
+  });
+  protected readonly partial = computed(() => this.measured()?.partial ?? false);
 
   private perMinute(pick: (point: RequestStep) => number): MetricPoint[] {
     return this.steps().map((point) => ({ t: point.t, v: pick(point) * 60 }));
@@ -301,14 +316,12 @@ export class RequestsChart {
 
   /** Totals over the whole period, read at its end: they include the step the chart lacks yet. */
   protected readonly total = computed(() => {
-    const metrics = this.metrics();
-    if (!metrics || this.note() || metrics.totalRequests === null) return '—';
-    return this.compact(metrics.totalRequests);
+    const total = this.measured()?.totalRequests ?? null;
+    return total === null ? '—' : this.compact(total);
   });
   protected readonly mean = computed(() => {
-    const metrics = this.metrics();
-    const seconds = metrics?.meanSeconds ?? null;
-    if (seconds === null || this.note()) return null;
+    const seconds = this.measured()?.meanSeconds ?? null;
+    if (seconds === null) return null;
     return seconds < 1
       ? `${this.i18n.number(seconds * 1000, seconds < 0.01 ? 1 : 0)} ms`
       : `${this.i18n.number(seconds, 2)} s`;

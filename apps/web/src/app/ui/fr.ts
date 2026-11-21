@@ -440,6 +440,8 @@ export const FR: Readonly<Record<string, string>> = {
   'Could not copy. Select the text and copy it manually.':
     'Copie impossible. Sélectionnez le texte et copiez-le à la main.',
   Create: 'Créer',
+  'Covers 100 of the environments you can read.':
+    'Couvre 100 des environnements que vous pouvez lire.',
   'Create API token': "Créer le jeton d'API",
   'Create a join token': "Créer un jeton d'adhésion",
   'Create a project and an environment first.': "Créez d'abord un projet et un environnement.",
@@ -1049,6 +1051,8 @@ export const FR: Readonly<Record<string, string>> = {
   'Requests / min': 'Requêtes / min',
   'Requests served · all apps': 'Requêtes servies · toutes apps',
   'Requests · 5xx in red': 'Requêtes · 5xx en rouge',
+  'Requests measured in the last minutes are charted at the next step.':
+    'Les requêtes des dernières minutes apparaissent au prochain pas du graphique.',
   'Required approvals': 'Approbations requises',
   Rescan: 'Relancer le scan',
   'Resend code': 'Renvoyer le code',

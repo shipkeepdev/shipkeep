@@ -149,6 +149,7 @@ describe('organization overview', () => {
         duration: [{ labels: {}, points: [{ t: t0, v: 0.012 }] }],
         totalRequests: 1234,
         meanSeconds: 0.012,
+        partial: false,
       });
     await open();
     const chart = () => element().querySelector('sk-requests-chart')?.textContent ?? '';
@@ -171,11 +172,34 @@ describe('organization overview', () => {
         duration: [],
         totalRequests: 0,
         meanSeconds: null,
+        partial: false,
       });
     await open();
     expect(element().querySelector('sk-requests-chart')?.textContent).toContain(
       'No requests measured in this period yet.',
     );
+  });
+
+  it('keeps the totals when the chart has no step yet, and says when they cover a part', async () => {
+    routes[`GET ${O}/metrics`] = () =>
+      json({
+        kept: true,
+        range: '24h',
+        stepSeconds: 300,
+        from: '2026-11-20T00:00:00Z',
+        to: '2026-11-21T00:00:00Z',
+        requests: [],
+        duration: [],
+        totalRequests: 42,
+        meanSeconds: 0.002,
+        partial: true,
+      });
+    await open();
+    const chart = element().querySelector('sk-requests-chart')?.textContent ?? '';
+    expect(chart).toContain('42');
+    expect(chart).toContain('mean 2.0 ms');
+    expect(chart).toContain('Requests measured in the last minutes are charted at the next step.');
+    expect(chart).toContain('Covers 100 of the environments you can read.');
   });
 
   it('says what to do next when no server is connected, and not otherwise', async () => {
