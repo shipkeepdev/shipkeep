@@ -1,6 +1,6 @@
 import type { OrganizationMetrics } from '../workspace/workspace-api';
 
-import { areaPath, meanSeconds, requestSteps, roundTop, totalRequests } from './requests-chart';
+import { areaPath, requestSteps, roundTop } from './requests-chart';
 
 const metrics: OrganizationMetrics = {
   kept: true,
@@ -18,6 +18,8 @@ const metrics: OrganizationMetrics = {
     },
     { labels: { status: '5xx' }, points: [{ t: 600, v: 0.5 }] },
   ],
+  totalRequests: 1050,
+  meanSeconds: 0.0314,
   duration: [
     {
       labels: {},
@@ -35,14 +37,6 @@ describe('requests chart', () => {
       { t: 300, requests: 1, errors: 0 },
       { t: 600, requests: 2.5, errors: 0.5 },
     ]);
-  });
-
-  it('totals requests over the period and weighs the mean by them', () => {
-    const steps = requestSteps(metrics);
-    expect(totalRequests(steps, 300)).toBe(1050);
-    // (0.01 × 1 + 0.04 × 2.5) / 3.5
-    expect(meanSeconds(steps, metrics.duration[0]?.points ?? [])).toBeCloseTo(0.0314, 4);
-    expect(meanSeconds([], [])).toBeNull();
   });
 
   it('rounds the top of the scale to 1, 2 or 5 times a power of ten', () => {

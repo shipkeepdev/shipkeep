@@ -51,27 +51,6 @@ function readable(answer: unknown): answer is OrganizationMetrics {
   );
 }
 
-/** Requests over the period: each step's rate times its length. */
-export function totalRequests(steps: readonly RequestStep[], step: number): number {
-  return steps.reduce((sum, point) => sum + point.requests * step, 0);
-}
-
-/** Mean response time over the period, each step weighted by its requests; null without any. */
-export function meanSeconds(
-  steps: readonly RequestStep[],
-  duration: readonly MetricPoint[],
-): number | null {
-  const requests = new Map(steps.map((point) => [point.t, point.requests]));
-  let weighted = 0;
-  let count = 0;
-  for (const point of duration) {
-    const weight = requests.get(point.t) ?? 0;
-    weighted += point.v * weight;
-    count += weight;
-  }
-  return count > 0 ? weighted / count : null;
-}
-
 /** A round top for a scale: 1, 2 or 5 times a power of ten, at least the largest value. */
 export function roundTop(value: number): number {
   if (!(value > 0)) return 1;
@@ -320,16 +299,16 @@ export class RequestsChart {
     );
   });
 
+  /** Totals over the whole period, read at its end: they include the step the chart lacks yet. */
   protected readonly total = computed(() => {
-    const w = this.window();
-    if (!w || this.note()) return '—';
-    return this.compact(totalRequests(this.steps(), w.step));
+    const metrics = this.metrics();
+    if (!metrics || this.note() || metrics.totalRequests === null) return '—';
+    return this.compact(metrics.totalRequests);
   });
   protected readonly mean = computed(() => {
     const metrics = this.metrics();
-    if (!metrics || this.note()) return null;
-    const seconds = meanSeconds(this.steps(), metrics.duration[0]?.points ?? []);
-    if (seconds === null) return null;
+    const seconds = metrics?.meanSeconds ?? null;
+    if (seconds === null || this.note()) return null;
     return seconds < 1
       ? `${this.i18n.number(seconds * 1000, seconds < 0.01 ? 1 : 0)} ms`
       : `${this.i18n.number(seconds, 2)} s`;
@@ -348,7 +327,7 @@ export class RequestsChart {
       case '24h':
         return date.toLocaleTimeString(this.locale(), { hour: '2-digit', minute: '2-digit' });
       case '7d':
-        return date.toLocaleDateString(this.locale(), { weekday: 'short' });
+        return date.toLocaleDateString(this.locale(), { weekday: 'short', day: 'numeric' });
       case '30d':
         return date.toLocaleDateString(this.locale(), { day: 'numeric', month: 'short' });
     }

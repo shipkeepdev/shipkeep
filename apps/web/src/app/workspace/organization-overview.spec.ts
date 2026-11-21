@@ -147,10 +147,12 @@ describe('organization overview', () => {
           },
         ],
         duration: [{ labels: {}, points: [{ t: t0, v: 0.012 }] }],
+        totalRequests: 1234,
+        meanSeconds: 0.012,
       });
     await open();
     const chart = () => element().querySelector('sk-requests-chart')?.textContent ?? '';
-    // Two steps of 300 s at 2 requests per second.
+    // The totals of the whole period, as the API reads them.
     expect(chart()).toContain('1.2k');
     expect(chart()).toContain('mean 12 ms');
     expect(chart()).not.toContain('Preview');
@@ -167,6 +169,8 @@ describe('organization overview', () => {
         to: '2026-11-21T00:00:00Z',
         requests: [],
         duration: [],
+        totalRequests: 0,
+        meanSeconds: null,
       });
     await open();
     expect(element().querySelector('sk-requests-chart')?.textContent).toContain(
