@@ -1116,6 +1116,7 @@ export const FR: Readonly<Record<string, string>> = {
     "Enregistrez ce jeton avant de partir. Il n'est affiché qu'une fois et ne pourra plus être consulté ici une fois cet affichage fermé ou cette page quittée.",
   'Save your API token': "Enregistrez votre jeton d'API",
   'Save your recovery codes': 'Enregistrez vos codes de récupération',
+  'Saved.': 'Enregistré.',
   'Saving…': 'Enregistrement…',
   'Scan every built image': 'Scanner chaque image construite',
   'Scan images at build': 'Scan des images au build',
@@ -1761,6 +1762,11 @@ export const FR: Readonly<Record<string, string>> = {
   '{applications} in {environments}': '{applications} dans {environments}',
   '{running} of {n} replica running': '{running} sur {n} réplique en marche',
   '{running} of {n} replicas running': '{running} sur {n} répliques en marche',
+  'A name has at most 64 characters, and no control character.':
+    'Un nom a au plus 64 caractères, sans caractère de contrôle.',
+  'Shown instead of your address. Never used to sign in.':
+    'Affiché à la place de votre adresse. Jamais utilisé pour vous connecter.',
+  'The name could not be saved. Try again.': "Le nom n'a pas pu être enregistré. Réessayez.",
   '{s} s ago': 'il y a {s} s',
   '{trigger} deployment started': 'déploiement {trigger} lancé',
   '· 14 days': '· 14 jours',

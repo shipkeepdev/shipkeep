@@ -66,12 +66,13 @@ export class SessionStore {
       throw error;
     }
   }
-  /** Security responses may also contain private grants. Retain only these three public fields. */
+  /** Security responses may also contain private grants. Retain only these public fields. */
   accept(profile: SessionProfile): void {
     ++this.revision;
     this.current.set({
       userId: profile.userId,
       email: profile.email,
+      displayName: profile.displayName,
       expiresAt: profile.expiresAt,
     });
     this.status.set('authenticated');

@@ -1,9 +1,10 @@
 @let email = store.session.profile()?.email ?? '';
+@let profile = store.session.profile();
 <div class="flex flex-col gap-[18px]">
   <div class="page-head">
     <div class="min-w-0">
       <h1 #heading tabindex="-1" class="page-title">
-        {{ email.split('@')[0] || ('Profile' | t) }}
+        {{ profile ? name(profile) : ('Profile' | t) }}
       </h1>
       <div class="mt-1.5 text-[13px] text-mute2">{{ email }}</div>
     </div>
@@ -77,6 +78,15 @@
         <div class="flex min-w-0 flex-col gap-4">
           <span class="sec-title">{{ current().label | t }}</span>
           <div [hidden]="section() !== 'account'" class="card px-5 py-1.5">
+            <div class="field-row">
+              <div>
+                <div class="field-label">{{ 'Name' | t }}</div>
+                <div class="field-hint">
+                  {{ 'Shown instead of your address. Never used to sign in.' | t }}
+                </div>
+              </div>
+              <sk-display-name-field />
+            </div>
             <div class="field-row">
               <div class="field-label">{{ 'Email' | t }}</div>
               <div class="field-box font-mono">

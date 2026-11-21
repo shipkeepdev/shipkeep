@@ -7,6 +7,7 @@ describe('session state', () => {
   const profile = {
     userId: 'fixture',
     email: 'person@example.com',
+    displayName: null,
     expiresAt: '2030-01-01T00:00:00Z',
   };
   const api = {

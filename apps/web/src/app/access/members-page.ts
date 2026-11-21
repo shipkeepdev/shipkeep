@@ -1,3 +1,4 @@
+import { accountName } from '../identity/account-name';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -143,10 +144,10 @@ const ROLE_CELL: Record<string, { icon: IconName; color: string }> = {
                     <div
                       class="grid size-[30px] shrink-0 place-items-center rounded-full bg-[#26262c] text-[11.5px] font-semibold"
                     >
-                      {{ initials(member.email) }}
+                      {{ initials(name(member)) }}
                     </div>
                     <div class="min-w-0">
-                      <div class="truncate">{{ member.email.split('@')[0] }}</div>
+                      <div class="truncate">{{ name(member) }}</div>
                       <div class="truncate text-[11.5px] text-dim">{{ member.email }}</div>
                     </div>
                   </div>
@@ -295,9 +296,11 @@ const ROLE_CELL: Record<string, { icon: IconName; color: string }> = {
                   >
                 }
                 @for (r of matrix().rows; track r.email) {
-                  <span class="truncate border-b border-line2 px-3 py-2.5 text-fg2">{{
-                    r.email
-                  }}</span>
+                  <span
+                    class="truncate border-b border-line2 px-3 py-2.5 text-fg2"
+                    [title]="r.email"
+                    >{{ r.name }}</span
+                  >
                   @for (c of r.cells; track $index) {
                     <span
                       class="flex items-center gap-1.5 border-b border-l border-line2 px-3 py-2.5"
@@ -366,6 +369,7 @@ export class MembersPage {
       projects,
       rows: this.members.items().map((member) => ({
         email: member.email,
+        name: this.name(member),
         cells: projects.map((project) => {
           const role = all.get(project.id)?.find((b) => b.userId === member.userId)?.role;
           const look = role ? ROLE_CELL[role] : undefined;
@@ -454,9 +458,13 @@ export class MembersPage {
     return { owner: 'Owner', admin: 'Admin', member: 'Member' }[role];
   }
 
-  protected initials(email: string): string {
-    return (email.split('@').at(0) ?? '')
-      .split(/[._-]+/)
+  protected name(member: { email: string; displayName?: string | null }): string {
+    return accountName(member);
+  }
+
+  protected initials(name: string): string {
+    return name
+      .split(/[\s._-]+/)
       .filter(Boolean)
       .slice(0, 2)
       .map((part) => part.at(0)?.toUpperCase() ?? '')

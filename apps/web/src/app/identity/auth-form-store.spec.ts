@@ -51,9 +51,9 @@ describe('account forms', () => {
     store.configure('register');
     store.form.patchValue({ name: 'Ada', email: ' Person@Example.com ', password });
     await store.submit();
-    // The name is not stored by the API yet, so it is not sent.
+    // The name goes with the account, shown instead of its address (issue #251).
     expect(api.register).toHaveBeenCalledWith(
-      { email: 'person@example.com', password },
+      { email: 'person@example.com', password, name: 'Ada' },
       expect.any(String),
     );
     expect(store.success()).toContain('If this address can receive');

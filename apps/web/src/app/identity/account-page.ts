@@ -19,12 +19,14 @@ import { I18n, T } from '../ui/i18n';
 
 import { AccountStore } from './account-store';
 import { MfaPanel } from './mfa-panel';
+import { accountName } from './account-name';
+import { DisplayNameField } from './display-name-field';
 import { MutationRunner } from './mutation-runner';
 import { TokenPanel } from './token-panel';
 
 @Component({
   selector: 'sk-account-page',
-  imports: [Icon, MfaPanel, RouterLink, T, TokenPanel],
+  imports: [DisplayNameField, Icon, MfaPanel, RouterLink, T, TokenPanel],
   providers: [AccountStore, MutationRunner],
   templateUrl: './account-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -53,6 +55,7 @@ export class AccountPage {
       },
   );
   protected readonly reloadUrl = (): string => globalThis.location.href;
+  protected readonly name = accountName;
   private readonly router = inject(Router);
   private readonly heading = viewChild<ElementRef<HTMLElement>>('heading');
   private readonly feedback = viewChild<ElementRef<HTMLElement>>('feedback');

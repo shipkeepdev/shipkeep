@@ -13,6 +13,7 @@ import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterOutlet } from 
 import { filter } from 'rxjs';
 
 import { SessionStore } from '../identity/session-store';
+import { accountName } from '../identity/account-name';
 import { Icon } from '../shell/icon';
 import { type IconName } from '../shell/icons';
 import { Logo } from '../shell/logo';
@@ -97,9 +98,11 @@ export class DashboardLayout {
 
   protected readonly organizationId = computed(() => this.shell.organizationId() ?? '');
   protected readonly orgInitials = computed(() => initials(this.shell.organization()?.name ?? ''));
-  protected readonly userInitials = computed(() =>
-    initials(this.session.profile()?.email.split('@').at(0) ?? ''),
-  );
+  protected readonly userName = computed(() => {
+    const profile = this.session.profile();
+    return profile ? accountName(profile) : '';
+  });
+  protected readonly userInitials = computed(() => initials(this.userName()));
   protected readonly roleLabel = computed(() => {
     const role = this.shell.role();
     return role ? { owner: 'Owner', admin: 'Admin', member: 'Member' }[role] : null;
