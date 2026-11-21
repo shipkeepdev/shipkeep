@@ -62,6 +62,7 @@ import {
   type Replica,
   type SecretMetadata,
 } from './delivery-api';
+import { startTarget } from './start-target';
 
 const STEPS: readonly { label: string; states: readonly string[] }[] = [
   { label: 'Queued', states: ['queued'] },
@@ -157,6 +158,17 @@ const LIVE_POLL_MS = 15_000;
               (click)="cancel(run.id)"
             >
               <sk-icon name="x" />{{ 'Cancel deployment' | t }}
+            </button>
+          } @else if (startable(); as start) {
+            <button
+              class="btn"
+              type="button"
+              [disabled]="runner.busy() || !!runner.cooldown()"
+              (click)="rollback(start.id)"
+            >
+              <sk-icon name="player-play" />{{
+                'Start {release}' | t: { release: start.releaseId.slice(0, 7) }
+              }}
             </button>
           } @else if (previous(); as prev) {
             <button
@@ -273,6 +285,8 @@ const LIVE_POLL_MS = 15_000;
                 [application]="current"
                 [running]="replicas.items().length > 0"
                 [deploying]="!!active()"
+                [startable]="!!startable()"
+                (start)="startAgain()"
                 (stopped)="refresh()"
                 (deleted)="leave()"
               />
@@ -745,6 +759,8 @@ export class ApplicationPage {
       };
     });
   });
+  /** After a stop, the deployment to roll back to in order to start the application again. */
+  protected readonly startable = computed(() => startTarget(this.deployments.items()));
   /** The version before the one serving now, offered as a one-click rollback. */
   protected readonly previous = computed(
     () => this.deployments.items().find((d) => this.canRollBack(d)) ?? null,
@@ -995,6 +1011,11 @@ export class ApplicationPage {
    */
   private again(): void {
     if (this.runner.restartRequired()) this.runner.reset();
+  }
+
+  protected async startAgain(): Promise<void> {
+    const start = this.startable();
+    if (start) await this.rollback(start.id);
   }
 
   protected async rollback(deploymentId: string): Promise<void> {

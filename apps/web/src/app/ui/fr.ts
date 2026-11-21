@@ -699,6 +699,8 @@ export const FR: Readonly<Record<string, string>> = {
   Invite: 'Inviter',
   'Invoices and payments API': 'API des factures et paiements',
   Issuer: 'Émetteur',
+  'It is stopped. Starting it deploys again the version it ran before the stop.':
+    "Elle est arrêtée. La démarrer redéploie la version qu'elle exécutait avant l'arrêt.",
   'It has no running replica.': "Elle n'a aucune réplique en marche.",
   'Its certificates are revoked and its agent is disconnected.':
     'Ses certificats sont révoqués et son agent est déconnecté.',
@@ -1203,6 +1205,9 @@ export const FR: Readonly<Record<string, string>> = {
   'Stop it now': "L'arrêter maintenant",
   'Stop of {release}': 'Arrêt de {release}',
   'Stop service': 'Arrêter le service',
+  Start: 'Démarrer',
+  'Start the application': "Démarrer l'application",
+  'Start {release}': 'Démarrer {release}',
   'Stop the application': "Arrêter l'application",
   'Stopping frees the servers and keeps everything else. Deleting cannot be undone.':
     'Arrêter libère les serveurs et conserve tout le reste. Supprimer est irréversible.',
