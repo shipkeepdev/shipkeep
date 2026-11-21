@@ -43,4 +43,15 @@ describe('count pipe', () => {
       '0 agent connecté · mTLS',
     );
   });
+
+  it('formats dates in the interface language (#273)', () => {
+    const i18n = TestBed.inject(I18n);
+    const at = '2026-11-21T14:05:00Z';
+    i18n.use('en');
+    expect(i18n.date(at, 'mediumDate')).toMatch(/Nov 21, 2026/);
+    i18n.use('fr');
+    expect(i18n.date(at, 'mediumDate')).toMatch(/21 nov\. 2026/);
+    expect(i18n.date(null)).toBe('');
+    expect(i18n.date('not a date')).toBe('');
+  });
 });

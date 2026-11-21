@@ -106,7 +106,7 @@
               }
             </select>
             <p id="token-expiry" class="hint">
-              {{ 'Expires {date}.' | t: { date: (store.expiresAt() | date: 'medium') ?? '' } }}
+              {{ 'Expires {date}.' | t: { date: store.expiresAt() | localDate } }}
             </p>
             <p id="token-lifetime-error" class="field-error">
               {{ store.errorFor('lifetimeDays') | t }}
@@ -270,13 +270,13 @@
                     <p class="mt-1 text-xs text-muted">{{ 'Tied to a project' | t }}</p>
                   }
                   <p class="mt-2 text-xs text-muted">
-                    {{ 'Created {date}' | t: { date: (token.createdAt | date: 'mediumDate') ?? '' }
+                    {{ 'Created {date}' | t: { date: token.createdAt | localDate: 'mediumDate' }
                     }}<br />{{ 'Last used:' | t }}
-                    {{ token.lastUsedAt ? (token.lastUsedAt | date: 'medium') : ('Never' | t) }}
+                    {{ token.lastUsedAt ? (token.lastUsedAt | localDate) : ('Never' | t) }}
                   </p>
                 </th>
                 <td class="py-4 pr-4 whitespace-nowrap">
-                  {{ token.expiresAt | date: 'mediumDate' }}
+                  {{ token.expiresAt | localDate: 'mediumDate' }}
                 </td>
                 <td class="py-4 pr-4" [class.text-success]="store.statusFor(token) === 'active'">
                   {{
