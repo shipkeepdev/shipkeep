@@ -46,7 +46,8 @@ describe('count pipe', () => {
 
   it('formats dates in the interface language (#273)', () => {
     const i18n = TestBed.inject(I18n);
-    const at = '2026-11-21T14:05:00Z';
+    // Local time: the same calendar day in every time zone the tests run in.
+    const at = '2026-11-21T12:00:00';
     i18n.use('en');
     expect(i18n.date(at, 'mediumDate')).toMatch(/Nov 21, 2026/);
     i18n.use('fr');
