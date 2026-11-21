@@ -1767,6 +1767,23 @@ export const FR: Readonly<Record<string, string>> = {
   'Shown instead of your address. Never used to sign in.':
     'Affiché à la place de votre adresse. Jamais utilisé pour vous connecter.',
   'The name could not be saved. Try again.': "Le nom n'a pas pu être enregistré. Réessayez.",
+  'Sessions could not be read. Reload the page to try again.':
+    'Les sessions n’ont pas pu être lues. Rechargez la page pour réessayer.',
+  'Sign out {device}': 'Déconnecter {device}',
+  'The session could not be signed out. Try again.':
+    "La session n'a pas pu être déconnectée. Réessayez.",
+  'The other sessions could not be signed out. Try again.':
+    "Les autres sessions n'ont pas pu être déconnectées. Réessayez.",
+  'Sign out every other session': 'Déconnecter toutes les autres sessions',
+  'These are the 100 most recently active sessions.':
+    'Voici les 100 sessions actives le plus récemment.',
+  'This device': 'Cet appareil',
+  'Unknown device': 'Appareil inconnu',
+  'Where your account is signed in. Signing out another session ends it at its next request.':
+    'Là où votre compte est connecté. Déconnecter une autre session y met fin à sa prochaine requête.',
+  '{browser} on {system}': '{browser} sur {system}',
+  'last active {at}': 'active le {at}',
+  'signed in {at}': 'connectée le {at}',
   '{s} s ago': 'il y a {s} s',
   '{trigger} deployment started': 'déploiement {trigger} lancé',
   '· 14 days': '· 14 jours',

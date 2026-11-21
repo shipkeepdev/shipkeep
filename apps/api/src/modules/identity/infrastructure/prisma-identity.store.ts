@@ -152,12 +152,54 @@ export class PrismaIdentityStore implements IdentityStore {
     return result.count === 1;
   }
 
+  async activeSessions(
+    userId: string,
+    securityVersion: number,
+    now: Date,
+    limit: number,
+  ): Promise<SessionRecord[]> {
+    return this.database.client.userSession.findMany({
+      where: { userId, securityVersion, ...live(now) },
+      orderBy: [{ lastSeenAt: 'desc' }, { id: 'desc' }],
+      take: limit,
+    });
+  }
+
+  async revokeSessionById(userId: string, id: string, now: Date): Promise<boolean> {
+    const result = await this.database.client.userSession.updateMany({
+      where: { userId, id, ...live(now) },
+      data: { revokedAt: now, updatedAt: now },
+    });
+    return result.count === 1;
+  }
+
+  async revokeOtherSessions(userId: string, keepId: string, now: Date): Promise<number> {
+    const result = await this.database.client.userSession.updateMany({
+      where: { userId, id: { not: keepId }, ...live(now) },
+      data: { revokedAt: now, updatedAt: now },
+    });
+    return result.count;
+  }
+
   async revokeSessions(userId: string, now: Date): Promise<void> {
     await this.database.client.userSession.updateMany({
       where: { userId, revokedAt: null },
       data: { revokedAt: now, updatedAt: now },
     });
   }
+}
+
+/**
+ * The tests of touchSession: a session that still signs requests in is not revoked, not expired,
+ * not idle and not created after now (a clock ahead on another instance).
+ */
+function live(now: Date) {
+  return {
+    revokedAt: null,
+    expiresAt: { gt: now },
+    createdAt: { lte: now },
+    lastSeenAt: { gt: new Date(now.getTime() - SESSION_IDLE_MS) },
+  };
 }
 
 function userRecord(row: User | null): UserRecord | null {

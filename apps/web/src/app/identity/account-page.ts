@@ -22,11 +22,12 @@ import { MfaPanel } from './mfa-panel';
 import { accountName } from './account-name';
 import { DisplayNameField } from './display-name-field';
 import { MutationRunner } from './mutation-runner';
+import { SessionsPanel } from './sessions-panel';
 import { TokenPanel } from './token-panel';
 
 @Component({
   selector: 'sk-account-page',
-  imports: [DisplayNameField, Icon, MfaPanel, RouterLink, T, TokenPanel],
+  imports: [DisplayNameField, Icon, MfaPanel, RouterLink, SessionsPanel, T, TokenPanel],
   providers: [AccountStore, MutationRunner],
   templateUrl: './account-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -37,6 +38,7 @@ export class AccountPage {
   protected readonly sections: readonly { k: string; label: string; icon: IconName }[] = [
     { k: 'account', label: 'Account', icon: 'user' },
     { k: 'security', label: 'Security', icon: 'shield-lock' },
+    { k: 'sessions', label: 'Sessions', icon: 'devices' },
     { k: 'tokens', label: 'API tokens', icon: 'key' },
     { k: 'appearance', label: 'Appearance', icon: 'palette' },
   ];
