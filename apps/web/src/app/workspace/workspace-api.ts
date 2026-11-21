@@ -14,6 +14,8 @@ export type Organization = Schema<'OrganizationDto'>;
 export type Project = Schema<'ProjectDto'>;
 export type Environment = Schema<'EnvironmentDto'>;
 export type RegistryCredentials = Schema<'RegistryCredentialsDto'>;
+export type OrganizationMetrics = Schema<'OrganizationMetricsDto'>;
+export type OrganizationMetricsRange = '24h' | '7d' | '30d';
 type Result<T> = { data?: T; error?: unknown; response: Response };
 
 /** Session-cookie client for organizations, projects and environments (same origin only). */
@@ -26,6 +28,18 @@ export class WorkspaceApi {
     baseUrl: this.origin,
     fetch: (input: Request) => this.send(browserRequest(input, this.origin, this.document.cookie)),
   });
+
+  /** Requests of the organization over the environments this account reads (ADR 0024). */
+  organizationMetrics(
+    organizationId: string,
+    range: OrganizationMetricsRange,
+  ): Promise<OrganizationMetrics> {
+    return this.required(() =>
+      this.client.GET('/api/v1/organizations/{organizationId}/metrics', {
+        params: { path: { organizationId }, query: { range } },
+      }),
+    );
+  }
 
   async organizations(): Promise<readonly Organization[]> {
     return (await this.required(() => this.client.GET('/api/v1/organizations'))).items;
