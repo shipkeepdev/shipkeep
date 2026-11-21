@@ -67,9 +67,10 @@ export class PrismaMetricsTargets implements MetricsTargets {
   environments(
     organizationId: string,
     limit: number,
+    after?: string,
   ): Promise<readonly { readonly id: string; readonly projectId: string }[]> {
     return this.database.client.environment.findMany({
-      where: { organizationId },
+      where: { organizationId, ...(after ? { id: { gt: after } } : {}) },
       select: { id: true, projectId: true },
       orderBy: { id: 'asc' },
       take: limit,
