@@ -91,20 +91,28 @@ export const FR: Readonly<Record<string, string>> = {
   '3. Start shipkeep-agent. It checks the fingerprint, enrolls, then deletes the token.':
     "3. Démarrez shipkeep-agent. Il vérifie l'empreinte, s'inscrit, puis supprime le jeton.",
   Actions: 'Actions',
-  'Applications and their configuration are copied, not deployed. Domains, secret values and data stay here: set the secrets in the new environment before deploying.':
-    'Les applications et leur configuration sont copiées, sans être déployées. Les domaines, les valeurs des secrets et les données restent ici : définissez les secrets dans le nouvel environnement avant de déployer.',
+  'An application exists: deploy it from its page.':
+    'Une application existe : déployez-la depuis sa page.',
+  'An application is deployed.': 'Une application est déployée.',
   'As the image names it, with its port if it has one. Docker Hub is docker.io.':
     "Tel que l'image le nomme, avec son port s'il en a un. Docker Hub s'écrit docker.io.",
-  'Clone {name}': 'Cloner {name}',
-  'Cloning…': 'Clonage…',
+  'Choose where images come from': "Choisir d'où viennent les images",
   'Another admin becomes an owner, and you become an admin.':
     'Un autre admin devient propriétaire, et vous devenez admin.',
+  'Could not be read right now.': 'Impossible à lire pour le moment.',
+  'Applications and their configuration are copied, not deployed. Domains, secret values and data stay here: set the secrets in the new environment before deploying.':
+    'Les applications et leur configuration sont copiées, sans être déployées. Les domaines, les valeurs des secrets et les données restent ici : définissez les secrets dans le nouvel environnement avant de déployer.',
+  'Clone {name}': 'Cloner {name}',
+  'Cloning…': 'Clonage…',
   'Deleting an organization is not available yet.':
     "La suppression d'une organisation n'est pas encore disponible.",
   'Deployments of this organization pull private images with the credentials stored for the registry of the image. A password is encrypted and never shown again: it can only be replaced.':
     "Les déploiements de cette organisation récupèrent les images privées avec les identifiants enregistrés pour le registre de l'image. Un mot de passe est chiffré et n'est plus jamais affiché : il peut seulement être remplacé.",
   'Find a page, project, environment, application, server or member':
     'Trouver une page, un projet, un environnement, une application, un serveur ou un membre',
+  'Four steps. {done} of 4 done.': 'Quatre étapes. {done} sur 4 faites.',
+  'From a shipkeep.yml with an image, in an environment of a project.':
+    "Depuis un shipkeep.yml avec une image, dans un environnement d'un projet.",
   'Its administrator creates accounts and resets passwords, on the server that runs Shipkeep.':
     'Son administrateur crée les comptes et réinitialise les mots de passe, sur le serveur qui exécute Shipkeep.',
   'Keep them': 'Les garder',
@@ -131,6 +139,9 @@ export const FR: Readonly<Record<string, string>> = {
   'Ownership transferred. You are now an admin.':
     'Propriété transférée. Vous êtes maintenant admin.',
   'Password or access token': "Mot de passe ou jeton d'accès",
+  'Public images need nothing. Store a private registry once; Git sources come later.':
+    'Les images publiques ne demandent rien. Enregistrez un registre privé une fois ; les sources Git arrivent plus tard.',
+  'Read again': 'Relire',
   'Read more members': 'Lire plus de membres',
   'Registry host': 'Hôte du registre',
   'Remove the credentials of {name}': 'Retirer les identifiants de {name}',
@@ -977,6 +988,11 @@ export const FR: Readonly<Record<string, string>> = {
   'Point each domain at a public address of a server running this application. Administrators set these addresses on the Servers page. Certificates are issued automatically once it answers on ports 80 and 443, and renewed about 30 days before they expire. The certificate shown is the one that expires first among the servers.':
     "Faites pointer chaque domaine vers une adresse publique d'un serveur qui fait tourner l'application. Les administrateurs renseignent ces adresses dans la page Serveurs. Les certificats sont émis automatiquement dès qu'il répond sur les ports 80 et 443, puis renouvelés environ 30 jours avant leur expiration. Le certificat affiché est celui qui expire le premier parmi les serveurs.",
   'Points at': 'Pointe vers',
+  'To do': 'À faire',
+  Unknown: 'Inconnu',
+  '{name} · you are {role}': '{name} · vous êtes {role}',
+  '{n} application deployed.': '{n} application déployée.',
+  '{n} applications deployed.': '{n} applications déployées.',
   'You keep administering the organization. Your session is renewed, and theirs ends: they sign in again as an owner.':
     "Vous continuez d'administrer l'organisation. Votre session est renouvelée et la sienne prend fin : la personne se reconnecte en tant que propriétaire.",
   '{n} days left': '{n} jours restants',
@@ -1769,9 +1785,12 @@ export const FR: Readonly<Record<string, string>> = {
   '{n} applications': '{n} applications',
   '{n} environment': '{n} environnement',
   '{n} environments': '{n} environnements',
+  '{n} private registries stored.': '{n} registres privés enregistrés.',
+  '{n} private registry stored.': '{n} registre privé enregistré.',
   '{n} project': '{n} projet',
   '{n} projects': '{n} projets',
   '{n} server': '{n} serveur',
+  '{n} server enrolled, {ready} ready.': '{n} serveur inscrit, {ready} prêt.',
   '{n} servers': '{n} serveurs',
   '{n} failing': '{n} en échec',
   '{n} member': '{n} membre',
@@ -1784,6 +1803,7 @@ export const FR: Readonly<Record<string, string>> = {
     "{n} code de récupération restant. Chaque code ne sert qu'une fois.",
   '{n} recovery codes remaining. Each code can be used once.':
     "{n} codes de récupération restants. Chaque code ne sert qu'une fois.",
+  '{n} servers enrolled, {ready} ready.': '{n} serveurs inscrits, {ready} prêts.',
   '{n} suspect': '{n} suspect',
   '{applications} in {environments}': '{applications} dans {environments}',
   '{running} of {n} replica running': '{running} sur {n} réplique en marche',

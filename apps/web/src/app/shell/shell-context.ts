@@ -50,6 +50,8 @@ export class ShellContext {
   /** User id → display name, or email without one (#251): names people in audit trails. */
   readonly names = signal<ReadonlyMap<string, string>>(new Map());
   readonly role = signal<OrganizationRole | null>(null);
+  /** The organization `role` was read for: it lags the URL until the member list arrives. */
+  private readonly roleOrganization = signal<string | null>(null);
   readonly mfa = signal<boolean | null>(null);
   readonly version = signal<string | null>(null);
   /** Agents with a live connection: their server is ready or draining. */
@@ -70,6 +72,7 @@ export class ShellContext {
       this.nodes.set(null);
       this.members.set(null);
       this.role.set(null);
+      this.roleOrganization.set(null);
       return;
     }
     const current = () => revision === this.revision;
@@ -117,6 +120,12 @@ export class ShellContext {
     this.members.set(members ? members.length : null);
     this.names.set(new Map((members ?? []).map((m) => [m.userId, m.displayName ?? m.email])));
     this.role.set(members?.find((m) => m.userId === profile?.userId)?.orgRole ?? null);
+    this.roleOrganization.set(id);
+  }
+
+  /** The user's role in this organization, or null until the role read is for that one. */
+  roleIn(organizationId: string): OrganizationRole | null {
+    return this.roleOrganization() === organizationId ? this.role() : null;
   }
 
   /** Every member, page after page, so names and the count cover all of them (#251). */
