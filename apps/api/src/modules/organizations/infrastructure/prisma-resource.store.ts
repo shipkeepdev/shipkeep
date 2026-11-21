@@ -55,6 +55,16 @@ export class PrismaResourceStore implements ResourceStore {
     if (result.count !== 1) throw conflict('environment');
     return record;
   }
+  async findEnvironment(target: EnvironmentTarget): Promise<EnvironmentRecord | undefined> {
+    const row = await this.database.client.environment.findFirst({
+      where: {
+        id: target.environmentId,
+        organizationId: target.organizationId,
+        projectId: target.projectId,
+      },
+    });
+    return row ? { ...row, ...environmentSettings(row) } : undefined;
+  }
   async updateEnvironment(
     target: EnvironmentTarget,
     settings: EnvironmentSettings,

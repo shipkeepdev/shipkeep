@@ -12,6 +12,7 @@ import { IdentityAttemptLimit } from '../../identity/interface/identity-rate.gua
 import { RequireTenant } from '../../identity/interface/route-access';
 import { type IdentityRequest, resourceContext } from '../../identity/interface/session-http';
 import { ApplicationCommands } from '../application/application-commands';
+import { EnvironmentClone } from '../application/environment-clone';
 import type { ApplicationTarget } from '../domain/application';
 
 import {
@@ -20,6 +21,8 @@ import {
   ApplicationEnvironmentPathDto,
   ApplicationListDto,
   ApplicationPathDto,
+  ClonedEnvironmentDto,
+  CloneEnvironmentDto,
   CreateApplicationDto,
   DomainListDto,
   UpdateApplicationConfigDto,
@@ -34,7 +37,35 @@ const APPLICATIONS = ':organizationId/projects/:projectId/environments/:environm
 @IdentityAttemptLimit('api')
 @Controller('organizations')
 export class ApplicationController {
-  constructor(private readonly applications: ApplicationCommands) {}
+  constructor(
+    private readonly applications: ApplicationCommands,
+    private readonly environments: EnvironmentClone,
+  ) {}
+  /**
+   * A new environment with the same settings and a copy of each application's configuration, not
+   * deployed and without domains (issue #257). Browser sessions only: it needs three permissions.
+   */
+  @Post(':organizationId/projects/:projectId/environments/:environmentId/clone')
+  @HttpCode(201)
+  // The source is read here; creating the environment and its applications is checked inside.
+  @RequireTenant('environment.read', 'environment')
+  @ApiCreatedResponse({ type: ClonedEnvironmentDto })
+  async cloneEnvironment(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationEnvironmentPathDto,
+    @Body() body: CloneEnvironmentDto,
+  ): Promise<ClonedEnvironmentDto> {
+    const { environment, applications } = await this.environments.clone(
+      resourceContext(request),
+      target(path),
+      body.name,
+    );
+    return {
+      environmentId: environment.id,
+      name: environment.name,
+      applications: applications.map(applicationDto),
+    };
+  }
 
   @Get(APPLICATIONS)
   @RequireTenant('environment.read', 'environment')

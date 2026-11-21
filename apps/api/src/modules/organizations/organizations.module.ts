@@ -55,5 +55,7 @@ import { BindingMutationController } from './interface/binding-mutation.controll
     { provide: RESOURCE_STORE, useClass: PrismaResourceStore },
     { provide: ORGANIZATION_STORE, useClass: PrismaOrganizationStore },
   ],
+  // Cloning an environment (apps module) creates the environment in the same transaction.
+  exports: [RESOURCE_STORE],
 })
 export class OrganizationsModule {}
