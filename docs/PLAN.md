@@ -10,7 +10,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 
 ## Status
 
-Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/issues), each with a `priority:P0` to `priority:P3` label. The [README](../README.md#what-works-today) says what works today. Real-server acceptance (M1.4, M1.5, M1.6, M3.4, M8.3a, M10.1) waits for a dedicated test machine.
+Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/issues), each with a `priority:P0` to `priority:P3` label. The scope and order of the first stable version are [below](#first-stable-version-v010). The [README](../README.md#what-works-today) says what works today. Real-server acceptance (M1.4, M1.5, M1.6, M3.4, M8.3a, M10.1) waits for a dedicated test machine.
 
 **Work that no task owned yet, now assigned:**
 
@@ -22,6 +22,43 @@ Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/
 | `UpgradeAgent`                                                             | M8.3   |
 | Retry-safe certificate renewal (SPEC 16)                                   | M4.5   |
 | The web token scope picker                                                 | M2.3f1 |
+
+## First stable version (v0.1.0)
+
+The milestones below describe the whole MVP. The first stable version ships part of it: the maintainer decided this scope on 2026-11-18 and confirmed it with this order on 2026-11-21. Issues in scope carry the `v0.1-stable` label and `priority:P1` or `P0`; [#413](https://github.com/shipkeepdev/shipkeep/issues/413) tracks them.
+
+**In scope:**
+
+- Installation with one command: one machine for the control plane and its applications, or a control plane and several servers.
+- Deployment from an image or from Git.
+- Domains and HTTPS.
+- Rollback.
+- Secrets.
+- Stop, start and delete an application.
+- Logs.
+- Several servers, without a private network between them.
+
+**Out of scope, kept for later at `priority:P2`:**
+
+- Managed databases (M5.1).
+- Backups and restore of application data (M5.2, M5.3).
+- The WireGuard network, internal DNS, routing distribution and automatic failover (M4.1, M4.2, M4.4, M4.5).
+- Previews (M7).
+- SSO (M8.1) and sign-in with GitHub and GitLab.
+- Compose applications (M3.8b, M3.8c).
+
+**Order:**
+
+| Step | Work                                                                   | Issues                                                  | Waits for                                                      |
+| ---- | ---------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------- |
+| 1    | The rest of the single-machine installation (ADR 0021)                 | #377                                                    | Nothing                                                        |
+| 2    | Server detail, deployment detail, maintenance mode                     | #264, #265, #256                                        | Nothing; the full deployment log comes with step 4             |
+| 3    | Deployment from Git: providers, `shipkeep.yml` sync, builds (ADR 0012) | #213, #214, #215                                        | The GitHub App on the organization                             |
+| 4    | Logs and container exec (M6.1)                                         | #232                                                    | The maintainer's decision on the agent action for log shipping |
+| 5    | Real-server acceptance, control plane backup, upgrades                 | #200, #202, #16, #17, #18, #216, #239, #352, #231, #240 | The test VM and the domain                                     |
+| 6    | Hardening and documentation (M10.2, M10.4)                             | #244, #246                                              | Nothing                                                        |
+
+**Releases:** `v0.1.0-beta.1` once steps 1 to 4 are merged, then `v0.1.0` once step 5 has passed on a real server. Each tag needs the maintainer's go-ahead.
 
 ---
 
