@@ -11,6 +11,7 @@ import {
 import { AgentActions } from '../application/agent-actions';
 import { AuthenticateNode } from '../application/authenticate-node';
 import { NodeLiveness } from '../application/node-liveness';
+import { MetricsReports } from '../application/metrics-reports';
 import { StateReports } from '../application/state-reports';
 import { NodeAuthenticationError, type NodeIdentity } from '../domain/node-identity';
 
@@ -33,6 +34,7 @@ export class NodeStream {
     private readonly actions: AgentActions,
     private readonly liveness: NodeLiveness,
     private readonly reports: StateReports,
+    private readonly metrics: MetricsReports,
   ) {}
 
   async *connect(
@@ -90,6 +92,7 @@ export class NodeStream {
                 leaseEpoch: BigInt(credential.leaseEpoch),
                 heartbeatInterval: { seconds: 5n },
                 serverTime: timestampFromDate(new Date()),
+                metrics: this.metrics.accepting,
               },
             },
           });
@@ -99,6 +102,14 @@ export class NodeStream {
           if (message.value.leaseEpoch !== BigInt(credential.leaseEpoch))
             throw new ConnectError('state report with a stale epoch', Code.FailedPrecondition);
           await this.reports.deliver(identity, message.value);
+        } else if (message.case === 'metricsReport') {
+          // Accepted only when Welcome announced it; never awaited, so heartbeats keep flowing.
+          if (!this.metrics.accepting || message.value.leaseEpoch !== BigInt(credential.leaseEpoch))
+            throw new ConnectError(
+              'unexpected metrics report or stale epoch',
+              Code.FailedPrecondition,
+            );
+          this.metrics.deliver(identity, message.value);
         } else if (
           message.case !== 'heartbeat' ||
           message.value.leaseEpoch !== BigInt(credential.leaseEpoch) ||

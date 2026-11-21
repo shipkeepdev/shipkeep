@@ -31,6 +31,7 @@ import { PrismaJoinTokenStore, PrismaNodeStore } from './infrastructure/prisma-f
 import { PrismaAgentActionStore } from './infrastructure/prisma-agent-action.store';
 import { AgentActions } from './application/agent-actions';
 import { NodeLiveness } from './application/node-liveness';
+import { MetricsReports } from './application/metrics-reports';
 import { StateReports } from './application/state-reports';
 
 /**
@@ -60,6 +61,7 @@ import { StateReports } from './application/state-reports';
     AgentActions,
     NodeLiveness,
     StateReports,
+    MetricsReports,
     IssueJoinToken,
     EnrollNode,
   ],
@@ -73,6 +75,7 @@ import { StateReports } from './application/state-reports';
     RenewNodeCertificate,
     AgentActions,
     StateReports,
+    MetricsReports,
   ],
 })
 export class FleetModule {}

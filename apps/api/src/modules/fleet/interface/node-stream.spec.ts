@@ -1,5 +1,6 @@
 import { create } from '@bufbuild/protobuf';
 import {
+  type MetricsReport,
   type ActionRequest,
   ActionRequestSchema,
   type ActionUpdate,
@@ -12,6 +13,7 @@ import {
 import type { AgentActions } from '../application/agent-actions';
 import { AuthenticateNode } from '../application/authenticate-node';
 import type { NodeLiveness } from '../application/node-liveness';
+import { MetricsReports } from '../application/metrics-reports';
 import type { StateReports } from '../application/state-reports';
 import { NodeStream } from './node-stream';
 
@@ -57,11 +59,13 @@ describe('stream timeouts and failure boundaries', () => {
     const input: AsyncIterable<ConnectRequest> = {
       [Symbol.asyncIterator]: () => ({ next: () => new Promise(() => undefined) }),
     };
-    const stream = new NodeStream(authenticate, queue(idle), liveness, reports).connect(
-      input,
-      context,
-      identity,
-    );
+    const stream = new NodeStream(
+      authenticate,
+      queue(idle),
+      liveness,
+      reports,
+      new MetricsReports(),
+    ).connect(input, context, identity);
     const rejected = expect(stream.next()).rejects.toMatchObject({ code: 4 });
     await vi.advanceTimersByTimeAsync(15_000);
     await rejected;
@@ -78,7 +82,7 @@ describe('stream timeouts and failure boundaries', () => {
       [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(new Error('socket closed')) }),
     };
     await expect(
-      new NodeStream(authenticate, queue(idle), liveness, reports)
+      new NodeStream(authenticate, queue(idle), liveness, reports, new MetricsReports())
         .connect(input, context, identity)
         .next(),
     ).rejects.toMatchObject({ code: 13, rawMessage: 'agent stream failed' });
@@ -138,6 +142,7 @@ describe('stream timeouts and failure boundaries', () => {
       queue(fake),
       liveness,
       reports,
+      new MetricsReports(),
     ).connect(input, context, identity))
       responses.push(response.msg.case);
     expect(responses).toEqual(['welcome', 'actionRequest']);
@@ -145,5 +150,66 @@ describe('stream timeouts and failure boundaries', () => {
     expect(delivered.map((report) => report.leaseEpoch)).toEqual([1n]);
     // The hello counts as a heartbeat: the node becomes ready as soon as its agent connects.
     expect(heartbeats).toContain('node');
+  });
+
+  /** A stream of the frames given, after a valid hello, for a ready node of epoch 1. */
+  async function run(metrics: MetricsReports, frames: ConnectRequest[]): Promise<string[]> {
+    const authenticate = new AuthenticateNode({
+      find: () =>
+        Promise.resolve({
+          ...identity,
+          status: 'ready',
+          leaseEpoch: 1,
+          notBefore: new Date(Date.now() - 1000),
+          notAfter: new Date(Date.now() + 60_000),
+          revokedAt: null,
+        }),
+      replace: () => Promise.resolve(false),
+    });
+    const all = [
+      create(ConnectRequestSchema, {
+        msg: { case: 'hello', value: { nodeId: 'node', leaseEpoch: 1n, agentVersion: 'test' } },
+      }),
+      ...frames,
+    ];
+    let index = 0;
+    const input: AsyncIterable<ConnectRequest> = {
+      [Symbol.asyncIterator]: () => ({
+        next: () =>
+          index < all.length
+            ? Promise.resolve({ done: false, value: all[index++] })
+            : Promise.resolve({ done: true, value: undefined }),
+      }),
+    };
+    const welcome: string[] = [];
+    for await (const response of new NodeStream(
+      authenticate,
+      queue(idle),
+      liveness,
+      reports,
+      metrics,
+    ).connect(input, new AbortController(), identity))
+      if (response.msg.case === 'welcome') welcome.push(String(response.msg.value.metrics));
+    return welcome;
+  }
+  const metricsFrame = (leaseEpoch: bigint) =>
+    create(ConnectRequestSchema, { msg: { case: 'metricsReport', value: { leaseEpoch } } });
+
+  it('announces metrics only when a store takes them, and hands reports over without waiting', async () => {
+    const received: MetricsReport[] = [];
+    const metrics = new MetricsReports();
+    expect(await run(metrics, [])).toEqual(['false']);
+    metrics.register((_identity, report) => {
+      received.push(report);
+    });
+    expect(await run(metrics, [metricsFrame(1n)])).toEqual(['true']);
+    expect(received.map((report) => report.leaseEpoch)).toEqual([1n]);
+  });
+
+  it('refuses a metrics report it did not announce, or of a stale epoch', async () => {
+    await expect(run(new MetricsReports(), [metricsFrame(1n)])).rejects.toMatchObject({ code: 9 });
+    const metrics = new MetricsReports();
+    metrics.register(() => undefined);
+    await expect(run(metrics, [metricsFrame(2n)])).rejects.toMatchObject({ code: 9 });
   });
 });

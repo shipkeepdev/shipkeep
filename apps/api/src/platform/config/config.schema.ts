@@ -68,7 +68,11 @@ export const configSchema = z
     /** Enrollment attempts one client network may make per minute (#346). */
     AGENT_ENROLLMENTS_PER_MINUTE: z.coerce.number().int().min(1).max(10_000).default(20),
     VICTORIALOGS_URL: httpUrl.default('http://localhost:9428'),
-    VICTORIAMETRICS_URL: httpUrl.default('http://localhost:8428'),
+    /**
+     * Where metrics are written and read (ADR 0024). Unset, the stream tells agents not to send
+     * any, and the metric routes answer that none are kept.
+     */
+    VICTORIAMETRICS_URL: z.preprocess(emptyAsUnset, httpUrl.optional()),
     REGISTRY_URL: httpUrl.default('http://localhost:5000'),
     // Email is optional (ADR 0020). Without a host, accounts are created on the server.
     SMTP_HOST: z.preprocess(

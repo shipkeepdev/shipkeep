@@ -3,6 +3,7 @@ import { allowsTenantAction } from '@shipkeep/domain';
 import { v7 as uuidv7 } from 'uuid';
 
 import { auditLog } from '../../testing/audit-log';
+import { enrollTestNode } from '../../testing/enroll-test-node';
 import { routeInventory, type RouteRow } from '../../testing/route-inventory';
 import { tenantHttpFixture } from '../../testing/tenant-http';
 import { tenantActors, tenantPersona, tenantTarget } from '../../testing/tenant-personas';
@@ -20,11 +21,13 @@ describe('registered tenant routes for every role', () => {
   let fixture: Awaited<ReturnType<typeof tenantHttpFixture>>;
   let applicationId: string;
   let deploymentId: string;
-  const nodeId = uuidv7();
+  // A real server: its GET routes (metrics) answer 200 only for a server of the organization.
+  let nodeId: string;
   const tokenId = uuidv7();
 
   beforeAll(async () => {
     fixture = await tenantHttpFixture();
+    nodeId = await enrollTestNode(fixture, { facts: { hostname: 'edge-matrix.example.com' } });
     const application = await fixture
       .post(`${fixture.environment}/applications`, 'owner', {
         config: {

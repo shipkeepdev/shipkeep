@@ -436,6 +436,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}/metrics": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["nodeMetrics"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}/public-addresses": {
         readonly parameters: {
             readonly query?: never;
@@ -748,6 +764,22 @@ export type paths = {
             readonly cookie?: never;
         };
         readonly get: operations["listDomains"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/metrics": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["applicationMetrics"];
         readonly put?: never;
         readonly post?: never;
         readonly delete?: never;
@@ -1125,6 +1157,25 @@ export type components = {
         readonly ApplicationListDto: {
             readonly items: readonly components["schemas"]["ApplicationDto"][];
         };
+        readonly ApplicationMetricsDto: {
+            /** @description CPU in use, in cores. */
+            readonly cpu: readonly components["schemas"]["MetricSeriesDto"][];
+            /** @description Mean response time, in seconds. */
+            readonly duration: readonly components["schemas"]["MetricSeriesDto"][];
+            /** Format: date-time */
+            readonly from: string;
+            /** @description False when this installation keeps no metrics: every series is empty. */
+            readonly kept: boolean;
+            /** @description Memory in use, in bytes. */
+            readonly memory: readonly components["schemas"]["MetricSeriesDto"][];
+            /** @enum {string} */
+            readonly range: "1h" | "24h" | "7d";
+            /** @description Requests per second, one series per `status` class: 2xx, 3xx, 4xx, 5xx, other. */
+            readonly requests: readonly components["schemas"]["MetricSeriesDto"][];
+            readonly stepSeconds: number;
+            /** Format: date-time */
+            readonly to: string;
+        };
         readonly AssignBindingDto: {
             /**
              * Format: email
@@ -1457,6 +1508,18 @@ export type components = {
             /** Format: uuid */
             readonly userId: string;
         };
+        readonly MetricPointDto: {
+            /** @description Unix time, in seconds. */
+            readonly t: number;
+            readonly v: number;
+        };
+        readonly MetricSeriesDto: {
+            /** @description Labels that tell series of one query apart, such as `status` for requests. */
+            readonly labels: {
+                readonly [key: string]: string;
+            };
+            readonly points: readonly components["schemas"]["MetricPointDto"][];
+        };
         readonly MfaPasswordDto: {
             /** Format: password */
             readonly password: string;
@@ -1505,6 +1568,28 @@ export type components = {
             readonly publicAddresses: readonly string[];
             /** @enum {string} */
             readonly status: "enrolling" | "ready" | "suspect" | "down" | "draining" | "removed";
+        };
+        readonly NodeMetricsDto: {
+            /** @description CPU in use, in cores. */
+            readonly cpu: readonly components["schemas"]["MetricSeriesDto"][];
+            /** @description Under Docker's data root, in bytes. */
+            readonly disk: readonly components["schemas"]["MetricSeriesDto"][];
+            readonly diskTotal: readonly components["schemas"]["MetricSeriesDto"][];
+            /** Format: date-time */
+            readonly from: string;
+            /** @description False when this installation keeps no metrics: every series is empty. */
+            readonly kept: boolean;
+            readonly memory: readonly components["schemas"]["MetricSeriesDto"][];
+            readonly memoryTotal: readonly components["schemas"]["MetricSeriesDto"][];
+            /** @enum {string} */
+            readonly range: "1h" | "24h" | "7d";
+            /** @description Bytes per second received. */
+            readonly received: readonly components["schemas"]["MetricSeriesDto"][];
+            /** @description Bytes per second sent. */
+            readonly sent: readonly components["schemas"]["MetricSeriesDto"][];
+            readonly stepSeconds: number;
+            /** Format: date-time */
+            readonly to: string;
         };
         readonly NodePageDto: {
             readonly items: readonly components["schemas"]["NodeDto"][];
@@ -2562,6 +2647,30 @@ export interface operations {
             };
         };
     };
+    readonly nodeMetrics: {
+        readonly parameters: {
+            readonly query?: {
+                readonly range?: "1h" | "24h" | "7d";
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly nodeId: string;
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["NodeMetricsDto"];
+                };
+            };
+        };
+    };
     readonly setNodePublicAddresses: {
         readonly parameters: {
             readonly query?: never;
@@ -3227,6 +3336,32 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["DomainListDto"];
+                };
+            };
+        };
+    };
+    readonly applicationMetrics: {
+        readonly parameters: {
+            readonly query?: {
+                readonly range?: "1h" | "24h" | "7d";
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApplicationMetricsDto"];
                 };
             };
         };
