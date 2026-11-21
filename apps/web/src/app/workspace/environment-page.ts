@@ -17,9 +17,9 @@ import { PageCrumbs } from '../dashboard/page-crumbs';
 import { Icon } from '../shell/icon';
 import { ShellContext } from '../shell/shell-context';
 import { T } from '../ui/i18n';
-import { Notice } from '../ui/notice';
 import { type Tab, Tabs } from '../shell/tabs';
 
+import { EnvironmentClone } from './environment-clone';
 import { EnvironmentSettings } from './environment-settings';
 import { type Environment, WorkspaceApi } from './workspace-api';
 
@@ -29,6 +29,7 @@ import { type Environment, WorkspaceApi } from './workspace-api';
   imports: [
     ApplicationsPanel,
     BindingsPanel,
+    EnvironmentClone,
     EnvironmentSettings,
     Icon,
     RouterLink,
@@ -60,7 +61,13 @@ import { type Environment, WorkspaceApi } from './workspace-api';
           </div>
         </div>
         <div class="flex flex-wrap gap-2.5">
-          <button type="button" class="btn" (click)="notice.notYet('Clone')">
+          <button
+            type="button"
+            class="btn"
+            [attr.aria-expanded]="cloning()"
+            [disabled]="!loaded()"
+            (click)="cloning.set(!cloning())"
+          >
             <sk-icon name="copy" />{{ 'Clone' | t }}
           </button>
           <button type="button" class="btn" (click)="tab.set('secrets')">
@@ -74,6 +81,13 @@ import { type Environment, WorkspaceApi } from './workspace-api';
           >
         </div>
       </div>
+      @if (cloning() && loaded(); as current) {
+        <sk-environment-clone
+          [environment]="ref()"
+          [source]="current.name"
+          (cancelled)="cloning.set(false)"
+        />
+      }
       @if (missing()) {
         <div class="alert" role="alert">{{ missing() | t }}</div>
       } @else if (environment(); as current) {
@@ -121,6 +135,13 @@ export class EnvironmentPage {
   private readonly api = inject(WorkspaceApi);
   protected readonly shell = inject(ShellContext);
   protected readonly tab = signal('applications');
+  protected readonly cloning = signal(false);
+  #loads = 0;
+  /** The environment loaded for the current route, never a previous one still in place. */
+  protected readonly loaded = computed(() => {
+    const current = this.environment();
+    return current?.id === this.environmentId() ? current : null;
+  });
   protected readonly tabs: readonly Tab[] = [
     { id: 'applications', label: 'Resources', icon: 'apps' },
     { id: 'secrets', label: 'Variables and secrets', icon: 'key' },
@@ -142,7 +163,6 @@ export class EnvironmentPage {
   }));
   protected readonly missing = signal<string | null>(null);
 
-  protected readonly notice = inject(Notice);
   private readonly crumbs = inject(PageCrumbs);
 
   constructor() {
@@ -159,6 +179,8 @@ export class EnvironmentPage {
         ]);
     });
     effect(() => {
+      // Another environment (a clone just opened, for one): its own page, form closed.
+      this.cloning.set(false);
       void this.load(this.organizationId(), this.projectId(), this.environmentId());
     });
   }
@@ -168,10 +190,15 @@ export class EnvironmentPage {
     projectId: string,
     environmentId: string,
   ): Promise<void> {
+    const load = ++this.#loads;
     this.missing.set(null);
+    // Another environment's page until this one arrives: nothing of the previous one stays.
+    this.environment.set(null);
     try {
-      this.environment.set(await this.api.environment(organizationId, projectId, environmentId));
+      const found = await this.api.environment(organizationId, projectId, environmentId);
+      if (load === this.#loads) this.environment.set(found);
     } catch (error: unknown) {
+      if (load !== this.#loads) return;
       this.environment.set(null);
       this.missing.set(
         error instanceof IdentityRequestError

@@ -5,11 +5,13 @@ import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { ConfirmationsModule } from '../confirmations/confirmations.module';
 import { FleetModule } from '../fleet/fleet.module';
 import { IdentityModule } from '../identity/identity.module';
+import { OrganizationsModule } from '../organizations/organizations.module';
 import { TenantAccessModule } from '../organizations/tenant-access.module';
 
 import { ApplicationCommands } from './application/application-commands';
 import { ApplicationConfirmationTarget } from './application/application-confirmation-target';
 import { DomainCertificates } from './application/domain-certificates';
+import { EnvironmentClone } from './application/environment-clone';
 import {
   APPLICATION_STORE,
   APPLICATION_TRANSACTION,
@@ -24,10 +26,17 @@ import { ApplicationController } from './interface/application.controller';
 
 /** Applications (SPEC 4, PLAN M3.4b). The store is exported for the deployments context. */
 @Module({
-  imports: [IdentityModule, TenantAccessModule, ConfirmationsModule, FleetModule],
+  imports: [
+    IdentityModule,
+    TenantAccessModule,
+    ConfirmationsModule,
+    FleetModule,
+    OrganizationsModule,
+  ],
   controllers: [ApplicationController],
   providers: [
     ApplicationCommands,
+    EnvironmentClone,
     ApplicationConfirmationTarget,
     DomainCertificates,
     { provide: APPLICATION_STORE, useClass: PrismaApplicationStore },

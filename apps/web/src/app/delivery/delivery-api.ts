@@ -54,6 +54,18 @@ export class DeliveryApi extends WorkspaceApi {
       ),
     );
   }
+  /** A new environment with copies of these applications, not deployed (issue #257). */
+  cloneEnvironment(
+    environment: EnvironmentRef,
+    name: string,
+  ): Promise<Schema<'ClonedEnvironmentDto'>> {
+    return this.required(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/clone',
+        { body: { name }, params: { path: { ...environment } } },
+      ),
+    );
+  }
   updateConfig(
     environment: EnvironmentRef,
     applicationId: string,

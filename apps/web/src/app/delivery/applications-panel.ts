@@ -1,4 +1,12 @@
-import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  effect,
+  inject,
+  input,
+  signal,
+  untracked,
+} from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 import { RouterLink } from '@angular/router';
 import { type ConfigIssue, parseShipkeepConfig } from '@shipkeep/config-schema';
@@ -190,27 +198,52 @@ export class ApplicationsPanel {
     'grid-cols-[minmax(0,1.5fr)_minmax(0,0.9fr)_minmax(0,1.3fr)_minmax(0,0.9fr)_minmax(0,0.9fr)]';
   /** The latest deployment of each application, for the state column. */
   protected readonly latest = signal<ReadonlyMap<string, Deployment>>(new Map());
+  /** The environment the listed items belong to; null while another one's list is replaced. */
+  private readonly loadedFor = signal<EnvironmentRef | null>(null);
+  #revision = 0;
+  #loads = 0;
 
   constructor() {
     recoverOnEdit(this.form, this.runner);
     effect(() => {
-      this.environment();
-      void this.list.refresh();
+      const ref = this.environment();
+      // Until the new list arrives, the items are another environment's: ask nothing about them.
+      untracked(() => {
+        this.loadedFor.set(null);
+        this.latest.set(new Map());
+        // A deployment batch still pending for the previous environment must not land here.
+        ++this.#revision;
+      });
+      void untracked(() => this.reload(ref));
     });
     effect(() => {
-      const ref = this.environment();
+      const ref = this.loadedFor();
       const apps = this.list.items();
+      if (!ref) return;
+      const revision = ++this.#revision;
       void Promise.all(
         apps.map(async (app) => {
           const deployments = await this.api.deployments(ref, app.id).catch(() => []);
           return [app.id, deployments.at(0)] as const;
         }),
       ).then((pairs) => {
+        if (revision !== this.#revision) return;
         this.latest.set(
           new Map(pairs.filter((pair): pair is readonly [string, Deployment] => !!pair[1])),
         );
       });
     });
+  }
+
+  /**
+   * Every refresh of the list goes through here. Only a list that loaded, for the latest request
+   * and the environment still shown, belongs to `ref`: a failed or superseded refresh leaves
+   * another environment's items, which must not be asked about.
+   */
+  private async reload(ref: EnvironmentRef): Promise<void> {
+    const load = ++this.#loads;
+    const applied = await this.list.refresh();
+    if (applied && load === this.#loads && this.environment() === ref) this.loadedFor.set(ref);
   }
 
   protected image(application: Application): string {
@@ -232,6 +265,6 @@ export class ApplicationsPanel {
     );
     if (!outcome.ok) return;
     this.form.controls.config.setValue(EXAMPLE_CONFIG);
-    await this.list.refresh();
+    await this.reload(this.environment());
   }
 }
