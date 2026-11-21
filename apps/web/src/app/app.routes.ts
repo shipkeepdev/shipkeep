@@ -140,7 +140,13 @@ const dashboard: Route[] = [
   preview('notifications', 'notifs', 'Notifications', ['Notifications']),
   preview('tags', 'tags', 'Tags', ['Tags']),
   preview('settings', 'settings', 'Settings', ['Settings']),
-  preview('onboarding', 'onboarding', 'First start', ['First start']),
+  {
+    path: 'onboarding',
+    title: 'First start · Shipkeep',
+    data: { crumbs: ['First start'] },
+    loadComponent: () =>
+      import('./workspace/first-start-page').then((module) => module.FirstStartPage),
+  },
   {
     path: 'profile',
     title: 'Profile · Shipkeep',

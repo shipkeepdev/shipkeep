@@ -20,7 +20,6 @@ export type PreviewView =
   | 'settings'
   | 'profile'
   | 'vulns'
-  | 'onboarding'
   | 'terminal';
 
 export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
@@ -3349,65 +3348,6 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
               mono: true,
             },
           ],
-        ],
-      },
-    ],
-  },
-  onboarding: {
-    label: '24 First start',
-    title: 'Welcome to Shipkeep',
-    sub: 'Four steps, about 10 minutes. You can change everything later.',
-    crumbs: ['First start'],
-    blocks: [
-      {
-        type: 'steps',
-        items: [
-          {
-            t: 'Create organization',
-            d: 'Atelier Nord · you are the owner',
-            icon: 'building',
-            state: 'done',
-          },
-          {
-            t: 'Add your first server',
-            d: 'Generate a 15-minute token and run one command on the machine.',
-            icon: 'server-2',
-            state: 'active',
-            cta: 'Generate token',
-            go: 'servers',
-          },
-          {
-            t: 'Connect a source',
-            d: 'GitHub, GitLab, Gitea or a Docker image.',
-            icon: 'git-branch',
-            cta: 'Connect',
-            go: 'integrations',
-          },
-          {
-            t: 'Deploy an application',
-            d: 'From a repository with shipkeep.yml, or start from a template.',
-            icon: 'rocket',
-            cta: 'Choose',
-            go: 'new',
-          },
-        ],
-      },
-      {
-        type: 'code',
-        title: 'Command to run on the server',
-        lines: [
-          {
-            t: 'curl -fsSL get.shipkeep.dev/agent | sudo sh -s -- \\',
-            c: '#EDEDEF',
-          },
-          {
-            t: '--join cp.atelier-nord.example:7443 \\',
-            c: '#EDEDEF',
-          },
-          {
-            t: '--token skj_7Hc2…Qe9 --ca sha256:9f3a…c41e',
-            c: '#EDEDEF',
-          },
         ],
       },
     ],

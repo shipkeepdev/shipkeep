@@ -47,6 +47,8 @@ export class OverviewStore {
   readonly environmentCount = signal(0);
   readonly projectCount = signal(0);
   readonly applications = signal<readonly ApplicationRow[]>([]);
+  /** The application list could not be read: an empty list then says nothing. */
+  readonly applicationsFailed = signal(false);
   readonly readyNodes = computed(
     () => (this.nodes() ?? []).filter((node) => node.status === 'ready').length,
   );
@@ -75,6 +77,7 @@ export class OverviewStore {
     if (revision !== this.revision) return;
     this.nodes.set(nodes.status === 'fulfilled' ? nodes.value : null);
     this.events.set(events.status === 'fulfilled' ? events.value : null);
+    this.applicationsFailed.set(tree.status === 'rejected');
     if (tree.status === 'fulfilled') {
       this.projectCount.set(tree.value.projects);
       this.environmentCount.set(tree.value.environments);
