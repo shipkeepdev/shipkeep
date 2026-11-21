@@ -87,4 +87,37 @@ describe('applications panel', () => {
     fixture.detectChanges();
     expect(api.deployments).not.toHaveBeenCalledWith(staging, 'a1');
   });
+
+  it('owns the list again once a refresh after a creation succeeds', async () => {
+    const staging = env('01900000-0000-7000-8000-00000000000b');
+    let calls = 0;
+    const api = {
+      applications: vi.fn(() => {
+        calls++;
+        return calls === 1
+          ? Promise.reject(new Error('down'))
+          : Promise.resolve([app('b1', 'shop')]);
+      }),
+      deployments: vi.fn(() => Promise.resolve([])),
+      createApplication: vi.fn(() => Promise.resolve(app('b1', 'shop'))),
+    };
+    TestBed.configureTestingModule({
+      imports: [ApplicationsPanel],
+      providers: [provideRouter([]), { provide: DeliveryApi, useValue: api }],
+    });
+    TestBed.inject(I18n).use('en');
+    const fixture = TestBed.createComponent(ApplicationsPanel);
+    fixture.componentRef.setInput('environment', staging);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(api.deployments).not.toHaveBeenCalled();
+    (fixture.nativeElement as HTMLElement)
+      .querySelector('form')
+      ?.dispatchEvent(new Event('submit', { cancelable: true }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(api.createApplication).toHaveBeenCalled();
+    expect(api.deployments).toHaveBeenCalledWith(staging, 'b1');
+  });
 });

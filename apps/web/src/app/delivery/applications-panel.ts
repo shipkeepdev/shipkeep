@@ -212,12 +212,7 @@ export class ApplicationsPanel {
         this.loadedFor.set(null);
         this.latest.set(new Map());
       });
-      const load = ++this.#loads;
-      // Only a list that loaded, for this very run, belongs to `ref`: a failed or superseded
-      // refresh leaves the previous environment's items, which must not be asked about.
-      void this.list.refresh().then((applied) => {
-        if (applied && load === this.#loads) this.loadedFor.set(ref);
-      });
+      void untracked(() => this.reload(ref));
     });
     effect(() => {
       const ref = this.loadedFor();
@@ -236,6 +231,17 @@ export class ApplicationsPanel {
         );
       });
     });
+  }
+
+  /**
+   * Every refresh of the list goes through here. Only a list that loaded, for the latest request
+   * and the environment still shown, belongs to `ref`: a failed or superseded refresh leaves
+   * another environment's items, which must not be asked about.
+   */
+  private async reload(ref: EnvironmentRef): Promise<void> {
+    const load = ++this.#loads;
+    const applied = await this.list.refresh();
+    if (applied && load === this.#loads && this.environment() === ref) this.loadedFor.set(ref);
   }
 
   protected image(application: Application): string {
@@ -257,6 +263,6 @@ export class ApplicationsPanel {
     );
     if (!outcome.ok) return;
     this.form.controls.config.setValue(EXAMPLE_CONFIG);
-    await this.list.refresh();
+    await this.reload(this.environment());
   }
 }
