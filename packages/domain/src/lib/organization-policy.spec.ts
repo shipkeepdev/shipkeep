@@ -2,6 +2,7 @@ import { PERMISSIONS, type Permission } from './api-token-policy.js';
 import {
   allowsTenantAction,
   canChangeMembership,
+  canTransferOwnership,
   isTenantId,
   type TenantMembership,
   type TenantResource,
@@ -209,5 +210,15 @@ describe('organization membership changes', () => {
     expect(canChangeMembership('root', 'member', 'admin', 1)).toBe(false);
     expect(canChangeMembership('owner', 'unknown', 'admin', 1)).toBe(false);
     expect(canChangeMembership('owner', 'member', 'unknown', 1)).toBe(false);
+  });
+  it('hands ownership only from an owner to another account that is an admin', () => {
+    expect(canTransferOwnership('owner', 'admin', false)).toBe(true);
+    expect(canTransferOwnership('owner', 'admin', true)).toBe(false);
+    expect(canTransferOwnership('owner', 'member', false)).toBe(false);
+    expect(canTransferOwnership('owner', 'owner', false)).toBe(false);
+    expect(canTransferOwnership('admin', 'admin', false)).toBe(false);
+    expect(canTransferOwnership('member', 'admin', false)).toBe(false);
+    expect(canTransferOwnership('', 'admin', false)).toBe(false);
+    expect(canTransferOwnership('owner', 'root', false)).toBe(false);
   });
 });
