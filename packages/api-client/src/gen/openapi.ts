@@ -1634,6 +1634,8 @@ export type components = {
             readonly from: string;
             /** @description False when this installation keeps no metrics: every series is empty. */
             readonly kept: boolean;
+            /** @description Mean response time over the whole period, in seconds; null without any request. */
+            readonly meanSeconds: number | null;
             /** @enum {string} */
             readonly range: "1h" | "24h" | "7d" | "30d";
             /** @description Requests per second over the environments the caller may read, one series per `status` class. */
@@ -1641,6 +1643,8 @@ export type components = {
             readonly stepSeconds: number;
             /** Format: date-time */
             readonly to: string;
+            /** @description Requests over the whole period, read at its end; null when no metrics are kept. */
+            readonly totalRequests: number | null;
         };
         readonly OrganizationPageDto: {
             readonly items: readonly components["schemas"]["OrganizationDto"][];

@@ -34,6 +34,7 @@ describe('MetricsIngest', () => {
     const store: MetricsStore = {
       write: () => Promise.resolve(),
       queryRange: () => Promise.resolve([]),
+      queryInstant: () => Promise.resolve([]),
     };
     new MetricsIngest(withStore, targets, transaction, store).onModuleInit();
     expect(withStore.accepting).toBe(true);
@@ -47,6 +48,7 @@ describe('MetricsIngest', () => {
         return new Promise(() => undefined);
       },
       queryRange: () => Promise.resolve([]),
+      queryInstant: () => Promise.resolve([]),
     };
     const ingest = new MetricsIngest(new MetricsReports(), targets, transaction, store);
     for (let index = 0; index < 20; index++) ingest.accept(identity, report());
@@ -66,6 +68,7 @@ describe('MetricsIngest', () => {
         return Promise.resolve();
       },
       queryRange: () => Promise.resolve([]),
+      queryInstant: () => Promise.resolve([]),
     };
     const ingest = new MetricsIngest(new MetricsReports(), targets, transaction, store);
     const now = new Date('2026-11-20T12:00:00Z');

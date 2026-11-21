@@ -67,6 +67,18 @@ export class OrganizationMetricsDto extends MetricsBaseDto {
   requests!: MetricSeriesDto[];
   @ApiProperty({ type: [MetricSeriesDto], description: 'Mean response time, in seconds.' })
   duration!: MetricSeriesDto[];
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Requests over the whole period, read at its end; null when no metrics are kept.',
+  })
+  totalRequests!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Mean response time over the whole period, in seconds; null without any request.',
+  })
+  meanSeconds!: number | null;
 }
 
 export class NodeMetricsDto extends MetricsBaseDto {

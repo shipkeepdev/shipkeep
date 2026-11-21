@@ -292,6 +292,35 @@ export function organizationQueries(
   environmentIds: readonly string[] | null,
   range: Range,
 ): Readonly<Record<'requests' | 'duration', string>> {
+  const where = organizationFilter(organizationId, environmentIds);
+  const w = window(range);
+  return {
+    requests: `sum by (status) (rate(shipkeep_route_responses_total{${where}}[${w}]))`,
+    duration: `sum(rate(shipkeep_route_duration_seconds_total{${where}}[${w}])) / sum(rate(shipkeep_route_responses_total{${where}}[${w}]))`,
+  };
+}
+
+/**
+ * Totals of the organization's requests over the whole period, read at its end: the number of
+ * requests and the seconds they took. Unlike the chart's steps, they include the latest samples.
+ */
+export function organizationTotals(
+  organizationId: string,
+  environmentIds: readonly string[] | null,
+  range: Range,
+): Readonly<Record<'requests' | 'seconds', string>> {
+  const where = organizationFilter(organizationId, environmentIds);
+  const period = `${String(RANGES[range].seconds)}s`;
+  return {
+    requests: `sum(increase(shipkeep_route_responses_total{${where}}[${period}]))`,
+    seconds: `sum(increase(shipkeep_route_duration_seconds_total{${where}}[${period}]))`,
+  };
+}
+
+function organizationFilter(
+  organizationId: string,
+  environmentIds: readonly string[] | null,
+): string {
   if (
     environmentIds &&
     (environmentIds.length === 0 || environmentIds.length > MAX_QUERY_ENVIRONMENTS)
@@ -299,12 +328,8 @@ export function organizationQueries(
     throw new Error('metric queries name 1 to 100 environments');
   for (const id of environmentIds ?? [])
     if (!UUID.test(id)) throw new Error('metric query filters take identifiers only');
-  const where =
+  return (
     filter({ organization_id: organizationId }) +
-    (environmentIds ? `,environment_id=~"${environmentIds.join('|')}"` : '');
-  const w = window(range);
-  return {
-    requests: `sum by (status) (rate(shipkeep_route_responses_total{${where}}[${w}]))`,
-    duration: `sum(rate(shipkeep_route_duration_seconds_total{${where}}[${w}])) / sum(rate(shipkeep_route_responses_total{${where}}[${w}]))`,
-  };
+    (environmentIds ? `,environment_id=~"${environmentIds.join('|')}"` : '')
+  );
 }

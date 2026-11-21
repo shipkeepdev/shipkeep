@@ -25,6 +25,12 @@ describe('parseMatrix', () => {
         },
       }),
     ).toEqual([{ labels: { status: '2xx' }, points: [[1795000000, 1.5]] }]);
+    expect(
+      parseMatrix({
+        status: 'success',
+        data: { resultType: 'vector', result: [{ metric: {}, value: [1795000000, '1200'] }] },
+      }),
+    ).toEqual([{ labels: {}, points: [[1795000000, 1200]] }]);
     expect(parseMatrix({ status: 'error' })).toEqual([]);
     expect(parseMatrix('<html>')).toEqual([]);
   });

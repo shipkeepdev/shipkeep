@@ -33,6 +33,8 @@ export const METRICS_STORE = Symbol('MetricsStore');
 export interface MetricsStore {
   write(exposition: string): Promise<void>;
   queryRange(query: string, start: Date, end: Date, stepSeconds: number): Promise<Series[]>;
+  /** The value of a query at one time: each series holds that single point. */
+  queryInstant(query: string, at: Date): Promise<Series[]>;
 }
 
 export const METRICS_TRANSACTION = Symbol('MetricsTransaction');

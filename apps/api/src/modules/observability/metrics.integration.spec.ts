@@ -203,6 +203,19 @@ describe('metrics with PostgreSQL and VictoriaMetrics', () => {
     expect(traffic(viewer, '2xx')).toBeGreaterThan(0);
     expect(traffic(viewer, '4xx')).toBe(0);
     expect(await requests('member')).toEqual([]);
+    // Totals over the whole period include the latest samples: 60 requests each for the two
+    // environments the owner reads (100 to 160), only those of the readable one for the viewer.
+    const totals = async (actor: 'owner' | 'environmentViewer' | 'member') =>
+      (await fixture.get(organization, actor).expect(200)).body as {
+        totalRequests: number;
+        meanSeconds: number | null;
+      };
+    const ownerTotals = await totals('owner');
+    const viewerTotals = await totals('environmentViewer');
+    expect(ownerTotals.totalRequests).toBeGreaterThan(viewerTotals.totalRequests);
+    expect(viewerTotals.totalRequests).toBeGreaterThan(0);
+    expect(viewerTotals.meanSeconds).not.toBeNull();
+    expect(await totals('member')).toMatchObject({ totalRequests: 0, meanSeconds: null });
     await fixture.get(organization, 'outsider').expect(404);
   });
 });

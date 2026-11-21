@@ -58,6 +58,18 @@ export class VictoriaMetricsStore implements MetricsStore {
     url.searchParams.set('start', String(Math.floor(start.getTime() / 1000)));
     url.searchParams.set('end', String(Math.floor(end.getTime() / 1000)));
     url.searchParams.set('step', `${String(stepSeconds)}s`);
+    return parseMatrix(await this.read(url));
+  }
+
+  async queryInstant(query: string, at: Date): Promise<Series[]> {
+    const url = new URL('/api/v1/query', this.base);
+    url.searchParams.set('query', query);
+    url.searchParams.set('time', String(Math.floor(at.getTime() / 1000)));
+    return parseMatrix(await this.read(url));
+  }
+
+  /** A query's answer, read within its bound; any failure is a 503. */
+  private async read(url: URL): Promise<unknown> {
     const response = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS) }).catch(() => {
       throw unavailable();
     });
@@ -69,18 +81,32 @@ export class VictoriaMetricsStore implements MetricsStore {
       throw unavailable();
     });
     try {
-      return parseMatrix(JSON.parse(text) as unknown);
+      return JSON.parse(text) as unknown;
     } catch {
       throw unavailable();
     }
   }
 }
 
-/** The `matrix` result of a range query, with every value checked; anything else is empty. */
+/**
+ * The `matrix` result of a range query, or the `vector` result of an instant query as series of one
+ * point, with every value checked; anything else is empty.
+ */
 export function parseMatrix(answer: unknown): Series[] {
   if (!isRecord(answer) || answer['status'] !== 'success' || !isRecord(answer['data'])) return [];
   const data = answer['data'];
-  if (data['resultType'] !== 'matrix' || !Array.isArray(data['result'])) return [];
+  if (!Array.isArray(data['result'])) return [];
+  if (data['resultType'] === 'vector')
+    return parseMatrix({
+      status: 'success',
+      data: {
+        resultType: 'matrix',
+        result: (data['result'] as unknown[]).map((item) =>
+          isRecord(item) ? { metric: item['metric'], values: [item['value']] } : item,
+        ),
+      },
+    });
+  if (data['resultType'] !== 'matrix') return [];
   const series: Series[] = [];
   for (const item of data['result'] as unknown[]) {
     if (!isRecord(item) || !isRecord(item['metric']) || !Array.isArray(item['values'])) continue;
