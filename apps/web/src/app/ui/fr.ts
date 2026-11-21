@@ -1764,6 +1764,8 @@ export const FR: Readonly<Record<string, string>> = {
   'Sessions could not be read. Reload the page to try again.':
     'Les sessions n’ont pas pu être lues. Rechargez la page pour réessayer.',
   'Sign out {device}': 'Déconnecter {device}',
+  'The session could not be signed out. Try again.':
+    "La session n'a pas pu être déconnectée. Réessayez.",
   'This device': 'Cet appareil',
   'Unknown device': 'Appareil inconnu',
   'Where your account is signed in. Signing out another session ends it at its next request.':

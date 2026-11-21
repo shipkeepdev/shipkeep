@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 
 import { I18n } from '../ui/i18n';
 
-import { IdentityApi, type IdentitySchema } from './identity-api';
+import { IdentityApi, IdentityRequestError, type IdentitySchema } from './identity-api';
 import { SessionsPanel } from './sessions-panel';
 
 type Session = IdentitySchema<'AccountSessionDto'>;
@@ -21,6 +21,15 @@ const session = (
   createdAt: at,
   lastSeenAt: at,
   expiresAt: '2026-11-22T10:00:00Z',
+});
+
+// The language is kept in localStorage: put it back, or later files read French.
+afterEach(() => {
+  try {
+    localStorage.removeItem('shipkeep-lang');
+  } catch {
+    // No storage: nothing was kept.
+  }
 });
 
 describe('sessions panel', () => {
@@ -66,6 +75,28 @@ describe('sessions panel', () => {
     fixture.detectChanges();
     expect(api.revokeSession).toHaveBeenCalledWith('phone');
     expect(rows()).toHaveLength(2);
+  });
+
+  it('reads the list again after a 404, and a failure never blocks the next sign-out', async () => {
+    const { api, fixture, element } = await render();
+    const signOut = async (index: number) => {
+      ([...element.querySelectorAll('li button')][index] as HTMLButtonElement).click();
+      await fixture.whenStable();
+      fixture.detectChanges();
+    };
+    // An earlier attempt ended the session but its answer was lost: the retry finds nothing.
+    api.revokeSession.mockRejectedValueOnce(new IdentityRequestError(404));
+    await signOut(0);
+    expect(element.querySelector('[role="alert"]')).toBeNull();
+    expect(api.sessions).toHaveBeenCalledTimes(2);
+    api.revokeSession.mockRejectedValueOnce(new IdentityRequestError(503));
+    await signOut(1);
+    expect(element.querySelector('[role="alert"]')?.textContent).toContain(
+      'could not be signed out',
+    );
+    await signOut(1);
+    expect(api.revokeSession).toHaveBeenCalledTimes(3);
+    expect(element.querySelector('[role="alert"]')).toBeNull();
   });
 
   it('writes the device in French', async () => {

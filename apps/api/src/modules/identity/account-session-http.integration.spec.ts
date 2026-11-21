@@ -11,6 +11,7 @@ import { integrationApp } from '../../testing/integration-app';
 
 import { PASSWORD_HASHER, type PasswordHashing } from './application/identity-ports';
 import { IDENTITY_STORE, type IdentityStore } from './application/identity-store';
+import { AccountSessionCommands } from './application/account-session-commands';
 import { SessionCommands } from './application/session-commands';
 import { cookiePolicy } from './interface/session-http';
 
@@ -113,6 +114,28 @@ describe('account sessions HTTP acceptance', () => {
     expect(audited).toHaveLength(1);
     // An ended session is gone: a second revocation finds nothing.
     await revoke(laptop, other.id).expect(404);
+
+    // A session idle past the timeout no longer signs anything in: at that time it is neither
+    // listed nor ended, even before its expiry.
+    await signIn(email, 'Mozilla/5.0 (X11; Linux x86_64) Chrome/131.0 Safari/537.36');
+    const user = await fixture.app.get<IdentityStore>(IDENTITY_STORE).findUserByEmail(email);
+    if (!user) throw new Error('missing account');
+    const context = {
+      userId: user.id,
+      securityVersion: 0,
+      ip: '203.0.113.7',
+      userAgent: 'fixture',
+    };
+    const commands = fixture.app.get(AccountSessionCommands);
+    const idleSince = new Date(Date.now() + 12 * 60 * 60 * 1000 + 60_000);
+    const live = await commands.list(context, current.id);
+    const tablet = live.find((item) => !item.current);
+    if (!tablet) throw new Error('missing session');
+    expect(await commands.list(context, current.id, idleSince)).toEqual([]);
+    await expect(commands.revoke(context, current.id, tablet.id, idleSince)).rejects.toThrow(
+      'session not found',
+    );
+    await revoke(laptop, tablet.id).expect(204);
   });
 
   it("never lists nor ends another account's session, and needs the CSRF proof", async () => {

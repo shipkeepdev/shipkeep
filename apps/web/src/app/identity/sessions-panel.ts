@@ -3,8 +3,7 @@ import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/cor
 import { shortDate } from '../dashboard/format';
 import { I18n, T } from '../ui/i18n';
 
-import { IdentityApi, type IdentitySchema } from './identity-api';
-import { MutationRunner } from './mutation-runner';
+import { IdentityApi, IdentityRequestError, type IdentitySchema } from './identity-api';
 
 type Session = IdentitySchema<'AccountSessionDto'>;
 
@@ -15,7 +14,6 @@ type Session = IdentitySchema<'AccountSessionDto'>;
 @Component({
   selector: 'sk-sessions-panel',
   imports: [T],
-  providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-3">
@@ -27,8 +25,8 @@ type Session = IdentitySchema<'AccountSessionDto'>;
           }}
         </p>
       </div>
-      @if (runner.problem(); as problem) {
-        <div class="alert" role="alert">{{ problem | t }}</div>
+      @if (problem(); as message) {
+        <div class="alert" role="alert">{{ message | t }}</div>
       }
       @switch (state()) {
         @case ('loading') {
@@ -62,7 +60,7 @@ type Session = IdentitySchema<'AccountSessionDto'>;
                   <button
                     type="button"
                     class="btn btn-sm"
-                    [disabled]="runner.busy() || !!runner.cooldown()"
+                    [disabled]="busy()"
                     [attr.aria-label]="i18n.t('Sign out {device}', { device: device(s) })"
                     (click)="revoke(s)"
                   >
@@ -79,10 +77,13 @@ type Session = IdentitySchema<'AccountSessionDto'>;
 })
 export class SessionsPanel {
   private readonly api = inject(IdentityApi);
-  protected readonly runner = inject(MutationRunner);
   protected readonly i18n = inject(I18n);
   protected readonly state = signal<'loading' | 'failed' | 'ready'>('loading');
   protected readonly sessions = signal<readonly Session[]>([]);
+  protected readonly busy = signal(false);
+  protected readonly problem = signal<string | null>(null);
+  /** Only the latest load may answer: an older list never replaces a newer one. */
+  #revision = 0;
 
   constructor() {
     void this.load();
@@ -99,19 +100,35 @@ export class SessionsPanel {
     return shortDate(at);
   }
 
+  /**
+   * Ends another session. The call sends no idempotency key, so nothing ties a later click to
+   * an earlier attempt: a failure only says so, and a 404 means the session is already ended
+   * (by an earlier attempt whose answer was lost). The list is read again either way.
+   */
   protected async revoke(session: Session): Promise<void> {
-    const outcome = await this.runner.run({ revokeSession: session.id }, () =>
-      this.api.revokeSession(session.id),
-    );
-    if (outcome.ok) await this.load();
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.problem.set(null);
+    try {
+      await this.api.revokeSession(session.id);
+    } catch (error) {
+      if (!(error instanceof IdentityRequestError && error.status === 404))
+        this.problem.set('The session could not be signed out. Try again.');
+    } finally {
+      this.busy.set(false);
+    }
+    await this.load();
   }
 
   private async load(): Promise<void> {
+    const revision = ++this.#revision;
     try {
-      this.sessions.set(await this.api.sessions());
+      const sessions = await this.api.sessions();
+      if (revision !== this.#revision) return;
+      this.sessions.set(sessions);
       this.state.set('ready');
     } catch {
-      this.state.set('failed');
+      if (revision === this.#revision) this.state.set('failed');
     }
   }
 }

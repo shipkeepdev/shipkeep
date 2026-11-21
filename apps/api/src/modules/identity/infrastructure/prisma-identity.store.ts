@@ -166,7 +166,14 @@ export class PrismaIdentityStore implements IdentityStore {
 
   async revokeSessionById(userId: string, id: string, now: Date): Promise<boolean> {
     const result = await this.database.client.userSession.updateMany({
-      where: { userId, id, revokedAt: null, expiresAt: { gt: now } },
+      // The same live-session tests as the list: an idle session no longer signs anything in.
+      where: {
+        userId,
+        id,
+        revokedAt: null,
+        expiresAt: { gt: now },
+        lastSeenAt: { gt: new Date(now.getTime() - SESSION_IDLE_MS) },
+      },
       data: { revokedAt: now, updatedAt: now },
     });
     return result.count === 1;
