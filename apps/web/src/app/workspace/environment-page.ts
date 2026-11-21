@@ -17,9 +17,9 @@ import { PageCrumbs } from '../dashboard/page-crumbs';
 import { Icon } from '../shell/icon';
 import { ShellContext } from '../shell/shell-context';
 import { T } from '../ui/i18n';
-import { Notice } from '../ui/notice';
 import { type Tab, Tabs } from '../shell/tabs';
 
+import { EnvironmentClone } from './environment-clone';
 import { EnvironmentSettings } from './environment-settings';
 import { type Environment, WorkspaceApi } from './workspace-api';
 
@@ -29,6 +29,7 @@ import { type Environment, WorkspaceApi } from './workspace-api';
   imports: [
     ApplicationsPanel,
     BindingsPanel,
+    EnvironmentClone,
     EnvironmentSettings,
     Icon,
     RouterLink,
@@ -60,7 +61,13 @@ import { type Environment, WorkspaceApi } from './workspace-api';
           </div>
         </div>
         <div class="flex flex-wrap gap-2.5">
-          <button type="button" class="btn" (click)="notice.notYet('Clone')">
+          <button
+            type="button"
+            class="btn"
+            [attr.aria-expanded]="cloning()"
+            [disabled]="!environment()"
+            (click)="cloning.set(!cloning())"
+          >
             <sk-icon name="copy" />{{ 'Clone' | t }}
           </button>
           <button type="button" class="btn" (click)="tab.set('secrets')">
@@ -74,6 +81,13 @@ import { type Environment, WorkspaceApi } from './workspace-api';
           >
         </div>
       </div>
+      @if (cloning() && environment(); as current) {
+        <sk-environment-clone
+          [environment]="ref()"
+          [source]="current.name"
+          (cancelled)="cloning.set(false)"
+        />
+      }
       @if (missing()) {
         <div class="alert" role="alert">{{ missing() | t }}</div>
       } @else if (environment(); as current) {
@@ -121,6 +135,7 @@ export class EnvironmentPage {
   private readonly api = inject(WorkspaceApi);
   protected readonly shell = inject(ShellContext);
   protected readonly tab = signal('applications');
+  protected readonly cloning = signal(false);
   protected readonly tabs: readonly Tab[] = [
     { id: 'applications', label: 'Resources', icon: 'apps' },
     { id: 'secrets', label: 'Variables and secrets', icon: 'key' },
@@ -142,7 +157,6 @@ export class EnvironmentPage {
   }));
   protected readonly missing = signal<string | null>(null);
 
-  protected readonly notice = inject(Notice);
   private readonly crumbs = inject(PageCrumbs);
 
   constructor() {
