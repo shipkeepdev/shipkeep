@@ -1,5 +1,5 @@
 <p align="center">
-  <a href="https://shipkeep.vercel.app"><img src="docs/assets/readme-banner.jpg" alt="Shipkeep: keep the keys. Your cloud, on your servers." width="100%"></a>
+  <a href="https://shipkeep.vercel.app"><img src="docs/assets/readme-banner.jpg" alt="Shipkeep: your servers, your keys. The open source PaaS that deploys to your machines, without a root key in a panel." width="100%"></a>
 </p>
 
 <p align="center">
