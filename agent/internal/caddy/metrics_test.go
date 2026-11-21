@@ -134,6 +134,8 @@ func TestKeepsPerHostMetricsOffForUnboundedRoutes(t *testing.T) {
 		"a wildcard":    {ID: RouteID("wild"), Match: []Match{HostMatch([]string{"*.example.com"}, HTTPS)}},
 		"no matcher":    {ID: "fallback"},
 		"no host":       {ID: "hostless", Match: []Match{HostMatch(nil, HTTPS)}},
+		"a placeholder": {ID: "echo", Match: []Match{HostMatch([]string{"a.example.com", "{http.request.host}"}, HTTPS)}},
+		"an empty host": {ID: "empty", Match: []Match{HostMatch([]string{""}, HTTPS)}},
 	} {
 		admin := &metricsAdmin{settings: `{"otlp":true,"per_host":true}`}
 		client := metricsClient(t, admin)
