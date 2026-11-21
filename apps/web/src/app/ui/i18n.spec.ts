@@ -2,6 +2,15 @@ import { TestBed } from '@angular/core/testing';
 
 import { Count, I18n } from './i18n';
 
+// The language is kept in localStorage: put it back, or later files read French.
+afterEach(() => {
+  try {
+    localStorage.removeItem('shipkeep-lang');
+  } catch {
+    // No storage: nothing was kept.
+  }
+});
+
 describe('I18n.count', () => {
   it('gives each count the form of its language, and a dash to an unknown one', () => {
     const i18n = TestBed.inject(I18n);

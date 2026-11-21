@@ -7,6 +7,7 @@ import { TenantAccessModule } from '../organizations/tenant-access.module';
 
 import { AccountCommands } from './application/account-commands';
 import { AccountMutationAuthority } from './application/account-mutation-authority';
+import { AccountSessionCommands } from './application/account-session-commands';
 import { ApiTokenCommands } from './application/api-token-commands';
 import { ProjectApiTokenCommands } from './application/project-api-token-commands';
 import { ProjectApiTokenController } from './interface/project-api-token.controller';
@@ -24,6 +25,7 @@ import { MFA_CRYPTO } from './application/mfa-crypto';
 import { MfaCommands } from './application/mfa-commands';
 import { MfaQuery } from './application/mfa-query';
 import { MfaController } from './interface/mfa.controller';
+import { AccountSessionController } from './interface/account-session.controller';
 import { ApiTokenController } from './interface/api-token.controller';
 import { MfaProof } from './application/mfa-proof';
 import { MFA_STORE } from './application/mfa-store';
@@ -44,10 +46,17 @@ import { IdentityRateGuard } from './interface/identity-rate.guard';
 
 @Module({
   imports: [JobsModule, TenantAccessModule],
-  controllers: [IdentityController, MfaController, ApiTokenController, ProjectApiTokenController],
+  controllers: [
+    IdentityController,
+    MfaController,
+    ApiTokenController,
+    ProjectApiTokenController,
+    AccountSessionController,
+  ],
   providers: [
     AccountCommands,
     AccountMutationAuthority,
+    AccountSessionCommands,
     ApiTokenCommands,
     ProjectApiTokenCommands,
     ApiTokenAuthentication,
