@@ -26,7 +26,7 @@ describe('App', () => {
     await TestBed.inject(Router).navigateByUrl('/auth/login');
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('header a')?.textContent).toContain('shipkeep');
+    expect(compiled.querySelector('header a')?.textContent).toContain('Shipkeep');
     expect(compiled.querySelector('h1')?.textContent).toContain('Welcome back');
     expect(compiled.querySelector('main')?.id).toBe('main-content');
   });
