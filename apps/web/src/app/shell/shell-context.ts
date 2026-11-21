@@ -45,8 +45,8 @@ export class ShellContext {
   readonly projects = signal<readonly ShellProject[]>([]);
   readonly nodes = signal<readonly FleetNode[] | null>(null);
   readonly members = signal<number | null>(null);
-  /** User id → email, to name the people in audit trails. */
-  readonly emails = signal<ReadonlyMap<string, string>>(new Map());
+  /** User id → display name, or email without one (#251): names people in audit trails. */
+  readonly names = signal<ReadonlyMap<string, string>>(new Map());
   readonly role = signal<OrganizationRole | null>(null);
   readonly mfa = signal<boolean | null>(null);
   readonly version = signal<string | null>(null);
@@ -113,7 +113,9 @@ export class ShellContext {
     if (!current()) return;
     this.nodes.set(nodes);
     this.members.set(members?.items ? members.items.length : null);
-    this.emails.set(new Map((members?.items ?? []).map((m) => [m.userId, m.email])));
+    this.names.set(
+      new Map((members?.items ?? []).map((m) => [m.userId, m.displayName ?? m.email])),
+    );
     this.role.set(members?.items.find((m) => m.userId === profile?.userId)?.orgRole ?? null);
   }
 

@@ -296,10 +296,9 @@ const ROLE_CELL: Record<string, { icon: IconName; color: string }> = {
                   >
                 }
                 @for (r of matrix().rows; track r.email) {
-                  <span
-                    class="truncate border-b border-line2 px-3 py-2.5 text-fg2"
-                    [title]="r.email"
-                    >{{ r.name }}</span
+                  <span class="min-w-0 border-b border-line2 px-3 py-2"
+                    ><span class="block truncate text-fg2">{{ r.name }}</span
+                    ><span class="block truncate text-[11.5px] text-dim">{{ r.email }}</span></span
                   >
                   @for (c of r.cells; track $index) {
                     <span

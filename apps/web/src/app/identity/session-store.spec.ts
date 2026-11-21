@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { IdentityApi, IdentityRequestError } from './identity-api';
+import { IdentityApi, IdentityRequestError, type SessionProfile } from './identity-api';
 import { SessionStore } from './session-store';
 
 describe('session state', () => {
@@ -14,6 +14,7 @@ describe('session state', () => {
     session: vi.fn<IdentityApi['session']>(),
     login: vi.fn<IdentityApi['login']>(),
     logout: vi.fn<IdentityApi['logout']>(),
+    setDisplayName: vi.fn<IdentityApi['setDisplayName']>(),
   };
   let store: SessionStore;
   beforeEach(() => {
@@ -54,6 +55,22 @@ describe('session state', () => {
     await store.logout('request-key');
     resolve?.(profile);
     await loading;
+    expect(store.state()).toBe('anonymous');
+    expect(store.profile()).toBeNull();
+  });
+  it('never lets a late name change restore a signed-out session (#251)', async () => {
+    store.accept(profile);
+    let resolve: ((value: SessionProfile) => void) | undefined;
+    api.setDisplayName.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const renaming = store.setDisplayName('Ada');
+    api.logout.mockResolvedValue();
+    await store.logout('request-key');
+    resolve?.({ ...profile, displayName: 'Ada' });
+    await renaming;
     expect(store.state()).toBe('anonymous');
     expect(store.profile()).toBeNull();
   });

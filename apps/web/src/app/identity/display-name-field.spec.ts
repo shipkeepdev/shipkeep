@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { I18n } from '../ui/i18n';
 
 import { DisplayNameField } from './display-name-field';
-import { IdentityApi, IdentityRequestError } from './identity-api';
+import { IdentityApi, IdentityRequestError, type SessionProfile } from './identity-api';
 import { SessionStore } from './session-store';
 
 describe('display name field', () => {
@@ -38,7 +38,7 @@ describe('display name field', () => {
       await fixture.whenStable();
       fixture.detectChanges();
     };
-    return { api, session, element, type, submit };
+    return { api, session, fixture, element, type, submit };
   }
 
   it('saves a trimmed name, and the session follows', async () => {
@@ -49,6 +49,35 @@ describe('display name field', () => {
     expect(api.setDisplayName).toHaveBeenCalledWith('Ada Lovelace');
     expect(session.profile()?.displayName).toBe('Ada Lovelace');
     expect(element.textContent).toContain('Saved.');
+  });
+
+  it('counts 64 characters as the server does, not UTF-16 units', async () => {
+    const { element, type } = await render();
+    const button = () => element.querySelector('button') as HTMLButtonElement;
+    // 33 letters outside the basic plane: 66 UTF-16 units, 33 characters.
+    type('𝒜'.repeat(33));
+    expect(button().disabled).toBe(false);
+    type('a'.repeat(65));
+    expect(button().disabled).toBe(true);
+    expect(element.textContent).toContain('at most 64 characters');
+    type(`  ${'a'.repeat(64)}  `);
+    expect(button().disabled).toBe(false);
+  });
+
+  it('holds the field while a save is pending, so a later edit is not overwritten', async () => {
+    const { api, fixture, element, type, submit } = await render();
+    let resolve: ((value: SessionProfile) => void) | undefined;
+    api.setDisplayName.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    type('Ada');
+    const saving = submit();
+    fixture.detectChanges();
+    expect((element.querySelector('input') as HTMLInputElement).disabled).toBe(true);
+    resolve?.({ ...profile, displayName: 'Ada' });
+    await saving;
   });
 
   it('removes the name when the field is emptied, and says why a name is refused', async () => {

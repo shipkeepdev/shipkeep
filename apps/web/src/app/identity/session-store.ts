@@ -66,6 +66,15 @@ export class SessionStore {
       throw error;
     }
   }
+  /**
+   * Sets or removes (null) the account's name (#251). The answer is applied only if no login,
+   * logout or other session change happened meanwhile: a logout always wins.
+   */
+  async setDisplayName(name: string | null): Promise<void> {
+    const revision = this.revision;
+    const profile = await this.api.setDisplayName(name);
+    if (revision === this.revision) this.accept(profile);
+  }
   /** Security responses may also contain private grants. Retain only these public fields. */
   accept(profile: SessionProfile): void {
     ++this.revision;

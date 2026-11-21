@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@ang
 
 import { T } from '../ui/i18n';
 
-import { IdentityApi, IdentityRequestError } from './identity-api';
+import { IdentityRequestError } from './identity-api';
 import { SessionStore } from './session-store';
 
 /**
@@ -19,23 +19,27 @@ import { SessionStore } from './session-store';
       <input
         id="display-name"
         class="input min-w-0 flex-1"
-        maxlength="64"
+        maxlength="256"
+        [disabled]="busy()"
         autocomplete="name"
         [placeholder]="'Your name' | t"
         [value]="draft()"
         (input)="edit($event)"
       />
-      <button class="btn btn-sm" type="submit" [disabled]="busy() || !changed()">
+      <button class="btn btn-sm" type="submit" [disabled]="busy() || !changed() || tooLong()">
         {{ (busy() ? 'Saving…' : 'Save') | t }}
       </button>
-      @if (message(); as text) {
+      @if (tooLong()) {
+        <span class="basis-full text-[12px] text-rose" role="status">{{
+          'A name has at most 64 characters, and no control character.' | t
+        }}</span>
+      } @else if (message(); as text) {
         <span class="basis-full text-[12px] text-mute" role="status">{{ text | t }}</span>
       }
     </form>
   `,
 })
 export class DisplayNameField {
-  private readonly api = inject(IdentityApi);
   private readonly session = inject(SessionStore);
   protected readonly draft = signal('');
   protected readonly busy = signal(false);
@@ -55,6 +59,11 @@ export class DisplayNameField {
     return this.draft().trim() !== this.saved;
   }
 
+  /** The server's limit: 64 code points once normalized, not 64 UTF-16 units. */
+  protected tooLong(): boolean {
+    return Array.from(this.draft().normalize('NFC').trim().replace(/\s+/g, ' ')).length > 64;
+  }
+
   protected edit(event: Event): void {
     this.draft.set((event.target as HTMLInputElement).value);
     this.message.set(null);
@@ -62,12 +71,12 @@ export class DisplayNameField {
 
   protected async save(event: Event): Promise<void> {
     event.preventDefault();
-    if (this.busy() || !this.changed()) return;
+    if (this.busy() || !this.changed() || this.tooLong()) return;
     this.busy.set(true);
     this.message.set(null);
     try {
       const name = this.draft().trim();
-      this.session.accept(await this.api.setDisplayName(name === '' ? null : name));
+      await this.session.setDisplayName(name === '' ? null : name);
       this.message.set('Saved.');
     } catch (error) {
       this.message.set(
