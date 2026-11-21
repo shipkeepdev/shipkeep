@@ -27,7 +27,7 @@ import { PageCrumbs } from '../dashboard/page-crumbs';
 import { PreviewPill } from '../dashboard/screen-view';
 import { Icon } from '../shell/icon';
 import { Brand } from '../ui/brand';
-import { I18n, T } from '../ui/i18n';
+import { Count, I18n, T } from '../ui/i18n';
 import { WorkspaceApi, type Environment } from '../workspace/workspace-api';
 
 import { IdentityRequestError } from '../identity/identity-api';
@@ -95,6 +95,7 @@ const LIVE_POLL_MS = 15_000;
     BlockView,
     Brand,
     ConfigurationEditor,
+    Count,
     Icon,
     MetricChart,
     PreviewPill,
@@ -139,7 +140,11 @@ const LIVE_POLL_MS = 15_000;
               >
             }
             <span>{{
-              '{n} of {m} replicas running' | t: { n: running(), m: replicas.items().length }
+              replicas.items().length
+                | count
+                  : '{running} of {n} replica running'
+                  : '{running} of {n} replicas running'
+                  : { running: running() }
             }}</span>
           </div>
         </div>

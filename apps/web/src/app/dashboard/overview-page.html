@@ -107,10 +107,10 @@
       }
       <div class="border-t border-line pt-3 text-[11.5px] text-dim">
         {{
-          (shell.connected() === 1
-            ? '{n} agent connected · outbound mTLS, no inbound port'
-            : '{n} agents connected · outbound mTLS, no inbound port'
-          ) | t: { n: shell.connected() ?? 0 }
+          shell.connected() ?? 0
+            | count
+              : '{n} agent connected · outbound mTLS, no inbound port'
+              : '{n} agents connected · outbound mTLS, no inbound port'
         }}
       </div>
     </section>

@@ -52,12 +52,17 @@ export class I18n {
 
   /**
    * A count with the form its language gives it: "1 project" and "0 projects" in English, "0 projet"
-   * and "2 projets" in French. `one` and `other` are English source texts with an `{n}`; an unknown
-   * count (null) shows a dash with the plural form.
+   * and "2 projets" in French. `one` and `other` are English source texts with an `{n}`, and may use
+   * other `values`; an unknown count (null) shows a dash with the plural form.
    */
-  count(n: number | null, one: string, other: string): string {
+  count(
+    n: number | null,
+    one: string,
+    other: string,
+    values?: Readonly<Record<string, string | number>>,
+  ): string {
     const single = n !== null && new Intl.PluralRules(this.language()).select(n) === 'one';
-    return this.t(single ? one : other, { n: n ?? '—' });
+    return this.t(single ? one : other, { ...values, n: n ?? '—' });
   }
 
   /** Numbers in the interface language: 5,920 in English, 5 920 in French. */
@@ -78,5 +83,22 @@ export class T implements PipeTransform {
     values?: Readonly<Record<string, string | number>>,
   ): string {
     return text ? this.i18n.t(text, values) : '';
+  }
+}
+
+/**
+ * `{{ n | count: '{n} project' : '{n} projects' }}`: the form the interface language gives `n`.
+ * Not pure: it reads the language signal, so a switch re-renders.
+ */
+@Pipe({ name: 'count', pure: false })
+export class Count implements PipeTransform {
+  private readonly i18n = inject(I18n);
+  transform(
+    n: number | null | undefined,
+    one: string,
+    other: string,
+    values?: Readonly<Record<string, string | number>>,
+  ): string {
+    return this.i18n.count(n ?? null, one, other, values);
   }
 }

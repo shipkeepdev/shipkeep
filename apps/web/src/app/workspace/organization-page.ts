@@ -19,7 +19,7 @@ import { IdentityRequestError } from '../identity/identity-api';
 import { Icon } from '../shell/icon';
 import { type IconName } from '../shell/icons';
 import { ShellContext } from '../shell/shell-context';
-import { I18n, T } from '../ui/i18n';
+import { Count, I18n, T } from '../ui/i18n';
 import { OrganizationSettings } from './organization-settings';
 import { RegistryCredentials } from './registry-credentials';
 import { type Organization, WorkspaceApi } from './workspace-api';
@@ -48,7 +48,7 @@ const DANGER: Block = {
 /** 20 Organization: its name and identifier, members, and what can end it. */
 @Component({
   selector: 'sk-organization-page',
-  imports: [BlockView, Icon, OrganizationSettings, RegistryCredentials, RouterLink, T],
+  imports: [BlockView, Count, Icon, OrganizationSettings, RegistryCredentials, RouterLink, T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-[18px]">
@@ -94,8 +94,10 @@ const DANGER: Block = {
               <div class="note">
                 <sk-icon name="users" class="text-mute" />
                 <span>{{
-                  '{n} members. Add people, change roles and see project roles under Members & access.'
-                    | t: { n: shell.members() ?? '—' }
+                  shell.members()
+                    | count
+                      : '{n} member. Add people, change roles and see project roles under Members & access.'
+                      : '{n} members. Add people, change roles and see project roles under Members & access.'
                 }}</span>
               </div>
               <div>
