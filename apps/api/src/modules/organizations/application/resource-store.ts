@@ -30,6 +30,7 @@ export interface ResourceStore {
     now: Date,
   ): Promise<ProjectRecord>;
   createEnvironment(record: EnvironmentRecord): Promise<EnvironmentRecord>;
+  findEnvironment(target: EnvironmentTarget): Promise<EnvironmentRecord | undefined>;
   updateEnvironment(
     target: EnvironmentTarget,
     settings: EnvironmentSettings,

@@ -5,6 +5,7 @@ import {
   assertDomainsAvailable,
   assertSameName,
   canonicalJson,
+  clonedConfig,
   type ApplicationHost,
   domainDns,
   domainMatch,
@@ -94,6 +95,26 @@ describe('applicationConfig', () => {
     expect(() => {
       assertSameName({ name: 'billing-web' }, next);
     }).not.toThrow();
+  });
+});
+
+describe('clonedConfig (issue #257)', () => {
+  it('keeps the configuration and its secret names, and leaves the domains behind', () => {
+    const original = applicationConfig(
+      image({ domains: ['billing.example.com'], secrets: ['DATABASE_URL'], env: { MODE: 'eu' } }),
+    );
+    const copy = clonedConfig(original.config);
+    expect(copy.name).toBe('billing-api');
+    expect(copy.config.domains).toBeUndefined();
+    expect(copy.config.secrets).toEqual(['DATABASE_URL']);
+    expect(copy.config.env).toEqual({ MODE: 'eu' });
+    expect(copy.canonical).toBe(canonicalJson(copy.config));
+    expect(copy.canonical).not.toContain('billing.example.com');
+  });
+
+  it('copies a configuration without domains unchanged', () => {
+    const original = applicationConfig(image());
+    expect(clonedConfig(original.config).canonical).toBe(original.canonical);
   });
 });
 
