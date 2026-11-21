@@ -14,6 +14,7 @@ import { type ConfigIssue, parseShipkeepConfig } from '@shipkeep/config-schema';
 import { deploymentStatus } from '../dashboard/format';
 import { MutationRunner } from '../identity/mutation-runner';
 import { Icon } from '../shell/icon';
+import { IssueText } from '../ui/config-issue';
 import { T } from '../ui/i18n';
 import { Collection } from '../workspace/collection';
 import { recoverOnEdit } from '../workspace/form-recovery';
@@ -42,7 +43,7 @@ run:
 /** Applications of an environment, and creating one from a shipkeep.yml document. */
 @Component({
   selector: 'sk-applications-panel',
-  imports: [Icon, ReactiveFormsModule, RouterLink, T],
+  imports: [Icon, IssueText, ReactiveFormsModule, RouterLink, T],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -152,7 +153,8 @@ run:
               <ul class="m-0 mt-1 list-disc pl-5">
                 @for (issue of issues(); track $index) {
                   <li>
-                    <code class="font-mono">{{ issue.path || '/' }}</code> {{ issue.message }}
+                    <code class="font-mono">{{ issue.path || '/' }}</code>
+                    {{ issue.message | issue }}
                   </li>
                 }
               </ul>
