@@ -153,14 +153,17 @@ export class NodeMetricsPanel {
       this.failed.set(false);
       if (!nodeId) return;
       let stale = false;
+      // Only the latest request may answer: a slow older one never replaces a newer answer.
+      let latest = 0;
       const load = async () => {
+        const request = ++latest;
         try {
           const answer = await this.api.nodeMetrics(organizationId, nodeId, range);
-          if (stale) return;
+          if (stale || request !== latest) return;
           this.metrics.set(answer);
           this.failed.set(false);
         } catch {
-          if (!stale) this.failed.set(true);
+          if (!stale && request === latest) this.failed.set(true);
         }
       };
       void load();
