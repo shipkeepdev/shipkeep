@@ -340,8 +340,8 @@ Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/
 - [ ] **M6.1 Log shipping and search** (A + C + W). Depends: M1.4
   - Agent ships logs to VictoriaLogs with labels; UI live tail and search; 30-day retention.
   - `ExecStream`: typed, RBAC-checked and audited container exec sessions (rule 3); the gateway currently answers `Unimplemented`.
-- [ ] **M6.2 Metrics** (A + C + W). Depends: M1.4
-  - Container, node and Caddy metrics to VictoriaMetrics; charts in UI.
+- [x] **M6.2 Metrics** (A + C + W). Depends: M1.4
+  - Container, node and Caddy metrics to VictoriaMetrics; charts in UI. Done through the control plane (ADR 0024): application, server and Overview charts.
 - [ ] **M6.3 Alerts and notifications** (C + W). Depends: M6.1, M6.2
   - Rule types from SPEC 12; channels email, Slack, Discord, Telegram, webhook.
   - Acceptance: each rule type fires in an integration test and delivers to a test channel.
