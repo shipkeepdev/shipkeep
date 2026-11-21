@@ -64,6 +64,7 @@ func TestSkipsCaddyLinesItCannotRead(t *testing.T) {
 		"three fields":          `caddy_http_request_duration_seconds_count{code="200",host="a.example.com"} 5 1 2`,
 		"a long line":           `caddy_http_request_duration_seconds_count{code="200",host="a.example.com",x="` + strings.Repeat("x", 5000) + `"} 5`,
 		"a bad label name":      `caddy_http_request_duration_seconds_count{1code="200",host="a.example.com"} 5`,
+		"caddy's catch-all":     `caddy_http_request_duration_seconds_count{code="200",host="_other"} 5`,
 	} {
 		hosts := hostTotals([]byte(line + "\n" + good + "\n"))
 		if len(hosts) != 1 || hosts[0].GetHost() != "ok.example.com" || hosts[0].GetResponses_2Xx() != 5 {
