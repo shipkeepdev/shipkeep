@@ -51,6 +51,10 @@ const workload = { projectId: PROJECT, environmentId: ENV, applicationId: APP };
 describe('validMeasures', () => {
   it('accepts a report within its bounds', () => {
     expect(validMeasures(measures())).toBeDefined();
+    // A counter only grows: past a petabyte it is still a real measure.
+    expect(
+      validMeasures(measures({ node: { ...node, networkReceivedBytes: 1_000_000_000_000_001 } })),
+    ).toBeDefined();
     expect(validMeasures(measures({ node: undefined, containers: [], hosts: [] }))).toBeDefined();
   });
 
@@ -58,7 +62,12 @@ describe('validMeasures', () => {
     ['a negative value', measures({ node: { ...node, cpuSeconds: -1 } })],
     ['an infinite value', measures({ node: { ...node, memoryUsedBytes: Infinity } })],
     ['not a number', measures({ node: { ...node, diskUsedBytes: Number.NaN } })],
-    ['an absurd value', measures({ node: { ...node, networkSentBytes: 1e300 } })],
+    ['an absurd gauge', measures({ node: { ...node, memoryUsedBytes: 2e15 } })],
+    ['an absurd counter', measures({ node: { ...node, networkSentBytes: 1e300 } })],
+    [
+      'a counter past exact integers',
+      measures({ containers: [{ ...container, networkReceivedBytes: 2 ** 53 }] }),
+    ],
     [
       'a container name that is not Shipkeep',
       measures({ containers: [{ ...container, name: '../etc/passwd' }] }),
@@ -94,6 +103,7 @@ describe('samples', () => {
         environment_id: ENV,
         application_id: APP,
         replica: '1',
+        container: 'sk-shop-0123456789ab-r1-0',
       },
       value: 3.5,
     });
