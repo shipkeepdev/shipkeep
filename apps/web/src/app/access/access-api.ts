@@ -63,6 +63,20 @@ export class AccessApi extends WorkspaceApi {
       }),
     );
   }
+  /** The admin `membershipId` becomes an owner and the caller an admin (issue #255). */
+  async transferOwnership(
+    organizationId: string,
+    membershipId: string,
+    body: Proof,
+    key: string,
+  ): Promise<void> {
+    await this.required(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/members/{membershipId}/transfer-ownership',
+        { body, params: { ...this.mutation(key), path: { organizationId, membershipId } } },
+      ),
+    );
+  }
   projectTokens(
     organizationId: string,
     projectId: string,

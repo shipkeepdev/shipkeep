@@ -13,13 +13,12 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import { map } from 'rxjs';
 
-import { BlockView } from '../dashboard/block-view';
-import { type Block } from '../dashboard/screen-model';
 import { IdentityRequestError } from '../identity/identity-api';
 import { Icon } from '../shell/icon';
 import { type IconName } from '../shell/icons';
 import { ShellContext } from '../shell/shell-context';
 import { Count, I18n, T } from '../ui/i18n';
+import { OrganizationDanger } from './organization-danger';
 import { OrganizationSettings } from './organization-settings';
 import { RegistryCredentials } from './registry-credentials';
 import { type Organization, WorkspaceApi } from './workspace-api';
@@ -37,18 +36,18 @@ const SECTIONS: readonly OrgSection[] = [
   { k: 'audit', label: 'Audit log', icon: 'history' },
   { k: 'danger', label: 'Danger zone', icon: 'alert-triangle' },
 ];
-const DANGER: Block = {
-  type: 'danger',
-  items: [
-    ['Transfer ownership', 'Another admin becomes the owner.', 'Transfer'],
-    ['Delete the organization', 'Deletes projects, resources and linked servers.', 'Delete'],
-  ],
-};
-
 /** 20 Organization: its name and identifier, members, and what can end it. */
 @Component({
   selector: 'sk-organization-page',
-  imports: [BlockView, Count, Icon, OrganizationSettings, RegistryCredentials, RouterLink, T],
+  imports: [
+    Count,
+    Icon,
+    OrganizationDanger,
+    OrganizationSettings,
+    RegistryCredentials,
+    RouterLink,
+    T,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="flex flex-col gap-[18px]">
@@ -130,7 +129,7 @@ const DANGER: Block = {
               </div>
             }
             @case ('danger') {
-              <sk-block [block]="danger" [organizationId]="organizationId()" />
+              <sk-organization-danger [organizationId]="organizationId()" />
             }
           }
         </div>
@@ -153,7 +152,6 @@ export class OrganizationPage {
   );
   readonly organizationId = input.required<string>();
   protected readonly sections = SECTIONS;
-  protected readonly danger = DANGER;
   protected readonly organization = signal<Organization | null>(null);
   protected readonly missing = signal<string | null>(null);
   private readonly query = toSignal(

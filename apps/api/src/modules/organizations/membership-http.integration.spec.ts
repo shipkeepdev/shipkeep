@@ -272,6 +272,62 @@ describe('membership mutations over HTTP', () => {
     await session(owner).expect(200);
   });
 
+  it('hands ownership to an admin in one change, and rotates both accounts', async () => {
+    const added = await post(owner, path(), {
+      email: subject.email,
+      role: 'member',
+      ...proof,
+    }).expect(201);
+    const membershipId = (added.body as MutationBody).membership?.id ?? '';
+    const own = { id: await ownMembership() };
+    await resetLimits();
+    // A plain member is not a transfer target: they become an admin first.
+    const refused = await post(owner, path(`/${membershipId}/transfer-ownership`), proof).expect(
+      409,
+    );
+    expect(refused.body).toMatchObject({ code: 'ownership_target_not_admin' });
+    await resetLimits();
+    await post(owner, path(`/${own.id}/transfer-ownership`), proof).expect(409);
+    await resetLimits();
+    await post(owner, path(`/${membershipId}/role`), { role: 'admin', ...proof }).expect(200);
+    // Their promotion ended their sessions: they sign in again before the transfer.
+    const again = await fixture.app.get(SessionCommands).login({
+      email: subject.email,
+      password,
+      ip: '127.0.0.1',
+      userAgent: 'Membership subject again',
+    });
+    const subjectBefore = `${cookiePolicy(origin).name}=${again.token.expose()}`;
+    await session({ ...subject, cookie: subjectBefore }).expect(200);
+    await resetLimits();
+
+    const previous = owner.cookie;
+    const moved = await post(owner, path(`/${membershipId}/transfer-ownership`), proof).expect(200);
+    expect((moved.body as MutationBody).membership).toMatchObject({
+      id: membershipId,
+      orgRole: 'owner',
+    });
+    expect((moved.body as MutationBody).session).toMatchObject({ userId: owner.context.userId });
+    acceptCookies(owner, moved);
+    await session({ ...owner, cookie: previous }).expect(401);
+    await session(owner).expect(200);
+    await session({ ...subject, cookie: subjectBefore }).expect(401);
+    const roles = await admin.query<{ id: string; org_role: string }>(
+      'SELECT id, org_role FROM memberships WHERE organization_id = $1 ORDER BY id',
+      [organizationId],
+    );
+    expect(Object.fromEntries(roles.rows.map((row) => [row.id, row.org_role]))).toEqual({
+      [membershipId]: 'owner',
+      [own.id]: 'admin',
+    });
+    expect(await audits('membership.role_changed', membershipId)).toBe(2);
+    expect(await audits('membership.role_changed', own.id)).toBe(1);
+
+    // The former owner, now an admin, cannot take ownership back.
+    await resetLimits();
+    await post(owner, path(`/${membershipId}/transfer-ownership`), proof).expect(404);
+  });
+
   it('removes a member, replays the removal and denies members without authority', async () => {
     const added = await post(owner, path(), {
       email: subject.email,

@@ -16,6 +16,7 @@ describe('resource mutation retry routes', () => {
     `${organization}/members`,
     `${organization}/members/${id}/role`,
     `${organization}/members/${id}/remove`,
+    `${organization}/members/${id}/transfer-ownership`,
     `${project}/bindings`,
     `${project}/bindings/${id}/remove`,
     `${environment}/bindings`,

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   canChangeMembership,
+  canTransferOwnership,
   ConflictError,
   createEvent,
   isTenantId,
@@ -15,6 +16,7 @@ import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import {
   AccountMutationAuthority,
   type AccountSubject,
+  type PrivilegeChange,
   type PrivilegeChangeResult,
 } from '../../identity/application/account-mutation-authority';
 import type { SecurityContext } from '../../identity/application/mfa-commands';
@@ -111,6 +113,46 @@ export class MembershipCommands {
     );
   }
 
+  /**
+   * Hands ownership to another admin: they become an owner and the caller an admin, in one
+   * transaction under one reauthentication. Both role changes are audited; the target's
+   * credentials are invalidated and the caller's rotated, as for any privilege change.
+   */
+  transferOwnership(
+    context: SecurityContext,
+    organizationId: string,
+    membershipId: string,
+    password: Secret,
+    factor: MfaProofInput,
+    now = new Date(),
+  ): Promise<PrivilegeChangeResult<MembershipRecord>> {
+    return this.change(
+      context,
+      organizationId,
+      membershipId,
+      password,
+      factor,
+      async (target, subject) => {
+        if (!target || !subject.active) throw new NotFoundError('resource');
+        const actor = await this.store.forUser(organizationId, context.userId);
+        if (!actor) throw new NotFoundError('resource');
+        if (!canTransferOwnership(actor.orgRole, target.orgRole, target.userId === actor.userId)) {
+          if (actor.orgRole !== 'owner') throw new NotFoundError('resource');
+          throw new ConflictError(
+            'ownership_target_not_admin',
+            'Ownership goes to another admin. Make this member an admin first.',
+          );
+        }
+        const promoted = await this.store.setRole(organizationId, target.id, 'owner', now);
+        await this.audit('role_changed', context, promoted, now, target.orgRole);
+        const demoted = await this.store.setRole(organizationId, actor.id, 'admin', now);
+        await this.audit('role_changed', context, demoted, now, actor.orgRole);
+        return { value: promoted, changed: true, actorChanged: true };
+      },
+      now,
+    );
+  }
+
   remove(
     context: SecurityContext,
     organizationId: string,
@@ -145,7 +187,7 @@ export class MembershipCommands {
     operation: (
       current: MembershipRecord | null,
       subject: AccountSubject,
-    ) => Promise<{ value: T; changed: boolean }>,
+    ) => Promise<PrivilegeChange<T>>,
     now: Date,
   ): Promise<PrivilegeChangeResult<T>> {
     if (!isTenantId(membershipId)) throw new NotFoundError('resource');

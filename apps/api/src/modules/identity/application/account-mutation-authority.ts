@@ -24,6 +24,13 @@ export interface AccountSubject {
   readonly email: string;
   readonly active: boolean;
 }
+/** What a privilege operation did. `actorChanged`: the actor's own role changed as well. */
+export interface PrivilegeChange<T> {
+  readonly value: T;
+  readonly changed: boolean;
+  readonly actorChanged?: boolean;
+}
+
 export interface PrivilegeChangeResult<T> {
   readonly value: T;
   readonly session?: SessionGrant;
@@ -127,7 +134,7 @@ export class AccountMutationAuthority {
     affectedUserId: string,
     password: Secret,
     factor: MfaProofInput,
-    operation: (account: AccountSubject) => Promise<{ value: T; changed: boolean }>,
+    operation: (account: AccountSubject) => Promise<PrivilegeChange<T>>,
     now = new Date(),
   ): Promise<PrivilegeChangeResult<T>> {
     if (!isTenantId(affectedUserId)) throw new AuthenticationError();
@@ -166,6 +173,9 @@ export class AccountMutationAuthority {
             now,
           ),
         ]);
+        // The actor's own privileges changed too (an ownership transfer): new credentials.
+        if (result.actorChanged)
+          return { value: result.value, session: await this.rotate(context, now) };
         return { value: result.value };
       });
     };

@@ -34,6 +34,7 @@ import {
   MembershipMutationDto,
   MembershipPathDto,
   RemoveMemberDto,
+  TransferOwnershipDto,
 } from './membership-mutation.dto';
 import { BrowserHeaders } from './resource-mutation';
 import { ResourceReplayInterceptor } from './resource-replay.interceptor';
@@ -91,6 +92,25 @@ export class MembershipMutationController {
       path.organizationId,
       path.membershipId,
       body.role,
+      new Secret(body.password),
+      factorInput(body),
+    );
+    return this.respond(result, response);
+  }
+
+  /** The target admin becomes an owner and the caller an admin; the caller's session rotates. */
+  @MemberMutation(':organizationId/members/:membershipId/transfer-ownership')
+  @ApiOkResponse({ type: MembershipMutationDto })
+  async transferOwnership(
+    @Req() request: IdentityRequest,
+    @Param() path: MembershipPathDto,
+    @Body() body: TransferOwnershipDto,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<MembershipMutationDto> {
+    const result = await this.commands.transferOwnership(
+      resourceContext(request),
+      path.organizationId,
+      path.membershipId,
       new Secret(body.password),
       factorInput(body),
     );
