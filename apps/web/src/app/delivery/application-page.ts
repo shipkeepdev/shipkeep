@@ -158,6 +158,17 @@ const LIVE_POLL_MS = 15_000;
             >
               <sk-icon name="x" />{{ 'Cancel deployment' | t }}
             </button>
+          } @else if (startable(); as start) {
+            <button
+              class="btn"
+              type="button"
+              [disabled]="runner.busy() || !!runner.cooldown()"
+              (click)="rollback(start.id)"
+            >
+              <sk-icon name="player-play" />{{
+                'Start {release}' | t: { release: start.releaseId.slice(0, 7) }
+              }}
+            </button>
           } @else if (previous(); as prev) {
             <button
               class="btn"
@@ -273,6 +284,8 @@ const LIVE_POLL_MS = 15_000;
                 [application]="current"
                 [running]="replicas.items().length > 0"
                 [deploying]="!!active()"
+                [startable]="!!startable()"
+                (start)="startAgain()"
                 (stopped)="refresh()"
                 (deleted)="leave()"
               />
@@ -745,6 +758,21 @@ export class ApplicationPage {
       };
     });
   });
+  /**
+   * After a stop, the deployment that ran the version the stop stopped: starting the application
+   * deploys that version again (SPEC 5.1, issue #256). Null while anything else serves.
+   */
+  protected readonly startable = computed(() => {
+    const latest = this.deployments.items().find((item) => item.state === 'succeeded');
+    if (latest?.stop !== true) return null;
+    return (
+      this.deployments
+        .items()
+        .find(
+          (item) => !item.stop && item.releaseId === latest.releaseId && this.canRollBack(item),
+        ) ?? null
+    );
+  });
   /** The version before the one serving now, offered as a one-click rollback. */
   protected readonly previous = computed(
     () => this.deployments.items().find((d) => this.canRollBack(d)) ?? null,
@@ -995,6 +1023,11 @@ export class ApplicationPage {
    */
   private again(): void {
     if (this.runner.restartRequired()) this.runner.reset();
+  }
+
+  protected async startAgain(): Promise<void> {
+    const start = this.startable();
+    if (start) await this.rollback(start.id);
   }
 
   protected async rollback(deploymentId: string): Promise<void> {
