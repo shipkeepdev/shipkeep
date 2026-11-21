@@ -7,6 +7,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, NavigationEnd, Router, RouterLink, RouterOutlet } from '@angular/router';
@@ -20,6 +21,7 @@ import { ShellContext } from '../shell/shell-context';
 import { Count, I18n, LANGUAGES, T } from '../ui/i18n';
 import { Notice } from '../ui/notice';
 import { CommandPalette, type PaletteEntry } from './command-palette';
+import { PaletteIndex } from './palette-index';
 import { type Crumb, PageCrumbs, RouteCrumbs } from './page-crumbs';
 import { VIEW_PATHS } from './views';
 
@@ -61,6 +63,11 @@ export class DashboardLayout {
   protected readonly menuOpen = signal(false);
   protected readonly orgMenuOpen = signal(false);
   protected readonly paletteOpen = signal(false);
+  private readonly index = inject(PaletteIndex);
+  /** Environments, applications, servers and members, read when the palette opens (#271). */
+  private readonly resources = signal<readonly PaletteEntry[]>([]);
+  protected readonly searching = signal(false);
+  #searches = 0;
   private readonly navigation = toSignal(
     this.router.events.pipe(filter((event) => event instanceof NavigationEnd)),
   );
@@ -126,10 +133,27 @@ export class DashboardLayout {
         link: ['/orgs', id, 'projects', project.id],
       })),
       { label: 'Profile', icon: 'user' as const, link: this.link('profile') },
+      ...this.resources(),
     ];
   });
 
   constructor() {
+    // Each opening reads what the account may see now; a closed palette keeps nothing.
+    effect(() => {
+      const open = this.paletteOpen();
+      const organizationId = this.organizationId();
+      const search = ++this.#searches;
+      untracked(() => {
+        this.resources.set([]);
+        this.searching.set(open && !!organizationId);
+      });
+      if (!open || !organizationId) return;
+      void this.index.load(organizationId).then((entries) => {
+        if (search !== this.#searches) return;
+        this.resources.set(entries);
+        this.searching.set(false);
+      });
+    });
     // Every navigation refreshes the frame, so a project created a moment ago appears at once.
     effect(() => {
       this.shell.url();

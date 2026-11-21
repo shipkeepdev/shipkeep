@@ -99,6 +99,8 @@ export const FR: Readonly<Record<string, string>> = {
     "La suppression d'une organisation n'est pas encore disponible.",
   'Deployments of this organization pull private images with the credentials stored for the registry of the image. A password is encrypted and never shown again: it can only be replaced.':
     "Les déploiements de cette organisation récupèrent les images privées avec les identifiants enregistrés pour le registre de l'image. Un mot de passe est chiffré et n'est plus jamais affiché : il peut seulement être remplacé.",
+  'Find a page, project, environment, application, server or member':
+    'Trouver une page, un projet, un environnement, une application, un serveur ou un membre',
   'Its administrator creates accounts and resets passwords, on the server that runs Shipkeep.':
     'Son administrateur crée les comptes et réinitialise les mots de passe, sur le serveur qui exécute Shipkeep.',
   'Keep them': 'Les garder',
@@ -129,6 +131,7 @@ export const FR: Readonly<Record<string, string>> = {
   Replace: 'Remplacer',
   'Replace the credentials of {name}': 'Remplacer les identifiants de {name}',
   'Save the credentials': 'Enregistrer les identifiants',
+  'Searching…': 'Recherche…',
   'The command checks the installer and agent checksums. The agent checks the fingerprint, enrolls, then deletes the token.':
     "La commande vérifie les sommes de contrôle de l'installeur et de l'agent. L'agent vérifie l'empreinte, s'enrôle, puis supprime le jeton.",
   'The members could not be read. Try again.': "Les membres n'ont pas pu être lus. Réessayez.",
