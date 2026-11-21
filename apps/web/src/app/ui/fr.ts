@@ -1766,6 +1766,11 @@ export const FR: Readonly<Record<string, string>> = {
   'Sign out {device}': 'Déconnecter {device}',
   'The session could not be signed out. Try again.':
     "La session n'a pas pu être déconnectée. Réessayez.",
+  'The other sessions could not be signed out. Try again.':
+    "Les autres sessions n'ont pas pu être déconnectées. Réessayez.",
+  'Sign out every other session': 'Déconnecter toutes les autres sessions',
+  'These are the 100 most recently active sessions.':
+    'Voici les 100 sessions actives le plus récemment.',
   'This device': 'Cet appareil',
   'Unknown device': 'Appareil inconnu',
   'Where your account is signed in. Signing out another session ends it at its next request.':

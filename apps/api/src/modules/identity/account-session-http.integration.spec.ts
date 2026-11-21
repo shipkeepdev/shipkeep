@@ -128,10 +128,10 @@ describe('account sessions HTTP acceptance', () => {
     };
     const commands = fixture.app.get(AccountSessionCommands);
     const idleSince = new Date(Date.now() + 12 * 60 * 60 * 1000 + 60_000);
-    const live = await commands.list(context, current.id);
+    const live = (await commands.list(context, current.id)).items;
     const tablet = live.find((item) => !item.current);
     if (!tablet) throw new Error('missing session');
-    expect(await commands.list(context, current.id, idleSince)).toEqual([]);
+    expect((await commands.list(context, current.id, idleSince)).items).toEqual([]);
     await expect(commands.revoke(context, current.id, tablet.id, idleSince)).rejects.toThrow(
       'session not found',
     );
@@ -155,5 +155,30 @@ describe('account sessions HTTP acceptance', () => {
     await revoke(theirs, uuidv7(), 'wrong-csrf').expect(401);
     await http().get('/api/v1/auth/session').set('Cookie', theirs.cookie).expect(200);
     await http().get('/api/v1/auth/sessions').expect(401);
+  });
+
+  it('signs out every other session at once, listed or not, and keeps this one', async () => {
+    const email = await account();
+    const browsers = await Promise.all(
+      Array.from({ length: 3 }, (_, index) => signIn(email, `curl/8.${String(index)}.0`)),
+    );
+    const mine = browsers.at(0);
+    const others = browsers.slice(1);
+    if (!mine) throw new Error('missing session');
+    const answer = await http()
+      .post('/api/v1/auth/sessions/revoke-others')
+      .set('Origin', origin)
+      .set('Cookie', mine.cookie)
+      .set('X-Shipkeep-CSRF', mine.csrf)
+      .send({})
+      .expect(200);
+    expect(answer.body).toEqual({ revoked: 2 });
+    for (const other of others)
+      await http().get('/api/v1/auth/session').set('Cookie', other.cookie).expect(401);
+    const listed = (await list(mine).expect(200)).body as { items: unknown[]; truncated: boolean };
+    expect(listed).toMatchObject({ truncated: false });
+    expect(listed.items).toHaveLength(1);
+    const audited = await auditLog().findMany({ where: { action: 'identity.sessions_revoked' } });
+    expect(audited.some((event) => (event.metadata as { count?: number }).count === 2)).toBe(true);
   });
 });

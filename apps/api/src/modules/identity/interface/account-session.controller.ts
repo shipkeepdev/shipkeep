@@ -14,6 +14,7 @@ import {
   AccountSessionIdDto,
   AccountSessionListDto,
   accountSessionDto,
+  SessionsRevokedDto,
 } from './account-session.dto';
 import { IdentityAttemptLimit } from './identity-rate.guard';
 import { IdentityReplayInterceptor } from './identity-replay.interceptor';
@@ -36,8 +37,24 @@ export class AccountSessionController {
   @IdentityAttemptLimit('api')
   @ApiOkResponse({ type: AccountSessionListDto })
   async listSessions(@Req() request: IdentityRequest): Promise<AccountSessionListDto> {
-    const items = await this.sessions.list(context(request), principal(request).sessionId);
-    return { items: items.map(accountSessionDto) };
+    const { items, truncated } = await this.sessions.list(
+      context(request),
+      principal(request).sessionId,
+    );
+    return { items: items.map(accountSessionDto), truncated };
+  }
+
+  /** Ends every other session of the account, listed or not; this one stays. */
+  @Post('revoke-others')
+  @IdentityAttemptLimit('api')
+  @HttpCode(200)
+  @ApiHeader({ name: 'Origin', required: true })
+  @ApiHeader({ name: 'X-Shipkeep-CSRF', required: true })
+  @ApiOkResponse({ type: SessionsRevokedDto })
+  async revokeOtherSessions(@Req() request: IdentityRequest): Promise<SessionsRevokedDto> {
+    return {
+      revoked: await this.sessions.revokeOthers(context(request), principal(request).sessionId),
+    };
   }
 
   /** Ends another session of the account; it then answers 401. Sign out to end this one. */

@@ -34,13 +34,22 @@ afterEach(() => {
 
 describe('sessions panel', () => {
   async function render(language: 'en' | 'fr' = 'en') {
+    let truncated = true;
     let items: Session[] = [
       session('this', true, 'Firefox', 'Linux'),
       session('phone', false, 'Safari', 'iOS'),
       session('script', false, null, null),
     ];
     const api = {
-      sessions: vi.fn<IdentityApi['sessions']>(() => Promise.resolve(items)),
+      sessions: vi.fn<IdentityApi['sessions']>(() =>
+        Promise.resolve({ items, truncated: items.length > 2 && truncated }),
+      ),
+      revokeOtherSessions: vi.fn<IdentityApi['revokeOtherSessions']>(() => {
+        const count = items.length - 1;
+        items = items.filter((item) => item.current);
+        truncated = false;
+        return Promise.resolve(count);
+      }),
       revokeSession: vi.fn<IdentityApi['revokeSession']>((id) => {
         items = items.filter((item) => item.id !== id);
         return Promise.resolve();
@@ -97,6 +106,21 @@ describe('sessions panel', () => {
     await signOut(1);
     expect(api.revokeSession).toHaveBeenCalledTimes(3);
     expect(element.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('signs out every other session, including those past the list', async () => {
+    const { api, fixture, element } = await render();
+    expect(element.textContent).toContain('100 most recently active');
+    const all = [...element.querySelectorAll('button')].find((b) =>
+      b.textContent.includes('every other session'),
+    ) as HTMLButtonElement;
+    all.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(api.revokeOtherSessions).toHaveBeenCalledTimes(1);
+    expect(element.querySelectorAll('li')).toHaveLength(1);
+    expect(element.textContent).not.toContain('every other session');
+    expect(element.textContent).not.toContain('100 most recently active');
   });
 
   it('writes the device in French', async () => {

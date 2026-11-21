@@ -1314,6 +1314,49 @@
         ]
       }
     },
+    "/api/v1/auth/sessions/revoke-others": {
+      "post": {
+        "operationId": "revokeOtherSessions",
+        "parameters": [
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsRevokedDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/api/v1/auth/sessions/{sessionId}/revoke": {
       "post": {
         "operationId": "revokeSession",
@@ -5699,10 +5742,27 @@
             "items": {
               "$ref": "#/components/schemas/AccountSessionDto"
             }
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when the account has more live sessions than the 100 most recently active listed."
           }
         },
         "required": [
-          "items"
+          "items",
+          "truncated"
+        ]
+      },
+      "SessionsRevokedDto": {
+        "type": "object",
+        "properties": {
+          "revoked": {
+            "type": "number",
+            "description": "How many other sessions were ended."
+          }
+        },
+        "required": [
+          "revoked"
         ]
       },
       "JoinTokenIssuedDto": {

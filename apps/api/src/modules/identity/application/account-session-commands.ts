@@ -9,6 +9,9 @@ import type { UserRecord } from '../domain/identity-records';
 import { IDENTITY_STORE, type IdentityStore } from './identity-store';
 import type { SecurityContext } from './mfa-commands';
 
+/** Sessions listed at most; the others are still ended by "sign out every other session". */
+const LISTED = 100;
+
 /** A session of the account, as its owner sees it in Profile → Sessions. */
 export interface AccountSession {
   readonly id: string;
@@ -33,15 +36,19 @@ export class AccountSessionCommands {
     private readonly events: DomainEventBus,
   ) {}
 
+  /**
+   * The 100 most recently active sessions; `truncated` says there are more, which "sign out every
+   * other session" ends as well.
+   */
   list(
     context: SecurityContext,
     currentSessionId: string,
     now = new Date(),
-  ): Promise<AccountSession[]> {
+  ): Promise<{ items: AccountSession[]; truncated: boolean }> {
     return this.users.withUserLock(context.userId, async (user) => {
       assertContext(user, context);
-      const sessions = await this.users.activeSessions(user.id, user.securityVersion, now);
-      return sessions.map((session) => ({
+      const found = await this.users.activeSessions(user.id, user.securityVersion, now, LISTED + 1);
+      const items = found.slice(0, LISTED).map((session) => ({
         id: session.id,
         current: session.id === currentSessionId,
         device: describeDevice(session.userAgent),
@@ -50,6 +57,30 @@ export class AccountSessionCommands {
         lastSeenAt: session.lastSeenAt,
         expiresAt: session.expiresAt,
       }));
+      return { items, truncated: found.length > LISTED };
+    });
+  }
+
+  /** Ends every other live session of the account, listed or not; audited once with the count. */
+  revokeOthers(
+    context: SecurityContext,
+    currentSessionId: string,
+    now = new Date(),
+  ): Promise<number> {
+    return this.users.withUserLock(context.userId, async (user) => {
+      assertContext(user, context);
+      const count = await this.users.revokeOtherSessions(user.id, currentSessionId, now);
+      if (count > 0)
+        await this.events.publish([
+          createEvent({
+            type: 'identity.sessions_revoked',
+            actor: { kind: 'user', id: context.userId, ip: context.ip },
+            target: { type: 'user', id: user.id },
+            payload: { count },
+            occurredAt: now,
+          }),
+        ]);
+      return count;
     });
   }
 

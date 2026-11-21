@@ -70,6 +70,18 @@ type Session = IdentitySchema<'AccountSessionDto'>;
               </li>
             }
           </ul>
+          @if (truncated()) {
+            <p class="text-[12px] text-mute2">
+              {{ 'These are the 100 most recently active sessions.' | t }}
+            </p>
+          }
+          @if (sessions().length > 1 || truncated()) {
+            <div>
+              <button type="button" class="btn btn-sm" [disabled]="busy()" (click)="revokeOthers()">
+                {{ 'Sign out every other session' | t }}
+              </button>
+            </div>
+          }
         }
       }
     </div>
@@ -80,6 +92,8 @@ export class SessionsPanel {
   protected readonly i18n = inject(I18n);
   protected readonly state = signal<'loading' | 'failed' | 'ready'>('loading');
   protected readonly sessions = signal<readonly Session[]>([]);
+  /** More live sessions than listed: "sign out every other session" ends them too. */
+  protected readonly truncated = signal(false);
   protected readonly busy = signal(false);
   protected readonly problem = signal<string | null>(null);
   /** Only the latest load may answer: an older list never replaces a newer one. */
@@ -105,6 +119,21 @@ export class SessionsPanel {
    * an earlier attempt: a failure only says so, and a 404 means the session is already ended
    * (by an earlier attempt whose answer was lost). The list is read again either way.
    */
+  /** Ends every other session at once, including those past the listed ones. */
+  protected async revokeOthers(): Promise<void> {
+    if (this.busy()) return;
+    this.busy.set(true);
+    this.problem.set(null);
+    try {
+      await this.api.revokeOtherSessions();
+    } catch {
+      this.problem.set('The other sessions could not be signed out. Try again.');
+    } finally {
+      this.busy.set(false);
+    }
+    await this.load();
+  }
+
   protected async revoke(session: Session): Promise<void> {
     if (this.busy()) return;
     this.busy.set(true);
@@ -123,9 +152,10 @@ export class SessionsPanel {
   private async load(): Promise<void> {
     const revision = ++this.#revision;
     try {
-      const sessions = await this.api.sessions();
+      const { items, truncated } = await this.api.sessions();
       if (revision !== this.#revision) return;
-      this.sessions.set(sessions);
+      this.sessions.set(items);
+      this.truncated.set(truncated);
       this.state.set('ready');
     } catch {
       if (revision === this.#revision) this.state.set('failed');

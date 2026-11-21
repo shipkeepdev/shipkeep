@@ -25,6 +25,7 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | GET | `/auth/session` | account | profile.read |  |  |  |  |  |  |  |  |  |  |  |
 | GET | `/auth/sessions` | account | - |  |  |  |  |  |  |  |  |  |  |  |
 | POST | `/auth/sessions/:sessionId/revoke` | account | - |  |  |  |  |  |  |  |  |  |  |  |
+| POST | `/auth/sessions/revoke-others` | account | - |  |  |  |  |  |  |  |  |  |  |  |
 | POST | `/auth/verification/request` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |
 | POST | `/auth/verify` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |
 | GET | `/health` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |

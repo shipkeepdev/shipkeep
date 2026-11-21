@@ -260,6 +260,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/auth/sessions/revoke-others": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["revokeOtherSessions"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/auth/verification/request": {
         readonly parameters: {
             readonly query?: never;
@@ -1084,6 +1100,8 @@ export type components = {
         };
         readonly AccountSessionListDto: {
             readonly items: readonly components["schemas"]["AccountSessionDto"][];
+            /** @description True when the account has more live sessions than the 100 most recently active listed. */
+            readonly truncated: boolean;
         };
         readonly AddMemberDto: {
             /**
@@ -1898,6 +1916,10 @@ export type components = {
             /** Format: uuid */
             readonly userId: string;
         };
+        readonly SessionsRevokedDto: {
+            /** @description How many other sessions were ended. */
+            readonly revoked: number;
+        };
         readonly SetNodePublicAddressesDto: {
             /** @description The public IPv4 and IPv6 addresses of the node, replacing the current list. Each must be a bare, globally routable address; duplicates are merged and values stored canonical. An empty list clears them. */
             readonly publicAddresses: readonly string[];
@@ -2365,6 +2387,28 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    readonly revokeOtherSessions: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                readonly Origin: string;
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["SessionsRevokedDto"];
+                };
             };
         };
     };

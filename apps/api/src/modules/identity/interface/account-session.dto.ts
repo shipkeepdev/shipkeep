@@ -28,6 +28,15 @@ export class AccountSessionDto {
 
 export class AccountSessionListDto {
   @ApiProperty({ type: [AccountSessionDto] }) items!: AccountSessionDto[];
+  @ApiProperty({
+    description:
+      'True when the account has more live sessions than the 100 most recently active listed.',
+  })
+  truncated!: boolean;
+}
+
+export class SessionsRevokedDto {
+  @ApiProperty({ description: 'How many other sessions were ended.' }) revoked!: number;
 }
 
 export class AccountSessionIdDto {
