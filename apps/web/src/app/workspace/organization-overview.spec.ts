@@ -128,6 +128,80 @@ describe('organization overview', () => {
     expect(section('activity-title')).toContain('deployment.failed');
   });
 
+  it('charts the requests measured for the organization, never a sample', async () => {
+    const t0 = 1_795_000_000;
+    routes[`GET ${O}/metrics`] = () =>
+      json({
+        kept: true,
+        range: '24h',
+        stepSeconds: 300,
+        from: new Date(t0 * 1000).toISOString(),
+        to: new Date((t0 + 600) * 1000).toISOString(),
+        requests: [
+          {
+            labels: { status: '2xx' },
+            points: [
+              { t: t0, v: 2 },
+              { t: t0 + 300, v: 2 },
+            ],
+          },
+        ],
+        duration: [{ labels: {}, points: [{ t: t0, v: 0.012 }] }],
+        totalRequests: 1234,
+        meanSeconds: 0.012,
+        partial: false,
+      });
+    await open();
+    const chart = () => element().querySelector('sk-requests-chart')?.textContent ?? '';
+    // The totals of the whole period, as the API reads them.
+    expect(chart()).toContain('1.2k');
+    expect(chart()).toContain('mean 12 ms');
+    expect(chart()).not.toContain('Preview');
+    expect(element().querySelectorAll('sk-requests-chart svg path').length).toBe(2);
+  });
+
+  it('says so when the organization has no request measured yet', async () => {
+    routes[`GET ${O}/metrics`] = () =>
+      json({
+        kept: true,
+        range: '24h',
+        stepSeconds: 300,
+        from: '2026-11-20T00:00:00Z',
+        to: '2026-11-21T00:00:00Z',
+        requests: [],
+        duration: [],
+        totalRequests: 0,
+        meanSeconds: null,
+        partial: false,
+      });
+    await open();
+    expect(element().querySelector('sk-requests-chart')?.textContent).toContain(
+      'No requests measured in this period yet.',
+    );
+  });
+
+  it('keeps the totals when the chart has no step yet, and says when they cover a part', async () => {
+    routes[`GET ${O}/metrics`] = () =>
+      json({
+        kept: true,
+        range: '24h',
+        stepSeconds: 300,
+        from: '2026-11-20T00:00:00Z',
+        to: '2026-11-21T00:00:00Z',
+        requests: [],
+        duration: [],
+        totalRequests: 42,
+        meanSeconds: 0.002,
+        partial: true,
+      });
+    await open();
+    const chart = element().querySelector('sk-requests-chart')?.textContent ?? '';
+    expect(chart).toContain('42');
+    expect(chart).toContain('mean 2.0 ms');
+    expect(chart).toContain('Requests measured in the last minutes are charted at the next step.');
+    expect(chart).toContain('These figures cover part of the environments you can read.');
+  });
+
   it('gives each count of the summary its own form', async () => {
     await open();
     expect(element().querySelector('.page-sub')?.textContent.trim()).toBe(

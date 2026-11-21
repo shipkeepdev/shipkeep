@@ -79,6 +79,11 @@ export class OrganizationMetricsDto extends MetricsBaseDto {
     description: 'Mean response time over the whole period, in seconds; null without any request.',
   })
   meanSeconds!: number | null;
+  @ApiProperty({
+    description:
+      'True when the caller reads more environments than one query covers (100, or 2 000 checked): the values are for a part of them.',
+  })
+  partial!: boolean;
 }
 
 export class NodeMetricsDto extends MetricsBaseDto {

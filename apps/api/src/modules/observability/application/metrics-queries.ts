@@ -42,7 +42,12 @@ export interface OrganizationAnswer extends MetricsAnswer<'requests' | 'duration
   readonly totalRequests: number | null;
   /** Mean response time over the period; null without a store or without any request. */
   readonly meanSeconds: number | null;
+  /** True when the caller reads more environments than one query names: these values cover a part. */
+  readonly partial: boolean;
 }
+
+/** Environments checked one by one for a member, at most, before the answer says it is partial. */
+const MAX_SCANNED_ENVIRONMENTS = 2000;
 
 /**
  * Reads metrics back (ADR 0024): an application's with `environment.read`, a server's with
@@ -119,11 +124,14 @@ export class MetricsQueries {
   ): Promise<OrganizationAnswer> {
     return this.accounts.run(context, async () => {
       await this.access.require(context.userId, 'organization.read', { organizationId });
-      const environments = await this.readableEnvironments(context.userId, organizationId);
+      const { environments, partial } = await this.readableEnvironments(
+        context.userId,
+        organizationId,
+      );
       const store = this.store;
       if (environments?.length === 0 || !store) {
         const answer = await this.answer({ requests: null, duration: null }, range, now);
-        return { ...answer, totalRequests: store ? 0 : null, meanSeconds: null };
+        return { ...answer, totalRequests: store ? 0 : null, meanSeconds: null, partial };
       }
       const totals = organizationTotals(organizationId, environments, range);
       const [answer, requests, seconds] = await Promise.all([
@@ -135,33 +143,52 @@ export class MetricsQueries {
         ...answer,
         totalRequests: requests,
         meanSeconds: requests > 0 ? seconds / requests : null,
+        partial,
       };
     });
   }
 
   /**
-   * Null for owners and admins, who read every environment; otherwise the environments
-   * `observability.read` allows, among the first 100 of the organization (SPEC 12).
+   * Null for owners and admins, who read every environment. For another member, the environments
+   * `observability.read` allows, walked in pages of the organization's environments until a query's
+   * worth (100) is found or every environment was checked (SPEC 12). `partial` says the walk stopped
+   * before the end: at 100 readable environments, or after checking 2 000.
    */
   private async readableEnvironments(
     userId: string,
     organizationId: string,
-  ): Promise<string[] | null> {
-    if (await this.access.allows(userId, 'observability.read', { organizationId })) return null;
-    const all = await this.transaction.runTenant(organizationId, () =>
-      this.targets.environments(organizationId, MAX_QUERY_ENVIRONMENTS),
-    );
+  ): Promise<{ environments: string[] | null; partial: boolean }> {
+    if (await this.access.allows(userId, 'observability.read', { organizationId }))
+      return { environments: null, partial: false };
     const readable: string[] = [];
-    for (const environment of all)
-      if (
-        await this.access.allows(userId, 'observability.read', {
-          organizationId,
-          projectId: environment.projectId,
-          environmentId: environment.id,
-        })
-      )
-        readable.push(environment.id);
-    return readable;
+    let after: string | undefined;
+    for (let scanned = 0; scanned < MAX_SCANNED_ENVIRONMENTS;) {
+      const page = await this.transaction.runTenant(organizationId, () =>
+        this.targets.environments(organizationId, MAX_QUERY_ENVIRONMENTS, after),
+      );
+      for (const environment of page) {
+        if (readable.length === MAX_QUERY_ENVIRONMENTS)
+          return { environments: readable, partial: true };
+        if (
+          await this.access.allows(userId, 'observability.read', {
+            organizationId,
+            projectId: environment.projectId,
+            environmentId: environment.id,
+          })
+        )
+          readable.push(environment.id);
+      }
+      scanned += page.length;
+      const last = page.at(-1);
+      if (page.length < MAX_QUERY_ENVIRONMENTS || !last)
+        return { environments: readable, partial: false };
+      after = last.id;
+    }
+    // The cap was reached: partial only when an environment is left unchecked.
+    const left = await this.transaction.runTenant(organizationId, () =>
+      this.targets.environments(organizationId, 1, after),
+    );
+    return { environments: readable, partial: left.length > 0 };
   }
 
   /** Each named query's series; a null query reads nothing and answers no series. */

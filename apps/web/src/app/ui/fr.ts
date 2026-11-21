@@ -842,6 +842,7 @@ export const FR: Readonly<Record<string, string>> = {
   'No project yet': 'Aucun projet',
   'No project yet.': 'Aucun projet.',
   'No public IP or open port': 'Sans IP publique ni port ouvert',
+  'No requests measured in this period yet.': 'Aucune requête mesurée sur cette période.',
   'No resources for “': 'Aucune ressource pour «',
   'No resources for “{q}”.': 'Aucune ressource pour « {q} ».',
   'No role is selected.': 'Aucun rôle sélectionné.',
@@ -1046,6 +1047,8 @@ export const FR: Readonly<Record<string, string>> = {
   'Requests / min': 'Requêtes / min',
   'Requests served · all apps': 'Requêtes servies · toutes apps',
   'Requests · 5xx in red': 'Requêtes · 5xx en rouge',
+  'Requests measured in the last minutes are charted at the next step.':
+    'Les requêtes des dernières minutes apparaissent au prochain pas du graphique.',
   'Required approvals': 'Approbations requises',
   Rescan: 'Relancer le scan',
   'Resend code': 'Renvoyer le code',
@@ -1302,6 +1305,8 @@ export const FR: Readonly<Record<string, string>> = {
   'This environment could not be loaded.': "Cet environnement n'a pas pu être chargé.",
   'This expiry is too close. Cancel and start a new token request.':
     'Cette expiration est trop proche. Annulez et recommencez la demande de jeton.',
+  'These figures cover part of the environments you can read.':
+    'Ces chiffres couvrent une partie des environnements que vous pouvez lire.',
   'This installation keeps no metrics: its control plane has no metrics store.':
     "Cette installation ne conserve aucune métrique : son plan de contrôle n'a pas de stockage de métriques.",
   'This installation sends no email': "Cette installation n'envoie pas d'e-mail",
@@ -1576,6 +1581,7 @@ export const FR: Readonly<Record<string, string>> = {
   'managed by Shipkeep': 'géré par Shipkeep',
   'managed by the pg-lumen database': 'géré par la base pg-lumen',
   manual: 'manuel',
+  'mean {value}': 'moyenne {value}',
   'median 71 s': 'médiane 71 s',
   'median {s} s': 'médiane {s} s',
   member: 'membre',
