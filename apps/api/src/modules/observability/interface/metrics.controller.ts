@@ -84,6 +84,7 @@ export class MetricsController {
     return Object.assign(metricsDto(answer), {
       totalRequests: answer.totalRequests,
       meanSeconds: answer.meanSeconds,
+      partial: answer.partial,
     });
   }
 }
