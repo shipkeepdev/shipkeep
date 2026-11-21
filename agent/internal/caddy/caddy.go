@@ -482,8 +482,8 @@ func (c *Client) EnableRequestMetrics(ctx context.Context) (bool, error) {
 }
 
 // metricsSafe tells whether routes keep per-host metrics bounded. It fails closed: each route has
-// matchers, and each matcher set names hosts, none a wildcard, and bounds the Host header. A route
-// without matchers answers every request, an invented port included.
+// matchers, and each matcher set names literal hosts (see literalHost) and bounds the Host header.
+// A route without matchers answers every request, an invented port included.
 func metricsSafe(routes []Route) bool {
 	for _, route := range routes {
 		if len(route.Match) == 0 {
@@ -491,12 +491,18 @@ func metricsSafe(routes []Route) bool {
 		}
 		for _, match := range route.Match {
 			if !match.bounded() || len(match.Host) == 0 ||
-				slices.ContainsFunc(match.Host, func(host string) bool { return host == "" || strings.Contains(host, "*") }) {
+				slices.ContainsFunc(match.Host, func(host string) bool { return !literalHost(host) }) {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+// literalHost tells whether a host matcher names one host: letters, digits, dots and hyphens only.
+// A wildcard or a placeholder such as {http.request.host} matches names a client invents.
+func literalHost(host string) bool {
+	return host != "" && strings.Trim(host, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789.-") == ""
 }
 
 // setPerHost writes Caddy's per_host metrics setting when it differs, and only that key, so any
