@@ -12,6 +12,13 @@ export class MetricsRangeQueryDto {
   range?: keyof typeof RANGES;
 }
 
+export class OrganizationMetricsQueryDto {
+  @ApiProperty({ required: false, enum: Object.keys(RANGES), default: '24h' })
+  @IsOptional()
+  @IsIn(Object.keys(RANGES))
+  range?: keyof typeof RANGES;
+}
+
 export class MetricPointDto {
   @ApiProperty({ description: 'Unix time, in seconds.' }) t!: number;
   @ApiProperty() v!: number;

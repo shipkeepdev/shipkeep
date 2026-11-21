@@ -16,6 +16,7 @@ import {
   metricsDto,
   NodeMetricsDto,
   OrganizationMetricsDto,
+  OrganizationMetricsQueryDto,
 } from './metrics.dto';
 
 /** Charts of applications, servers and the organization's requests (ADR 0024, SPEC 12). */
@@ -73,7 +74,7 @@ export class MetricsController {
   async organizationMetrics(
     @Req() request: IdentityRequest,
     @Param() path: OrganizationPathDto,
-    @Query() query: MetricsRangeQueryDto,
+    @Query() query: OrganizationMetricsQueryDto,
   ): Promise<OrganizationMetricsDto> {
     return metricsDto(
       await this.metrics.organization(
