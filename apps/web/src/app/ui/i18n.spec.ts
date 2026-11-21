@@ -47,11 +47,14 @@ describe('count pipe', () => {
   it('formats dates in the interface language (#273)', () => {
     const i18n = TestBed.inject(I18n);
     // Local time: the same calendar day in every time zone the tests run in.
-    const at = '2026-11-21T12:00:00';
+    const at = '2026-11-21T12:00:07';
     i18n.use('en');
     expect(i18n.date(at, 'mediumDate')).toMatch(/Nov 21, 2026/);
+    // Medium keeps the seconds, as Angular's medium did.
+    expect(i18n.date(at)).toMatch(/Nov 21, 2026.*12:00:07/);
     i18n.use('fr');
     expect(i18n.date(at, 'mediumDate')).toMatch(/21 nov\. 2026/);
+    expect(i18n.date(at)).toMatch(/21 nov\. 2026.*12:00:07/);
     expect(i18n.date(null)).toBe('');
     expect(i18n.date('not a date')).toBe('');
   });

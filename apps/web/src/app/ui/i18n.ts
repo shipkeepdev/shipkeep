@@ -90,7 +90,7 @@ export class I18n {
 
 export type DateStyle = 'medium' | 'mediumDate' | 'shortTime';
 const DATE_STYLES: Readonly<Record<DateStyle, Intl.DateTimeFormatOptions>> = {
-  medium: { dateStyle: 'medium', timeStyle: 'short' },
+  medium: { dateStyle: 'medium', timeStyle: 'medium' },
   mediumDate: { dateStyle: 'medium' },
   shortTime: { timeStyle: 'short' },
 };
