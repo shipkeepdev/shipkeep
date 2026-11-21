@@ -938,8 +938,8 @@ export class ApplicationPage {
   }
 
   protected actor(deployment: Deployment): string {
-    const email = deployment.actorId ? this.shell.emails().get(deployment.actorId) : undefined;
-    return email ?? this.i18n.t(deployment.trigger);
+    const name = deployment.actorId ? this.shell.names().get(deployment.actorId) : undefined;
+    return name ?? this.i18n.t(deployment.trigger);
   }
 
   /** Reloads the deployments, and keeps doing so while one is still running. */

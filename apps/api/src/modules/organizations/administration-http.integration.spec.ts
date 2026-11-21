@@ -39,6 +39,7 @@ describe('administration directories over HTTP', () => {
     expect(Object.keys(items[0]).sort()).toEqual([
       'active',
       'createdAt',
+      'displayName',
       'email',
       'id',
       'orgRole',

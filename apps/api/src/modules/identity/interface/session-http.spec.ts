@@ -26,7 +26,7 @@ describe('HTTP session boundary', () => {
       body: { userId: 'forged', apiCredential: { id: 'forged', value: token } },
     } as IdentityRequest;
     expect(() => resourceContext(input)).toThrow('Authentication failed.');
-    input.identity = { ...base, kind: 'session', sessionId: 'session-id' };
+    input.identity = { ...base, kind: 'session', displayName: null, sessionId: 'session-id' };
     const session = resourceContext(input);
     expect(session).toEqual({
       userId: base.userId,
@@ -38,7 +38,7 @@ describe('HTTP session boundary', () => {
     });
     expect(session.apiCredential).toBeUndefined();
     expect(JSON.stringify(session)).not.toContain(token);
-    input.identity = { ...base, kind: 'api_token', tokenId: 'token-id' };
+    input.identity = { ...base, kind: 'api_token', displayName: null, tokenId: 'token-id' };
     const context = resourceContext(input);
     expect(context.apiCredential?.id).toBe('token-id');
     expect(context.apiCredential?.value).toBe(base.token);
@@ -88,6 +88,7 @@ describe('HTTP session boundary', () => {
     const grant = {
       userId: 'test-user',
       email: 'person@example.com',
+      displayName: null,
       token: new Secret(token),
       csrf: new Secret('B'.repeat(43)),
       expiresAt: new Date(Date.now() + 10000),

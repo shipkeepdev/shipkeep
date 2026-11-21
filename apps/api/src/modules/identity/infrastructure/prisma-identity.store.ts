@@ -54,6 +54,13 @@ export class PrismaIdentityStore implements IdentityStore {
     });
   }
 
+  async setDisplayName(id: string, name: string | null, now: Date): Promise<void> {
+    await this.database.client.user.update({
+      where: { id },
+      data: { displayName: name, updatedAt: now },
+    });
+  }
+
   async changePassword(id: string, hash: Secret, now: Date): Promise<void> {
     await this.database.client.user.update({
       where: { id },

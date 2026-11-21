@@ -26,7 +26,7 @@ export class PrismaAdministrationStore implements AdministrationStore {
   async members(organizationId: string, bounds: CatalogBounds): Promise<MemberView[]> {
     const rows = await this.database.client.$queryRaw<MemberRow[]>`
       SELECT m.id, m.organization_id AS "organizationId", m.user_id AS "userId", m.org_role AS "orgRole",
-        m.created_at AS "createdAt", m.updated_at AS "updatedAt", u.email::text AS email,
+        m.created_at AS "createdAt", m.updated_at AS "updatedAt", u.email::text AS email, u.display_name AS "displayName",
         (u.status='active' AND u.email_verified_at IS NOT NULL) AS active
       FROM memberships m JOIN users u ON u.id=m.user_id
       WHERE m.organization_id=${organizationId}::uuid
@@ -39,7 +39,7 @@ export class PrismaAdministrationStore implements AdministrationStore {
     // a membership query and a second relation query when another admin changes that grant.
     const rows = await this.database.client.$queryRaw<BindingRow[]>`
       SELECT m.id, m.organization_id AS "organizationId", m.user_id AS "userId", m.org_role AS "orgRole",
-        m.created_at AS "createdAt", m.updated_at AS "updatedAt", u.email::text AS email,
+        m.created_at AS "createdAt", m.updated_at AS "updatedAt", u.email::text AS email, u.display_name AS "displayName",
         (u.status='active' AND u.email_verified_at IS NOT NULL) AS active,
         direct.role AS "directRole", inherited.role AS "inheritedRole",
         CASE WHEN m.org_role IN ('owner','admin') THEN 'admin' ELSE COALESCE(direct.role,inherited.role) END AS role
