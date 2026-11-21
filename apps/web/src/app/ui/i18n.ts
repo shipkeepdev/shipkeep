@@ -65,12 +65,42 @@ export class I18n {
     return this.t(single ? one : other, { ...values, n: n ?? '—' });
   }
 
+  /**
+   * A date in the interface language (#273): 'medium' (date and time), 'mediumDate' or
+   * 'shortTime'. An empty or unreadable value gives an empty string.
+   */
+  date(value: string | null | undefined, style: DateStyle = 'medium'): string {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat(
+      this.language() === 'fr' ? 'fr-FR' : 'en-US',
+      DATE_STYLES[style],
+    ).format(date);
+  }
+
   /** Numbers in the interface language: 5,920 in English, 5 920 in French. */
   number(value: number, digits = 0): string {
     return value.toLocaleString(this.language() === 'fr' ? 'fr-FR' : 'en-US', {
       maximumFractionDigits: digits,
       minimumFractionDigits: digits,
     });
+  }
+}
+
+export type DateStyle = 'medium' | 'mediumDate' | 'shortTime';
+const DATE_STYLES: Readonly<Record<DateStyle, Intl.DateTimeFormatOptions>> = {
+  medium: { dateStyle: 'medium', timeStyle: 'short' },
+  mediumDate: { dateStyle: 'medium' },
+  shortTime: { timeStyle: 'short' },
+};
+
+/** `{{ value | localDate: 'mediumDate' }}`. Not pure: a language switch re-renders it. */
+@Pipe({ name: 'localDate', pure: false })
+export class LocalDate implements PipeTransform {
+  private readonly i18n = inject(I18n);
+  transform(value: string | null | undefined, style: DateStyle = 'medium'): string {
+    return this.i18n.date(value, style);
   }
 }
 

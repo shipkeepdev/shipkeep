@@ -1,5 +1,5 @@
 import { FocusMonitor } from '@angular/cdk/a11y';
-import { DatePipe, TitleCasePipe } from '@angular/common';
+import { TitleCasePipe } from '@angular/common';
 import {
   afterNextRender,
   ChangeDetectionStrategy,
@@ -17,7 +17,7 @@ import {
 import { ReactiveFormsModule } from '@angular/forms';
 
 import { TokenScopePicker } from '../access/token-scope-picker';
-import { I18n, T } from '../ui/i18n';
+import { I18n, LocalDate, T } from '../ui/i18n';
 
 import { PrivateClipboard } from './private-clipboard';
 import { SessionStore } from './session-store';
@@ -25,7 +25,7 @@ import { TOKEN_LIFETIMES, TokenFormStore } from './token-form-store';
 
 @Component({
   selector: 'sk-token-panel',
-  imports: [DatePipe, TitleCasePipe, ReactiveFormsModule, TokenScopePicker, T],
+  imports: [LocalDate, TitleCasePipe, ReactiveFormsModule, TokenScopePicker, T],
   providers: [TokenFormStore, PrivateClipboard],
   templateUrl: './token-panel.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
