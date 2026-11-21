@@ -13,6 +13,9 @@ describe('formatMetric', () => {
     expect(formatMetric(1.5, 'seconds')).toBe('1.50 s');
     expect(formatMetric(1.5 * 1024 ** 3, 'bytes')).toBe('1.5 GiB');
     expect(formatMetric(12 * 1024 ** 3, 'bytes')).toBe('12 GiB');
+    expect(formatMetric(512, 'bytesPerSecond')).toBe('512 B/s');
+    expect(formatMetric(1536, 'bytesPerSecond')).toBe('1.5 KiB/s');
+    expect(formatMetric(40 * 1024 ** 2, 'bytesPerSecond')).toBe('40 MiB/s');
   });
 
   it('writes numbers in the interface language', () => {

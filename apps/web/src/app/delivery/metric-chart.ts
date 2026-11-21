@@ -9,7 +9,7 @@ export interface MetricPoint {
   readonly v: number;
 }
 
-export type MetricUnit = 'cores' | 'bytes' | 'perSecond' | 'seconds';
+export type MetricUnit = 'cores' | 'bytes' | 'bytesPerSecond' | 'perSecond' | 'seconds';
 
 /** A number with a fixed count of decimals, in the interface language: 0.6 in English, 0,6 in French. */
 export type NumberFormat = (value: number, digits: number) => string;
@@ -26,6 +26,15 @@ export function formatMetric(value: number, unit: MetricUnit, number = ENGLISH):
       const gib = value / 1024 ** 3;
       if (gib >= 1) return `${number(gib, gib >= 10 ? 0 : 1)} GiB`;
       return `${number(value / 1024 ** 2, 0)} MiB`;
+    }
+    case 'bytesPerSecond': {
+      const [scaled, suffix] =
+        value >= 1024 ** 2
+          ? [value / 1024 ** 2, 'MiB/s']
+          : value >= 1024
+            ? [value / 1024, 'KiB/s']
+            : [value, 'B/s'];
+      return `${number(scaled, scaled < 10 && suffix !== 'B/s' ? 1 : 0)} ${suffix}`;
     }
     case 'perSecond':
       return `${number(value, value < 10 ? 1 : 0)}/s`;
@@ -80,7 +89,9 @@ export function linePath(
 
 /**
  * One chart of the metrics tab: a headline with the latest value, and the series over the period.
- * `errors`, when given, is drawn in red over the main series, on the same scale.
+ * `errors`, when given, is drawn in red over the main series, and `secondary` dashed in grey, on
+ * the same scale. `max` fixes the top of the scale, such as a server's memory; `caption` adds a
+ * line under the headline.
  */
 @Component({
   selector: 'sk-metric-chart',
@@ -88,9 +99,14 @@ export function linePath(
   changeDetection: ChangeDetectionStrategy.OnPush,
   host: { class: 'card flex min-w-0 flex-col px-[18px] py-4' },
   template: `
-    <div class="flex items-baseline justify-between gap-3">
-      <span class="text-[13px] text-fg3">{{ label() | t }}</span>
-      <span class="text-[20px] tracking-[-0.02em]">{{ latest() }}</span>
+    <div class="flex items-start justify-between gap-3">
+      <span class="pt-1.5 text-[13px] text-fg3">{{ label() | t }}</span>
+      <div class="flex flex-col items-end">
+        <span class="text-[20px] tracking-[-0.02em]">{{ latest() }}</span>
+        @if (caption()) {
+          <span class="text-[11.5px] text-dim">{{ caption() }}</span>
+        }
+      </div>
     </div>
     @if (empty()) {
       <p class="mt-3.5 grid h-[90px] place-items-center text-[12.5px] text-mute">
@@ -117,6 +133,16 @@ export function linePath(
               stroke-width="1.5"
               vector-effect="non-scaling-stroke"
             />
+            @if (secondaryPath()) {
+              <path
+                [attr.d]="secondaryPath()"
+                fill="none"
+                stroke="#6B6B73"
+                stroke-width="1.2"
+                stroke-dasharray="3 3"
+                vector-effect="non-scaling-stroke"
+              />
+            }
             @if (errorPath()) {
               <path
                 [attr.d]="errorPath()"
@@ -138,6 +164,9 @@ export class MetricChart {
   readonly unit = input.required<MetricUnit>();
   readonly points = input.required<readonly MetricPoint[]>();
   readonly errors = input<readonly MetricPoint[]>([]);
+  readonly secondary = input<readonly MetricPoint[]>([]);
+  readonly max = input<number | null>(null);
+  readonly caption = input('');
   /** The period, unix seconds, and the step between two points. */
   readonly from = input.required<number>();
   readonly to = input.required<number>();
@@ -147,7 +176,12 @@ export class MetricChart {
   private readonly number: NumberFormat = (value, digits) => this.i18n.number(value, digits);
   protected readonly red = RED;
   protected readonly empty = computed(() => this.points().length === 0);
-  private readonly top = computed(() => scaleTop([this.points(), this.errors()]));
+  private readonly top = computed(() => {
+    const max = this.max();
+    return max !== null && max > 0
+      ? max
+      : scaleTop([this.points(), this.errors(), this.secondary()]);
+  });
   protected readonly main = computed(() =>
     linePath(this.points(), this.from(), this.to(), this.top(), this.step()),
   );
@@ -156,9 +190,15 @@ export class MetricChart {
       ? linePath(this.errors(), this.from(), this.to(), this.top(), this.step())
       : '',
   );
+  protected readonly secondaryPath = computed(() =>
+    linePath(this.secondary(), this.from(), this.to(), this.top(), this.step()),
+  );
   protected readonly latest = computed(() => {
     const last = this.points().at(-1);
     return last ? formatMetric(last.v, this.unit(), this.number) : '—';
   });
-  protected readonly topLabel = computed(() => formatMetric(this.top(), this.unit(), this.number));
+  /** The top of the scale, unless it is the fixed maximum the caption already gives. */
+  protected readonly topLabel = computed(() =>
+    this.max() === null ? formatMetric(this.top(), this.unit(), this.number) : '',
+  );
 }

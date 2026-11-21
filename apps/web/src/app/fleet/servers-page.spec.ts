@@ -28,6 +28,28 @@ const other = { ...node, id: '0190f5a8-7b1c-7e2d-8f3a-0000000000cc', name: 'edge
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
+/** Metrics of a server whose values all scale with n, so that each chart names its server. */
+const metrics = (n: number) => {
+  const t0 = 1_795_000_000;
+  const series = (v: number) => [
+    { labels: {}, points: [0, 1, 2].map((i) => ({ t: t0 + i * 30, v })) },
+  ];
+  return json({
+    kept: true,
+    range: '1h',
+    stepSeconds: 30,
+    from: new Date(t0 * 1000).toISOString(),
+    to: new Date((t0 + 60) * 1000).toISOString(),
+    cpu: series(0.5 * n),
+    memory: series(n * 2 ** 30),
+    memoryTotal: series(8 * 2 ** 30),
+    disk: series(10 * n * 2 ** 30),
+    diskTotal: series(50 * 2 ** 30),
+    received: series(1536 * n),
+    sent: series(512),
+  });
+};
+
 describe('servers page', () => {
   let harness: RouterTestingHarness;
   let requests: { method: string; path: string; body: unknown }[];
@@ -69,6 +91,8 @@ describe('servers page', () => {
         nodes = [{ ...node, publicAddresses: sent }];
         return json(nodes[0]);
       },
+      [`GET ${BASE}/nodes/${NODE}/metrics`]: () => metrics(1),
+      [`GET ${BASE}/nodes/${other.id}/metrics`]: () => metrics(2),
       [`POST ${BASE}/nodes/${NODE}/remove`]: () => {
         nodes = [];
         return new Response(null, { status: 204 });
@@ -182,9 +206,9 @@ describe('servers page', () => {
     await settle();
     expect(copied).toEqual([config]);
     // The confirmation names the command and sits next to its button, not under the token.
-    const statuses = [...element().querySelectorAll('[role="status"]')].map((status) =>
-      status.textContent.trim(),
-    );
+    const statuses = [
+      ...element().querySelectorAll('section[aria-labelledby="add-title"] [role="status"]'),
+    ].map((status) => status.textContent.trim());
     expect(statuses).toEqual(['Command copied.']);
   });
 
@@ -210,7 +234,9 @@ describe('servers page', () => {
     copyToken()?.click();
     await settle();
     const statuses = () =>
-      [...element().querySelectorAll('[role="status"]')].map((status) => status.textContent.trim());
+      [...element().querySelectorAll('section[aria-labelledby="add-title"] [role="status"]')].map(
+        (status) => status.textContent.trim(),
+      );
     expect(statuses()).toEqual(['Copied. Save it in a secure place.']);
     // Done, then a second token: the clipboard still holds the first one.
     [...element().querySelectorAll('button')]
@@ -361,6 +387,28 @@ describe('servers page', () => {
     expect(element().querySelector('#addresses-title')?.textContent).toContain('edge-2');
     expect(element().querySelector('#addresses-error')?.textContent.trim()).toBe('');
     expect(element().querySelector('#public-addresses')?.getAttribute('aria-invalid')).toBeNull();
+  });
+
+  it('charts the server chosen against what it has, and follows another choice', async () => {
+    const panel = () =>
+      (
+        element().querySelector('section[aria-labelledby="node-metrics-title"]')?.textContent ?? ''
+      ).replace(/\s+/g, ' ');
+    expect(requests.some((r) => r.path === `${BASE}/nodes/${NODE}/metrics`)).toBe(true);
+    expect(panel()).toContain('0.50 CPU');
+    expect(panel()).toContain('of 4 CPU');
+    expect(panel()).toContain('1.0 GiB');
+    expect(panel()).toContain('of 8.0 GiB');
+    expect(panel()).toContain('10 GiB');
+    expect(panel()).toContain('1.5 KiB/s');
+    expect(panel()).toContain('out 512 B/s');
+    const select = element().querySelector<HTMLSelectElement>('#node-metrics-server');
+    if (!select) throw new Error('missing server choice');
+    select.value = other.id;
+    select.dispatchEvent(new Event('change'));
+    await settle();
+    expect(requests.at(-1)?.path).toBe(`${BASE}/nodes/${other.id}/metrics`);
+    expect(panel()).toContain('1.00 CPU');
   });
 });
 
