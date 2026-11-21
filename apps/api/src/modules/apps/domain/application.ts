@@ -71,6 +71,16 @@ export function applicationConfig(value: unknown): ApplicationConfig {
 }
 
 /**
+ * The configuration an application keeps when its environment is cloned (issue #257): the same
+ * document without `domains`, which stay with the application that serves them. Secret names are
+ * kept, so the copy shows which secrets the new environment still needs.
+ */
+export function clonedConfig(config: ShipkeepConfig): ApplicationConfig {
+  const { domains: _domains, ...rest } = config;
+  return applicationConfig(rest);
+}
+
+/**
  * An application cannot serve the control plane's name (ADR 0021): on the machine that hosts both,
  * the agent keeps that name's route for the control plane, and refuses it to applications too.
  * `reserved` holds the host of `API_PUBLIC_URL`. Wildcards are refused earlier.

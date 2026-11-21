@@ -964,6 +964,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/clone": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["cloneEnvironment"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/events": {
         readonly parameters: {
             readonly query?: never;
@@ -1387,6 +1403,17 @@ export type components = {
             readonly updatedAt: string;
             /** Format: uuid */
             readonly userId: string;
+        };
+        readonly ClonedEnvironmentDto: {
+            /** @description The copied applications: not deployed, without domains. */
+            readonly applications: readonly components["schemas"]["ApplicationDto"][];
+            /** Format: uuid */
+            readonly environmentId: string;
+            readonly name: string;
+        };
+        readonly CloneEnvironmentDto: {
+            /** @description Name of the new environment (same rules as for creation). */
+            readonly name: string;
         };
         readonly ConfirmationIssuedDto: {
             /** Format: date-time */
@@ -3836,6 +3863,33 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["BindingMutationDto"];
+                };
+            };
+        };
+    };
+    readonly cloneEnvironment: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CloneEnvironmentDto"];
+            };
+        };
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ClonedEnvironmentDto"];
                 };
             };
         };
