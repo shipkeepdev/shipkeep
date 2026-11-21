@@ -468,6 +468,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/members/{membershipId}/transfer-ownership": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["transferOwnership"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/metrics": {
         readonly parameters: {
             readonly query?: never;
@@ -1939,6 +1955,12 @@ export type components = {
             /** @description Never returned. */
             readonly value: string;
         };
+        readonly TransferOwnershipDto: {
+            /** Format: password */
+            readonly password: string;
+            readonly recovery?: string;
+            readonly totp?: string;
+        };
         readonly UpdateApplicationConfigDto: {
             /** @description The shipkeep.yml document as JSON (SPEC 2), validated against the schema. Only build.type image is accepted for now. Secrets are listed by name; values are set through the secrets API. */
             readonly config: {
@@ -2785,6 +2807,39 @@ export interface operations {
         readonly requestBody: {
             readonly content: {
                 readonly "application/json": components["schemas"]["MemberRoleDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["MembershipMutationDto"];
+                };
+            };
+        };
+    };
+    readonly transferOwnership: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Lowercase UUIDv4/v7. Encrypted result retained for five minutes and bound to the credential. */
+                readonly "Idempotency-Key"?: string;
+                /** @description Exact API origin; required for session mutations. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof; required for session mutations. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly membershipId: string;
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["TransferOwnershipDto"];
             };
         };
         readonly responses: {
