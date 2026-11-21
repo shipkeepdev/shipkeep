@@ -287,7 +287,10 @@ for _ in 1 2 3 4 5 6 7 8; do
   [[ $generated =~ ^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] || die "not a UUIDv7: $generated"
 done
 stamp=${generated:0:8}${generated:9:4}
-((10#$(date +%s%3N) - 16#$stamp < 60000 && 16#$stamp <= 10#$(date +%s%3N))) || die "the UUIDv7 does not hold the current time: $generated"
+# Within a minute of now. A second ahead is allowed: a CI runner's clock was seen stepping back
+# 0.8 s between the id and this check, which says nothing about the id.
+now=$(date +%s%3N)
+((10#$now - 16#$stamp < 60000 && 16#$stamp <= 10#$now + 1000)) || die "the UUIDv7 does not hold the current time: $generated"
 
 # install-state: what --resume yes reads back, and nothing else.
 state=$work/state
