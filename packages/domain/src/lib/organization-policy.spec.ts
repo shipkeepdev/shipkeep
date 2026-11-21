@@ -1,4 +1,4 @@
-import { PERMISSIONS, type Permission } from './api-token-policy.js';
+import { BEARER_GRANTS, PERMISSIONS, type Permission } from './api-token-policy.js';
 import {
   allowsTenantAction,
   canChangeMembership,
@@ -220,5 +220,30 @@ describe('organization membership changes', () => {
     expect(canTransferOwnership('member', 'admin', false)).toBe(false);
     expect(canTransferOwnership('', 'admin', false)).toBe(false);
     expect(canTransferOwnership('owner', 'root', false)).toBe(false);
+  });
+});
+
+describe('BEARER_GRANTS (#208)', () => {
+  const ids = {
+    organizationId: '01900000-0000-7000-8000-000000000001',
+    projectId: '01900000-0000-7000-8000-000000000002',
+    environmentId: '01900000-0000-7000-8000-000000000003',
+  };
+  const owner = { organizationId: ids.organizationId, role: 'owner', bindings: [] };
+  const targets = {
+    organization: { organizationId: ids.organizationId },
+    project: { organizationId: ids.organizationId, projectId: ids.projectId },
+    // Protection is read from the environment record; deploy.run and secret.write need it.
+    environment: { ...ids, protected: false },
+  } as const;
+  it('names each permission at a level the tenant policy accepts, the only one but for audit', () => {
+    for (const grant of BEARER_GRANTS) {
+      const accepted = Object.entries(targets)
+        .filter(([, target]) => allowsTenantAction(owner, grant.permission, target))
+        .map(([level]) => level);
+      expect(accepted, grant.permission).toContain(grant.level);
+      // audit.read is accepted at every level; its routes read the organization's log.
+      if (grant.permission !== 'audit.read') expect(accepted, grant.permission).toHaveLength(1);
+    }
   });
 });

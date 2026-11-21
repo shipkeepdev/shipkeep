@@ -107,6 +107,7 @@ describe('identity HTTP acceptance with PostgreSQL and TLS SMTP', () => {
     expect(first.body).toEqual({
       userId: expect.any(String),
       email,
+      displayName: null,
       expiresAt: expect.any(String),
     });
     const a = credentials(first);

@@ -132,7 +132,7 @@ export class IdentityApi {
       this.client.POST('/api/v1/auth/login', { body, params: this.params(key) }),
     );
   }
-  async register(body: IdentitySchema<'CredentialsDto'>, key: string): Promise<void> {
+  async register(body: IdentitySchema<'RegisterDto'>, key: string): Promise<void> {
     await this.execute(() =>
       this.client.POST('/api/v1/auth/register', { body, params: this.params(key) }),
     );
@@ -219,6 +219,15 @@ export class IdentityApi {
       this.client.POST('/api/v1/api-tokens/{id}/revoke', {
         body,
         params: { ...this.params(key), path: { id } },
+      }),
+    );
+  }
+  /** Sets or removes (null) the name the account shows (issue #251); answers the new session. */
+  setDisplayName(displayName: string | null): Promise<SessionProfile> {
+    return this.required(() =>
+      this.client.POST('/api/v1/auth/profile', {
+        body: { displayName },
+        params: { header: { Origin: this.origin, 'X-Shipkeep-CSRF': '' } },
       }),
     );
   }

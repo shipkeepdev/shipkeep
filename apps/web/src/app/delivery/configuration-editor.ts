@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, effect, inject, input } from '@angular/core';
 
 import { MutationRunner } from '../identity/mutation-runner';
+import { IssueText } from '../ui/config-issue';
 import { T } from '../ui/i18n';
 
 import { ConfigurationEditorStore } from './configuration-editor-store';
@@ -8,7 +9,7 @@ import { type Application, type EnvironmentRef } from './delivery-api';
 
 @Component({
   selector: 'sk-configuration-editor',
-  imports: [T],
+  imports: [IssueText, T],
   providers: [MutationRunner, ConfigurationEditorStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -51,7 +52,7 @@ import { type Application, type EnvironmentRef } from './delivery-api';
           <ul class="list-disc pl-5">
             @for (issue of store.issues(); track $index) {
               <li>
-                <code>{{ issue.path || '/' }}</code> {{ issue.message | t }}
+                <code>{{ issue.path || '/' }}</code> {{ issue.message | issue }}
               </li>
             }
           </ul>

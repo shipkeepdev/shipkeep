@@ -108,6 +108,8 @@ export const FR: Readonly<Record<string, string>> = {
     "La suppression d'une organisation n'est pas encore disponible.",
   'Deployments of this organization pull private images with the credentials stored for the registry of the image. A password is encrypted and never shown again: it can only be replaced.':
     "Les déploiements de cette organisation récupèrent les images privées avec les identifiants enregistrés pour le registre de l'image. Un mot de passe est chiffré et n'est plus jamais affiché : il peut seulement être remplacé.",
+  'Find a page, project, environment, application, server or member':
+    'Trouver une page, un projet, un environnement, une application, un serveur ou un membre',
   'Four steps. {done} of 4 done.': 'Quatre étapes. {done} sur 4 faites.',
   'From a shipkeep.yml with an image, in an environment of a project.':
     "Depuis un shipkeep.yml avec une image, dans un environnement d'un projet.",
@@ -147,6 +149,7 @@ export const FR: Readonly<Record<string, string>> = {
   Replace: 'Remplacer',
   'Replace the credentials of {name}': 'Remplacer les identifiants de {name}',
   'Save the credentials': 'Enregistrer les identifiants',
+  'Searching…': 'Recherche…',
   'The command checks the installer and agent checksums. The agent checks the fingerprint, enrolls, then deletes the token.':
     "La commande vérifie les sommes de contrôle de l'installeur et de l'agent. L'agent vérifie l'empreinte, s'enrôle, puis supprime le jeton.",
   'The members could not be read. Try again.': "Les membres n'ont pas pu être lus. Réessayez.",
@@ -1155,6 +1158,7 @@ export const FR: Readonly<Record<string, string>> = {
     "Enregistrez ce jeton avant de partir. Il n'est affiché qu'une fois et ne pourra plus être consulté ici une fois cet affichage fermé ou cette page quittée.",
   'Save your API token': "Enregistrez votre jeton d'API",
   'Save your recovery codes': 'Enregistrez vos codes de récupération',
+  'Saved.': 'Enregistré.',
   'Saving…': 'Enregistrement…',
   'Scan every built image': 'Scanner chaque image construite',
   'Scan images at build': 'Scan des images au build',
@@ -1804,6 +1808,11 @@ export const FR: Readonly<Record<string, string>> = {
   '{applications} in {environments}': '{applications} dans {environments}',
   '{running} of {n} replica running': '{running} sur {n} réplique en marche',
   '{running} of {n} replicas running': '{running} sur {n} répliques en marche',
+  'A name has at most 64 characters, and no control character.':
+    'Un nom a au plus 64 caractères, sans caractère de contrôle.',
+  'Shown instead of your address. Never used to sign in.':
+    'Affiché à la place de votre adresse. Jamais utilisé pour vous connecter.',
+  'The name could not be saved. Try again.': "Le nom n'a pas pu être enregistré. Réessayez.",
   'Sessions could not be read. Reload the page to try again.':
     'Les sessions n’ont pas pu être lues. Rechargez la page pour réessayer.',
   'Sign out {device}': 'Déconnecter {device}',

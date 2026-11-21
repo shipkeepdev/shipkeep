@@ -18,7 +18,7 @@ import { MfaCommands, type RecoveryGrant, type SecurityContext } from '../applic
 import { MfaQuery } from '../application/mfa-query';
 import type { SessionGrant } from '../application/session-commands';
 
-import { SessionDto } from './identity.dto';
+import { SessionDto, sessionDto } from './identity.dto';
 import { IdentityAttemptLimit } from './identity-rate.guard';
 import { IdentityReplayInterceptor } from './identity-replay.interceptor';
 import { AllowAccount } from './route-access';
@@ -135,13 +135,14 @@ export class MfaController {
     return {
       userId: session.userId,
       email: session.email,
+      displayName: session.displayName,
       expiresAt: session.expiresAt,
       recoveryCodes: result.recoveryCodes.map((code) => code.expose()),
     };
   }
   private session(response: Response, grant: SessionGrant): SessionDto {
     setSessionCookies(response, grant, cookiePolicy(this.config.get('API_PUBLIC_URL')));
-    return { userId: grant.userId, email: grant.email, expiresAt: grant.expiresAt.toISOString() };
+    return sessionDto(grant);
   }
 }
 

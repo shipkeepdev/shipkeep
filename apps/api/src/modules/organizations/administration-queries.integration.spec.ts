@@ -117,6 +117,7 @@ describe('membership administration queries with restricted PostgreSQL', () => {
     expect(Object.keys(first.items[0]).sort()).toEqual([
       'active',
       'createdAt',
+      'displayName',
       'email',
       'id',
       'orgRole',

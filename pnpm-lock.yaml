@@ -80,6 +80,9 @@ importers:
       '@shipkeep/config-schema':
         specifier: workspace:*
         version: link:packages/config-schema
+      '@shipkeep/domain':
+        specifier: workspace:*
+        version: link:packages/domain
       argon2:
         specifier: 0.44.0
         version: 0.44.0

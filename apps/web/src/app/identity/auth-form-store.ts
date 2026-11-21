@@ -189,14 +189,16 @@ export class AuthFormStore {
     }
     const mode = this.mode();
     const step = this.step();
-    const { email, password, code: token, factor } = this.form.getRawValue();
+    const { email, password, code: token, factor, name } = this.form.getRawValue();
+    // The name is optional and only shown: an empty one is no name.
+    const named = name.trim() ? { name: name.trim() } : {};
     const proof =
       step === 'totp' ? { totp: factor } : step === 'recovery' ? { recovery: factor } : {};
     const body =
       mode === 'login'
         ? { email, password, ...proof }
         : mode === 'register'
-          ? { email, password }
+          ? { email, password, ...named }
           : mode === 'reset-password' || mode === 'verify-email'
             ? { token, password }
             : { email };
@@ -205,7 +207,7 @@ export class AuthFormStore {
         case 'login':
           return this.session.login({ email, password, ...proof }, key);
         case 'register':
-          return this.api.register({ email, password }, key);
+          return this.api.register({ email, password, ...named }, key);
         case 'verify-email':
           return this.api.verifyEmail({ token, password }, key);
         case 'request-verification':
