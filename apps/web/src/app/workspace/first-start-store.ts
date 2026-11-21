@@ -28,7 +28,10 @@ export class FirstStartStore {
   private readonly delivery = inject(DeliveryApi);
   private readonly fleet = inject(FleetApi);
   private revision = 0;
+  private registryRevision = 0;
   readonly loading = signal(true);
+  /** Private registries stored; 0 when the role may not read them or the read failed. */
+  readonly registries = signal(0);
   readonly facts = signal<FirstStartRead>({
     servers: null,
     readyServers: 0,
@@ -58,6 +61,19 @@ export class FirstStartStore {
     this.loading.set(false);
   }
 
+  /** Only owners and admins may read registries; for the others the step stands on applications. */
+  readRegistries(organizationId: string, role: string | null): void {
+    const revision = ++this.registryRevision;
+    this.registries.set(0);
+    if (role !== 'owner' && role !== 'admin') return;
+    void this.workspace
+      .registries(organizationId)
+      .catch(() => [])
+      .then((found) => {
+        if (revision === this.registryRevision) this.registries.set(found.length);
+      });
+  }
+
   private async applications(
     organizationId: string,
   ): Promise<{ readonly ref: EnvironmentRef; readonly id: string }[]> {
@@ -85,17 +101,26 @@ export class FirstStartStore {
     ).flat();
   }
 
+  /**
+   * True once any deployment list shows one that served, even if other lists failed; null when
+   * none did and at least one could not be read; false only when every list was read.
+   */
   private async anyServed(
     applications: readonly { readonly ref: EnvironmentRef; readonly id: string }[],
-  ): Promise<boolean> {
+  ): Promise<boolean | null> {
+    let unread = false;
     for (let start = 0; start < applications.length; start += BATCH) {
       const found = await Promise.all(
-        applications
-          .slice(start, start + BATCH)
-          .map(async ({ ref, id }) => (await this.delivery.deployments(ref, id)).some(leftLive)),
+        applications.slice(start, start + BATCH).map(({ ref, id }) =>
+          this.delivery.deployments(ref, id).then(
+            (deployments) => deployments.some(leftLive),
+            () => null,
+          ),
+        ),
       );
       if (found.includes(true)) return true;
+      if (found.includes(null)) unread = true;
     }
-    return false;
+    return unread ? null : false;
   }
 }

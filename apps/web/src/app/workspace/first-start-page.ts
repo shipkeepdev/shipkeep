@@ -5,7 +5,6 @@ import {
   effect,
   inject,
   input,
-  signal,
   untracked,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
@@ -16,7 +15,6 @@ import { ShellContext } from '../shell/shell-context';
 import { I18n, T } from '../ui/i18n';
 
 import { FirstStartStore } from './first-start-store';
-import { WorkspaceApi } from './workspace-api';
 
 /** What the API reported. A null count could not be read: it neither ticks nor opens a step. */
 export interface FirstStartFacts {
@@ -198,19 +196,16 @@ export function firstStartSteps(organizationId: string, facts: FirstStartFacts):
 })
 export class FirstStartPage {
   protected readonly store = inject(FirstStartStore);
-  private readonly api = inject(WorkspaceApi);
   private readonly shell = inject(ShellContext);
   private readonly i18n = inject(I18n);
   readonly organizationId = input.required<string>();
-  private readonly registries = signal(0);
-  #revision = 0;
 
   protected readonly steps = computed(() =>
     firstStartSteps(this.organizationId(), {
       organization: this.shell.organization()?.name ?? '…',
       role: this.shell.role(),
       ...this.store.facts(),
-      registries: this.registries(),
+      registries: this.store.registries(),
     }),
   );
   protected readonly next = computed(
@@ -241,26 +236,13 @@ export class FirstStartPage {
       const organizationId = this.organizationId();
       const role = this.shell.role();
       untracked(() => {
-        this.readRegistries(organizationId, role);
+        this.store.readRegistries(organizationId, role);
       });
     });
   }
 
   protected read(organizationId: string): void {
     void this.store.load(organizationId);
-    this.readRegistries(organizationId, this.shell.role());
-  }
-
-  /** Only owners and admins may read registries; for the others the step stands on applications. */
-  private readRegistries(organizationId: string, role: string | null): void {
-    const revision = ++this.#revision;
-    this.registries.set(0);
-    if (role !== 'owner' && role !== 'admin') return;
-    void this.api
-      .registries(organizationId)
-      .catch(() => [])
-      .then((found) => {
-        if (revision === this.#revision) this.registries.set(found.length);
-      });
+    this.store.readRegistries(organizationId, this.shell.role());
   }
 }

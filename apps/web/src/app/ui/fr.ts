@@ -93,6 +93,7 @@ export const FR: Readonly<Record<string, string>> = {
   Actions: 'Actions',
   'An application exists: deploy it from its page.':
     'Une application existe : déployez-la depuis sa page.',
+  'An application is deployed.': 'Une application est déployée.',
   'As the image names it, with its port if it has one. Docker Hub is docker.io.':
     "Tel que l'image le nomme, avec son port s'il en a un. Docker Hub s'écrit docker.io.",
   'Choose where images come from': "Choisir d'où viennent les images",

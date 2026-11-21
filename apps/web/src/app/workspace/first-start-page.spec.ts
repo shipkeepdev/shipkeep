@@ -7,7 +7,6 @@ import { I18n } from '../ui/i18n';
 
 import { type FirstStartFacts, FirstStartPage, firstStartSteps } from './first-start-page';
 import { FirstStartStore } from './first-start-store';
-import { WorkspaceApi } from './workspace-api';
 
 const ORG = '01900000-0000-7000-8000-000000000001';
 const empty: FirstStartFacts = {
@@ -61,18 +60,18 @@ describe('first start steps (#269)', () => {
 });
 
 describe('first start page', () => {
-  async function render(role: string) {
+  async function render(role: string, deployed = false) {
     const store = {
       loading: signal(false),
-      facts: signal({ servers: 1, readyServers: 1, applications: 0, deployed: false }),
+      facts: signal({ servers: 1, readyServers: 1, applications: deployed ? 1 : 0, deployed }),
+      registries: signal(0),
       load: vi.fn(() => Promise.resolve()),
+      readRegistries: vi.fn(),
     };
-    const registries = vi.fn(() => Promise.resolve([]));
     TestBed.configureTestingModule({
       imports: [FirstStartPage],
       providers: [
         provideRouter([]),
-        { provide: WorkspaceApi, useValue: { registries } },
         {
           provide: ShellContext,
           useValue: { organization: signal({ name: 'Local Test' }), role: signal(role) },
@@ -87,23 +86,25 @@ describe('first start page', () => {
     fixture.componentRef.setInput('organizationId', ORG);
     await fixture.whenStable();
     fixture.detectChanges();
-    return { store, registries, element: fixture.nativeElement as HTMLElement };
+    return { store, element: fixture.nativeElement as HTMLElement };
   }
 
   it('marks the next step and counts the done ones, in French too', async () => {
-    const { store, registries, element } = await render('owner');
+    const { store, element } = await render('owner');
     expect(store.load).toHaveBeenCalledWith(ORG);
     expect(element.textContent).toContain('2 sur 4 faites');
     expect(element.textContent).toContain('vous êtes Propriétaire');
     expect(element.textContent).toContain('1 serveur inscrit, 1 prêt.');
     const current = element.querySelector('[aria-current=step]');
     expect(current?.textContent).toContain("Choisir d'où viennent les images");
-    // An owner may read registries; the step counts them.
-    expect(registries).toHaveBeenCalledWith(ORG);
+    // The store decides from the role whether registries may be read.
+    expect(store.readRegistries).toHaveBeenCalledWith(ORG, 'owner');
   });
 
-  it('never asks for registries a member may not read', async () => {
-    const { registries } = await render('member');
-    expect(registries).not.toHaveBeenCalled();
+  it('says in French that an application is deployed', async () => {
+    const { element } = await render('member', true);
+    expect(element.textContent).toContain('4 sur 4 faites');
+    expect(element.textContent).toContain('Une application est déployée.');
+    expect(element.textContent).not.toContain('An application is deployed.');
   });
 });
