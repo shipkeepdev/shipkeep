@@ -17,7 +17,7 @@ import { Icon } from '../shell/icon';
 import { type IconName } from '../shell/icons';
 import { Logo } from '../shell/logo';
 import { ShellContext } from '../shell/shell-context';
-import { I18n, LANGUAGES, T } from '../ui/i18n';
+import { Count, I18n, LANGUAGES, T } from '../ui/i18n';
 import { Notice } from '../ui/notice';
 import { CommandPalette, type PaletteEntry } from './command-palette';
 import { type Crumb, PageCrumbs, RouteCrumbs } from './page-crumbs';
@@ -42,7 +42,7 @@ const initials = (text: string) =>
 /** The dashboard frame from the design: sidebar, top bar and the current page. */
 @Component({
   selector: 'sk-dashboard-layout',
-  imports: [CommandPalette, Icon, Logo, RouterLink, RouterOutlet, T],
+  imports: [CommandPalette, Count, Icon, Logo, RouterLink, RouterOutlet, T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './dashboard-layout.html',
   host: { '(document:keydown)': 'shortcut($event)' },

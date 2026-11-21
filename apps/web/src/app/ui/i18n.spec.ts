@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
-import { I18n } from './i18n';
+import { Count, I18n } from './i18n';
 
 describe('I18n.count', () => {
   it('gives each count the form of its language, and a dash to an unknown one', () => {
@@ -15,5 +15,23 @@ describe('I18n.count', () => {
     expect(i18n.count(0, '{n} project', '{n} projects')).toBe('0 projet');
     expect(i18n.count(1, '{n} server', '{n} servers')).toBe('1 serveur');
     expect(i18n.count(3, '{n} environment', '{n} environments')).toBe('3 environnements');
+  });
+});
+
+describe('count pipe', () => {
+  it('reads the language and keeps the other values', () => {
+    const i18n = TestBed.inject(I18n);
+    const count = TestBed.runInInjectionContext(() => new Count());
+    i18n.use('en');
+    expect(
+      count.transform(1, '{running} of {n} replica running', '{running} of {n} replicas running', {
+        running: 0,
+      }),
+    ).toBe('0 of 1 replica running');
+    expect(count.transform(undefined, '{n} agent', '{n} agents')).toBe('— agents');
+    i18n.use('fr');
+    expect(count.transform(0, '{n} agent connected · mTLS', '{n} agents connected · mTLS')).toBe(
+      '0 agent connecté · mTLS',
+    );
   });
 });

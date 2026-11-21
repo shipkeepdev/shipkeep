@@ -244,8 +244,7 @@
         >
           <sk-icon name="plug-connected" class="text-[14px] text-blue" />
           {{
-            (shell.connected() === 1 ? '{n} agent connected · mTLS' : '{n} agents connected · mTLS')
-              | t: { n: shell.connected() ?? '—' }
+            shell.connected() | count: '{n} agent connected · mTLS' : '{n} agents connected · mTLS'
           }}
         </a>
         <button

@@ -3,7 +3,7 @@ import { RouterLink } from '@angular/router';
 
 import { Icon } from '../shell/icon';
 import { ShellContext } from '../shell/shell-context';
-import { T } from '../ui/i18n';
+import { Count, T } from '../ui/i18n';
 import { OverviewStore } from '../workspace/overview-store';
 import { deploymentStatus, duration, shortDate } from './format';
 
@@ -13,7 +13,7 @@ const COLUMNS =
 /** Every application of the organization, across projects and environments. */
 @Component({
   selector: 'sk-applications-page',
-  imports: [Icon, RouterLink, T],
+  imports: [Count, Icon, RouterLink, T],
   providers: [OverviewStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -23,8 +23,14 @@ const COLUMNS =
           <h1 class="page-title">{{ 'Applications' | t }}</h1>
           <div class="page-sub">
             {{
-              '{n} applications in {e} environments'
-                | t: { n: store.applications().length, e: store.environmentCount() }
+              '{applications} in {environments}'
+                | t
+                  : {
+                      applications:
+                        store.applications().length | count: '{n} application' : '{n} applications',
+                      environments:
+                        store.environmentCount() | count: '{n} environment' : '{n} environments',
+                    }
             }}
           </div>
         </div>

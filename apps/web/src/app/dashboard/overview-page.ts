@@ -5,7 +5,7 @@ import { type AuditEvent } from '../audit/audit-api';
 import { Icon } from '../shell/icon';
 import { type IconName } from '../shell/icons';
 import { ShellContext } from '../shell/shell-context';
-import { I18n, T } from '../ui/i18n';
+import { Count, I18n, T } from '../ui/i18n';
 import { OverviewStore } from '../workspace/overview-store';
 import {
   ageSeconds,
@@ -49,7 +49,7 @@ const DAY = 24 * 60 * 60 * 1000;
 /** 01 Overview: what runs, what is wrong and what happened, for the whole organization. */
 @Component({
   selector: 'sk-overview-page',
-  imports: [Icon, RequestsChart, RouterLink, T],
+  imports: [Count, Icon, RequestsChart, RouterLink, T],
   providers: [OverviewStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './overview-page.html',
