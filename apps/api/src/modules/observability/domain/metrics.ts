@@ -6,8 +6,13 @@
 
 export const MAX_CONTAINERS = 256;
 export const MAX_HOSTS = 64;
-/** Counters and gauges above this are not a real measure. */
-const MAX_VALUE = 1e15;
+/** Gauges (memory, disk, cores) above this are not a real measure: 1 PB. */
+const MAX_GAUGE = 1e15;
+/**
+ * Cumulative counters (CPU seconds, bytes, responses) only grow: they are bounded by the largest
+ * integer a number holds exactly, not by what a gauge can reach.
+ */
+const MAX_COUNTER = Number.MAX_SAFE_INTEGER;
 
 export interface NodeMeasure {
   readonly cpuSeconds: number;
@@ -48,26 +53,55 @@ export interface Measures {
 const CONTAINER = /^sk-[a-z0-9-]{1,60}$/;
 const HOST = /^[a-z0-9](?:[a-z0-9.-]{0,251}[a-z0-9])?$/;
 
-/** A value a node may report: finite, not negative, not absurd. */
-export function validValue(value: number): boolean {
-  return Number.isFinite(value) && value >= 0 && value <= MAX_VALUE;
+/** A value a node may report: finite, not negative, not above its kind's bound. */
+function valid(value: number, max: number): boolean {
+  return Number.isFinite(value) && value >= 0 && value <= max;
 }
+const gauge = (value: number) => valid(value, MAX_GAUGE);
+const counter = (value: number) => valid(value, MAX_COUNTER);
 
 /** The measures of a report, or undefined when any is out of bounds: never part of a report. */
 export function validMeasures(measures: Measures): Measures | undefined {
   if (measures.containers.length > MAX_CONTAINERS || measures.hosts.length > MAX_HOSTS)
     return undefined;
   const { node } = measures;
-  if (node && !Object.values(node).every(validValue)) return undefined;
+  if (
+    node &&
+    !(
+      [
+        node.cpuCores,
+        node.memoryUsedBytes,
+        node.memoryTotalBytes,
+        node.diskUsedBytes,
+        node.diskTotalBytes,
+      ].every(gauge) &&
+      [node.cpuSeconds, node.networkReceivedBytes, node.networkSentBytes].every(counter)
+    )
+  )
+    return undefined;
   for (const container of measures.containers) {
     if (!CONTAINER.test(container.name)) return undefined;
-    const { name: _, ...values } = container;
-    if (!Object.values(values).every(validValue)) return undefined;
+    if (
+      ![container.memoryUsedBytes, container.memoryLimitBytes].every(gauge) ||
+      ![container.cpuSeconds, container.networkReceivedBytes, container.networkSentBytes].every(
+        counter,
+      )
+    )
+      return undefined;
   }
   for (const host of measures.hosts) {
     if (!HOST.test(host.host) || host.host.includes('..')) return undefined;
-    const { host: _, ...values } = host;
-    if (!Object.values(values).every(validValue)) return undefined;
+    if (
+      ![
+        host.responses2xx,
+        host.responses3xx,
+        host.responses4xx,
+        host.responses5xx,
+        host.responsesOther,
+        host.durationSeconds,
+      ].every(counter)
+    )
+      return undefined;
   }
   return measures;
 }
@@ -123,7 +157,13 @@ export function samples(
   for (const measure of measures.containers) {
     const target = byContainer.get(measure.name);
     if (!target) continue;
-    const labels = { ...nodeLabels, ...workload(target), replica: String(target.replica) };
+    // The container name tells apart the old and new release of one replica during a rollout.
+    const labels = {
+      ...nodeLabels,
+      ...workload(target),
+      replica: String(target.replica),
+      container: target.container,
+    };
     push('shipkeep_container_cpu_seconds_total', labels, measure.cpuSeconds);
     push('shipkeep_container_memory_used_bytes', labels, measure.memoryUsedBytes);
     push('shipkeep_container_memory_limit_bytes', labels, measure.memoryLimitBytes);
