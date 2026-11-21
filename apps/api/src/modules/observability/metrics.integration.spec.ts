@@ -16,16 +16,30 @@ const CONTAINER = 'sk-charted-api-0123456789ab-r1-0';
 describe('metrics with PostgreSQL and VictoriaMetrics', () => {
   let fixture: Awaited<ReturnType<typeof tenantHttpFixture>>;
   let store: Awaited<ReturnType<typeof victoriaMetrics>>;
+  /** What setup started, stopped in reverse order: a setup that failed half way still stops it. */
+  const cleanups: (() => Promise<void>)[] = [];
 
   beforeAll(async () => {
     store = await victoriaMetrics();
+    cleanups.push(() => store.stop());
     process.env['VICTORIAMETRICS_URL'] = store.url;
+    cleanups.push(() => {
+      Reflect.deleteProperty(process.env, 'VICTORIAMETRICS_URL');
+      return Promise.resolve();
+    });
     fixture = await tenantHttpFixture();
+    cleanups.push(() => fixture.close());
   });
   afterAll(async () => {
-    await fixture.close();
-    await store.stop();
-    Reflect.deleteProperty(process.env, 'VICTORIAMETRICS_URL');
+    const failures: unknown[] = [];
+    for (const cleanup of cleanups.reverse()) {
+      try {
+        await cleanup();
+      } catch (error) {
+        failures.push(error);
+      }
+    }
+    if (failures.length) throw new AggregateError(failures, 'metrics test cleanup failed');
   });
 
   const createApplication = async (name: string, domain: string) =>
