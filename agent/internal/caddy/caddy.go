@@ -457,29 +457,41 @@ func (c *Client) get(ctx context.Context, path string, out any) (bool, error) {
 }
 
 // EnableRequestMetrics turns Caddy's request metrics per host name on (ADR 0024) when every route
-// of the Shipkeep server bounds its hosts, and off otherwise; it reports whether they are on. A
-// route that lacks the Host bound (written by an older agent, until secureRoutes adds it) or that
-// has a wildcard host lets clients choose the label, so per-host metrics would have no limit.
+// of every HTTP server bounds its hosts, and off otherwise; it reports whether they are on. The
+// setting applies to all of Caddy's HTTP servers, not only Shipkeep's. A route that lacks the Host
+// bound (written by an older agent, until secureRoutes adds it, or by someone else), that has no
+// host list, or that has a wildcard host lets clients choose the label, so per-host metrics would
+// have no limit.
 func (c *Client) EnableRequestMetrics(ctx context.Context) (bool, error) {
 	c.routes.Lock()
 	defer c.routes.Unlock()
-	var routes []Route
-	if _, err := c.get(ctx, "/config/apps/http/servers/"+Server+"/routes", &routes); err != nil {
-		return false, fmt.Errorf("read caddy routes: %w", err)
+	var servers map[string]struct {
+		Routes []Route `json:"routes"`
 	}
-	on := metricsSafe(routes)
+	if _, err := c.get(ctx, "/config/apps/http/servers", &servers); err != nil {
+		return false, fmt.Errorf("read caddy servers: %w", err)
+	}
+	on := len(servers) > 0
+	for _, server := range servers {
+		on = on && metricsSafe(server.Routes)
+	}
 	if err := c.setPerHost(ctx, on); err != nil {
 		return false, err
 	}
 	return on, nil
 }
 
-// metricsSafe tells whether routes keep per-host metrics bounded: each match bounds the Host
-// header, and no host is a wildcard, whose names a client invents.
+// metricsSafe tells whether routes keep per-host metrics bounded. It fails closed: each route has
+// matchers, and each matcher set names hosts, none a wildcard, and bounds the Host header. A route
+// without matchers answers every request, an invented port included.
 func metricsSafe(routes []Route) bool {
 	for _, route := range routes {
+		if len(route.Match) == 0 {
+			return false
+		}
 		for _, match := range route.Match {
-			if !match.bounded() || slices.ContainsFunc(match.Host, func(host string) bool { return strings.Contains(host, "*") }) {
+			if !match.bounded() || len(match.Host) == 0 ||
+				slices.ContainsFunc(match.Host, func(host string) bool { return host == "" || strings.Contains(host, "*") }) {
 				return false
 			}
 		}

@@ -15,8 +15,10 @@ import (
 // metricsAdmin answers the paths of the request metrics as Caddy does: null for a setting not
 // there, the settings once written, the metrics text, and the routes of the Shipkeep server.
 type metricsAdmin struct {
-	mu       sync.Mutex
-	routes   string
+	mu     sync.Mutex
+	routes string
+	// others adds servers to the HTTP app, as `,"name":{...}`.
+	others   string
 	settings string
 	text     string
 	status   int
@@ -28,12 +30,12 @@ func (m *metricsAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer m.mu.Unlock()
 	body, _ := io.ReadAll(r.Body)
 	switch {
-	case r.Method == http.MethodGet && r.URL.Path == "/config/apps/http/servers/"+Server+"/routes":
-		if m.routes == "" {
-			_, _ = w.Write([]byte("[]"))
-			return
+	case r.Method == http.MethodGet && r.URL.Path == "/config/apps/http/servers":
+		routes := m.routes
+		if routes == "" {
+			routes = "[]"
 		}
-		_, _ = w.Write([]byte(m.routes))
+		_, _ = w.Write([]byte(`{"` + Server + `":{"routes":` + routes + `}` + m.others + `}`))
 	case r.URL.Path == "/metrics":
 		if m.status != 0 {
 			w.WriteHeader(m.status)
@@ -123,12 +125,15 @@ func TestEnablesPerHostRequestMetricsOnce(t *testing.T) {
 }
 
 // A route that lets a client choose the host label turns per-host metrics off: one without the
-// Host bound, as older agents wrote them, or one with a wildcard host. Nothing is created to say off.
+// Host bound, as older agents wrote them, one with a wildcard host, one without matchers or hosts
+// (it answers any Host). Nothing is created to say off.
 func TestKeepsPerHostMetricsOffForUnboundedRoutes(t *testing.T) {
 	for name, route := range map[string]Route{
 		"no host bound": {ID: RouteID("old"), Match: []Match{{Host: []string{"shop.example.com"}, Protocol: HTTPS}}},
 		"another bound": {ID: RouteID("odd"), Match: []Match{{Host: []string{"shop.example.com"}, HeaderRegexp: map[string]HeaderPattern{"Host": {Pattern: ".*"}}}}},
 		"a wildcard":    {ID: RouteID("wild"), Match: []Match{HostMatch([]string{"*.example.com"}, HTTPS)}},
+		"no matcher":    {ID: "fallback"},
+		"no host":       {ID: "hostless", Match: []Match{HostMatch(nil, HTTPS)}},
 	} {
 		admin := &metricsAdmin{settings: `{"otlp":true,"per_host":true}`}
 		client := metricsClient(t, admin)
@@ -160,5 +165,21 @@ func TestReadsTheMetricsTextWithinItsBound(t *testing.T) {
 	admin.text, admin.status = "private detail", http.StatusInternalServerError
 	if _, err := client.RequestMetrics(t.Context()); err == nil || strings.Contains(err.Error(), "private detail") {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// Caddy applies per_host to every HTTP server: an unbounded route on another server keeps it off.
+func TestKeepsPerHostMetricsOffForAnotherServer(t *testing.T) {
+	admin := &metricsAdmin{settings: `{"per_host":true}`}
+	client := metricsClient(t, admin)
+	admin.routes = routesJSON(t, Route{ID: RouteID("ok"), Match: []Match{HostMatch([]string{"a.example.com"}, HTTPS)}})
+	admin.others = `,"other":{"routes":[{"match":[{"host":["b.example.com"]}],"handle":[]}]}`
+	if on, err := client.EnableRequestMetrics(t.Context()); err != nil || on || admin.settings != `{"per_host":false}` {
+		t.Fatalf("on = %v, err = %v, settings %s", on, err, admin.settings)
+	}
+	admin.others = `,"other":{"routes":[` + routesJSON(t, Route{ID: "b", Match: []Match{HostMatch([]string{"b.example.com"}, HTTPS)}})[1:]
+	admin.others = admin.others[:len(admin.others)-1] + `]}`
+	if on, err := client.EnableRequestMetrics(t.Context()); err != nil || !on {
+		t.Fatalf("bounded routes on both servers: on = %v, err = %v", on, err)
 	}
 }
