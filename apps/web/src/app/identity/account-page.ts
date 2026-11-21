@@ -20,11 +20,12 @@ import { I18n, T } from '../ui/i18n';
 import { AccountStore } from './account-store';
 import { MfaPanel } from './mfa-panel';
 import { MutationRunner } from './mutation-runner';
+import { SessionsPanel } from './sessions-panel';
 import { TokenPanel } from './token-panel';
 
 @Component({
   selector: 'sk-account-page',
-  imports: [Icon, MfaPanel, RouterLink, T, TokenPanel],
+  imports: [Icon, MfaPanel, RouterLink, SessionsPanel, T, TokenPanel],
   providers: [AccountStore, MutationRunner],
   templateUrl: './account-page.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -35,6 +36,7 @@ export class AccountPage {
   protected readonly sections: readonly { k: string; label: string; icon: IconName }[] = [
     { k: 'account', label: 'Account', icon: 'user' },
     { k: 'security', label: 'Security', icon: 'shield-lock' },
+    { k: 'sessions', label: 'Sessions', icon: 'devices' },
     { k: 'tokens', label: 'API tokens', icon: 'key' },
     { k: 'appearance', label: 'Appearance', icon: 'palette' },
   ];
