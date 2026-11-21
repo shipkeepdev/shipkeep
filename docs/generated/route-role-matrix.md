@@ -40,6 +40,7 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | POST | `/organizations/:organizationId/members` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/members/:membershipId/remove` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/members/:membershipId/role` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
+| POST | `/organizations/:organizationId/members/:membershipId/transfer-ownership` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/metrics` | organization.read @ organization | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
 | GET | `/organizations/:organizationId/nodes` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/nodes/:nodeId/metrics` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |

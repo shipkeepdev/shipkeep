@@ -11,7 +11,8 @@ export function resourceReplayRoute(route: string): boolean {
   if (parts.length === 1) return true;
   if (!isTenantId(parts[1])) return false;
   const rest = parts.slice(2);
-  if (rest[0] === 'members') return memberRoute(rest.slice(1), ['role', 'remove']);
+  if (rest[0] === 'members')
+    return memberRoute(rest.slice(1), ['role', 'remove', 'transfer-ownership']);
   if (rest.length === 1) return rest[0] === 'settings' || rest[0] === 'projects';
   if (rest[0] !== 'projects' || !isTenantId(rest[1])) return false;
   // Inside a project: `settings`, `environments`, `bindings[/<membership>/remove]`, or the same
