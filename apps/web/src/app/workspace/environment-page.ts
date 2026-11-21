@@ -173,6 +173,8 @@ export class EnvironmentPage {
         ]);
     });
     effect(() => {
+      // Another environment (a clone just opened, for one): its own page, form closed.
+      this.cloning.set(false);
       void this.load(this.organizationId(), this.projectId(), this.environmentId());
     });
   }
