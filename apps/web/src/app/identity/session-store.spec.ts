@@ -1,18 +1,20 @@
 import { TestBed } from '@angular/core/testing';
 
-import { IdentityApi, IdentityRequestError } from './identity-api';
+import { IdentityApi, IdentityRequestError, type SessionProfile } from './identity-api';
 import { SessionStore } from './session-store';
 
 describe('session state', () => {
   const profile = {
     userId: 'fixture',
     email: 'person@example.com',
+    displayName: null,
     expiresAt: '2030-01-01T00:00:00Z',
   };
   const api = {
     session: vi.fn<IdentityApi['session']>(),
     login: vi.fn<IdentityApi['login']>(),
     logout: vi.fn<IdentityApi['logout']>(),
+    setDisplayName: vi.fn<IdentityApi['setDisplayName']>(),
   };
   let store: SessionStore;
   beforeEach(() => {
@@ -56,6 +58,54 @@ describe('session state', () => {
     expect(store.state()).toBe('anonymous');
     expect(store.profile()).toBeNull();
   });
+  it('never lets a late name change restore a signed-out session (#251)', async () => {
+    store.accept(profile);
+    let resolve: ((value: SessionProfile) => void) | undefined;
+    api.setDisplayName.mockReturnValue(
+      new Promise((done) => {
+        resolve = done;
+      }),
+    );
+    const renaming = store.setDisplayName('Ada');
+    api.logout.mockResolvedValue();
+    await store.logout('request-key');
+    resolve?.({ ...profile, displayName: 'Ada' });
+    await renaming;
+    expect(store.state()).toBe('anonymous');
+    expect(store.profile()).toBeNull();
+  });
+  it('lets a logout win even when the name answer arrives before it ends (#251)', async () => {
+    store.accept(profile);
+    let named: ((value: SessionProfile) => void) | undefined;
+    let left: (() => void) | undefined;
+    api.setDisplayName.mockReturnValue(
+      new Promise((done) => {
+        named = done;
+      }),
+    );
+    api.logout.mockReturnValue(
+      new Promise((done) => {
+        left = done;
+      }),
+    );
+    const renaming = store.setDisplayName('Ada');
+    const leaving = store.logout('request-key');
+    named?.({ ...profile, displayName: 'Ada' });
+    await renaming;
+    left?.();
+    await leaving;
+    expect(store.state()).toBe('anonymous');
+    expect(store.profile()).toBeNull();
+  });
+
+  it('applies a name answer to the same session without a new revision', async () => {
+    store.accept(profile);
+    api.setDisplayName.mockResolvedValue({ ...profile, displayName: 'Ada' });
+    await store.setDisplayName('Ada');
+    expect(store.profile()?.displayName).toBe('Ada');
+    expect(store.state()).toBe('authenticated');
+  });
+
   it('keeps private MFA/token grants out of the session and does not pretend a failed logout succeeded', async () => {
     const grant = { ...profile, token: 'private fixture', recoveryCodes: ['private fixture'] };
     store.accept(grant);

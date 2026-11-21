@@ -6,6 +6,8 @@ import type { MembershipRecord } from './membership-store';
 
 export interface MemberView extends MembershipRecord {
   readonly email: string;
+  /** The name the account shows instead of its address, when it set one (issue #251). */
+  readonly displayName: string | null;
   readonly active: boolean;
 }
 export interface BindingView extends MemberView {

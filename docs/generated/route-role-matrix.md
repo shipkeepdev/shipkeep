@@ -19,6 +19,7 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | POST | `/auth/mfa/recovery` | account | - |  |  |  |  |  |  |  |  |  |  |  |
 | POST | `/auth/mfa/setup` | account | - |  |  |  |  |  |  |  |  |  |  |  |
 | GET | `/auth/options` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |
+| POST | `/auth/profile` | account | - |  |  |  |  |  |  |  |  |  |  |  |
 | POST | `/auth/register` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |
 | POST | `/auth/reset` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |
 | POST | `/auth/reset/request` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |
@@ -76,6 +77,7 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/bindings` | member.manage @ environment | - | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/bindings` | member.manage @ environment | - | yes | yes | no | yes | no | no | yes | no | no | no | no |
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/bindings/:membershipId/remove` | member.manage @ environment | - | yes | yes | no | yes | no | no | yes | no | no | no | no |
+| POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/clone` | environment.read @ environment | - | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
 | GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/events` | environment.read @ environment | environment.read | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
 | GET | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/secrets` | environment.read @ environment | environment.read | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |
 | POST | `/organizations/:organizationId/projects/:projectId/environments/:environmentId/secrets` | secret.write @ environment | secret.write | yes | yes | no | yes | no | no | yes | no | no | no | no |

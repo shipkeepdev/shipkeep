@@ -12,6 +12,9 @@
     },
     {
       "path": "../../packages/config-schema/tsconfig.lib.json"
+    },
+    {
+      "path": "../../packages/domain/tsconfig.lib.json"
     }
   ]
 }

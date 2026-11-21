@@ -12,6 +12,7 @@ const ORG = '01900000-0000-7000-8000-000000000001';
 const member = (id: string, email: string, orgRole: OrganizationRole): Member => ({
   id,
   email,
+  displayName: null,
   orgRole,
   active: true,
   organizationId: ORG,

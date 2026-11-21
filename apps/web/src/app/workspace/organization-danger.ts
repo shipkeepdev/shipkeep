@@ -104,7 +104,11 @@ import { ShellContext } from '../shell/shell-context';
                   [formControl]="form.controls.target"
                 >
                   @for (admin of admins(); track admin.id) {
-                    <option [value]="admin.id">{{ admin.email }}</option>
+                    <option [value]="admin.id">
+                      {{
+                        admin.displayName ? admin.displayName + ' · ' + admin.email : admin.email
+                      }}
+                    </option>
                   }
                 </select>
                 @if (more(); as cursor) {

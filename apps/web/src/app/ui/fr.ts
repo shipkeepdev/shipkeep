@@ -91,10 +91,14 @@ export const FR: Readonly<Record<string, string>> = {
   '3. Start shipkeep-agent. It checks the fingerprint, enrolls, then deletes the token.':
     "3. Démarrez shipkeep-agent. Il vérifie l'empreinte, s'inscrit, puis supprime le jeton.",
   Actions: 'Actions',
-  'Another admin becomes an owner, and you become an admin.':
-    'Un autre admin devient propriétaire, et vous devenez admin.',
+  'Applications and their configuration are copied, not deployed. Domains, secret values and data stay here: set the secrets in the new environment before deploying.':
+    'Les applications et leur configuration sont copiées, sans être déployées. Les domaines, les valeurs des secrets et les données restent ici : définissez les secrets dans le nouvel environnement avant de déployer.',
   'As the image names it, with its port if it has one. Docker Hub is docker.io.':
     "Tel que l'image le nomme, avec son port s'il en a un. Docker Hub s'écrit docker.io.",
+  'Clone {name}': 'Cloner {name}',
+  'Cloning…': 'Clonage…',
+  'Another admin becomes an owner, and you become an admin.':
+    'Un autre admin devient propriétaire, et vous devenez admin.',
   'Deleting an organization is not available yet.':
     "La suppression d'une organisation n'est pas encore disponible.",
   'Deployments of this organization pull private images with the credentials stored for the registry of the image. A password is encrypted and never shown again: it can only be replaced.':
@@ -104,6 +108,9 @@ export const FR: Readonly<Record<string, string>> = {
   'Its administrator creates accounts and resets passwords, on the server that runs Shipkeep.':
     'Son administrateur crée les comptes et réinitialise les mots de passe, sur le serveur qui exécute Shipkeep.',
   'Keep them': 'Les garder',
+  'Lowercase letters, digits and hyphens, starting with a letter.':
+    'Lettres minuscules, chiffres et tirets, en commençant par une lettre.',
+  'New environment name': 'Nom du nouvel environnement',
   'New owner': 'Nouveau propriétaire',
   'No account, or a lost password? Ask the administrator of this installation.':
     "Pas de compte, ou mot de passe perdu ? Demandez à l'administrateur de cette installation.",
@@ -1135,6 +1142,7 @@ export const FR: Readonly<Record<string, string>> = {
     "Enregistrez ce jeton avant de partir. Il n'est affiché qu'une fois et ne pourra plus être consulté ici une fois cet affichage fermé ou cette page quittée.",
   'Save your API token': "Enregistrez votre jeton d'API",
   'Save your recovery codes': 'Enregistrez vos codes de récupération',
+  'Saved.': 'Enregistré.',
   'Saving…': 'Enregistrement…',
   'Scan every built image': 'Scanner chaque image construite',
   'Scan images at build': 'Scan des images au build',
@@ -1780,6 +1788,11 @@ export const FR: Readonly<Record<string, string>> = {
   '{applications} in {environments}': '{applications} dans {environments}',
   '{running} of {n} replica running': '{running} sur {n} réplique en marche',
   '{running} of {n} replicas running': '{running} sur {n} répliques en marche',
+  'A name has at most 64 characters, and no control character.':
+    'Un nom a au plus 64 caractères, sans caractère de contrôle.',
+  'Shown instead of your address. Never used to sign in.':
+    'Affiché à la place de votre adresse. Jamais utilisé pour vous connecter.',
+  'The name could not be saved. Try again.': "Le nom n'a pas pu être enregistré. Réessayez.",
   'Sessions could not be read. Reload the page to try again.':
     'Les sessions n’ont pas pu être lues. Rechargez la page pour réessayer.',
   'Sign out {device}': 'Déconnecter {device}',

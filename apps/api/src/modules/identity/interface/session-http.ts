@@ -17,6 +17,7 @@ export interface SessionPrincipal {
   readonly kind: 'session';
   readonly userId: string;
   readonly email: string;
+  readonly displayName: string | null;
   readonly sessionId: string;
   readonly securityVersion: number;
   readonly expiresAt: Date;
@@ -24,6 +25,7 @@ export interface SessionPrincipal {
 }
 export interface ApiTokenPrincipal {
   readonly kind: 'api_token';
+  readonly displayName: string | null;
   readonly userId: string;
   readonly email: string;
   readonly tokenId: string;

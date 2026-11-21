@@ -22,6 +22,7 @@ describe('account route presentation', () => {
   const profile = {
     userId: 'fixture',
     email: 'person@example.com',
+    displayName: null,
     expiresAt: '2030-01-01T00:00:00Z',
   };
   beforeEach(async () => {

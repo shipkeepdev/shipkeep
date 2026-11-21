@@ -10,6 +10,7 @@ describe('MFA form lifecycle', () => {
   const profile = {
     userId: 'fixture',
     email: 'person@example.com',
+    displayName: null,
     expiresAt: '2030-01-01T00:00:00Z',
   };
   const codes = Array.from({ length: 10 }, (_, i) => i.toString(16).padStart(32, '0'));

@@ -103,7 +103,7 @@
         <p id="mfa-key-help" class="hint">
           {{
             'Add this key to your authenticator as a time-based code: six digits, 30 seconds. It expires at {time}.'
-              | t: { time: (setup.expiresAt | date: 'shortTime') ?? '' }
+              | t: { time: setup.expiresAt | localDate: 'shortTime' }
           }}
         </p>
         <button
