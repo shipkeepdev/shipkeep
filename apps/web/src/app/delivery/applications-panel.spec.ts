@@ -59,4 +59,32 @@ describe('applications panel', () => {
     expect(api.deployments).toHaveBeenCalledWith(staging, 'b1');
     expect(api.deployments).not.toHaveBeenCalledWith(staging, 'a1');
   });
+
+  it("asks nothing when the new environment's list fails to load", async () => {
+    const production = env('01900000-0000-7000-8000-00000000000a');
+    const staging = env('01900000-0000-7000-8000-00000000000b');
+    const api = {
+      applications: vi.fn((ref: EnvironmentRef) =>
+        ref === production
+          ? Promise.resolve([app('a1', 'shop')])
+          : Promise.reject(new Error('down')),
+      ),
+      deployments: vi.fn(() => Promise.resolve([])),
+    };
+    TestBed.configureTestingModule({
+      imports: [ApplicationsPanel],
+      providers: [provideRouter([]), { provide: DeliveryApi, useValue: api }],
+    });
+    TestBed.inject(I18n).use('en');
+    const fixture = TestBed.createComponent(ApplicationsPanel);
+    fixture.componentRef.setInput('environment', production);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    fixture.componentRef.setInput('environment', staging);
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(api.deployments).not.toHaveBeenCalledWith(staging, 'a1');
+  });
 });

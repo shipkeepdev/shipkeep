@@ -201,6 +201,7 @@ export class ApplicationsPanel {
   /** The environment the listed items belong to; null while another one's list is replaced. */
   private readonly loadedFor = signal<EnvironmentRef | null>(null);
   #revision = 0;
+  #loads = 0;
 
   constructor() {
     recoverOnEdit(this.form, this.runner);
@@ -211,8 +212,11 @@ export class ApplicationsPanel {
         this.loadedFor.set(null);
         this.latest.set(new Map());
       });
-      void this.list.refresh().then(() => {
-        if (this.environment() === ref) this.loadedFor.set(ref);
+      const load = ++this.#loads;
+      // Only a list that loaded, for this very run, belongs to `ref`: a failed or superseded
+      // refresh leaves the previous environment's items, which must not be asked about.
+      void this.list.refresh().then((applied) => {
+        if (applied && load === this.#loads) this.loadedFor.set(ref);
       });
     });
     effect(() => {

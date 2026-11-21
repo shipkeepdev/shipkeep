@@ -65,7 +65,7 @@ import { type Environment, WorkspaceApi } from './workspace-api';
             type="button"
             class="btn"
             [attr.aria-expanded]="cloning()"
-            [disabled]="!environment()"
+            [disabled]="!loaded()"
             (click)="cloning.set(!cloning())"
           >
             <sk-icon name="copy" />{{ 'Clone' | t }}
@@ -81,7 +81,7 @@ import { type Environment, WorkspaceApi } from './workspace-api';
           >
         </div>
       </div>
-      @if (cloning() && environment(); as current) {
+      @if (cloning() && loaded(); as current) {
         <sk-environment-clone
           [environment]="ref()"
           [source]="current.name"
@@ -136,6 +136,12 @@ export class EnvironmentPage {
   protected readonly shell = inject(ShellContext);
   protected readonly tab = signal('applications');
   protected readonly cloning = signal(false);
+  #loads = 0;
+  /** The environment loaded for the current route, never a previous one still in place. */
+  protected readonly loaded = computed(() => {
+    const current = this.environment();
+    return current?.id === this.environmentId() ? current : null;
+  });
   protected readonly tabs: readonly Tab[] = [
     { id: 'applications', label: 'Resources', icon: 'apps' },
     { id: 'secrets', label: 'Variables and secrets', icon: 'key' },
@@ -184,10 +190,15 @@ export class EnvironmentPage {
     projectId: string,
     environmentId: string,
   ): Promise<void> {
+    const load = ++this.#loads;
     this.missing.set(null);
+    // Another environment's page until this one arrives: nothing of the previous one stays.
+    this.environment.set(null);
     try {
-      this.environment.set(await this.api.environment(organizationId, projectId, environmentId));
+      const found = await this.api.environment(organizationId, projectId, environmentId);
+      if (load === this.#loads) this.environment.set(found);
     } catch (error: unknown) {
+      if (load !== this.#loads) return;
       this.environment.set(null);
       this.missing.set(
         error instanceof IdentityRequestError
