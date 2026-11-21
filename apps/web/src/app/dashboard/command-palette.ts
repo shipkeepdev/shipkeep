@@ -20,6 +20,8 @@ export interface PaletteEntry {
   readonly label: string;
   /** A name typed by a user: shown as is, never translated. */
   readonly raw?: boolean;
+  /** Where it lives (project, environment), shown beside it and searched too. Never translated. */
+  readonly detail?: string;
   readonly icon: IconName;
   readonly link: readonly string[];
 }
@@ -53,7 +55,7 @@ export interface PaletteEntry {
             aria-expanded="true"
             aria-controls="palette-results"
             [attr.aria-activedescendant]="matches().length ? 'palette-' + active() : null"
-            [placeholder]="'Go to a page or a project' | t"
+            [placeholder]="'Find a page, project, environment, application, server or member' | t"
             [value]="query()"
             (input)="filter($any($event.target).value)"
             (keydown.arrowdown)="move($event, 1)"
@@ -78,11 +80,21 @@ export interface PaletteEntry {
               tabindex="-1"
             >
               <sk-icon [name]="entry.icon" class="text-[16px] text-dim" />
-              <span class="flex-1">{{ entry.raw ? entry.label : (entry.label | t) }}</span>
+              <span class="min-w-0 flex-1 truncate">{{
+                entry.raw ? entry.label : (entry.label | t)
+              }}</span>
+              @if (entry.detail) {
+                <span class="max-w-[45%] truncate text-[12px] text-dim">{{ entry.detail }}</span>
+              }
             </li>
           } @empty {
             <li class="px-3 py-6 text-center text-[13px] text-mute2">
-              {{ 'Nothing matches.' | t }}
+              {{ (searching() ? 'Searching…' : 'Nothing matches.') | t }}
+            </li>
+          }
+          @if (searching() && matches().length) {
+            <li class="px-3 py-2 text-[12px] text-dim" role="presentation">
+              {{ 'Searching…' | t }}
             </li>
           }
         </ul>
@@ -92,6 +104,8 @@ export interface PaletteEntry {
 })
 export class CommandPalette {
   readonly entries = input.required<readonly PaletteEntry[]>();
+  /** Resources are still being read: more may match. */
+  readonly searching = input(false);
   readonly closed = output();
   private readonly router = inject(Router);
   private readonly i18n = inject(I18n);
@@ -100,10 +114,11 @@ export class CommandPalette {
   protected readonly active = signal(0);
   protected readonly matches = computed(() => {
     const q = this.query().trim().toLowerCase();
-    return this.entries().filter(
-      (entry) =>
-        !q || (entry.raw ? entry.label : this.i18n.t(entry.label)).toLowerCase().includes(q),
-    );
+    return this.entries().filter((entry) => {
+      if (!q) return true;
+      const label = entry.raw ? entry.label : this.i18n.t(entry.label);
+      return `${label} ${entry.detail ?? ''}`.toLowerCase().includes(q);
+    });
   });
 
   constructor() {

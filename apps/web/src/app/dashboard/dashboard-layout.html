@@ -268,5 +268,9 @@
   </main>
 </div>
 @if (paletteOpen()) {
-  <sk-command-palette [entries]="paletteEntries()" (closed)="paletteOpen.set(false)" />
+  <sk-command-palette
+    [entries]="paletteEntries()"
+    [searching]="searching()"
+    (closed)="paletteOpen.set(false)"
+  />
 }
