@@ -72,6 +72,24 @@ func TestSkipsCaddyLinesItCannotRead(t *testing.T) {
 	}
 }
 
+// Caddy labels a request by its Host header, which may carry a port for the same route: both forms
+// count under the host name. A port that is not one leaves the label to the host name check.
+func TestCountsAHostWithItsPortUnderItsName(t *testing.T) {
+	text := `caddy_http_request_duration_seconds_count{code="200",host="shop.example.com"} 5
+caddy_http_request_duration_seconds_count{code="200",host="shop.example.com:443"} 2
+caddy_http_request_duration_seconds_sum{code="200",host="shop.example.com:443"} 0.5
+caddy_http_request_duration_seconds_count{code="200",host="shop.example.com:x1"} 9
+caddy_http_request_duration_seconds_count{code="200",host="shop.example.com:4430000"} 9
+caddy_http_request_duration_seconds_count{code="200",host="shop.example.com:"} 9
+caddy_http_request_duration_seconds_count{code="200",host=":443"} 9
+caddy_http_request_duration_seconds_count{code="200",host="a:1:2"} 9
+`
+	hosts := hostTotals([]byte(text))
+	if len(hosts) != 1 || hosts[0].GetHost() != "shop.example.com" || hosts[0].GetResponses_2Xx() != 7 || hosts[0].GetDurationSeconds() != 0.5 {
+		t.Fatalf("hosts = %v", hosts)
+	}
+}
+
 func TestReadsEveryHostSortedByName(t *testing.T) {
 	var text strings.Builder
 	for i := range MaxHosts + 10 {
@@ -119,7 +137,7 @@ func proc(t *testing.T) string {
 	for name, text := range map[string]string{
 		"stat":    "cpu  1000 50 300 9000 200 10 40 5 0 0\ncpu0 500 25 150 4500 100 5 20 2 0 0\ncpu1 500 25 150 4500 100 5 20 3 0 0\nintr 12345\n",
 		"meminfo": "MemTotal:       16384000 kB\nMemFree:         1000000 kB\nMemAvailable:    6384000 kB\nHugePages_Total:       0\n",
-		"net/dev": "Inter-|   Receive |  Transmit\n face |bytes packets errs drop fifo frame compressed multicast|bytes packets errs drop fifo colls carrier compressed\n    lo: 999 1 0 0 0 0 0 0 999 1 0 0 0 0 0 0\n  eth0: 1000 10 0 0 0 0 0 0 2000 20 0 0 0 0 0 0\ndocker0: 5000 1 0 0 0 0 0 0 5000 1 0 0 0 0 0 0\nveth1a2b: 7 1 0 0 0 0 0 0 7 1 0 0 0 0 0 0\n  ens5: 300 3 0 0 0 0 0 0 400 4 0 0 0 0 0 0\nshipkeep0: 9 1 0 0 0 0 0 0 9 1 0 0 0 0 0 0\n",
+		"net/dev": "Inter-|   Receive |  Transmit\n face |bytes packets errs drop fifo frame compressed multicast|bytes packets errs drop fifo colls carrier compressed\n    lo: 999 1 0 0 0 0 0 0 999 1 0 0 0 0 0 0\n  eth0: 1000 10 0 0 0 0 0 0 2000 20 0 0 0 0 0 0\ndocker0: 5000 1 0 0 0 0 0 0 5000 1 0 0 0 0 0 0\nveth1a2b: 7 1 0 0 0 0 0 0 7 1 0 0 0 0 0 0\n  ens5: 300 3 0 0 0 0 0 0 400 4 0 0 0 0 0 0\nshipkeep0: 9 1 0 0 0 0 0 0 9 1 0 0 0 0 0 0\n   br0: 900 1 0 0 0 0 0 0 900 1 0 0 0 0 0 0\ntunnel0: 800 1 0 0 0 0 0 0 800 1 0 0 0 0 0 0\n",
 	} {
 		if err := os.WriteFile(filepath.Join(root, name), []byte(text), 0o600); err != nil {
 			t.Fatal(err)
@@ -128,8 +146,27 @@ func proc(t *testing.T) string {
 	return root
 }
 
+// A sys tree where br0 is a bridge and tunnel0 has no link layer (WireGuard), whatever their names.
+func sys(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	for name, kind := range map[string]string{"eth0": "1", "ens5": "1", "br0": "1", "tunnel0": "65534"} {
+		dir := filepath.Join(root, "class", "net", name)
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "type"), []byte(kind+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.MkdirAll(filepath.Join(root, "class", "net", "br0", "bridge"), 0o750); err != nil {
+		t.Fatal(err)
+	}
+	return root
+}
+
 func TestReadsTheNodeFromProc(t *testing.T) {
-	node, err := readNode(proc(t))
+	node, err := readNode(proc(t), sys(t))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -142,6 +179,16 @@ func TestReadsTheNodeFromProc(t *testing.T) {
 	}
 	if node.GetNetworkReceivedBytes() != 1300 || node.GetNetworkSentBytes() != 2400 {
 		t.Fatalf("traffic = %d in, %d out: only physical interfaces count", node.GetNetworkReceivedBytes(), node.GetNetworkSentBytes())
+	}
+	// Without sys, interfaces are told apart by name only: br0 and tunnel0 then count.
+	byName, err := readNode(proc(t), "")
+	if err != nil || byName.GetNetworkReceivedBytes() != 3000 {
+		t.Fatalf("traffic by name = %d, err %v", byName.GetNetworkReceivedBytes(), err)
+	}
+	for _, name := range []string{"", ".", "..", "../../etc", "eth0/../br0"} {
+		if virtualByKind(sys(t), name) {
+			t.Fatalf("%q read outside sys/class/net", name)
+		}
 	}
 }
 
@@ -184,11 +231,13 @@ type fakeCaddy struct {
 	text    string
 	err     error
 	enabled int
+	// unsafe says per-host metrics stay off, as for a route without the Host bound.
+	unsafe bool
 }
 
-func (f *fakeCaddy) EnableRequestMetrics(context.Context) error {
+func (f *fakeCaddy) EnableRequestMetrics(context.Context) (bool, error) {
 	f.enabled++
-	return f.err
+	return !f.unsafe, f.err
 }
 func (f *fakeCaddy) RequestMetrics(context.Context) ([]byte, error) { return []byte(f.text), f.err }
 
@@ -238,6 +287,36 @@ func TestSamplesRunningManagedContainersAndHosts(t *testing.T) {
 	}
 }
 
+// While a route lets clients choose the host label, per-host metrics are off and no host is read,
+// without failing the rest of the sample.
+func TestReportsNoHostWhilePerHostMetricsAreOff(t *testing.T) {
+	sampler := &Sampler{Containers: &fakeEngine{}, Requests: &fakeCaddy{text: caddyText, unsafe: true}, Proc: proc(t), Logger: quiet()}
+	report, err := sampler.Sample(t.Context())
+	if err != nil || len(report.GetHosts()) != 0 || report.GetNode() == nil {
+		t.Fatalf("report = %v, err = %v", report, err)
+	}
+}
+
+// Memory in use leaves out the page cache under its cgroup v1 or v2 name, as `docker stats` does.
+func TestMemoryInUseLeavesOutThePageCache(t *testing.T) {
+	for name, c := range map[string]struct {
+		cache map[string]uint64
+		want  uint64
+	}{
+		"cgroup v2":                  {map[string]uint64{"inactive_file": 20}, 280},
+		"cgroup v1":                  {map[string]uint64{"inactive_file": 20, "total_inactive_file": 100}, 200},
+		"a v1 cache above the usage": {map[string]uint64{"inactive_file": 20, "total_inactive_file": 900}, 280},
+		"a v2 cache above the usage": {map[string]uint64{"inactive_file": 900}, 300},
+		"no cache counter":           {nil, 300},
+	} {
+		var s docker.ContainerStats
+		s.Memory.Usage, s.Memory.Stats = 300, c.cache
+		if got := s.MemoryInUse(); got != c.want {
+			t.Fatalf("%s: %d, want %d", name, got, c.want)
+		}
+	}
+}
+
 // One part that fails leaves the others in the report; when all fail, there is no report.
 func TestSendsWhatItCouldSample(t *testing.T) {
 	engine := &fakeEngine{listErr: errors.New("docker down")}
@@ -245,6 +324,11 @@ func TestSendsWhatItCouldSample(t *testing.T) {
 	report, err := sampler.Sample(t.Context())
 	if err != nil || report.GetContainers() != nil || report.GetNode() == nil || len(report.GetHosts()) != 2 {
 		t.Fatalf("report = %v, err = %v", report, err)
+	}
+	// Containers run but none of their stats can be read: that part failed, it is not empty.
+	unreadable := &Sampler{Containers: &fakeEngine{summaries: []docker.ContainerSummary{{ID: "1", Names: []string{"/sk-shop-0123456789ab-r1-0"}, State: "running"}}}, Requests: &fakeCaddy{err: errors.New("down")}, Proc: filepath.Join(t.TempDir(), "missing"), Logger: quiet()}
+	if report, err := unreadable.Sample(t.Context()); err == nil || report != nil {
+		t.Fatalf("a sample with no stats was reported: %v", report)
 	}
 	failing := &Sampler{Containers: &fakeEngine{listErr: errors.New("down"), rootErr: errors.New("down")}, Requests: &fakeCaddy{err: errors.New("down")}, Proc: filepath.Join(t.TempDir(), "missing"), Logger: quiet()}
 	if report, err := failing.Sample(t.Context()); err == nil || report != nil {

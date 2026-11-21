@@ -37,13 +37,16 @@ func (c *Client) ContainerStats(ctx context.Context, id string) (ContainerStats,
 }
 
 // MemoryInUse is the memory a container uses, without the page cache the kernel can reclaim:
-// what `docker stats` shows.
+// what `docker stats` shows. cgroup v1 reports that cache as total_inactive_file, cgroup v2 as
+// inactive_file; a cache counter not below the usage is ignored, as Docker does.
 func (s ContainerStats) MemoryInUse() uint64 {
-	inactive := s.Memory.Stats["inactive_file"]
-	if inactive > s.Memory.Usage {
-		return 0
+	if inactive, v1 := s.Memory.Stats["total_inactive_file"]; v1 && inactive < s.Memory.Usage {
+		return s.Memory.Usage - inactive
 	}
-	return s.Memory.Usage - inactive
+	if inactive := s.Memory.Stats["inactive_file"]; inactive < s.Memory.Usage {
+		return s.Memory.Usage - inactive
+	}
+	return s.Memory.Usage
 }
 
 // DataRoot is the directory where Docker keeps images, containers and volumes.

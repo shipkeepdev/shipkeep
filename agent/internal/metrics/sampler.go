@@ -28,7 +28,7 @@ type Containers interface {
 
 // Requests is the part of the Caddy client the sampler uses.
 type Requests interface {
-	EnableRequestMetrics(ctx context.Context) error
+	EnableRequestMetrics(ctx context.Context) (bool, error)
 	RequestMetrics(ctx context.Context) ([]byte, error)
 }
 
@@ -37,7 +37,9 @@ type Sampler struct {
 	Containers Containers
 	Requests   Requests
 	// Proc is the proc file system, /proc on a node.
-	Proc   string
+	Proc string
+	// Sys is the sys file system, /sys on a node; empty, interfaces are told apart by name only.
+	Sys    string
 	Logger *slog.Logger
 	// Now replaces the clock in tests.
 	Now func() time.Time
@@ -113,7 +115,7 @@ func (s *Sampler) Sample(ctx context.Context) (*agentv1.MetricsReport, error) {
 }
 
 func (s *Sampler) node(ctx context.Context) (*agentv1.NodeMetrics, error) {
-	node, err := readNode(s.Proc)
+	node, err := readNode(s.Proc, s.Sys)
 	if err != nil {
 		return nil, err
 	}
@@ -147,6 +149,8 @@ func (s *Sampler) root(ctx context.Context) (string, error) {
 
 // containers samples the running managed containers, a few at a time, at most MaxContainers
 // of them in one report (see rotate).
+var errNoStats = errors.New("no container stats could be read")
+
 // A container whose stats fail is left out: it may have stopped between the list and its stats.
 func (s *Sampler) containers(ctx context.Context) ([]*agentv1.ContainerMetrics, error) {
 	summaries, err := s.Containers.ManagedContainers(ctx)
@@ -195,12 +199,22 @@ func (s *Sampler) containers(ctx context.Context) ([]*agentv1.ContainerMetrics, 
 		})
 	}
 	wait.Wait()
-	return slices.DeleteFunc(results, func(sample *agentv1.ContainerMetrics) bool { return sample == nil }), nil
+	results = slices.DeleteFunc(results, func(sample *agentv1.ContainerMetrics) bool { return sample == nil })
+	// No stats at all for containers that run is a failure, not a node without containers.
+	if len(targets) > 0 && len(results) == 0 {
+		return nil, errNoStats
+	}
+	return results, nil
 }
 
 func (s *Sampler) hosts(ctx context.Context) ([]*agentv1.HostMetrics, error) {
-	if err := s.Requests.EnableRequestMetrics(ctx); err != nil {
+	on, err := s.Requests.EnableRequestMetrics(ctx)
+	if err != nil {
 		return nil, err
+	}
+	if !on {
+		// A route lets clients choose the host label: no route metrics until it is gone.
+		return []*agentv1.HostMetrics{}, nil
 	}
 	text, err := s.Requests.RequestMetrics(ctx)
 	if err != nil {

@@ -196,8 +196,8 @@ func TestControlPlaneRouteRepairIsOneWrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	fake.mu.Lock()
-	fake.routes[RouteID("a")] = json.RawMessage(`{"@id":"sk-route-a","match":[{"host":["*.example.com"],"protocol":"https"}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.2:80"}],"flush_interval":-1}],"terminal":true}`)
-	fake.routes[RouteID("b")] = json.RawMessage(`{"@id":"sk-route-b","match":[{"host":["b.example.com"],"protocol":"https"}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.3:80"}]}],"terminal":true}`)
+	fake.routes[RouteID("a")] = json.RawMessage(`{"@id":"sk-route-a","match":[{"host":["*.example.com"],"header_regexp":{"Host":{"pattern":"^[^:]+(:443|:80)?$"}},"protocol":"https"}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.2:80"}],"flush_interval":-1}],"terminal":true}`)
+	fake.routes[RouteID("b")] = json.RawMessage(`{"@id":"sk-route-b","match":[{"host":["b.example.com"],"header_regexp":{"Host":{"pattern":"^[^:]+(:443|:80)?$"}},"protocol":"https"}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.3:80"}]}],"terminal":true}`)
 	fake.order = []string{RouteID("b"), RouteID("a")}
 	writes := len(fake.requests)
 	fake.mu.Unlock()

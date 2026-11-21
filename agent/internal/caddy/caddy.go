@@ -66,6 +66,8 @@ type Route struct {
 // Match selects requests by host and, for a route under automatic HTTPS, by protocol.
 type Match struct {
 	Host []string `json:"host"`
+	// HeaderRegexp bounds the Host header (see BoundHost): every Shipkeep route carries it.
+	HeaderRegexp map[string]HeaderPattern `json:"header_regexp,omitempty"`
 	// Protocol is "https" for a route under automatic HTTPS: the server listens on both ports, and
 	// Caddy inserts its HTTP-to-HTTPS redirects after the last route that matches a host, so a
 	// route that matched plain HTTP too would answer there instead of the redirect. Empty for a
@@ -75,6 +77,27 @@ type Match struct {
 
 // HTTPS is the protocol matcher of a route under automatic HTTPS.
 const HTTPS = "https"
+
+// HeaderPattern is one regular expression of Caddy's header_regexp matcher.
+type HeaderPattern struct {
+	Pattern string `json:"pattern"`
+}
+
+// hostBound is the Host header a Shipkeep route accepts: its name, alone or with the port of its
+// listener. Caddy's host matcher ignores the port, and any text passes for one, while its request
+// metrics label each request with the Host header as sent (ADR 0024): without this bound, a client
+// could make one series per invented port and grow Caddy's memory without limit.
+const hostBound = `^[^:]+(:443|:80)?$`
+
+// HostMatch matches hosts, with the Host header bounded as every Shipkeep route requires.
+func HostMatch(hosts []string, protocol string) Match {
+	return Match{Host: hosts, Protocol: protocol, HeaderRegexp: map[string]HeaderPattern{"Host": {Pattern: hostBound}}}
+}
+
+// bounded tells whether a match carries the Host bound.
+func (m Match) bounded() bool {
+	return m.HeaderRegexp["Host"].Pattern == hostBound
+}
 
 // Handler is a reverse_proxy handler, or the static_response of the control plane's redirect.
 type Handler struct {
@@ -120,13 +143,13 @@ func ControlPlaneRoutes(host, upstream string) []Route {
 	return []Route{
 		{
 			ID:       ControlPlaneRouteID,
-			Match:    []Match{{Host: []string{host}, Protocol: HTTPS}},
+			Match:    []Match{HostMatch([]string{host}, HTTPS)},
 			Handle:   []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{{Dial: upstream}}}},
 			Terminal: true,
 		},
 		{
 			ID:    ControlPlaneRedirectRouteID,
-			Match: []Match{{Host: []string{host}, Protocol: "http"}},
+			Match: []Match{HostMatch([]string{host}, "http")},
 			Handle: []Handler{{
 				Handler:    "static_response",
 				StatusCode: http.StatusPermanentRedirect,
@@ -242,8 +265,9 @@ func (c *Client) SecureRoutes(ctx context.Context) error {
 
 // secureRoutes adds the HTTPS protocol matcher to the Shipkeep routes that lack it: agents up to
 // 0.1.0-alpha.3 wrote routes that answered on plain HTTP instead of redirecting. A route whose
-// hosts are all skipped by automatic HTTPS has TLS off and keeps answering on port 80. Only the
-// match of a route with the Shipkeep id prefix changes; other routes are never touched.
+// hosts are all skipped by automatic HTTPS has TLS off and keeps answering on port 80. It also adds
+// the Host bound (see hostBound) to the routes earlier agents wrote without it. Only the match of a
+// route with the Shipkeep id prefix changes; other routes are never touched.
 func (c *Client) secureRoutes(ctx context.Context) error {
 	c.routes.Lock()
 	defer c.routes.Unlock()
@@ -261,6 +285,9 @@ func (c *Client) secureRoutes(ctx context.Context) error {
 		}
 		secured, changed := slices.Clone(route.Match), false
 		for index, match := range secured {
+			if !match.bounded() {
+				secured[index].HeaderRegexp, changed = HostMatch(nil, "").HeaderRegexp, true
+			}
 			if match.Protocol != "" || len(match.Host) == 0 ||
 				!slices.ContainsFunc(match.Host, func(host string) bool { return !slices.Contains(plain.Skip, host) }) {
 				continue
@@ -309,6 +336,12 @@ func (c *Client) ApplyRoute(ctx context.Context, route Route, plainAdd, plainRem
 }
 
 func (c *Client) upsertRoute(ctx context.Context, route Route) error {
+	if !metricsSafe([]Route{route}) {
+		// Per-host metrics stop before the route exists: see EnableRequestMetrics.
+		if err := c.setPerHost(ctx, false); err != nil {
+			return err
+		}
+	}
 	var stored json.RawMessage
 	present, err := c.get(ctx, "/id/"+route.ID, &stored)
 	if err != nil {
@@ -423,23 +456,59 @@ func (c *Client) get(ctx context.Context, path string, out any) (bool, error) {
 	return true, nil
 }
 
-// EnableRequestMetrics turns on Caddy's request metrics per host name (ADR 0024), once: Caddy then
-// labels the requests of each host of its routes, and never a name a client made up.
-func (c *Client) EnableRequestMetrics(ctx context.Context) error {
-	want := map[string]bool{"per_host": true}
-	var current map[string]bool
+// EnableRequestMetrics turns Caddy's request metrics per host name on (ADR 0024) when every route
+// of the Shipkeep server bounds its hosts, and off otherwise; it reports whether they are on. A
+// route that lacks the Host bound (written by an older agent, until secureRoutes adds it) or that
+// has a wildcard host lets clients choose the label, so per-host metrics would have no limit.
+func (c *Client) EnableRequestMetrics(ctx context.Context) (bool, error) {
+	c.routes.Lock()
+	defer c.routes.Unlock()
+	var routes []Route
+	if _, err := c.get(ctx, "/config/apps/http/servers/"+Server+"/routes", &routes); err != nil {
+		return false, fmt.Errorf("read caddy routes: %w", err)
+	}
+	on := metricsSafe(routes)
+	if err := c.setPerHost(ctx, on); err != nil {
+		return false, err
+	}
+	return on, nil
+}
+
+// metricsSafe tells whether routes keep per-host metrics bounded: each match bounds the Host
+// header, and no host is a wildcard, whose names a client invents.
+func metricsSafe(routes []Route) bool {
+	for _, route := range routes {
+		for _, match := range route.Match {
+			if !match.bounded() || slices.ContainsFunc(match.Host, func(host string) bool { return strings.Contains(host, "*") }) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// setPerHost writes Caddy's per_host metrics setting when it differs, and only that key, so any
+// other metrics setting stays as it is.
+func (c *Client) setPerHost(ctx context.Context, on bool) error {
+	var current map[string]json.RawMessage
 	found, err := c.get(ctx, "/config/apps/http/metrics", &current)
 	if err != nil {
 		return fmt.Errorf("read caddy metrics settings: %w", err)
 	}
+	isOn := string(bytes.TrimSpace(current["per_host"])) == "true"
 	switch {
+	case isOn == on:
+		return nil
+	case !found && on:
+		err = c.do(ctx, http.MethodPut, "/config/apps/http/metrics", map[string]bool{"per_host": true}, nil)
 	case !found:
-		err = c.do(ctx, http.MethodPut, "/config/apps/http/metrics", want, nil)
-	case !current["per_host"]:
-		err = c.do(ctx, http.MethodPatch, "/config/apps/http/metrics", want, nil)
+		return nil
+	default:
+		// POST sets one key of an object, whether it is there or not; PATCH would need it there.
+		err = c.do(ctx, http.MethodPost, "/config/apps/http/metrics/per_host", on, nil)
 	}
 	if err != nil {
-		return fmt.Errorf("enable caddy request metrics: %w", err)
+		return fmt.Errorf("set caddy request metrics: %w", err)
 	}
 	return nil
 }
