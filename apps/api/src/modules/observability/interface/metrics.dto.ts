@@ -12,6 +12,13 @@ export class MetricsRangeQueryDto {
   range?: keyof typeof RANGES;
 }
 
+export class OrganizationMetricsQueryDto {
+  @ApiProperty({ required: false, enum: Object.keys(RANGES), default: '24h' })
+  @IsOptional()
+  @IsIn(Object.keys(RANGES))
+  range?: keyof typeof RANGES;
+}
+
 export class MetricPointDto {
   @ApiProperty({ description: 'Unix time, in seconds.' }) t!: number;
   @ApiProperty() v!: number;
@@ -49,6 +56,29 @@ export class ApplicationMetricsDto extends MetricsBaseDto {
   requests!: MetricSeriesDto[];
   @ApiProperty({ type: [MetricSeriesDto], description: 'Mean response time, in seconds.' })
   duration!: MetricSeriesDto[];
+}
+
+export class OrganizationMetricsDto extends MetricsBaseDto {
+  @ApiProperty({
+    type: [MetricSeriesDto],
+    description:
+      'Requests per second over the environments the caller may read, one series per `status` class.',
+  })
+  requests!: MetricSeriesDto[];
+  @ApiProperty({ type: [MetricSeriesDto], description: 'Mean response time, in seconds.' })
+  duration!: MetricSeriesDto[];
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Requests over the whole period, read at its end; null when no metrics are kept.',
+  })
+  totalRequests!: number | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description: 'Mean response time over the whole period, in seconds; null without any request.',
+  })
+  meanSeconds!: number | null;
 }
 
 export class NodeMetricsDto extends MetricsBaseDto {

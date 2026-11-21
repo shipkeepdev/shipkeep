@@ -15,6 +15,11 @@ export interface MetricsTargets {
   ): Promise<{ containers: ContainerTarget[]; hosts: HostTarget[] }>;
   /** Whether the node belongs to the organization. */
   nodeExists(organizationId: string, nodeId: string): Promise<boolean>;
+  /** The organization's environments with their project, at most `limit`, oldest first. */
+  environments(
+    organizationId: string,
+    limit: number,
+  ): Promise<readonly { readonly id: string; readonly projectId: string }[]>;
 }
 
 /** One series of a query, its points as [unix seconds, value]. */
@@ -28,6 +33,8 @@ export const METRICS_STORE = Symbol('MetricsStore');
 export interface MetricsStore {
   write(exposition: string): Promise<void>;
   queryRange(query: string, start: Date, end: Date, stepSeconds: number): Promise<Series[]>;
+  /** The value of a query at one time: each series holds that single point. */
+  queryInstant(query: string, at: Date): Promise<Series[]>;
 }
 
 export const METRICS_TRANSACTION = Symbol('MetricsTransaction');
