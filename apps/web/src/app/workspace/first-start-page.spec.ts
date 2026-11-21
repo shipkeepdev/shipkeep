@@ -60,7 +60,8 @@ describe('first start steps (#269)', () => {
 });
 
 describe('first start page', () => {
-  async function render(role: string, deployed = false) {
+  async function render(role: string, deployed = false, roleFor = ORG) {
+    const roleOrganization = signal(roleFor);
     const store = {
       loading: signal(false),
       facts: signal({ servers: 1, readyServers: 1, applications: deployed ? 1 : 0, deployed }),
@@ -74,7 +75,11 @@ describe('first start page', () => {
         provideRouter([]),
         {
           provide: ShellContext,
-          useValue: { organization: signal({ name: 'Local Test' }), role: signal(role) },
+          useValue: {
+            organization: signal({ name: 'Local Test' }),
+            role: signal(role),
+            roleIn: (id: string) => (roleOrganization() === id ? role : null),
+          },
         },
       ],
     });
@@ -86,7 +91,7 @@ describe('first start page', () => {
     fixture.componentRef.setInput('organizationId', ORG);
     await fixture.whenStable();
     fixture.detectChanges();
-    return { store, element: fixture.nativeElement as HTMLElement };
+    return { store, fixture, roleOrganization, element: fixture.nativeElement as HTMLElement };
   }
 
   it('marks the next step and counts the done ones, in French too', async () => {
@@ -106,5 +111,15 @@ describe('first start page', () => {
     expect(element.textContent).toContain('4 sur 4 faites');
     expect(element.textContent).toContain('Une application est déployée.');
     expect(element.textContent).not.toContain('An application is deployed.');
+  });
+
+  it('waits for a role read for this organization before reading registries', async () => {
+    // The shell still holds the role of the organization just left.
+    const { store, fixture, roleOrganization } = await render('owner', false, 'org-left');
+    expect(store.readRegistries).toHaveBeenCalledWith(ORG, null);
+    expect(store.readRegistries).not.toHaveBeenCalledWith(ORG, 'owner');
+    roleOrganization.set(ORG);
+    await fixture.whenStable();
+    expect(store.readRegistries).toHaveBeenLastCalledWith(ORG, 'owner');
   });
 });

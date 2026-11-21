@@ -231,10 +231,11 @@ export class FirstStartPage {
       const organizationId = this.organizationId();
       void untracked(() => this.store.load(organizationId));
     });
-    // The role arrives with the shell: registries are read once it says they may be.
+    // The role arrives with the shell: registries are read once it says they may be, and only
+    // with a role read for this organization, not the one just left.
     effect(() => {
       const organizationId = this.organizationId();
-      const role = this.shell.role();
+      const role = this.shell.roleIn(organizationId);
       untracked(() => {
         this.store.readRegistries(organizationId, role);
       });
@@ -243,6 +244,6 @@ export class FirstStartPage {
 
   protected read(organizationId: string): void {
     void this.store.load(organizationId);
-    this.store.readRegistries(organizationId, this.shell.role());
+    this.store.readRegistries(organizationId, this.shell.roleIn(organizationId));
   }
 }
