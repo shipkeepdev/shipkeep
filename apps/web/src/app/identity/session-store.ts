@@ -73,7 +73,14 @@ export class SessionStore {
   async setDisplayName(name: string | null): Promise<void> {
     const revision = this.revision;
     const profile = await this.api.setDisplayName(name);
-    if (revision === this.revision) this.accept(profile);
+    // Only the name changes, and the revision does not move: a logout started meanwhile has
+    // already moved it, so this answer is dropped, and one started later still clears the session.
+    if (revision !== this.revision) return;
+    this.current.update((current) =>
+      current?.userId === profile.userId
+        ? { ...current, displayName: profile.displayName }
+        : current,
+    );
   }
   /** Security responses may also contain private grants. Retain only these public fields. */
   accept(profile: SessionProfile): void {

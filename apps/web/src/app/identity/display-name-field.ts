@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, effect, inject, signal } from '@ang
 
 import { T } from '../ui/i18n';
 
+import { displayNameTooLong } from './account-name';
 import { IdentityRequestError } from './identity-api';
 import { SessionStore } from './session-store';
 
@@ -59,9 +60,8 @@ export class DisplayNameField {
     return this.draft().trim() !== this.saved;
   }
 
-  /** The server's limit: 64 code points once normalized, not 64 UTF-16 units. */
   protected tooLong(): boolean {
-    return Array.from(this.draft().normalize('NFC').trim().replace(/\s+/g, ' ')).length > 64;
+    return displayNameTooLong(this.draft());
   }
 
   protected edit(event: Event): void {
