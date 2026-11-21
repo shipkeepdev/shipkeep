@@ -100,6 +100,32 @@ describe('organization danger zone', () => {
     expect(element.querySelector('form')).toBeNull();
   });
 
+  it('reads further members before saying no admin exists', async () => {
+    const { api, element, button, settle } = await render('owner', []);
+    api.members.mockImplementation((_org, cursor) => {
+      const n = cursor ? Number(cursor) : 1;
+      return Promise.resolve({
+        items: [
+          member(`m${String(n)}`, `p${String(n)}@example.com`, n === 11 ? 'admin' : 'member'),
+        ],
+        nextCursor: n < 11 ? String(n + 1) : null,
+      });
+    });
+    const flush = async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await settle();
+    };
+    button('Transfer').click();
+    await flush();
+    expect(element.textContent).toContain('No active admin among the members read so far.');
+    expect(element.querySelector('form')).toBeNull();
+    button('Read more members').click();
+    await flush();
+    const options = [...element.querySelectorAll('option')].map((o) => o.textContent.trim());
+    expect(options).toEqual(['p11@example.com']);
+    expect(button('Read more members')).toBeUndefined();
+  });
+
   it('forgets a typed password when the form is cancelled', async () => {
     const { element, button, settle } = await render('owner', [
       member('m1', 'me@example.com', 'owner'),

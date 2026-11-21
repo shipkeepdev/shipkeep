@@ -105,6 +105,8 @@ export const FR: Readonly<Record<string, string>> = {
   'New owner': 'Nouveau propriétaire',
   'No account, or a lost password? Ask the administrator of this installation.':
     "Pas de compte, ou mot de passe perdu ? Demandez à l'administrateur de cette installation.",
+  'No active admin among the members read so far.':
+    "Aucun admin actif parmi les membres lus jusqu'ici.",
   'No registry yet. Public images need none.':
     "Aucun registre pour l'instant. Les images publiques n'en ont pas besoin.",
   'On a fresh Ubuntu 24.04 server with curl and sudo, run this command, then paste the token when prompted. Docker and Caddy are installed; ports 80 and 443 must be free.':
@@ -120,6 +122,7 @@ export const FR: Readonly<Record<string, string>> = {
   'Ownership transferred. You are now an admin.':
     'Propriété transférée. Vous êtes maintenant admin.',
   'Password or access token': "Mot de passe ou jeton d'accès",
+  'Read more members': 'Lire plus de membres',
   'Registry host': 'Hôte du registre',
   'Remove the credentials of {name}': 'Retirer les identifiants de {name}',
   'Remove them': 'Les retirer',

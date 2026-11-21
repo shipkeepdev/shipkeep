@@ -12,12 +12,10 @@ import { RouterLink } from '@angular/router';
 
 import { AccessApi, type Member, type Proof } from '../access/access-api';
 import { ReauthForm, reauthControls } from '../access/reauth-form';
+import { type TransferTargetPage, TransferTargets } from '../access/transfer-targets';
 import { T } from '../ui/i18n';
 
 import { ShellContext } from '../shell/shell-context';
-
-/** Pages of members read to find the admins; past them, Members & access is the way. */
-const PAGES = 10;
 
 /**
  * The organization's danger zone (issue #255). An owner hands ownership to another admin under a
@@ -68,9 +66,19 @@ const PAGES = 10;
             <p class="text-[13px] text-mute2">{{ 'Loading…' | t }}</p>
           } @else if (admins()?.length === 0) {
             <p class="mb-3 text-[13px] text-fg3">
-              {{ 'Ownership goes to an admin. Make a member an admin first.' | t }}
+              {{
+                (more()
+                  ? 'No active admin among the members read so far.'
+                  : 'Ownership goes to an admin. Make a member an admin first.'
+                ) | t
+              }}
             </p>
             <div class="flex flex-wrap gap-2.5">
+              @if (more(); as cursor) {
+                <button class="btn btn-sm" type="button" (click)="load(cursor)">
+                  {{ 'Read more members' | t }}
+                </button>
+              }
               <a class="btn btn-sm" [routerLink]="['/orgs', organizationId(), 'members']">{{
                 'Members & access' | t
               }}</a>
@@ -99,6 +107,11 @@ const PAGES = 10;
                     <option [value]="admin.id">{{ admin.email }}</option>
                   }
                 </select>
+                @if (more(); as cursor) {
+                  <button class="btn btn-sm self-start" type="button" (click)="load(cursor)">
+                    {{ 'Read more members' | t }}
+                  </button>
+                }
               </div>
               <p class="text-[12px] text-mute2">
                 {{
@@ -128,6 +141,7 @@ const PAGES = 10;
   `,
 })
 export class OrganizationDanger {
+  private readonly targets = inject(TransferTargets);
   private readonly api = inject(AccessApi);
   private readonly shell = inject(ShellContext);
   readonly organizationId = input.required<string>();
@@ -137,6 +151,8 @@ export class OrganizationDanger {
   /** Null while loading. */
   protected readonly admins = signal<readonly Member[] | null>(null);
   protected readonly failed = signal(false);
+  /** Where the member search continues; null once every member was read. */
+  protected readonly more = signal<string | null>(null);
   protected readonly form = new FormGroup({
     target: new FormControl('', {
       nonNullable: true,
@@ -167,6 +183,8 @@ export class OrganizationDanger {
     this.form.controls.code.reset('');
     this.open.set(false);
     this.admins.set(null);
+    this.more.set(null);
+    this.form.controls.target.setValue('');
     this.failed.set(false);
   }
 
@@ -176,24 +194,21 @@ export class OrganizationDanger {
     void this.shell.refresh();
   }
 
-  private async load(): Promise<void> {
+  /** Reads members from `cursor` on; a later page adds to the admins found so far. */
+  protected async load(cursor: string | null = null): Promise<void> {
     const revision = ++this.#revision;
-    const organizationId = this.organizationId();
-    const found: Member[] = [];
+    this.failed.set(false);
+    let page: TransferTargetPage;
     try {
-      let cursor: string | undefined;
-      for (let page = 0; page < PAGES; page++) {
-        const { items, nextCursor } = await this.api.members(organizationId, cursor);
-        found.push(...items.filter((member) => member.active && member.orgRole === 'admin'));
-        if (!nextCursor) break;
-        cursor = nextCursor;
-      }
+      page = await this.targets.find(this.organizationId(), cursor);
     } catch {
       if (revision === this.#revision) this.failed.set(true);
       return;
     }
     if (revision !== this.#revision) return;
+    const found = [...(cursor ? (this.admins() ?? []) : []), ...page.targets];
     this.admins.set(found);
-    this.form.controls.target.setValue(found.at(0)?.id ?? '');
+    this.more.set(page.next);
+    if (!this.form.controls.target.value) this.form.controls.target.setValue(found.at(0)?.id ?? '');
   }
 }
