@@ -50,6 +50,16 @@ export class I18n {
     );
   }
 
+  /**
+   * A count with the form its language gives it: "1 project" and "0 projects" in English, "0 projet"
+   * and "2 projets" in French. `one` and `other` are English source texts with an `{n}`; an unknown
+   * count (null) shows a dash with the plural form.
+   */
+  count(n: number | null, one: string, other: string): string {
+    const single = n !== null && new Intl.PluralRules(this.language()).select(n) === 'one';
+    return this.t(single ? one : other, { n: n ?? '—' });
+  }
+
   /** Numbers in the interface language: 5,920 in English, 5 920 in French. */
   number(value: number, digits = 0): string {
     return value.toLocaleString(this.language() === 'fr' ? 'fr-FR' : 'en-US', {

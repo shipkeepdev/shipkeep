@@ -903,8 +903,6 @@ export const FR: Readonly<Record<string, string>> = {
   'Organization that owns the instance · 7 members · 4 projects':
     "Organisation propriétaire de l'instance · 7 membres · 4 projets",
   'Organization · Admin': 'Organisation · Admin',
-  'Organization · {members} members · {projects} projects':
-    'Organisation · {members} membres · {projects} projets',
   Organizations: 'Organisations',
   Origin: 'Origine',
   'Outbound mTLS · no SSH key stored': 'mTLS sortant · aucune clé SSH stockée',
@@ -1731,16 +1729,21 @@ export const FR: Readonly<Record<string, string>> = {
     '{n} agents connectés · mTLS sortant, aucun port entrant',
   '{n} applications': '{n} applications',
   '{n} applications in {e} environments': '{n} applications dans {e} environnements',
+  '{n} environment': '{n} environnement',
   '{n} environments': '{n} environnements',
+  '{n} project': '{n} projet',
+  '{n} projects': '{n} projets',
+  '{n} server': '{n} serveur',
+  '{n} servers': '{n} serveurs',
   '{n} failing': '{n} en échec',
+  '{n} member': '{n} membre',
+  '{n} members': '{n} membres',
   '{n} members. Add people, change roles and see project roles under Members & access.':
     '{n} membres. Ajoutez des personnes, changez les rôles et voyez les rôles par projet dans Membres et accès.',
   '{n} of {m} replicas running': '{n} sur {m} répliques en marche',
   '{n} recovery codes remaining. Each code can be used once.':
     "{n} codes de récupération restants. Chaque code ne sert qu'une fois.",
   '{n} suspect': '{n} suspect',
-  '{projects} projects · {environments} environments · {servers} servers':
-    '{projects} projets · {environments} environnements · {servers} serveurs',
   '{s} s ago': 'il y a {s} s',
   '{trigger} deployment started': 'déploiement {trigger} lancé',
   '· 14 days': '· 14 jours',
