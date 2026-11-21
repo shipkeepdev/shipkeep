@@ -1,4 +1,6 @@
-import { formatMetric, linePath, scaleTop, sumSeries } from './metric-chart';
+import { TestBed } from '@angular/core/testing';
+
+import { formatMetric, linePath, MetricChart, scaleTop, sumSeries } from './metric-chart';
 
 describe('formatMetric', () => {
   it('writes each unit as the charts show it', () => {
@@ -101,5 +103,36 @@ describe('linePath', () => {
   it('draws nothing for no points, and survives an empty period', () => {
     expect(linePath([], 0, 60, 1, 30)).toBe('');
     expect(linePath([{ t: 5, v: 1 }], 5, 5, 1, 30)).toBe('M0.00 0.00');
+  });
+});
+
+describe('MetricChart', () => {
+  const render = (points: { t: number; v: number }[], secondary: { t: number; v: number }[]) => {
+    const fixture = TestBed.createComponent(MetricChart);
+    for (const [name, value] of Object.entries({
+      label: 'Network in · out dashed',
+      unit: 'bytesPerSecond',
+      points,
+      secondary,
+      from: 0,
+      to: 60,
+      step: 30,
+    }))
+      fixture.componentRef.setInput(name, value);
+    fixture.detectChanges();
+    return fixture.nativeElement as HTMLElement;
+  };
+
+  it('draws a series that only the second line has, and is empty only when both are', () => {
+    const outOnly = render(
+      [],
+      [
+        { t: 0, v: 10 },
+        { t: 30, v: 20 },
+      ],
+    );
+    expect(outOnly.textContent).not.toContain('No data for this period yet.');
+    expect(outOnly.querySelectorAll('svg path')).toHaveLength(2);
+    expect(render([], []).textContent).toContain('No data for this period yet.');
   });
 });

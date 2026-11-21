@@ -175,7 +175,9 @@ export class MetricChart {
   private readonly i18n = inject(I18n);
   private readonly number: NumberFormat = (value, digits) => this.i18n.number(value, digits);
   protected readonly red = RED;
-  protected readonly empty = computed(() => this.points().length === 0);
+  protected readonly empty = computed(
+    () => this.points().length === 0 && this.secondary().length === 0,
+  );
   private readonly top = computed(() => {
     const max = this.max();
     return max !== null && max > 0
