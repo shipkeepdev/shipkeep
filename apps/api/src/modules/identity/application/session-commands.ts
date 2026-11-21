@@ -26,6 +26,7 @@ import { MfaProof } from './mfa-proof';
 export interface SessionGrant {
   readonly userId: string;
   readonly email: string;
+  readonly displayName: string | null;
   readonly token: Secret;
   readonly csrf: Secret;
   readonly expiresAt: Date;
@@ -115,7 +116,14 @@ export class SessionCommands {
       ip: context.ip,
       userAgent: context.userAgent.slice(0, 512),
     });
-    return { userId: user.id, email: user.email, token, csrf, expiresAt };
+    return {
+      userId: user.id,
+      email: user.email,
+      displayName: user.displayName ?? null,
+      token,
+      csrf,
+      expiresAt,
+    };
   }
 
   async authenticate(

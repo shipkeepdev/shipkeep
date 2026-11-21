@@ -1,8 +1,7 @@
-import { DatePipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, effect, inject, input, signal } from '@angular/core';
 import { FormGroup } from '@angular/forms';
 
-import { T } from '../ui/i18n';
+import { LocalDate, T } from '../ui/i18n';
 
 import { AccessApi, type ProjectToken, type Proof } from './access-api';
 import { PagedList } from './paged-list';
@@ -11,7 +10,7 @@ import { ReauthForm, reauthControls } from './reauth-form';
 /** Tokens tied to a project, which its administrators can see and revoke (SPEC 7). */
 @Component({
   selector: 'sk-project-tokens-panel',
-  imports: [DatePipe, ReauthForm, T],
+  imports: [LocalDate, ReauthForm, T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (!tokens.denied()) {
@@ -43,7 +42,7 @@ import { ReauthForm, reauthControls } from './reauth-form';
                         <span class="ml-2 text-sm text-muted">{{ token.status | t }}</span>
                         <span class="block text-sm text-muted">
                           {{ 'Created by' | t }} <code class="break-all">{{ token.createdBy }}</code
-                          >{{ ', expires' | t }} {{ token.expiresAt | date: 'mediumDate' }}
+                          >{{ ', expires' | t }} {{ token.expiresAt | localDate: 'mediumDate' }}
                         </span>
                       </span>
                       @if (token.status === 'active') {

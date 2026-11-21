@@ -1,6 +1,6 @@
 import { ModulesContainer, Reflector } from '@nestjs/core';
 import { Test } from '@nestjs/testing';
-import { allowsTenantAction } from '@shipkeep/domain';
+import { allowsTenantAction, BEARER_GRANTS } from '@shipkeep/domain';
 
 import { AppModule } from './app.module';
 import { type RouteRow, routeInventory } from './testing/route-inventory';
@@ -109,6 +109,23 @@ describe('route and role matrix', () => {
           allowed?.includes(actor) ?? false,
         );
     }
+  });
+
+  it('lets a token be granted exactly what bearer routes accept, at their level (#208)', () => {
+    const offered = new Map<string, string>(
+      BEARER_GRANTS.map((grant) => [grant.permission, grant.level]),
+    );
+    const used = new Set<string>();
+    for (const route of routes) {
+      if (route.bearer === undefined || route.access?.kind !== 'tenant') continue;
+      used.add(route.bearer);
+      expect(
+        offered.get(route.bearer),
+        `${route.method} ${route.path}: the token picker must offer ${route.bearer} at ${route.access.scope}`,
+      ).toBe(route.access.scope);
+    }
+    // Nothing is offered that no bearer route accepts.
+    expect([...offered.keys()].sort()).toEqual([...used].sort());
   });
 
   it('opts bearer tokens in only with the route permission, never on privilege changes', () => {

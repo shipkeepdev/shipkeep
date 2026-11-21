@@ -3,12 +3,14 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { NavigationEnd, Router } from '@angular/router';
 import { filter, map } from 'rxjs';
 
-import { AccessApi, type OrganizationRole } from '../access/access-api';
+import { AccessApi, type Member, type OrganizationRole } from '../access/access-api';
 import { type FleetNode, FleetApi } from '../fleet/fleet-api';
 import { IdentityApi, IdentityRequestError } from '../identity/identity-api';
 import { SessionStore } from '../identity/session-store';
 import { type Organization, type Project, WorkspaceApi } from '../workspace/workspace-api';
 
+/** A bound on one refresh: past it, the count and names stop at the members read. */
+const MEMBER_PAGES = 20;
 const ORGANIZATION = /^\/orgs\/([0-9a-f-]{36})(?:[/?#]|$)/;
 
 export interface ShellProject extends Project {
@@ -45,8 +47,8 @@ export class ShellContext {
   readonly projects = signal<readonly ShellProject[]>([]);
   readonly nodes = signal<readonly FleetNode[] | null>(null);
   readonly members = signal<number | null>(null);
-  /** User id → email, to name the people in audit trails. */
-  readonly emails = signal<ReadonlyMap<string, string>>(new Map());
+  /** User id → display name, or email without one (#251): names people in audit trails. */
+  readonly names = signal<ReadonlyMap<string, string>>(new Map());
   readonly role = signal<OrganizationRole | null>(null);
   readonly mfa = signal<boolean | null>(null);
   readonly version = signal<string | null>(null);
@@ -108,13 +110,26 @@ export class ShellContext {
     }
     const [nodes, members] = await Promise.all([
       this.fleet.nodes(id).catch(() => null),
-      this.access.members(id).catch(() => null),
+      this.allMembers(id).catch(() => null),
     ]);
     if (!current()) return;
     this.nodes.set(nodes);
-    this.members.set(members?.items ? members.items.length : null);
-    this.emails.set(new Map((members?.items ?? []).map((m) => [m.userId, m.email])));
-    this.role.set(members?.items.find((m) => m.userId === profile?.userId)?.orgRole ?? null);
+    this.members.set(members ? members.length : null);
+    this.names.set(new Map((members ?? []).map((m) => [m.userId, m.displayName ?? m.email])));
+    this.role.set(members?.find((m) => m.userId === profile?.userId)?.orgRole ?? null);
+  }
+
+  /** Every member, page after page, so names and the count cover all of them (#251). */
+  private async allMembers(organizationId: string): Promise<Member[]> {
+    const all: Member[] = [];
+    let cursor: string | undefined;
+    for (let page = 0; page < MEMBER_PAGES; page++) {
+      const { items, nextCursor } = await this.access.members(organizationId, cursor);
+      all.push(...items);
+      if (!nextCursor) return all;
+      cursor = nextCursor;
+    }
+    return all;
   }
 
   private loaded = false;

@@ -3,6 +3,8 @@ import type { Secret } from '@shipkeep/domain';
 export interface UserRecord {
   readonly id: string;
   readonly email: string;
+  /** Shown instead of the address; never used to sign in (issue #251). */
+  readonly displayName?: string | null;
   readonly passwordHash: Secret;
   readonly status: 'pending' | 'active' | 'disabled';
   readonly emailVerifiedAt: Date | null;

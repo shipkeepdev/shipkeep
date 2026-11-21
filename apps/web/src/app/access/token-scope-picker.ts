@@ -8,6 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { type components } from '@shipkeep/api-client';
+import { BEARER_GRANTS, type BearerPermission } from '@shipkeep/domain';
 
 import { T } from '../ui/i18n';
 import { Collection } from '../workspace/collection';
@@ -28,38 +29,28 @@ export interface TokenGrant {
 }
 export const PROFILE_ONLY: TokenGrant = { scopes: [{ permission: 'profile.read' }] };
 
+/** The picker's words for each permission a token can be granted (BEARER_GRANTS, #208). */
+const LABELS: Readonly<Record<BearerPermission, string>> = {
+  'organization.read': 'Read the organization',
+  'organization.update': 'Change organization settings',
+  'project.create': 'Create projects',
+  'node.manage': 'Remove servers',
+  'audit.read': 'Read and export the audit log',
+  'project.read': 'Read projects',
+  'project.update': 'Change project settings',
+  'environment.create': 'Create environments',
+  'environment.read': 'Read environments, applications and deployments',
+  'environment.update': 'Change environment settings',
+  'deploy.run': 'Change applications and deploy them',
+  'secret.write': 'Set and remove secrets',
+};
 /**
- * Permissions a token can use today, from docs/generated/route-role-matrix.md, each at the one level
- * the tenant policy accepts it (`validPermissionScope`): the API refuses the whole token otherwise,
- * even for an owner. `deploy.run` needs an environment, whose protection decides it. The rest of the
- * vocabulary has no bearer route yet or is session only, such as `member.manage`.
+ * Permissions a token can use today, each at the one level the tenant policy accepts it: the API
+ * refuses the whole token otherwise, even for an owner. The list lives in the domain, and the
+ * API's route matrix test ties it to the bearer routes.
  */
-const PERMISSIONS: readonly { permission: Permission; level: Level; label: string }[] = [
-  { permission: 'organization.read', level: 'organization', label: 'Read the organization' },
-  {
-    permission: 'organization.update',
-    level: 'organization',
-    label: 'Change organization settings',
-  },
-  { permission: 'project.create', level: 'organization', label: 'Create projects' },
-  { permission: 'node.manage', level: 'organization', label: 'Remove servers' },
-  { permission: 'audit.read', level: 'organization', label: 'Read and export the audit log' },
-  { permission: 'project.read', level: 'project', label: 'Read projects' },
-  { permission: 'project.update', level: 'project', label: 'Change project settings' },
-  { permission: 'environment.create', level: 'project', label: 'Create environments' },
-  {
-    permission: 'environment.read',
-    level: 'environment',
-    label: 'Read environments, applications and deployments',
-  },
-  { permission: 'environment.update', level: 'environment', label: 'Change environment settings' },
-  {
-    permission: 'deploy.run',
-    level: 'environment',
-    label: 'Change applications and deploy them',
-  },
-  { permission: 'secret.write', level: 'environment', label: 'Set and remove secrets' },
-];
+const PERMISSIONS: readonly { permission: Permission; level: Level; label: string }[] =
+  BEARER_GRANTS.map((grant) => ({ ...grant, label: LABELS[grant.permission] }));
 const selected = (event: Event): string => (event.target as HTMLSelectElement).value;
 
 /** Chooses what a new API token may do. Nothing is granted until it is ticked. */

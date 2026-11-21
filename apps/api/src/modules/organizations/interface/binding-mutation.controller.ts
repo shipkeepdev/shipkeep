@@ -1,3 +1,4 @@
+import { sessionDto } from '../../identity/interface/identity.dto';
 import {
   applyDecorators,
   Body,
@@ -146,11 +147,7 @@ export class BindingMutationController {
     setSessionCookies(response, result.session, cookiePolicy(this.config.get('API_PUBLIC_URL')));
     return {
       binding,
-      session: {
-        userId: result.session.userId,
-        email: result.session.email,
-        expiresAt: result.session.expiresAt.toISOString(),
-      },
+      session: sessionDto(result.session),
     };
   }
 }

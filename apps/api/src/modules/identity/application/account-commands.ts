@@ -3,6 +3,7 @@ import { Secret, SYSTEM_ACTOR } from '@shipkeep/domain';
 import { v7 as uuidv7 } from 'uuid';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
+import { displayName } from '../domain/display-name';
 import { identityEvent } from '../domain/identity-events';
 import {
   assertPassword,
@@ -34,9 +35,16 @@ export class AccountCommands {
     private readonly events: DomainEventBus,
   ) {}
 
-  async register(emailInput: string, password: Secret, now = new Date()): Promise<void> {
+  async register(
+    emailInput: string,
+    password: Secret,
+    nameInput: string | null = null,
+    now = new Date(),
+  ): Promise<void> {
     this.assertMail();
     const email = normalizeEmail(emailInput);
+    // Checked before any write: a refused name answers the same for every address.
+    const name = displayName(nameInput);
     // Hash even for duplicates: neither status nor expensive hashing reveals account existence.
     const passwordHash = await this.passwords.hash(password);
     const id = uuidv7();
@@ -46,6 +54,7 @@ export class AccountCommands {
       const created = await this.store.insertUser({
         id,
         email,
+        displayName: name,
         passwordHash,
         status: 'pending',
         emailVerifiedAt: null,

@@ -14,21 +14,24 @@ export class Collection<T> {
 
   constructor(private readonly load: () => Promise<readonly T[]>) {}
 
-  async refresh(): Promise<void> {
+  /** True when this refresh's list was loaded and applied: not failed, not superseded. */
+  async refresh(): Promise<boolean> {
     const revision = ++this.revision;
     this.status.set('loading');
     try {
       const items = await this.load();
-      if (revision !== this.revision) return;
+      if (revision !== this.revision) return false;
       this.values.set(items);
       this.status.set('ready');
       this.failure.set(null);
+      return true;
     } catch (error: unknown) {
-      if (revision !== this.revision) return;
+      if (revision !== this.revision) return false;
       this.status.set('failed');
       this.failure.set(
         error instanceof IdentityRequestError ? error.message : 'This list could not be loaded.',
       );
+      return false;
     }
   }
 }

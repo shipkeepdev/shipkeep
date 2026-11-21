@@ -342,7 +342,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/CredentialsDto"
+                "$ref": "#/components/schemas/RegisterDto"
               }
             }
           }
@@ -1402,6 +1402,59 @@
         ]
       }
     },
+    "/api/v1/auth/profile": {
+      "post": {
+        "operationId": "setDisplayName",
+        "parameters": [
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisplayNameDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "identity"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/join-tokens": {
       "post": {
         "operationId": "issueJoinToken",
@@ -2040,6 +2093,73 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/clone": {
+      "post": {
+        "operationId": "cloneEnvironment",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CloneEnvironmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClonedEnvironmentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "applications"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications": {
       "get": {
         "operationId": "listApplications",
@@ -2367,913 +2487,6 @@
         ],
         "tags": [
           "applications"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments": {
-      "post": {
-        "operationId": "deploy",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "projectId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "environmentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "applicationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QueuedDeploymentDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "deployments"
-        ]
-      },
-      "get": {
-        "operationId": "listDeployments",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "projectId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "environmentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "applicationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeploymentListDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "deployments"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}": {
-      "get": {
-        "operationId": "getDeployment",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "projectId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "environmentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "applicationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "deploymentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeploymentDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "deployments"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/cancel": {
-      "post": {
-        "operationId": "cancelDeployment",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "projectId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "environmentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "applicationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "deploymentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeploymentDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "deployments"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/stop": {
-      "post": {
-        "operationId": "stop",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "projectId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "environmentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "applicationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/DeploymentDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "deployments"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/delete": {
-      "post": {
-        "operationId": "deleteApplication",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "projectId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "environmentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "applicationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/DeleteApplicationDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "204": {
-            "description": ""
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "deployments"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/rollback": {
-      "post": {
-        "operationId": "rollback",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "projectId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "environmentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "applicationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "deploymentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/QueuedDeploymentDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "deployments"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/replicas": {
-      "get": {
-        "operationId": "listReplicas",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "projectId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "environmentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "applicationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReplicaListDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "deployments"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/agent-actions": {
-      "get": {
-        "operationId": "listAgentActions",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "projectId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "environmentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "applicationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "cursor",
-            "required": false,
-            "in": "query",
-            "description": "Exclusive: the last id of the previous page.",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "limit",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "minimum": 1,
-              "maximum": 100,
-              "default": 50,
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/AgentActionPageDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "deployments"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/releases": {
-      "get": {
-        "operationId": "listReleases",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "projectId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "environmentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "applicationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ReleaseListDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "deployments"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/metrics": {
-      "get": {
-        "operationId": "applicationMetrics",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "projectId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "environmentId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "applicationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "range",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": "1h",
-              "type": "string",
-              "enum": [
-                "1h",
-                "24h",
-                "7d",
-                "30d"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApplicationMetricsDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "metrics"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/nodes/{nodeId}/metrics": {
-      "get": {
-        "operationId": "nodeMetrics",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "nodeId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "range",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": "1h",
-              "type": "string",
-              "enum": [
-                "1h",
-                "24h",
-                "7d",
-                "30d"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/NodeMetricsDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "metrics"
-        ]
-      }
-    },
-    "/api/v1/organizations/{organizationId}/metrics": {
-      "get": {
-        "operationId": "organizationMetrics",
-        "parameters": [
-          {
-            "name": "organizationId",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "format": "uuid",
-              "type": "string"
-            }
-          },
-          {
-            "name": "range",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "default": "24h",
-              "type": "string",
-              "enum": [
-                "1h",
-                "24h",
-                "7d",
-                "30d"
-              ]
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/OrganizationMetricsDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "apiToken": []
-          },
-          {
-            "session": []
-          }
-        ],
-        "tags": [
-          "metrics"
         ]
       }
     },
@@ -4934,6 +4147,913 @@
           "organizations"
         ]
       }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments": {
+      "post": {
+        "operationId": "deploy",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedDeploymentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      },
+      "get": {
+        "operationId": "listDeployments",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}": {
+      "get": {
+        "operationId": "getDeployment",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "deploymentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/cancel": {
+      "post": {
+        "operationId": "cancelDeployment",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "deploymentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/stop": {
+      "post": {
+        "operationId": "stop",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/delete": {
+      "post": {
+        "operationId": "deleteApplication",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeleteApplicationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/rollback": {
+      "post": {
+        "operationId": "rollback",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "deploymentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QueuedDeploymentDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/replicas": {
+      "get": {
+        "operationId": "listReplicas",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplicaListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/agent-actions": {
+      "get": {
+        "operationId": "listAgentActions",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "cursor",
+            "required": false,
+            "in": "query",
+            "description": "Exclusive: the last id of the previous page.",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 50,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentActionPageDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/releases": {
+      "get": {
+        "operationId": "listReleases",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleaseListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/metrics": {
+      "get": {
+        "operationId": "applicationMetrics",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "range",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "1h",
+              "type": "string",
+              "enum": [
+                "1h",
+                "24h",
+                "7d",
+                "30d"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationMetricsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/nodes/{nodeId}/metrics": {
+      "get": {
+        "operationId": "nodeMetrics",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "range",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "1h",
+              "type": "string",
+              "enum": [
+                "1h",
+                "24h",
+                "7d",
+                "30d"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeMetricsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/metrics": {
+      "get": {
+        "operationId": "organizationMetrics",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "range",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "24h",
+              "type": "string",
+              "enum": [
+                "1h",
+                "24h",
+                "7d",
+                "30d"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMetricsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "metrics"
+        ]
+      }
     }
   },
   "info": {
@@ -5091,7 +5211,7 @@
           "nextCursor"
         ]
       },
-      "CredentialsDto": {
+      "RegisterDto": {
         "type": "object",
         "properties": {
           "email": {
@@ -5106,6 +5226,11 @@
             "maxLength": 128,
             "writeOnly": true,
             "format": "password"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 256,
+            "description": "The name to show instead of the address. Trimmed, at most 64 characters."
           }
         },
         "required": [
@@ -5215,6 +5340,13 @@
             "type": "string",
             "format": "email"
           },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name the account shows instead of its address; null when it has none."
+          },
           "expiresAt": {
             "type": "string",
             "format": "date-time"
@@ -5223,6 +5355,7 @@
         "required": [
           "userId",
           "email",
+          "displayName",
           "expiresAt"
         ]
       },
@@ -5332,6 +5465,13 @@
             "type": "string",
             "format": "email"
           },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The name the account shows instead of its address; null when it has none."
+          },
           "expiresAt": {
             "type": "string",
             "format": "date-time"
@@ -5349,6 +5489,7 @@
         "required": [
           "userId",
           "email",
+          "displayName",
           "expiresAt",
           "recoveryCodes"
         ]
@@ -5847,6 +5988,22 @@
           "revoked"
         ]
       },
+      "DisplayNameDto": {
+        "type": "object",
+        "properties": {
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 256,
+            "description": "The name to show; empty or null removes it. Trimmed, at most 64 characters."
+          }
+        },
+        "required": [
+          "displayName"
+        ]
+      },
       "JoinTokenIssuedDto": {
         "type": "object",
         "properties": {
@@ -6203,6 +6360,18 @@
           "value"
         ]
       },
+      "CloneEnvironmentDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Name of the new environment (same rules as for creation)."
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
       "ApplicationDto": {
         "type": "object",
         "properties": {
@@ -6251,6 +6420,30 @@
           "createdBy",
           "createdAt",
           "updatedAt"
+        ]
+      },
+      "ClonedEnvironmentDto": {
+        "type": "object",
+        "properties": {
+          "environmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "applications": {
+            "description": "The copied applications: not deployed, without domains.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApplicationDto"
+            }
+          }
+        },
+        "required": [
+          "environmentId",
+          "name",
+          "applications"
         ]
       },
       "ApplicationListDto": {
@@ -6389,6 +6582,896 @@
         "required": [
           "config",
           "expectedConfigSha"
+        ]
+      },
+      "OrganizationDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "updatedAt",
+          "name",
+          "slug"
+        ]
+      },
+      "OrganizationPageDto": {
+        "type": "object",
+        "properties": {
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrganizationDto"
+            }
+          }
+        },
+        "required": [
+          "nextCursor",
+          "items"
+        ]
+      },
+      "ProjectDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 80
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "gitWriteMode": {
+            "type": "string",
+            "enum": [
+              "commit",
+              "pull_request"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "updatedAt",
+          "name",
+          "slug",
+          "organizationId",
+          "gitWriteMode"
+        ]
+      },
+      "ProjectPageDto": {
+        "type": "object",
+        "properties": {
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProjectDto"
+            }
+          }
+        },
+        "required": [
+          "nextCursor",
+          "items"
+        ]
+      },
+      "EnvironmentDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "preview"
+            ]
+          },
+          "failoverPolicy": {
+            "type": "string",
+            "enum": [
+              "none",
+              "restore-from-backup"
+            ]
+          },
+          "protected": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "updatedAt",
+          "organizationId",
+          "projectId",
+          "name",
+          "kind",
+          "failoverPolicy",
+          "protected"
+        ]
+      },
+      "EnvironmentPageDto": {
+        "type": "object",
+        "properties": {
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/EnvironmentDto"
+            }
+          }
+        },
+        "required": [
+          "nextCursor",
+          "items"
+        ]
+      },
+      "CreateOrganizationDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 320,
+            "description": "Trimmed to a display name of 1–80 Unicode code points."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[a-z][a-z0-9-]{0,39}$"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password"
+          },
+          "totp": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
+          },
+          "recovery": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "name",
+          "slug",
+          "password"
+        ]
+      },
+      "OrganizationCreatedDto": {
+        "type": "object",
+        "properties": {
+          "organization": {
+            "$ref": "#/components/schemas/OrganizationDto"
+          },
+          "session": {
+            "description": "Updated account profile; rotated credentials are set only in cookies.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SessionDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "organization",
+          "session"
+        ]
+      },
+      "OrganizationSettingsDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 320,
+            "description": "Trimmed to a display name of 1–80 Unicode code points."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[a-z][a-z0-9-]{0,39}$"
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ]
+      },
+      "ProjectSettingsDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 320,
+            "description": "Trimmed to a display name of 1–80 Unicode code points."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[a-z][a-z0-9-]{0,39}$"
+          },
+          "gitWriteMode": {
+            "type": "string",
+            "enum": [
+              "commit",
+              "pull_request"
+            ],
+            "default": "pull_request"
+          }
+        },
+        "required": [
+          "name",
+          "slug"
+        ]
+      },
+      "EnvironmentSettingsDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 40,
+            "pattern": "^[a-z][a-z0-9-]{0,39}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "standard",
+              "preview"
+            ],
+            "default": "standard"
+          },
+          "failoverPolicy": {
+            "type": "string",
+            "enum": [
+              "none",
+              "restore-from-backup"
+            ],
+            "default": "none"
+          },
+          "protected": {
+            "type": "boolean",
+            "default": true
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "MemberViewDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orgRole": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "active": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "updatedAt",
+          "organizationId",
+          "userId",
+          "orgRole",
+          "email",
+          "displayName",
+          "active"
+        ]
+      },
+      "MemberPageDto": {
+        "type": "object",
+        "properties": {
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MemberViewDto"
+            }
+          }
+        },
+        "required": [
+          "nextCursor",
+          "items"
+        ]
+      },
+      "BindingViewDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orgRole": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "displayName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "developer",
+              "viewer"
+            ]
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "organization",
+              "project",
+              "environment"
+            ]
+          },
+          "directRole": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "admin",
+              "developer",
+              "viewer",
+              null
+            ]
+          },
+          "inheritedRole": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "admin",
+              "developer",
+              "viewer",
+              null
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "updatedAt",
+          "organizationId",
+          "userId",
+          "orgRole",
+          "email",
+          "displayName",
+          "active",
+          "role",
+          "source",
+          "directRole",
+          "inheritedRole"
+        ]
+      },
+      "BindingPageDto": {
+        "type": "object",
+        "properties": {
+          "nextCursor": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BindingViewDto"
+            }
+          }
+        },
+        "required": [
+          "nextCursor",
+          "items"
+        ]
+      },
+      "AddMemberDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email",
+            "example": "person@example.com"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
+          },
+          "password": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password"
+          },
+          "totp": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
+          },
+          "recovery": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "email",
+          "role",
+          "password"
+        ]
+      },
+      "MembershipDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "userId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "orgRole": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "updatedAt",
+          "organizationId",
+          "userId",
+          "orgRole"
+        ]
+      },
+      "MembershipMutationDto": {
+        "type": "object",
+        "properties": {
+          "membership": {
+            "description": "Null after removal.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MembershipDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "session": {
+            "description": "Present only when the caller changed their own role: the caller's credentials were rotated and the new ones are set only in cookies.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SessionDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "membership"
+        ]
+      },
+      "MemberRoleDto": {
+        "type": "object",
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "owner",
+              "admin",
+              "member"
+            ]
+          },
+          "password": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password"
+          },
+          "totp": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
+          },
+          "recovery": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "role",
+          "password"
+        ]
+      },
+      "TransferOwnershipDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password"
+          },
+          "totp": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
+          },
+          "recovery": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password"
+        ]
+      },
+      "RemoveMemberDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password"
+          },
+          "totp": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
+          },
+          "recovery": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password"
+        ]
+      },
+      "AssignBindingDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 254,
+            "format": "email",
+            "example": "person@example.com"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "developer",
+              "viewer"
+            ]
+          },
+          "password": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password"
+          },
+          "totp": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
+          },
+          "recovery": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "email",
+          "role",
+          "password"
+        ]
+      },
+      "BindingDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "organizationId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "environmentId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "membershipId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "admin",
+              "developer",
+              "viewer"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "createdAt",
+          "updatedAt",
+          "organizationId",
+          "projectId",
+          "environmentId",
+          "membershipId",
+          "role"
+        ]
+      },
+      "BindingMutationDto": {
+        "type": "object",
+        "properties": {
+          "binding": {
+            "description": "Null after removal.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/BindingDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "session": {
+            "description": "Present only when the caller changed their own binding: the caller's credentials were rotated and the new ones are set only in cookies.",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/SessionDto"
+              }
+            ]
+          }
+        },
+        "required": [
+          "binding"
+        ]
+      },
+      "RemoveBindingDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password"
+          },
+          "totp": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
+          },
+          "recovery": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "writeOnly": true
+          }
+        },
+        "required": [
+          "password"
         ]
       },
       "ReleaseDto": {
@@ -7163,882 +8246,6 @@
           "totalRequests",
           "meanSeconds",
           "partial"
-        ]
-      },
-      "OrganizationDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "slug": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40
-          }
-        },
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "name",
-          "slug"
-        ]
-      },
-      "OrganizationPageDto": {
-        "type": "object",
-        "properties": {
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/OrganizationDto"
-            }
-          }
-        },
-        "required": [
-          "nextCursor",
-          "items"
-        ]
-      },
-      "ProjectDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 80
-          },
-          "slug": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40
-          },
-          "organizationId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "gitWriteMode": {
-            "type": "string",
-            "enum": [
-              "commit",
-              "pull_request"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "name",
-          "slug",
-          "organizationId",
-          "gitWriteMode"
-        ]
-      },
-      "ProjectPageDto": {
-        "type": "object",
-        "properties": {
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ProjectDto"
-            }
-          }
-        },
-        "required": [
-          "nextCursor",
-          "items"
-        ]
-      },
-      "EnvironmentDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "organizationId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "projectId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "standard",
-              "preview"
-            ]
-          },
-          "failoverPolicy": {
-            "type": "string",
-            "enum": [
-              "none",
-              "restore-from-backup"
-            ]
-          },
-          "protected": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "organizationId",
-          "projectId",
-          "name",
-          "kind",
-          "failoverPolicy",
-          "protected"
-        ]
-      },
-      "EnvironmentPageDto": {
-        "type": "object",
-        "properties": {
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/EnvironmentDto"
-            }
-          }
-        },
-        "required": [
-          "nextCursor",
-          "items"
-        ]
-      },
-      "CreateOrganizationDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 320,
-            "description": "Trimmed to a display name of 1–80 Unicode code points."
-          },
-          "slug": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40,
-            "pattern": "^[a-z][a-z0-9-]{0,39}$"
-          },
-          "password": {
-            "type": "string",
-            "minLength": 15,
-            "maxLength": 128,
-            "writeOnly": true,
-            "format": "password"
-          },
-          "totp": {
-            "type": "string",
-            "pattern": "^[0-9]{6}$",
-            "writeOnly": true
-          },
-          "recovery": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{32}$",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "name",
-          "slug",
-          "password"
-        ]
-      },
-      "OrganizationCreatedDto": {
-        "type": "object",
-        "properties": {
-          "organization": {
-            "$ref": "#/components/schemas/OrganizationDto"
-          },
-          "session": {
-            "description": "Updated account profile; rotated credentials are set only in cookies.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/SessionDto"
-              }
-            ]
-          }
-        },
-        "required": [
-          "organization",
-          "session"
-        ]
-      },
-      "OrganizationSettingsDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 320,
-            "description": "Trimmed to a display name of 1–80 Unicode code points."
-          },
-          "slug": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40,
-            "pattern": "^[a-z][a-z0-9-]{0,39}$"
-          }
-        },
-        "required": [
-          "name",
-          "slug"
-        ]
-      },
-      "ProjectSettingsDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 320,
-            "description": "Trimmed to a display name of 1–80 Unicode code points."
-          },
-          "slug": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40,
-            "pattern": "^[a-z][a-z0-9-]{0,39}$"
-          },
-          "gitWriteMode": {
-            "type": "string",
-            "enum": [
-              "commit",
-              "pull_request"
-            ],
-            "default": "pull_request"
-          }
-        },
-        "required": [
-          "name",
-          "slug"
-        ]
-      },
-      "EnvironmentSettingsDto": {
-        "type": "object",
-        "properties": {
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 40,
-            "pattern": "^[a-z][a-z0-9-]{0,39}$"
-          },
-          "kind": {
-            "type": "string",
-            "enum": [
-              "standard",
-              "preview"
-            ],
-            "default": "standard"
-          },
-          "failoverPolicy": {
-            "type": "string",
-            "enum": [
-              "none",
-              "restore-from-backup"
-            ],
-            "default": "none"
-          },
-          "protected": {
-            "type": "boolean",
-            "default": true
-          }
-        },
-        "required": [
-          "name"
-        ]
-      },
-      "MemberViewDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "organizationId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "userId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "orgRole": {
-            "type": "string",
-            "enum": [
-              "owner",
-              "admin",
-              "member"
-            ]
-          },
-          "email": {
-            "type": "string",
-            "format": "email"
-          },
-          "active": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "organizationId",
-          "userId",
-          "orgRole",
-          "email",
-          "active"
-        ]
-      },
-      "MemberPageDto": {
-        "type": "object",
-        "properties": {
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/MemberViewDto"
-            }
-          }
-        },
-        "required": [
-          "nextCursor",
-          "items"
-        ]
-      },
-      "BindingViewDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "organizationId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "userId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "orgRole": {
-            "type": "string",
-            "enum": [
-              "owner",
-              "admin",
-              "member"
-            ]
-          },
-          "email": {
-            "type": "string",
-            "format": "email"
-          },
-          "active": {
-            "type": "boolean"
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "admin",
-              "developer",
-              "viewer"
-            ]
-          },
-          "source": {
-            "type": "string",
-            "enum": [
-              "organization",
-              "project",
-              "environment"
-            ]
-          },
-          "directRole": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "admin",
-              "developer",
-              "viewer",
-              null
-            ]
-          },
-          "inheritedRole": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "enum": [
-              "admin",
-              "developer",
-              "viewer",
-              null
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "organizationId",
-          "userId",
-          "orgRole",
-          "email",
-          "active",
-          "role",
-          "source",
-          "directRole",
-          "inheritedRole"
-        ]
-      },
-      "BindingPageDto": {
-        "type": "object",
-        "properties": {
-          "nextCursor": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/BindingViewDto"
-            }
-          }
-        },
-        "required": [
-          "nextCursor",
-          "items"
-        ]
-      },
-      "AddMemberDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "format": "email",
-            "example": "person@example.com"
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "owner",
-              "admin",
-              "member"
-            ]
-          },
-          "password": {
-            "type": "string",
-            "minLength": 15,
-            "maxLength": 128,
-            "writeOnly": true,
-            "format": "password"
-          },
-          "totp": {
-            "type": "string",
-            "pattern": "^[0-9]{6}$",
-            "writeOnly": true
-          },
-          "recovery": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{32}$",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "email",
-          "role",
-          "password"
-        ]
-      },
-      "MembershipDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "organizationId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "userId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "orgRole": {
-            "type": "string",
-            "enum": [
-              "owner",
-              "admin",
-              "member"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "organizationId",
-          "userId",
-          "orgRole"
-        ]
-      },
-      "MembershipMutationDto": {
-        "type": "object",
-        "properties": {
-          "membership": {
-            "description": "Null after removal.",
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MembershipDto"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "session": {
-            "description": "Present only when the caller changed their own role: the caller's credentials were rotated and the new ones are set only in cookies.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/SessionDto"
-              }
-            ]
-          }
-        },
-        "required": [
-          "membership"
-        ]
-      },
-      "MemberRoleDto": {
-        "type": "object",
-        "properties": {
-          "role": {
-            "type": "string",
-            "enum": [
-              "owner",
-              "admin",
-              "member"
-            ]
-          },
-          "password": {
-            "type": "string",
-            "minLength": 15,
-            "maxLength": 128,
-            "writeOnly": true,
-            "format": "password"
-          },
-          "totp": {
-            "type": "string",
-            "pattern": "^[0-9]{6}$",
-            "writeOnly": true
-          },
-          "recovery": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{32}$",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "role",
-          "password"
-        ]
-      },
-      "TransferOwnershipDto": {
-        "type": "object",
-        "properties": {
-          "password": {
-            "type": "string",
-            "minLength": 15,
-            "maxLength": 128,
-            "writeOnly": true,
-            "format": "password"
-          },
-          "totp": {
-            "type": "string",
-            "pattern": "^[0-9]{6}$",
-            "writeOnly": true
-          },
-          "recovery": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{32}$",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "password"
-        ]
-      },
-      "RemoveMemberDto": {
-        "type": "object",
-        "properties": {
-          "password": {
-            "type": "string",
-            "minLength": 15,
-            "maxLength": 128,
-            "writeOnly": true,
-            "format": "password"
-          },
-          "totp": {
-            "type": "string",
-            "pattern": "^[0-9]{6}$",
-            "writeOnly": true
-          },
-          "recovery": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{32}$",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "password"
-        ]
-      },
-      "AssignBindingDto": {
-        "type": "object",
-        "properties": {
-          "email": {
-            "type": "string",
-            "maxLength": 254,
-            "format": "email",
-            "example": "person@example.com"
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "admin",
-              "developer",
-              "viewer"
-            ]
-          },
-          "password": {
-            "type": "string",
-            "minLength": 15,
-            "maxLength": 128,
-            "writeOnly": true,
-            "format": "password"
-          },
-          "totp": {
-            "type": "string",
-            "pattern": "^[0-9]{6}$",
-            "writeOnly": true
-          },
-          "recovery": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{32}$",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "email",
-          "role",
-          "password"
-        ]
-      },
-      "BindingDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "createdAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "updatedAt": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "organizationId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "projectId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "environmentId": {
-            "type": [
-              "string",
-              "null"
-            ],
-            "format": "uuid"
-          },
-          "membershipId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "role": {
-            "type": "string",
-            "enum": [
-              "admin",
-              "developer",
-              "viewer"
-            ]
-          }
-        },
-        "required": [
-          "id",
-          "createdAt",
-          "updatedAt",
-          "organizationId",
-          "projectId",
-          "environmentId",
-          "membershipId",
-          "role"
-        ]
-      },
-      "BindingMutationDto": {
-        "type": "object",
-        "properties": {
-          "binding": {
-            "description": "Null after removal.",
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/BindingDto"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "session": {
-            "description": "Present only when the caller changed their own binding: the caller's credentials were rotated and the new ones are set only in cookies.",
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/SessionDto"
-              }
-            ]
-          }
-        },
-        "required": [
-          "binding"
-        ]
-      },
-      "RemoveBindingDto": {
-        "type": "object",
-        "properties": {
-          "password": {
-            "type": "string",
-            "minLength": 15,
-            "maxLength": 128,
-            "writeOnly": true,
-            "format": "password"
-          },
-          "totp": {
-            "type": "string",
-            "pattern": "^[0-9]{6}$",
-            "writeOnly": true
-          },
-          "recovery": {
-            "type": "string",
-            "pattern": "^[a-f0-9]{32}$",
-            "writeOnly": true
-          }
-        },
-        "required": [
-          "password"
         ]
       }
     }

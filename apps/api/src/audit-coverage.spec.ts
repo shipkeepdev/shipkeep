@@ -20,6 +20,7 @@ const AUDITED: Readonly<Record<string, readonly string[]>> = {
   'POST /auth/mfa/enable': ['identity.mfa_enabled'],
   'POST /auth/mfa/recovery': ['identity.mfa_recovery_regenerated'],
   'POST /auth/mfa/setup': ['identity.mfa_setup_requested'],
+  'POST /auth/profile': ['identity.profile_updated'],
   'POST /auth/register': ['identity.registered'],
   'POST /auth/reset': ['identity.password_reset'],
   'POST /auth/reset/request': ['identity.reset_requested'],
@@ -68,6 +69,10 @@ const AUDITED: Readonly<Record<string, readonly string[]>> = {
   ],
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/secrets/:name/remove':
     ['secret.removed'],
+  'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/clone': [
+    'environment.created',
+    'application.created',
+  ],
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications':
     ['application.created'],
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/config':

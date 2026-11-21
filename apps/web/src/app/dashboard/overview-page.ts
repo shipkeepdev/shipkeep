@@ -211,8 +211,8 @@ export class OverviewPage {
     if (event.actorKind === 'system') return this.i18n.t('system');
     if (event.actorKind === 'node') return this.i18n.t('agent');
     if (event.actorKind === 'api_token') return this.i18n.t('API token');
-    const email = event.actorId ? this.shell.emails().get(event.actorId) : undefined;
-    return email ?? this.i18n.t('user');
+    const name = event.actorId ? this.shell.names().get(event.actorId) : undefined;
+    return name ?? this.i18n.t('user');
   }
 
   protected when(at: string): string {

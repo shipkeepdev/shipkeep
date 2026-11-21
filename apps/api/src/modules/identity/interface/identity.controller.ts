@@ -30,11 +30,12 @@ import { AuthenticationError, normalizeEmail } from '../domain/identity-policy';
 
 import {
   AuthOptionsDto,
-  CredentialsDto,
   EmailDto,
   ResetPasswordDto,
   SessionDto,
   VerifyEmailDto,
+  RegisterDto,
+  sessionDto,
 } from './identity.dto';
 import { AllowAnonymous } from './identity.guard';
 import { AllowApiToken } from './api-token-access';
@@ -84,8 +85,8 @@ export class IdentityController {
     status: 202,
     description: 'Accepted. Existing accounts receive the same response.',
   })
-  async register(@Body() body: CredentialsDto): Promise<void> {
-    await this.accounts.register(body.email, new Secret(body.password));
+  async register(@Body() body: RegisterDto): Promise<void> {
+    await this.accounts.register(body.email, new Secret(body.password), body.name ?? null);
   }
 
   @ApiHeader({
@@ -174,7 +175,7 @@ export class IdentityController {
     });
     await this.throttle.succeeded(normalizeEmail(body.email), clientIp(request));
     setSessionCookies(response, grant, policy);
-    return { userId: grant.userId, email: grant.email, expiresAt: grant.expiresAt.toISOString() };
+    return sessionDto(grant);
   }
 
   /** Public: what the sign-in screens may offer. It says nothing about any account. */
@@ -192,7 +193,7 @@ export class IdentityController {
   @ApiOkResponse({ type: SessionDto })
   session(@Req() request: IdentityRequest): SessionDto {
     const user = authenticatedPrincipal(request);
-    return { userId: user.userId, email: user.email, expiresAt: user.expiresAt.toISOString() };
+    return sessionDto(user);
   }
 
   @ApiHeader({

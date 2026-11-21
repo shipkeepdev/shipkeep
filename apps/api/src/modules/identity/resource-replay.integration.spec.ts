@@ -97,6 +97,7 @@ describe('resource retry interceptor with real authorization and PostgreSQL', ()
       .authenticate(grant.token, 'project.update', target);
     return {
       kind: 'api_token',
+      displayName: null,
       userId: user.id,
       email: user.email,
       tokenId: token.id,
@@ -116,6 +117,7 @@ describe('resource retry interceptor with real authorization and PostgreSQL', ()
     const current = await sessions.authenticate(grant.token);
     return {
       kind: 'session',
+      displayName: null,
       userId: owner.userId,
       email: grant.email,
       sessionId: current.session.id,

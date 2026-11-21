@@ -66,12 +66,29 @@ export class SessionStore {
       throw error;
     }
   }
-  /** Security responses may also contain private grants. Retain only these three public fields. */
+  /**
+   * Sets or removes (null) the account's name (#251). The answer is applied only if no login,
+   * logout or other session change happened meanwhile: a logout always wins.
+   */
+  async setDisplayName(name: string | null): Promise<void> {
+    const revision = this.revision;
+    const profile = await this.api.setDisplayName(name);
+    // Only the name changes, and the revision does not move: a logout started meanwhile has
+    // already moved it, so this answer is dropped, and one started later still clears the session.
+    if (revision !== this.revision) return;
+    this.current.update((current) =>
+      current?.userId === profile.userId
+        ? { ...current, displayName: profile.displayName }
+        : current,
+    );
+  }
+  /** Security responses may also contain private grants. Retain only these public fields. */
   accept(profile: SessionProfile): void {
     ++this.revision;
     this.current.set({
       userId: profile.userId,
       email: profile.email,
+      displayName: profile.displayName,
       expiresAt: profile.expiresAt,
     });
     this.status.set('authenticated');
