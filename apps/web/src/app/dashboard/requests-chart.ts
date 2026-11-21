@@ -112,7 +112,7 @@ export function areaPath(
         </div>
         @if (partial()) {
           <div class="mt-1 text-[12px] text-dim">
-            {{ 'Covers 100 of the environments you can read.' | t }}
+            {{ 'These figures cover part of the environments you can read.' | t }}
           </div>
         }
       </div>

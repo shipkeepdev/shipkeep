@@ -440,8 +440,6 @@ export const FR: Readonly<Record<string, string>> = {
   'Could not copy. Select the text and copy it manually.':
     'Copie impossible. Sélectionnez le texte et copiez-le à la main.',
   Create: 'Créer',
-  'Covers 100 of the environments you can read.':
-    'Couvre 100 des environnements que vous pouvez lire.',
   'Create API token': "Créer le jeton d'API",
   'Create a join token': "Créer un jeton d'adhésion",
   'Create a project and an environment first.': "Créez d'abord un projet et un environnement.",
@@ -1307,6 +1305,8 @@ export const FR: Readonly<Record<string, string>> = {
   'This environment could not be loaded.': "Cet environnement n'a pas pu être chargé.",
   'This expiry is too close. Cancel and start a new token request.':
     'Cette expiration est trop proche. Annulez et recommencez la demande de jeton.',
+  'These figures cover part of the environments you can read.':
+    'Ces chiffres couvrent une partie des environnements que vous pouvez lire.',
   'This installation keeps no metrics: its control plane has no metrics store.':
     "Cette installation ne conserve aucune métrique : son plan de contrôle n'a pas de stockage de métriques.",
   'This installation sends no email': "Cette installation n'envoie pas d'e-mail",

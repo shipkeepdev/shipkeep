@@ -199,7 +199,7 @@ describe('organization overview', () => {
     expect(chart).toContain('42');
     expect(chart).toContain('mean 2.0 ms');
     expect(chart).toContain('Requests measured in the last minutes are charted at the next step.');
-    expect(chart).toContain('Covers 100 of the environments you can read.');
+    expect(chart).toContain('These figures cover part of the environments you can read.');
   });
 
   it('gives each count of the summary its own form', async () => {
