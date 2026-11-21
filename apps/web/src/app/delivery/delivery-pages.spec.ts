@@ -873,6 +873,49 @@ describe('delivery screens', () => {
     expect(panel()).toContain('This installation keeps no metrics');
   });
 
+  it('clears the charts of a period as soon as another is chosen', async () => {
+    let release: (() => void) | undefined;
+    const answer = (cpu: number) =>
+      json({
+        kept: true,
+        range: query.get('range'),
+        stepSeconds: 30,
+        from: new Date(1_795_000_000_000).toISOString(),
+        to: new Date(1_795_000_060_000).toISOString(),
+        cpu: [{ labels: {}, points: [{ t: 1_795_000_000, v: cpu }] }],
+        memory: [],
+        requests: [],
+        duration: [],
+      });
+    routes = {
+      [`GET ${BASE}/applications/${APP}`]: () => json(application),
+      [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: [] }),
+      [`GET ${BASE}/applications/${APP}/metrics`]: () =>
+        query.get('range') === '24h'
+          ? new Promise<Response>((resolve) => {
+              release = () => {
+                resolve(answer(0.5));
+              };
+            })
+          : answer(0.25),
+    };
+    await harness.navigateByUrl(
+      `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${APP}`,
+    );
+    await settle();
+    element().querySelector<HTMLButtonElement>('#tab-metrics')?.click();
+    await settle();
+    const panel = () => element().querySelector('#panel-metrics')?.textContent ?? '';
+    expect(panel()).toContain('0.25 CPU');
+    await click('24h');
+    // The 1 h charts are gone while the 24 h answer is on its way.
+    expect(panel()).not.toContain('0.25 CPU');
+    expect(panel()).toContain('Loading…');
+    release?.();
+    await settle();
+    expect(panel()).toContain('0.50 CPU');
+  });
+
   it('compares a release with the previous one', async () => {
     const release = (number: number, port: number) => ({
       id: `r${String(number)}`,
