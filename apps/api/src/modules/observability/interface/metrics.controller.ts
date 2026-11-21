@@ -76,12 +76,14 @@ export class MetricsController {
     @Param() path: OrganizationPathDto,
     @Query() query: OrganizationMetricsQueryDto,
   ): Promise<OrganizationMetricsDto> {
-    return metricsDto(
-      await this.metrics.organization(
-        resourceContext(request),
-        path.organizationId,
-        query.range ?? '24h',
-      ),
+    const answer = await this.metrics.organization(
+      resourceContext(request),
+      path.organizationId,
+      query.range ?? '24h',
     );
+    return Object.assign(metricsDto(answer), {
+      totalRequests: answer.totalRequests,
+      meanSeconds: answer.meanSeconds,
+    });
   }
 }

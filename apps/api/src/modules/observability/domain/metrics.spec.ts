@@ -1,6 +1,7 @@
 import {
   applicationQueries,
   organizationQueries,
+  organizationTotals,
   exposition,
   type Measures,
   nodeQueries,
@@ -159,6 +160,14 @@ describe('queries', () => {
     ).toThrow();
     expect(() => organizationQueries(ORG, [`${ENV}"} or vector(1) #`], '24h')).toThrow();
     expect(() => organizationQueries(ORG, ['.*'], '24h')).toThrow();
+  });
+
+  it('total the whole period at its end, under the same filters', () => {
+    expect(organizationTotals(ORG, [ENV], '7d')).toEqual({
+      requests: `sum(increase(shipkeep_route_responses_total{organization_id="${ORG}",environment_id=~"${ENV}"}[604800s]))`,
+      seconds: `sum(increase(shipkeep_route_duration_seconds_total{organization_id="${ORG}",environment_id=~"${ENV}"}[604800s]))`,
+    });
+    expect(() => organizationTotals(ORG, ['.*'], '7d')).toThrow();
   });
 
   it('refuse to build a query from anything but an identifier', () => {

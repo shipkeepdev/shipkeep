@@ -51,6 +51,12 @@ function queries(role: 'admin' | 'member' | 'outsider', readable = targets) {
       sent.push(query);
       return Promise.resolve([]);
     },
+    // 1 200 requests that took 6 seconds in all.
+    queryInstant: (query) => {
+      sent.push(query);
+      const value = query.includes('duration') ? 6 : 1200;
+      return Promise.resolve([{ labels: {}, points: [[1_795_000_000, value]] }]);
+    },
   };
   const service = new MetricsQueries(
     accounts,
@@ -66,8 +72,12 @@ function queries(role: 'admin' | 'member' | 'outsider', readable = targets) {
 describe('MetricsQueries.organization', () => {
   it('reads every environment for an owner or admin', async () => {
     const { service, sent } = queries('admin');
-    await service.organization(context, ORG, '30d');
-    expect(sent).toHaveLength(2);
+    const answer = await service.organization(context, ORG, '30d');
+    // Two series for the chart, two totals over the whole 30 days.
+    expect(sent).toHaveLength(4);
+    expect(sent.filter((query) => query.includes('[2592000s]'))).toHaveLength(2);
+    expect(answer.totalRequests).toBe(1200);
+    expect(answer.meanSeconds).toBe(0.005);
     expect(sent.every((query) => !query.includes('environment_id'))).toBe(true);
   });
 
@@ -75,7 +85,7 @@ describe('MetricsQueries.organization', () => {
     const { service, sent } = queries('member');
     const answer = await service.organization(context, ORG, '24h');
     expect(answer.kept).toBe(true);
-    expect(sent).toHaveLength(2);
+    expect(sent).toHaveLength(4);
     expect(sent.every((query) => query.includes(`environment_id=~"${READ}"`))).toBe(true);
     expect(sent.some((query) => query.includes(HIDDEN))).toBe(false);
   });
@@ -88,6 +98,8 @@ describe('MetricsQueries.organization', () => {
     const answer = await service.organization(context, ORG, '7d');
     expect(sent).toEqual([]);
     expect(answer.series).toEqual({ requests: [], duration: [] });
+    expect(answer.totalRequests).toBe(0);
+    expect(answer.meanSeconds).toBeNull();
   });
 
   it('refuses someone outside the organization', async () => {

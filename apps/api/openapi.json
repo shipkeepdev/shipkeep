@@ -6852,6 +6852,20 @@
             "items": {
               "$ref": "#/components/schemas/MetricSeriesDto"
             }
+          },
+          "totalRequests": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Requests over the whole period, read at its end; null when no metrics are kept."
+          },
+          "meanSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "Mean response time over the whole period, in seconds; null without any request."
           }
         },
         "required": [
@@ -6861,7 +6875,9 @@
           "from",
           "to",
           "requests",
-          "duration"
+          "duration",
+          "totalRequests",
+          "meanSeconds"
         ]
       },
       "OrganizationDto": {

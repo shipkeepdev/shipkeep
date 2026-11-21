@@ -11,6 +11,7 @@ import {
   MAX_QUERY_ENVIRONMENTS,
   nodeQueries,
   organizationQueries,
+  organizationTotals,
   type Range,
   RANGES,
 } from '../domain/metrics';
@@ -33,6 +34,14 @@ export interface MetricsAnswer<K extends string> {
   readonly from: Date;
   readonly to: Date;
   readonly series: Readonly<Record<K, readonly Series[]>>;
+}
+
+/** The organization's chart, with totals over the whole period read at its end. */
+export interface OrganizationAnswer extends MetricsAnswer<'requests' | 'duration'> {
+  /** Requests over the period; null when no store is kept. */
+  readonly totalRequests: number | null;
+  /** Mean response time over the period; null without a store or without any request. */
+  readonly meanSeconds: number | null;
 }
 
 /**
@@ -107,29 +116,52 @@ export class MetricsQueries {
     organizationId: string,
     range: Range,
     now = new Date(),
-  ): Promise<MetricsAnswer<'requests' | 'duration'>> {
+  ): Promise<OrganizationAnswer> {
     return this.accounts.run(context, async () => {
       await this.access.require(context.userId, 'organization.read', { organizationId });
-      let environments: string[] | null = null;
-      if (!(await this.access.allows(context.userId, 'observability.read', { organizationId }))) {
-        const all = await this.transaction.runTenant(organizationId, () =>
-          this.targets.environments(organizationId, MAX_QUERY_ENVIRONMENTS),
-        );
-        environments = [];
-        for (const environment of all)
-          if (
-            await this.access.allows(context.userId, 'observability.read', {
-              organizationId,
-              projectId: environment.projectId,
-              environmentId: environment.id,
-            })
-          )
-            environments.push(environment.id);
+      const environments = await this.readableEnvironments(context.userId, organizationId);
+      const store = this.store;
+      if (environments?.length === 0 || !store) {
+        const answer = await this.answer({ requests: null, duration: null }, range, now);
+        return { ...answer, totalRequests: store ? 0 : null, meanSeconds: null };
       }
-      if (environments?.length === 0)
-        return this.answer({ requests: null, duration: null }, range, now);
-      return this.answer(organizationQueries(organizationId, environments, range), range, now);
+      const totals = organizationTotals(organizationId, environments, range);
+      const [answer, requests, seconds] = await Promise.all([
+        this.answer(organizationQueries(organizationId, environments, range), range, now),
+        store.queryInstant(totals.requests, now).then(single),
+        store.queryInstant(totals.seconds, now).then(single),
+      ]);
+      return {
+        ...answer,
+        totalRequests: requests,
+        meanSeconds: requests > 0 ? seconds / requests : null,
+      };
     });
+  }
+
+  /**
+   * Null for owners and admins, who read every environment; otherwise the environments
+   * `observability.read` allows, among the first 100 of the organization (SPEC 12).
+   */
+  private async readableEnvironments(
+    userId: string,
+    organizationId: string,
+  ): Promise<string[] | null> {
+    if (await this.access.allows(userId, 'observability.read', { organizationId })) return null;
+    const all = await this.transaction.runTenant(organizationId, () =>
+      this.targets.environments(organizationId, MAX_QUERY_ENVIRONMENTS),
+    );
+    const readable: string[] = [];
+    for (const environment of all)
+      if (
+        await this.access.allows(userId, 'observability.read', {
+          organizationId,
+          projectId: environment.projectId,
+          environmentId: environment.id,
+        })
+      )
+        readable.push(environment.id);
+    return readable;
   }
 
   /** Each named query's series; a null query reads nothing and answers no series. */
@@ -163,4 +195,10 @@ export class MetricsQueries {
       series,
     };
   }
+}
+
+/** The value of a summed instant query: 0 when no series matched. */
+function single(series: readonly Series[]): number {
+  const value = series.at(0)?.points.at(0)?.[1];
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : 0;
 }
