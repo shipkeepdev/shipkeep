@@ -37,9 +37,9 @@ Shipkeep is a self-hosted platform to deploy applications, databases and service
 | **Safe by default**     | Snapshots before upgrades, resumable operations, and explicit confirmation for anything destructive.                                                                |
 
 <p align="center">
-  <img src="docs/assets/demo.webp" alt="Shipkeep's web UI: the applications list, then a first deployment of an nginx application followed step by step until it is live, then the servers page with one ready server." width="100%">
+  <img src="docs/assets/demo.webp" alt="Shipkeep's web UI: the applications list, then a first deployment of an nginx application followed step by step until it is live, then the servers page with one ready server and its metrics." width="100%">
   <br>
-  <sub>A first deployment in the web UI, recorded on 20 November 2026 from <code>main</code>, not released yet. A fresh Ubuntu 24.04 test container was installed with the single-machine installer. Everything shown is real: one server, a real image pulled and started. The wait during the deployment plays 10 times faster.</sub>
+  <sub>A first deployment in the web UI, recorded on 21 November 2026 from <code>main</code>, not released yet, on a test lab of two Ubuntu 24.04 containers: one runs the control plane, the other is the server, enrolled with the installer. Everything shown is real: one server, a real image pulled and started, and the server's CPU, memory, disk and network as its agent measured them. The wait during the deployment plays 10 times faster.</sub>
 </p>
 
 ## How it works
