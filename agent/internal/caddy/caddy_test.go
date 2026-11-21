@@ -32,6 +32,8 @@ type fakeAdmin struct {
 	gate, reached chan struct{}
 	// failRoutes makes Caddy refuse every route write.
 	failRoutes bool
+	// metrics is the request metrics setting, when a test sets one.
+	metrics string
 }
 
 func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -82,6 +84,10 @@ func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		route["match"] = body
 		f.routes[id], _ = json.Marshal(route)
+	case f.metrics != "" && r.Method == http.MethodGet && r.URL.Path == "/config/apps/http/metrics":
+		_, _ = w.Write([]byte(f.metrics))
+	case f.metrics != "" && r.Method == http.MethodPost && r.URL.Path == "/config/apps/http/metrics/per_host":
+		f.metrics = `{"per_host":` + strings.TrimSpace(string(body)) + `}`
 	case r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/config/apps/http"):
 		if !f.apps {
 			// As Caddy does for a path below a missing parent.
@@ -243,8 +249,8 @@ func TestEnsureServerSecuresRoutesOlderAgentsWrote(t *testing.T) {
 	ctx := context.Background()
 	fake.apps, fake.server = true, true
 	fake.skip = []string{"plain.example.com"}
-	// Routes as agents up to 0.1.0-alpha.3 stored them, a TLS-off route, a route already secured,
-	// and a route that is not Shipkeep's.
+	// Routes as agents up to 0.1.0-alpha.3 stored them, a TLS-off route, a route already secured
+	// but without the Host bound of ADR 0024, and a route that is not Shipkeep's.
 	fake.routes[RouteID("old")] = json.RawMessage(`{"@id":"sk-route-old","match":[{"host":["a.example.com","*.b.example.com"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.2:80"}],"health_checks":{"active":{"uri":"/"}}}],"terminal":true}`)
 	fake.routes[RouteID("plain")] = json.RawMessage(`{"@id":"sk-route-plain","match":[{"host":["plain.example.com"]}],"handle":[],"terminal":true}`)
 	fake.routes[RouteID("new")] = json.RawMessage(`{"@id":"sk-route-new","match":[{"host":["c.example.com"],"protocol":"https"}],"handle":[],"terminal":true}`)
@@ -263,17 +269,25 @@ func TestEnsureServerSecuresRoutesOlderAgentsWrote(t *testing.T) {
 	if err := json.Unmarshal(fake.routes[RouteID("old")], &old); err != nil {
 		t.Fatal(err)
 	}
-	if len(old.Match) != 1 || old.Match[0].Protocol != HTTPS || !slices.Equal(old.Match[0].Host, []string{"a.example.com", "*.b.example.com"}) {
-		t.Fatalf("old route not limited to HTTPS: %+v", old.Match)
+	if len(old.Match) != 1 || old.Match[0].Protocol != HTTPS || !old.Match[0].bounded() || !slices.Equal(old.Match[0].Host, []string{"a.example.com", "*.b.example.com"}) {
+		t.Fatalf("old route not limited to HTTPS with bounded hosts: %+v", old.Match)
 	}
 	// Only the match changed: fields the agent does not model are kept.
 	if len(old.Handle) != 1 || !strings.Contains(string(old.Handle[0]), "health_checks") {
 		t.Fatalf("securing the route rewrote its handler: %s", fake.routes[RouteID("old")])
 	}
-	for _, id := range []string{RouteID("plain"), RouteID("new"), "control-plane"} {
-		if string(fake.routes[id]) != before[id] {
-			t.Fatalf("route %s changed: %s", id, fake.routes[id])
+	// The TLS-off route stays on plain HTTP, the secured one keeps HTTPS: both only gain the bound.
+	for id, protocol := range map[string]string{RouteID("plain"): "", RouteID("new"): HTTPS} {
+		var route Route
+		if err := json.Unmarshal(fake.routes[id], &route); err != nil {
+			t.Fatal(err)
 		}
+		if len(route.Match) != 1 || route.Match[0].Protocol != protocol || !route.Match[0].bounded() {
+			t.Fatalf("route %s: %s", id, fake.routes[id])
+		}
+	}
+	if string(fake.routes["control-plane"]) != before["control-plane"] {
+		t.Fatalf("a route that is not Shipkeep's changed: %s", fake.routes["control-plane"])
 	}
 	// A second pass changes nothing.
 	fake.requests = nil
@@ -284,6 +298,38 @@ func TestEnsureServerSecuresRoutesOlderAgentsWrote(t *testing.T) {
 		if strings.HasPrefix(request, "PATCH") || strings.HasPrefix(request, "PUT") {
 			t.Fatalf("second pass wrote to Caddy: %v", fake.requests)
 		}
+	}
+}
+
+// A wildcard route lets clients choose the host label of per-host metrics (ADR 0024): they are
+// turned off before the route is written, never after.
+func TestTurnsPerHostMetricsOffBeforeAWildcardRoute(t *testing.T) {
+	client, fake := admin(t)
+	ctx := context.Background()
+	if err := client.EnsureServer(ctx); err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	fake.metrics = `{"per_host":true}`
+	fake.mu.Unlock()
+	if err := client.UpsertRoute(ctx, Route{ID: RouteID("exact"), Match: []Match{HostMatch([]string{"a.example.com"}, HTTPS)}}); err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	if fake.metrics != `{"per_host":true}` {
+		t.Fatalf("an exact route turned metrics off: %s", fake.metrics)
+	}
+	fake.requests = nil
+	fake.mu.Unlock()
+	if err := client.UpsertRoute(ctx, Route{ID: RouteID("wild"), Match: []Match{HostMatch([]string{"*.example.com"}, HTTPS)}}); err != nil {
+		t.Fatal(err)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	off := slices.Index(fake.requests, "POST /config/apps/http/metrics/per_host")
+	written := slices.Index(fake.requests, "POST /config/apps/http/servers/"+Server+"/routes")
+	if fake.metrics != `{"per_host":false}` || off < 0 || written < off {
+		t.Fatalf("metrics %s, requests %v", fake.metrics, fake.requests)
 	}
 }
 

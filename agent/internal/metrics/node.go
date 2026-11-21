@@ -20,8 +20,9 @@ import (
 const clockTicks = 100
 
 // readNode reads the node's CPU time and core count from proc/stat, its memory from
-// proc/meminfo and the traffic of its physical interfaces from proc/net/dev.
-func readNode(proc string) (*agentv1.NodeMetrics, error) {
+// proc/meminfo and the traffic of its physical interfaces from proc/net/dev, telling interfaces
+// apart with sys/class/net when sys is set.
+func readNode(proc, sys string) (*agentv1.NodeMetrics, error) {
 	node := &agentv1.NodeMetrics{}
 	stat, err := readFile(filepath.Join(proc, "stat"))
 	if err != nil {
@@ -41,7 +42,9 @@ func readNode(proc string) (*agentv1.NodeMetrics, error) {
 	if err != nil {
 		return nil, err
 	}
-	node.NetworkReceivedBytes, node.NetworkSentBytes = traffic(dev)
+	node.NetworkReceivedBytes, node.NetworkSentBytes = traffic(dev, func(name string) bool {
+		return virtual(name) || virtualByKind(sys, name)
+	})
 	return node, nil
 }
 
@@ -131,13 +134,43 @@ func virtual(name string) bool {
 	return false
 }
 
-// traffic sums the bytes received and sent by the physical interfaces of proc/net/dev.
-func traffic(dev []byte) (received, sent uint64) {
+// virtualByKind tells from sys/class/net whether an interface stays on the machine whatever its
+// name: a bridge (Docker accepts any bridge name), the loopback, or a device without a link layer
+// such as WireGuard or tun, whose traffic the physical interface carries and counts again. It does
+// not treat every interface under /sys/devices/virtual as such: on a container-based server, eth0
+// is itself a veth and nothing would be counted. Without sys, or for a name it cannot read, false.
+func virtualByKind(sys, name string) bool {
+	if sys == "" || name == "" || name == "." || name == ".." || strings.ContainsRune(name, '/') {
+		return false
+	}
+	dir := filepath.Join(sys, "class", "net", name)
+	if info, err := os.Stat(filepath.Join(dir, "bridge")); err == nil && info.IsDir() {
+		return true
+	}
+	kind, err := readFile(filepath.Join(dir, "type"))
+	if err != nil {
+		return false
+	}
+	switch strings.TrimSpace(string(kind)) {
+	case arphrdLoopback, arphrdNone:
+		return true
+	}
+	return false
+}
+
+// Link layer types of sys/class/net/<name>/type (linux/if_arp.h).
+const (
+	arphrdLoopback = "772"
+	arphrdNone     = "65534"
+)
+
+// traffic sums the bytes received and sent by the interfaces of proc/net/dev that leave the machine.
+func traffic(dev []byte, isVirtual func(string) bool) (received, sent uint64) {
 	scanner := bufio.NewScanner(bytes.NewReader(dev))
 	for scanner.Scan() {
 		name, counters, found := strings.Cut(scanner.Text(), ":")
 		name = strings.TrimSpace(name)
-		if !found || virtual(name) {
+		if !found || isVirtual(name) {
 			continue
 		}
 		fields := strings.Fields(counters)
