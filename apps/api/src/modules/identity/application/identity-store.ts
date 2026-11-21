@@ -27,4 +27,8 @@ export interface IdentityStore {
   touchSession(id: string, now: Date): Promise<boolean>;
   revokeSession(userId: string, hash: string, now: Date): Promise<boolean>;
   revokeSessions(userId: string, now: Date): Promise<void>;
+  /** The account's sessions that still authenticate at `now`, newest activity first. */
+  activeSessions(userId: string, securityVersion: number, now: Date): Promise<SessionRecord[]>;
+  /** Ends one of the account's sessions by its id; false when it is not a live session of it. */
+  revokeSessionById(userId: string, id: string, now: Date): Promise<boolean>;
 }

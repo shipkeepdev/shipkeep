@@ -145,6 +145,33 @@ export class PrismaIdentityStore implements IdentityStore {
     return result.count === 1;
   }
 
+  async activeSessions(
+    userId: string,
+    securityVersion: number,
+    now: Date,
+  ): Promise<SessionRecord[]> {
+    // The same tests as touchSession: a session listed here is one that still signs requests in.
+    return this.database.client.userSession.findMany({
+      where: {
+        userId,
+        securityVersion,
+        revokedAt: null,
+        expiresAt: { gt: now },
+        lastSeenAt: { gt: new Date(now.getTime() - SESSION_IDLE_MS) },
+      },
+      orderBy: { lastSeenAt: 'desc' },
+      take: 100,
+    });
+  }
+
+  async revokeSessionById(userId: string, id: string, now: Date): Promise<boolean> {
+    const result = await this.database.client.userSession.updateMany({
+      where: { userId, id, revokedAt: null, expiresAt: { gt: now } },
+      data: { revokedAt: now, updatedAt: now },
+    });
+    return result.count === 1;
+  }
+
   async revokeSessions(userId: string, now: Date): Promise<void> {
     await this.database.client.userSession.updateMany({
       where: { userId, revokedAt: null },

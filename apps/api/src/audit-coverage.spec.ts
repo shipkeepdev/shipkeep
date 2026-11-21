@@ -23,6 +23,7 @@ const AUDITED: Readonly<Record<string, readonly string[]>> = {
   'POST /auth/register': ['identity.registered'],
   'POST /auth/reset': ['identity.password_reset'],
   'POST /auth/reset/request': ['identity.reset_requested'],
+  'POST /auth/sessions/:sessionId/revoke': ['identity.session_revoked'],
   'POST /auth/verification/request': ['identity.verify_requested'],
   'POST /auth/verify': ['identity.email_verified'],
   'POST /organizations': ['organization.created'],
