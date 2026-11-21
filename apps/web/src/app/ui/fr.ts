@@ -1733,8 +1733,8 @@ export const FR: Readonly<Record<string, string>> = {
   '{n} agents connected · mTLS': '{n} agents connectés · mTLS',
   '{n} agents connected · outbound mTLS, no inbound port':
     '{n} agents connectés · mTLS sortant, aucun port entrant',
+  '{n} application': '{n} application',
   '{n} applications': '{n} applications',
-  '{n} applications in {e} environments': '{n} applications dans {e} environnements',
   '{n} environment': '{n} environnement',
   '{n} environments': '{n} environnements',
   '{n} project': '{n} projet',
@@ -1744,12 +1744,18 @@ export const FR: Readonly<Record<string, string>> = {
   '{n} failing': '{n} en échec',
   '{n} member': '{n} membre',
   '{n} members': '{n} membres',
+  '{n} member. Add people, change roles and see project roles under Members & access.':
+    '{n} membre. Ajoutez des personnes, changez les rôles et voyez les rôles par projet dans Membres et accès.',
   '{n} members. Add people, change roles and see project roles under Members & access.':
     '{n} membres. Ajoutez des personnes, changez les rôles et voyez les rôles par projet dans Membres et accès.',
-  '{n} of {m} replicas running': '{n} sur {m} répliques en marche',
+  '{n} recovery code remaining. Each code can be used once.':
+    "{n} code de récupération restant. Chaque code ne sert qu'une fois.",
   '{n} recovery codes remaining. Each code can be used once.':
     "{n} codes de récupération restants. Chaque code ne sert qu'une fois.",
   '{n} suspect': '{n} suspect',
+  '{applications} in {environments}': '{applications} dans {environments}',
+  '{running} of {n} replica running': '{running} sur {n} réplique en marche',
+  '{running} of {n} replicas running': '{running} sur {n} répliques en marche',
   '{s} s ago': 'il y a {s} s',
   '{trigger} deployment started': 'déploiement {trigger} lancé',
   '· 14 days': '· 14 jours',

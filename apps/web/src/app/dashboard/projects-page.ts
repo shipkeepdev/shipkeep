@@ -12,7 +12,7 @@ import { RouterLink } from '@angular/router';
 import { MutationRunner } from '../identity/mutation-runner';
 import { Icon } from '../shell/icon';
 import { ShellContext } from '../shell/shell-context';
-import { T } from '../ui/i18n';
+import { Count, T } from '../ui/i18n';
 import { recoverOnEdit } from '../workspace/form-recovery';
 import { OverviewStore } from '../workspace/overview-store';
 import { required, slug } from '../workspace/validators';
@@ -22,7 +22,7 @@ import { AMBER, GREEN, leftLive } from './format';
 /** 09 Projects: one card per project, with its environments and what runs in them. */
 @Component({
   selector: 'sk-projects-page',
-  imports: [Icon, ReactiveFormsModule, RouterLink, T],
+  imports: [Count, Icon, ReactiveFormsModule, RouterLink, T],
   providers: [MutationRunner, OverviewStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -127,12 +127,12 @@ import { AMBER, GREEN, leftLive } from './format';
             <div class="flex flex-wrap gap-3.5 border-t border-line2 pt-3 text-[11.5px] text-mute">
               <span class="flex items-center gap-[5px]"
                 ><sk-icon name="apps" class="text-[13px]" />{{
-                  '{n} applications' | t: { n: p.apps }
+                  p.apps | count: '{n} application' : '{n} applications'
                 }}</span
               >
               <span class="flex items-center gap-[5px]"
                 ><sk-icon name="stack-2" class="text-[13px]" />{{
-                  '{n} environments' | t: { n: p.environmentCount }
+                  p.environmentCount | count: '{n} environment' : '{n} environments'
                 }}</span
               >
             </div>

@@ -21,8 +21,10 @@
     @if (store.status()?.enabled) {
       <p class="text-sm text-muted">
         {{
-          '{n} recovery codes remaining. Each code can be used once.'
-            | t: { n: store.status()?.recoveryCodesRemaining ?? '' }
+          store.status()?.recoveryCodesRemaining
+            | count
+              : '{n} recovery code remaining. Each code can be used once.'
+              : '{n} recovery codes remaining. Each code can be used once.'
         }}
       </p>
     } @else {

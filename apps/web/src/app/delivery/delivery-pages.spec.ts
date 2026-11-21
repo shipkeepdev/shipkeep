@@ -601,7 +601,7 @@ describe('delivery screens', () => {
       expect(badge()).toContain('not running');
       expect(badge()).not.toContain('live');
       expect(element().querySelector('.page-head')?.textContent).toContain(
-        '0 of 1 replicas running',
+        '0 of 1 replica running',
       );
     });
 

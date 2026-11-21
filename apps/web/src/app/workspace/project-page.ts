@@ -17,7 +17,7 @@ import { IdentityRequestError } from '../identity/identity-api';
 import { MutationRunner } from '../identity/mutation-runner';
 import { Icon } from '../shell/icon';
 import { ShellContext } from '../shell/shell-context';
-import { T } from '../ui/i18n';
+import { Count, T } from '../ui/i18n';
 import { PageCrumbs } from '../dashboard/page-crumbs';
 import { type Tab, Tabs } from '../shell/tabs';
 
@@ -32,6 +32,7 @@ import { type Environment, type Project, WorkspaceApi } from './workspace-api';
   selector: 'sk-project-page',
   imports: [
     BindingsPanel,
+    Count,
     Icon,
     ProjectSettings,
     ProjectTokensPanel,
@@ -49,7 +50,7 @@ import { type Environment, type Project, WorkspaceApi } from './workspace-api';
           <div class="flex flex-wrap items-center gap-3">
             <h1 class="page-title">{{ project()?.name ?? '…' }}</h1>
             <span class="pill">{{
-              '{n} environments' | t: { n: environments.items().length }
+              environments.items().length | count: '{n} environment' : '{n} environments'
             }}</span>
           </div>
           <div class="mt-1.5 max-w-[720px] text-[13px] text-mute2">
