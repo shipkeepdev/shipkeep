@@ -75,6 +75,7 @@ describe('MetricsQueries.organization', () => {
     const { service, sent } = queries('member');
     const answer = await service.organization(context, ORG, '24h');
     expect(answer.kept).toBe(true);
+    expect(sent).toHaveLength(2);
     expect(sent.every((query) => query.includes(`environment_id=~"${READ}"`))).toBe(true);
     expect(sent.some((query) => query.includes(HIDDEN))).toBe(false);
   });

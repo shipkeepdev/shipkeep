@@ -3127,7 +3127,7 @@
             "required": false,
             "in": "query",
             "schema": {
-              "default": "1h",
+              "default": "24h",
               "type": "string",
               "enum": [
                 "1h",
