@@ -34,6 +34,27 @@ export interface ResourceContext {
 export interface ApiScope extends ResourceContext {
   readonly permission: Permission;
 }
+export type ScopeLevel = 'organization' | 'project' | 'environment';
+/**
+ * What a scoped API token can be granted today (issue #208): each permission that some bearer
+ * route accepts, at the one level the tenant policy accepts it. The token picker offers exactly
+ * these; the route matrix test fails when a bearer route and this list disagree.
+ */
+export const BEARER_GRANTS = [
+  { permission: 'organization.read', level: 'organization' },
+  { permission: 'organization.update', level: 'organization' },
+  { permission: 'project.create', level: 'organization' },
+  { permission: 'node.manage', level: 'organization' },
+  { permission: 'audit.read', level: 'organization' },
+  { permission: 'project.read', level: 'project' },
+  { permission: 'project.update', level: 'project' },
+  { permission: 'environment.create', level: 'project' },
+  { permission: 'environment.read', level: 'environment' },
+  { permission: 'environment.update', level: 'environment' },
+  { permission: 'deploy.run', level: 'environment' },
+  { permission: 'secret.write', level: 'environment' },
+] as const satisfies readonly { permission: Permission; level: ScopeLevel }[];
+export type BearerPermission = (typeof BEARER_GRANTS)[number]['permission'];
 export const API_TOKEN_MAX_AGE_MS = 90 * 86400000;
 export const API_TOKEN_MAX_ACTIVE = 50;
 const permissionSet: ReadonlySet<string> = new Set(PERMISSIONS);
