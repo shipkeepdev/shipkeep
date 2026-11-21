@@ -1756,6 +1756,16 @@ export const FR: Readonly<Record<string, string>> = {
   '{applications} in {environments}': '{applications} dans {environments}',
   '{running} of {n} replica running': '{running} sur {n} réplique en marche',
   '{running} of {n} replicas running': '{running} sur {n} répliques en marche',
+  'Sessions could not be read. Reload the page to try again.':
+    'Les sessions n’ont pas pu être lues. Rechargez la page pour réessayer.',
+  'Sign out {device}': 'Déconnecter {device}',
+  'This device': 'Cet appareil',
+  'Unknown device': 'Appareil inconnu',
+  'Where your account is signed in. Signing out another session ends it at its next request.':
+    'Là où votre compte est connecté. Déconnecter une autre session y met fin à sa prochaine requête.',
+  '{browser} on {system}': '{browser} sur {system}',
+  'last active {at}': 'active le {at}',
+  'signed in {at}': 'connectée le {at}',
   '{s} s ago': 'il y a {s} s',
   '{trigger} deployment started': 'déploiement {trigger} lancé',
   '· 14 days': '· 14 jours',

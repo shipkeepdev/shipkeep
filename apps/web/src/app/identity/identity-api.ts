@@ -222,6 +222,24 @@ export class IdentityApi {
       }),
     );
   }
+  /** The account's sessions that still sign requests in, the current one marked (issue #253). */
+  async sessions(): Promise<readonly IdentitySchema<'AccountSessionDto'>[]> {
+    return (await this.required(() => this.client.GET('/api/v1/auth/sessions'))).items;
+  }
+  /**
+   * Ends another session of the account; it then answers 401. No idempotency key: a retry finds
+   * the session already ended (404), which changes nothing.
+   */
+  async revokeSession(sessionId: string): Promise<void> {
+    await this.execute(() =>
+      this.client.POST('/api/v1/auth/sessions/{sessionId}/revoke', {
+        params: {
+          header: { Origin: this.origin, 'X-Shipkeep-CSRF': '' },
+          path: { sessionId },
+        },
+      }),
+    );
+  }
   private params(key: string) {
     return { header: { Origin: this.origin, 'X-Shipkeep-CSRF': '', 'Idempotency-Key': key } };
   }
