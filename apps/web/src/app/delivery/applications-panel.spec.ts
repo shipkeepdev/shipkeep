@@ -120,4 +120,43 @@ describe('applications panel', () => {
     expect(api.createApplication).toHaveBeenCalled();
     expect(api.deployments).toHaveBeenCalledWith(staging, 'b1');
   });
+
+  it('drops a deployment answer that arrives after the environment changed', async () => {
+    const production = env('01900000-0000-7000-8000-00000000000a');
+    const staging = env('01900000-0000-7000-8000-00000000000b');
+    let answer: ((value: unknown[]) => void) | undefined;
+    const api = {
+      applications: vi.fn((ref: EnvironmentRef) =>
+        ref === production
+          ? Promise.resolve([app('a1', 'shop')])
+          : new Promise<Application[]>(() => undefined),
+      ),
+      deployments: vi.fn(
+        () =>
+          new Promise<unknown[]>((resolve) => {
+            answer = resolve;
+          }),
+      ),
+    };
+    TestBed.configureTestingModule({
+      imports: [ApplicationsPanel],
+      providers: [provideRouter([]), { provide: DeliveryApi, useValue: api }],
+    });
+    TestBed.inject(I18n).use('en');
+    const fixture = TestBed.createComponent(ApplicationsPanel);
+    fixture.componentRef.setInput('environment', production);
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(api.deployments).toHaveBeenCalledWith(production, 'a1');
+    fixture.componentRef.setInput('environment', staging);
+    fixture.detectChanges();
+    answer?.([{ id: 'd1', state: 'succeeded', startedAt: '2026-11-21T10:00:00Z' }]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fixture.detectChanges();
+    // Rows are hidden while the list loads, so read the state the rows would show.
+    const latest = (
+      fixture.componentInstance as unknown as { latest: () => ReadonlyMap<string, unknown> }
+    ).latest;
+    expect(latest().size).toBe(0);
+  });
 });

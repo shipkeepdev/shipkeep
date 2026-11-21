@@ -211,6 +211,8 @@ export class ApplicationsPanel {
       untracked(() => {
         this.loadedFor.set(null);
         this.latest.set(new Map());
+        // A deployment batch still pending for the previous environment must not land here.
+        ++this.#revision;
       });
       void untracked(() => this.reload(ref));
     });
