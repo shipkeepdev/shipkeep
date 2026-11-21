@@ -24,6 +24,7 @@ export class AddMemberDto extends IntersectionType(
 ) {}
 export class MemberRoleDto extends IntersectionType(OrganizationRoleDto, ReauthenticateMfaDto) {}
 export class RemoveMemberDto extends ReauthenticateMfaDto {}
+export class TransferOwnershipDto extends ReauthenticateMfaDto {}
 
 export class MembershipMutationDto {
   @ApiProperty({ type: MembershipDto, nullable: true, description: 'Null after removal.' })

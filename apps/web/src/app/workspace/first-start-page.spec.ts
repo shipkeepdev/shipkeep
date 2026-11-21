@@ -5,7 +5,12 @@ import { provideRouter } from '@angular/router';
 import { ShellContext } from '../shell/shell-context';
 import { I18n } from '../ui/i18n';
 
-import { type FirstStartFacts, FirstStartPage, firstStartSteps } from './first-start-page';
+import {
+  deployedApplications,
+  type FirstStartFacts,
+  FirstStartPage,
+  firstStartSteps,
+} from './first-start-page';
 import { OverviewStore } from './overview-store';
 import { WorkspaceApi } from './workspace-api';
 
@@ -39,6 +44,28 @@ describe('first start steps (#269)', () => {
     expect(firstStartSteps(ORG, half).map((s) => s.done)).toEqual([true, true, true, false]);
   });
 
+  it('neither ticks nor opens a step it could not read', () => {
+    const unread = { ...empty, servers: null, applications: null, deployed: null };
+    expect(firstStartSteps(ORG, unread).map((s) => s.done)).toEqual([true, null, null, null]);
+    // A stored registry still settles the source step on its own.
+    expect(firstStartSteps(ORG, { ...unread, registries: 1 }).at(2)?.done).toBe(true);
+    expect(firstStartSteps(ORG, unread).at(1)?.detail).toBe('Could not be read right now.');
+  });
+
+  it('counts applications that served once, not stops nor failures', () => {
+    const app = (...states: [string, boolean?][]) => ({
+      deployments: states.map(([state, stop]) => ({ state, stop: stop ?? false })),
+    });
+    expect(
+      deployedApplications([
+        app(['failed']),
+        app(['succeeded', true]),
+        app(['succeeded', true], ['succeeded']),
+        app(['running']),
+      ] as never),
+    ).toBe(1);
+  });
+
   it('links each step to where it is done', () => {
     const [, server, source, deploy] = firstStartSteps(ORG, empty);
     expect(server.cta?.link).toEqual(['/orgs', ORG, 'servers']);
@@ -59,6 +86,7 @@ describe('first start page', () => {
       nodes: signal([{ status: 'ready' }]),
       readyNodes: signal(1),
       applications: signal([]),
+      applicationsFailed: signal(false),
       load: vi.fn(() => Promise.resolve()),
     };
     TestBed.configureTestingModule({

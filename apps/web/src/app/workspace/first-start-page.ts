@@ -14,17 +14,28 @@ import { type IconName } from '../shell/icons';
 import { ShellContext } from '../shell/shell-context';
 import { I18n, T } from '../ui/i18n';
 
+import { leftLive } from '../dashboard/format';
+import { type Deployment } from '../delivery/delivery-api';
+
 import { OverviewStore } from './overview-store';
 import { WorkspaceApi } from './workspace-api';
 
+/** What the API reported. A null count could not be read: it neither ticks nor opens a step. */
 export interface FirstStartFacts {
   readonly organization: string;
   readonly role: string | null;
-  readonly servers: number;
+  readonly servers: number | null;
   readonly readyServers: number;
   readonly registries: number;
-  readonly applications: number;
-  readonly deployed: number;
+  readonly applications: number | null;
+  readonly deployed: number | null;
+}
+
+/** Applications that served at least once: a deployment that succeeded and was not a stop. */
+export function deployedApplications(
+  applications: readonly { readonly deployments: readonly Pick<Deployment, 'state' | 'stop'>[] }[],
+): number {
+  return applications.filter((application) => application.deployments.some(leftLive)).length;
 }
 export interface FirstStartStep {
   readonly title: string;
@@ -33,13 +44,16 @@ export interface FirstStartStep {
   readonly count?: { readonly n: number; readonly other: string };
   readonly params?: Readonly<Record<string, string | number>>;
   readonly icon: IconName;
-  readonly done: boolean;
+  /** Null when the API could not say. */
+  readonly done: boolean | null;
   readonly cta?: {
     readonly label: string;
     readonly link: readonly string[];
     readonly section?: string;
   };
 }
+
+const UNREAD = 'Could not be read right now.';
 
 const ROLE_LABELS: Readonly<Record<string, string>> = {
   owner: 'Owner',
@@ -63,15 +77,18 @@ export function firstStartSteps(organizationId: string, facts: FirstStartFacts):
     },
     {
       title: 'Add your first server',
-      detail: facts.servers
-        ? '{n} server enrolled, {ready} ready.'
-        : 'Generate a 15-minute token and run one command on the machine.',
+      detail:
+        facts.servers === null
+          ? UNREAD
+          : facts.servers
+            ? '{n} server enrolled, {ready} ready.'
+            : 'Generate a 15-minute token and run one command on the machine.',
       count: facts.servers
         ? { n: facts.servers, other: '{n} servers enrolled, {ready} ready.' }
         : undefined,
       params: { ready: facts.readyServers },
       icon: 'server-2',
-      done: facts.servers > 0,
+      done: facts.servers === null ? null : facts.servers > 0,
       cta: { label: facts.servers ? 'Servers' : 'Add a server', link: [...org, 'servers'] },
     },
     {
@@ -83,21 +100,29 @@ export function firstStartSteps(organizationId: string, facts: FirstStartFacts):
         ? { n: facts.registries, other: '{n} private registries stored.' }
         : undefined,
       icon: 'git-branch',
-      done: facts.registries > 0 || facts.applications > 0,
+      done:
+        facts.registries > 0 || (facts.applications ?? 0) > 0
+          ? true
+          : facts.applications === null
+            ? null
+            : false,
       cta: { label: 'Registries', link: [...org, 'organization'], section: 'registries' },
     },
     {
       title: 'Deploy an application',
-      detail: facts.deployed
-        ? '{n} application deployed.'
-        : facts.applications
-          ? 'An application exists: deploy it from its page.'
-          : 'From a shipkeep.yml with an image, in an environment of a project.',
+      detail:
+        facts.deployed === null
+          ? UNREAD
+          : facts.deployed
+            ? '{n} application deployed.'
+            : facts.applications
+              ? 'An application exists: deploy it from its page.'
+              : 'From a shipkeep.yml with an image, in an environment of a project.',
       count: facts.deployed
         ? { n: facts.deployed, other: '{n} applications deployed.' }
         : undefined,
       icon: 'rocket',
-      done: facts.deployed > 0,
+      done: facts.deployed === null ? null : facts.deployed > 0,
       cta: {
         label: facts.applications ? 'Applications' : 'New application',
         link: [...org, facts.applications ? 'applications' : 'new'],
@@ -125,6 +150,11 @@ export function firstStartSteps(organizationId: string, facts: FirstStartFacts):
             }
           </div>
         </div>
+        @if (unread() && !store.loading()) {
+          <button class="btn btn-sm" type="button" (click)="read(organizationId())">
+            {{ 'Read again' | t }}
+          </button>
+        }
       </div>
       <ol class="flex flex-col gap-2.5" [attr.aria-busy]="store.loading()">
         @for (s of steps(); track s.title) {
@@ -141,7 +171,9 @@ export function firstStartSteps(organizationId: string, facts: FirstStartFacts):
               [class.border-line2]="!s.done"
             >
               <sk-icon [name]="s.done ? 'check' : s.icon" class="text-[15px]" />
-              <span class="sr-only">{{ (s.done ? 'Done' : 'To do') | t }}</span>
+              <span class="sr-only">{{
+                (s.done ? 'Done' : s.done === null ? 'Unknown' : 'To do') | t
+              }}</span>
             </span>
             <div class="min-w-0 flex-1 max-sm:basis-[calc(100%-46px)]">
               <div class="text-[14px]" [class.text-mute2]="s.done">{{ s.title | t }}</div>
@@ -187,16 +219,19 @@ export class FirstStartPage {
     firstStartSteps(this.organizationId(), {
       organization: this.shell.organization()?.name ?? '…',
       role: this.shell.role(),
-      servers: this.store.nodes()?.length ?? 0,
+      servers: this.store.nodes()?.length ?? null,
       readyServers: this.store.readyNodes(),
       registries: this.registries(),
-      applications: this.store.applications().length,
-      deployed: this.store
-        .applications()
-        .filter((app) => app.deployments.some((d) => d.state === 'succeeded')).length,
+      applications: this.store.applicationsFailed() ? null : this.store.applications().length,
+      deployed: this.store.applicationsFailed()
+        ? null
+        : deployedApplications(this.store.applications()),
     }),
   );
-  protected readonly next = computed(() => this.steps().find((step) => !step.done) ?? null);
+  protected readonly next = computed(
+    () => this.steps().find((step) => step.done === false) ?? null,
+  );
+  protected readonly unread = computed(() => this.steps().some((step) => step.done === null));
   protected readonly done = computed(() => this.steps().filter((step) => step.done).length);
 
   protected detail(step: FirstStartStep): string {
@@ -213,16 +248,19 @@ export class FirstStartPage {
 
   constructor() {
     effect(() => {
-      const organizationId = this.organizationId();
-      const revision = ++this.#revision;
-      void this.store.load(organizationId);
-      // Only admins read registries; for the others the step stands on applications alone.
-      void this.api
-        .registries(organizationId)
-        .catch(() => [])
-        .then((found) => {
-          if (revision === this.#revision) this.registries.set(found.length);
-        });
+      this.read(this.organizationId());
     });
+  }
+
+  protected read(organizationId: string): void {
+    const revision = ++this.#revision;
+    void this.store.load(organizationId);
+    // Only admins read registries; for the others the step stands on applications alone.
+    void this.api
+      .registries(organizationId)
+      .catch(() => [])
+      .then((found) => {
+        if (revision === this.#revision) this.registries.set(found.length);
+      });
   }
 }

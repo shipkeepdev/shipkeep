@@ -94,6 +94,19 @@ export function canChangeMembership(
   return currentRole !== 'owner' || nextRole === 'owner' || ownerCount > 1;
 }
 
+/**
+ * Ownership is handed from an owner to another member who already administers the organization:
+ * the target becomes an owner and the actor an admin, in one change. Promoting a plain member
+ * straight to owner stays a role change, decided by `canChangeMembership`.
+ */
+export function canTransferOwnership(
+  actorRole: string,
+  targetRole: string,
+  sameAccount: boolean,
+): boolean {
+  return actorRole === 'owner' && targetRole === 'admin' && !sameAccount;
+}
+
 export function isTenantId(value: unknown): value is string {
   return typeof value === 'string' && value.length === 36 && UUID.test(value);
 }

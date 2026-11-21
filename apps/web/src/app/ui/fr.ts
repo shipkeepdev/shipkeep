@@ -96,6 +96,11 @@ export const FR: Readonly<Record<string, string>> = {
   'As the image names it, with its port if it has one. Docker Hub is docker.io.':
     "Tel que l'image le nomme, avec son port s'il en a un. Docker Hub s'écrit docker.io.",
   'Choose where images come from': "Choisir d'où viennent les images",
+  'Another admin becomes an owner, and you become an admin.':
+    'Un autre admin devient propriétaire, et vous devenez admin.',
+  'Could not be read right now.': 'Impossible à lire pour le moment.',
+  'Deleting an organization is not available yet.':
+    "La suppression d'une organisation n'est pas encore disponible.",
   'Deployments of this organization pull private images with the credentials stored for the registry of the image. A password is encrypted and never shown again: it can only be replaced.':
     "Les déploiements de cette organisation récupèrent les images privées avec les identifiants enregistrés pour le registre de l'image. Un mot de passe est chiffré et n'est plus jamais affiché : il peut seulement être remplacé.",
   'Four steps. {done} of 4 done.': 'Quatre étapes. {done} sur 4 faites.',
@@ -104,8 +109,11 @@ export const FR: Readonly<Record<string, string>> = {
   'Its administrator creates accounts and resets passwords, on the server that runs Shipkeep.':
     'Son administrateur crée les comptes et réinitialise les mots de passe, sur le serveur qui exécute Shipkeep.',
   'Keep them': 'Les garder',
+  'New owner': 'Nouveau propriétaire',
   'No account, or a lost password? Ask the administrator of this installation.':
     "Pas de compte, ou mot de passe perdu ? Demandez à l'administrateur de cette installation.",
+  'No active admin among the members read so far.':
+    "Aucun admin actif parmi les membres lus jusqu'ici.",
   'No registry yet. Public images need none.':
     "Aucun registre pour l'instant. Les images publiques n'en ont pas besoin.",
   'On a fresh Ubuntu 24.04 server with curl and sudo, run this command, then paste the token when prompted. Docker and Caddy are installed; ports 80 and 443 must be free.':
@@ -113,11 +121,18 @@ export const FR: Readonly<Record<string, string>> = {
   'Install command': "Commande d'installation",
   'Copy the command': 'Copier la commande',
   'Command copied.': 'Commande copiée.',
+  'Only an owner can hand over ownership.': 'Seul un propriétaire peut transférer la propriété.',
   'Only owners and administrators of the organization manage registry credentials.':
     "Seuls les propriétaires et les administrateurs de l'organisation gèrent les identifiants de registre.",
+  'Ownership goes to an admin. Make a member an admin first.':
+    "La propriété revient à un admin. Faites d'abord d'un membre un admin.",
+  'Ownership transferred. You are now an admin.':
+    'Propriété transférée. Vous êtes maintenant admin.',
   'Password or access token': "Mot de passe ou jeton d'accès",
   'Public images need nothing. Store a private registry once; Git sources come later.':
     'Les images publiques ne demandent rien. Enregistrez un registre privé une fois ; les sources Git arrivent plus tard.',
+  'Read again': 'Relire',
+  'Read more members': 'Lire plus de membres',
   'Registry host': 'Hôte du registre',
   'Remove the credentials of {name}': 'Retirer les identifiants de {name}',
   'Remove them': 'Les retirer',
@@ -126,6 +141,7 @@ export const FR: Readonly<Record<string, string>> = {
   'Save the credentials': 'Enregistrer les identifiants',
   'The command checks the installer and agent checksums. The agent checks the fingerprint, enrolls, then deletes the token.':
     "La commande vérifie les sommes de contrôle de l'installeur et de l'agent. L'agent vérifie l'empreinte, s'enrôle, puis supprime le jeton.",
+  'The members could not be read. Try again.': "Les membres n'ont pas pu être lus. Réessayez.",
   'The next deployment that must pull a private image from this registry will fail. Containers that already run are not affected.':
     'Le prochain déploiement qui devra récupérer une image privée de ce registre échouera. Les conteneurs déjà en marche ne sont pas touchés.',
   'The one-command installer needs HTTPS and a production build. Set this server up by hand:':
@@ -962,9 +978,12 @@ export const FR: Readonly<Record<string, string>> = {
     "Faites pointer chaque domaine vers une adresse publique d'un serveur qui fait tourner l'application. Les administrateurs renseignent ces adresses dans la page Serveurs. Les certificats sont émis automatiquement dès qu'il répond sur les ports 80 et 443, puis renouvelés environ 30 jours avant leur expiration. Le certificat affiché est celui qui expire le premier parmi les serveurs.",
   'Points at': 'Pointe vers',
   'To do': 'À faire',
+  Unknown: 'Inconnu',
   '{name} · you are {role}': '{name} · vous êtes {role}',
   '{n} application deployed.': '{n} application déployée.',
   '{n} applications deployed.': '{n} applications déployées.',
+  'You keep administering the organization. Your session is renewed, and theirs ends: they sign in again as an owner.':
+    "Vous continuez d'administrer l'organisation. Votre session est renouvelée et la sienne prend fin : la personne se reconnecte en tant que propriétaire.",
   '{n} days left': '{n} jours restants',
   'expires in {n} days': 'expire dans {n} jours',
   'expires today': "expire aujourd'hui",
