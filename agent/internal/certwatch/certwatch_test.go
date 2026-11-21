@@ -279,8 +279,10 @@ func TestWithinKeepsTheInventoryAndTheSoonestExpiries(t *testing.T) {
 	}
 	kept := Within(statuses, limit-64-proto.Size(report))
 	report.Certificates = kept
-	if size := proto.Size(report); size >= limit-64 {
-		t.Fatalf("report of %d bytes", size)
+	// Within fills the budget up to its last byte: a report that reaches it exactly is still under
+	// the gateway's bound, which the 64-byte margin keeps it below.
+	if size := proto.Size(report); size > limit-64 {
+		t.Fatalf("report of %d bytes, over the budget of %d", size, limit-64)
 	}
 	if len(report.GetContainers()) != 256 {
 		t.Fatal("the inventory was cut")
