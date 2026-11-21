@@ -15,6 +15,11 @@ export interface MetricsTargets {
   ): Promise<{ containers: ContainerTarget[]; hosts: HostTarget[] }>;
   /** Whether the node belongs to the organization. */
   nodeExists(organizationId: string, nodeId: string): Promise<boolean>;
+  /** The organization's environments with their project, at most `limit`, oldest first. */
+  environments(
+    organizationId: string,
+    limit: number,
+  ): Promise<readonly { readonly id: string; readonly projectId: string }[]>;
 }
 
 /** One series of a query, its points as [unix seconds, value]. */

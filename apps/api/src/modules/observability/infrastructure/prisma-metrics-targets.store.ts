@@ -63,4 +63,16 @@ export class PrismaMetricsTargets implements MetricsTargets {
     });
     return node !== null;
   }
+
+  environments(
+    organizationId: string,
+    limit: number,
+  ): Promise<readonly { readonly id: string; readonly projectId: string }[]> {
+    return this.database.client.environment.findMany({
+      where: { organizationId },
+      select: { id: true, projectId: true },
+      orderBy: { id: 'asc' },
+      take: limit,
+    });
+  }
 }

@@ -420,6 +420,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/metrics": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["organizationMetrics"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/nodes": {
         readonly parameters: {
             readonly query?: never;
@@ -1169,7 +1185,7 @@ export type components = {
             /** @description Memory in use, in bytes. */
             readonly memory: readonly components["schemas"]["MetricSeriesDto"][];
             /** @enum {string} */
-            readonly range: "1h" | "24h" | "7d";
+            readonly range: "1h" | "24h" | "7d" | "30d";
             /** @description Requests per second, one series per `status` class: 2xx, 3xx, 4xx, 5xx, other. */
             readonly requests: readonly components["schemas"]["MetricSeriesDto"][];
             readonly stepSeconds: number;
@@ -1582,7 +1598,7 @@ export type components = {
             readonly memory: readonly components["schemas"]["MetricSeriesDto"][];
             readonly memoryTotal: readonly components["schemas"]["MetricSeriesDto"][];
             /** @enum {string} */
-            readonly range: "1h" | "24h" | "7d";
+            readonly range: "1h" | "24h" | "7d" | "30d";
             /** @description Bytes per second received. */
             readonly received: readonly components["schemas"]["MetricSeriesDto"][];
             /** @description Bytes per second sent. */
@@ -1610,6 +1626,21 @@ export type components = {
             readonly slug: string;
             /** Format: date-time */
             readonly updatedAt: string;
+        };
+        readonly OrganizationMetricsDto: {
+            /** @description Mean response time, in seconds. */
+            readonly duration: readonly components["schemas"]["MetricSeriesDto"][];
+            /** Format: date-time */
+            readonly from: string;
+            /** @description False when this installation keeps no metrics: every series is empty. */
+            readonly kept: boolean;
+            /** @enum {string} */
+            readonly range: "1h" | "24h" | "7d" | "30d";
+            /** @description Requests per second over the environments the caller may read, one series per `status` class. */
+            readonly requests: readonly components["schemas"]["MetricSeriesDto"][];
+            readonly stepSeconds: number;
+            /** Format: date-time */
+            readonly to: string;
         };
         readonly OrganizationPageDto: {
             readonly items: readonly components["schemas"]["OrganizationDto"][];
@@ -2623,6 +2654,29 @@ export interface operations {
             };
         };
     };
+    readonly organizationMetrics: {
+        readonly parameters: {
+            readonly query?: {
+                readonly range?: "1h" | "24h" | "7d" | "30d";
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["OrganizationMetricsDto"];
+                };
+            };
+        };
+    };
     readonly listNodes: {
         readonly parameters: {
             readonly query?: {
@@ -2650,7 +2704,7 @@ export interface operations {
     readonly nodeMetrics: {
         readonly parameters: {
             readonly query?: {
-                readonly range?: "1h" | "24h" | "7d";
+                readonly range?: "1h" | "24h" | "7d" | "30d";
             };
             readonly header?: never;
             readonly path: {
@@ -3343,7 +3397,7 @@ export interface operations {
     readonly applicationMetrics: {
         readonly parameters: {
             readonly query?: {
-                readonly range?: "1h" | "24h" | "7d";
+                readonly range?: "1h" | "24h" | "7d" | "30d";
             };
             readonly header?: never;
             readonly path: {

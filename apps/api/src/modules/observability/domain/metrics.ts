@@ -222,6 +222,7 @@ export const RANGES = {
   '1h': { seconds: 3600, step: 30 },
   '24h': { seconds: 86_400, step: 300 },
   '7d': { seconds: 604_800, step: 1800 },
+  '30d': { seconds: 2_592_000, step: 10_800 },
 } as const;
 export type Range = keyof typeof RANGES;
 
@@ -275,5 +276,35 @@ export function nodeQueries(
     diskTotal: `max(shipkeep_node_disk_total_bytes{${where}})`,
     received: `sum(rate(shipkeep_node_network_received_bytes_total{${where}}[${w}]))`,
     sent: `sum(rate(shipkeep_node_network_sent_bytes_total{${where}}[${w}]))`,
+  };
+}
+
+/** At most this many environments are named in one query: a member's charts cover those. */
+export const MAX_QUERY_ENVIRONMENTS = 100;
+
+/**
+ * Queries of the organization's requests chart: requests per second by status class and mean
+ * duration, over all its environments (null), or over the environments given, the ones the caller
+ * may read. Every identifier is checked: a query is never built from anything else.
+ */
+export function organizationQueries(
+  organizationId: string,
+  environmentIds: readonly string[] | null,
+  range: Range,
+): Readonly<Record<'requests' | 'duration', string>> {
+  if (
+    environmentIds &&
+    (environmentIds.length === 0 || environmentIds.length > MAX_QUERY_ENVIRONMENTS)
+  )
+    throw new Error('metric queries name 1 to 100 environments');
+  for (const id of environmentIds ?? [])
+    if (!UUID.test(id)) throw new Error('metric query filters take identifiers only');
+  const where =
+    filter({ organization_id: organizationId }) +
+    (environmentIds ? `,environment_id=~"${environmentIds.join('|')}"` : '');
+  const w = window(range);
+  return {
+    requests: `sum by (status) (rate(shipkeep_route_responses_total{${where}}[${w}]))`,
+    duration: `sum(rate(shipkeep_route_duration_seconds_total{${where}}[${w}])) / sum(rate(shipkeep_route_responses_total{${where}}[${w}]))`,
   };
 }

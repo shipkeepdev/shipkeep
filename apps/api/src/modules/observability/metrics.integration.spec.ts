@@ -155,5 +155,20 @@ describe('metrics with PostgreSQL and VictoriaMetrics', () => {
         'environmentViewer',
       )
       .expect(404);
+
+    // The organization's requests: every environment for an owner, the readable ones for a member,
+    // nothing for a member who reads none, and no organization at all for an outsider.
+    // 1 h: its 30-second steps see the samples just written, as for the application above.
+    const organization = `/api/v1/organizations/${fixture.organizationId}/metrics?range=1h`;
+    const statuses = async (actor: 'owner' | 'environmentViewer' | 'member') =>
+      (
+        (await fixture.get(organization, actor).expect(200)).body as {
+          requests: { labels: { status: string } }[];
+        }
+      ).requests.map((series) => series.labels.status);
+    expect(await statuses('owner')).toContain('2xx');
+    expect(await statuses('environmentViewer')).toContain('2xx');
+    expect(await statuses('member')).toEqual([]);
+    await fixture.get(organization, 'outsider').expect(404);
   });
 });

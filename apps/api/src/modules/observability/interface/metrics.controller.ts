@@ -3,6 +3,7 @@ import { ApiBearerAuth, ApiCookieAuth, ApiOkResponse, ApiTags } from '@nestjs/sw
 
 import { ApplicationPathDto } from '../../apps/interface/application.dto';
 import { NodePathDto } from '../../fleet/interface/fleet-administration.dto';
+import { OrganizationPathDto } from '../../organizations/interface/resource.dto';
 import { AllowApiToken } from '../../identity/interface/api-token-access';
 import { IdentityAttemptLimit } from '../../identity/interface/identity-rate.guard';
 import { RequireTenant } from '../../identity/interface/route-access';
@@ -14,9 +15,10 @@ import {
   MetricsRangeQueryDto,
   metricsDto,
   NodeMetricsDto,
+  OrganizationMetricsDto,
 } from './metrics.dto';
 
-/** Charts of applications and servers (ADR 0024, SPEC 12). */
+/** Charts of applications, servers and the organization's requests (ADR 0024, SPEC 12). */
 @ApiTags('metrics')
 @ApiCookieAuth('session')
 @ApiBearerAuth('apiToken')
@@ -61,6 +63,23 @@ export class MetricsController {
         path.organizationId,
         path.nodeId,
         query.range ?? '1h',
+      ),
+    );
+  }
+
+  @Get(':organizationId/metrics')
+  @RequireTenant('organization.read', 'organization')
+  @ApiOkResponse({ type: OrganizationMetricsDto })
+  async organizationMetrics(
+    @Req() request: IdentityRequest,
+    @Param() path: OrganizationPathDto,
+    @Query() query: MetricsRangeQueryDto,
+  ): Promise<OrganizationMetricsDto> {
+    return metricsDto(
+      await this.metrics.organization(
+        resourceContext(request),
+        path.organizationId,
+        query.range ?? '24h',
       ),
     );
   }

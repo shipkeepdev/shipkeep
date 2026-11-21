@@ -3015,7 +3015,8 @@
               "enum": [
                 "1h",
                 "24h",
-                "7d"
+                "7d",
+                "30d"
               ]
             }
           }
@@ -3077,7 +3078,8 @@
               "enum": [
                 "1h",
                 "24h",
-                "7d"
+                "7d",
+                "30d"
               ]
             }
           }
@@ -3089,6 +3091,60 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/NodeMetricsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "metrics"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/metrics": {
+      "get": {
+        "operationId": "organizationMetrics",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "range",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "default": "1h",
+              "type": "string",
+              "enum": [
+                "1h",
+                "24h",
+                "7d",
+                "30d"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrganizationMetricsDto"
                 }
               }
             }
@@ -6611,7 +6667,8 @@
             "enum": [
               "1h",
               "24h",
-              "7d"
+              "7d",
+              "30d"
             ]
           },
           "stepSeconds": {
@@ -6678,7 +6735,8 @@
             "enum": [
               "1h",
               "24h",
-              "7d"
+              "7d",
+              "30d"
             ]
           },
           "stepSeconds": {
@@ -6752,6 +6810,58 @@
           "diskTotal",
           "received",
           "sent"
+        ]
+      },
+      "OrganizationMetricsDto": {
+        "type": "object",
+        "properties": {
+          "kept": {
+            "type": "boolean",
+            "description": "False when this installation keeps no metrics: every series is empty."
+          },
+          "range": {
+            "type": "string",
+            "enum": [
+              "1h",
+              "24h",
+              "7d",
+              "30d"
+            ]
+          },
+          "stepSeconds": {
+            "type": "number"
+          },
+          "from": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "to": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "requests": {
+            "description": "Requests per second over the environments the caller may read, one series per `status` class.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          },
+          "duration": {
+            "description": "Mean response time, in seconds.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MetricSeriesDto"
+            }
+          }
+        },
+        "required": [
+          "kept",
+          "range",
+          "stepSeconds",
+          "from",
+          "to",
+          "requests",
+          "duration"
         ]
       },
       "OrganizationDto": {

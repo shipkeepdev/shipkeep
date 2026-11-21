@@ -51,6 +51,17 @@ export class ApplicationMetricsDto extends MetricsBaseDto {
   duration!: MetricSeriesDto[];
 }
 
+export class OrganizationMetricsDto extends MetricsBaseDto {
+  @ApiProperty({
+    type: [MetricSeriesDto],
+    description:
+      'Requests per second over the environments the caller may read, one series per `status` class.',
+  })
+  requests!: MetricSeriesDto[];
+  @ApiProperty({ type: [MetricSeriesDto], description: 'Mean response time, in seconds.' })
+  duration!: MetricSeriesDto[];
+}
+
 export class NodeMetricsDto extends MetricsBaseDto {
   @ApiProperty({ type: [MetricSeriesDto], description: 'CPU in use, in cores.' })
   cpu!: MetricSeriesDto[];

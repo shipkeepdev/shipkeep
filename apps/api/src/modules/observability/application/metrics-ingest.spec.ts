@@ -15,6 +15,7 @@ const identity = {
 const targets: MetricsTargets = {
   onNode: () => Promise.resolve({ containers: [], hosts: [] }),
   nodeExists: () => Promise.resolve(true),
+  environments: () => Promise.resolve([]),
 };
 const transaction = { runTenant: <T>(_id: string, work: () => Promise<T>) => work() };
 const report = (sampledAt?: Date) =>
