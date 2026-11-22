@@ -7,7 +7,6 @@ export const VIEW_PATHS: Readonly<Partial<Record<string, readonly string[]>>> = 
   new: ['new'],
   previews: ['previews'],
   servers: ['servers'],
-  server: ['servers', 'sample'],
   data: ['databases'],
   db: ['databases', 'sample'],
   service: ['services', 'sample'],

@@ -65,7 +65,12 @@ const dashboard: Route[] = [
     data: { crumbs: ['Servers'] },
     loadComponent: () => import('./fleet/servers-page').then((module) => module.ServersPage),
   },
-  preview('servers/sample', 'server', 'Server', ['Servers', 'srv-par-1']),
+  {
+    path: 'servers/:nodeId',
+    title: 'Server · Shipkeep',
+    data: { crumbs: ['Servers'] },
+    loadComponent: () => import('./fleet/server-page').then((module) => module.ServerPage),
+  },
   {
     path: 'databases',
     title: 'Databases · Shipkeep',
