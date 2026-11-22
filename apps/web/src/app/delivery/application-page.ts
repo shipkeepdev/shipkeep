@@ -316,9 +316,12 @@ const LIVE_POLL_MS = 15_000;
                   }}</span>
                   <span class="text-[12.5px]" [style.color]="st.color">{{ st.label | t }}</span>
                 </div>
-                <span class="font-mono text-[11.5px] text-mute">{{
-                  duration(d.startedAt, d.finishedAt)
-                }}</span>
+                <span class="flex items-center gap-3">
+                  <span class="font-mono text-[11.5px] text-mute">{{
+                    duration(d.startedAt, d.finishedAt)
+                  }}</span>
+                  <a class="btn btn-xs" [routerLink]="['deployments', d.id]">{{ 'Details' | t }}</a>
+                </span>
               </div>
               <div class="grid grid-cols-6 gap-1.5 max-sm:grid-cols-3 max-sm:gap-y-4">
                 @for (s of pipeline(); track s.label) {
@@ -388,9 +391,14 @@ const LIVE_POLL_MS = 15_000;
               >
                 <span class="font-mono text-[11.5px] text-mute">{{ shortDate(d.startedAt) }}</span>
                 <div class="min-w-0 truncate">
-                  <span class="font-mono text-[11.5px] text-fg2">{{
-                    d.releaseId.slice(0, 7)
-                  }}</span>
+                  <a
+                    class="font-mono text-[11.5px] text-fg2 hover:underline"
+                    [routerLink]="['deployments', d.id]"
+                    [attr.aria-label]="
+                      'Open deployment {release}' | t: { release: d.releaseId.slice(0, 7) }
+                    "
+                    >{{ d.releaseId.slice(0, 7) }}</a
+                  >
                   <!-- A long cause is cut by the row: the whole of it is in the title. -->
                   <span class="ml-2 text-fg3" [attr.title]="d.error ? (d.error | t) : null">{{
                     d.error ?? (d.stop ? 'stop' : d.trigger) | t

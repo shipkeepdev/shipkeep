@@ -75,12 +75,6 @@ const dashboard: Route[] = [
   },
   preview('databases/sample', 'db', 'Database', ['Client Lumen', 'production', 'pg-factures']),
   preview('services/sample', 'service', 'Service', ['Internal tools', 'production', 'grafana']),
-  preview('deployments/sample', 'deploy', 'Deployment', [
-    'Client Lumen',
-    'production',
-    'api-facturation',
-    '4f2c1a9',
-  ]),
   {
     path: 'observability',
     title: 'Observability · Shipkeep',
@@ -122,6 +116,13 @@ const dashboard: Route[] = [
     data: { crumbs: ['Projects'] },
     loadComponent: () =>
       import('./workspace/environment-page').then((module) => module.EnvironmentPage),
+  },
+  {
+    path: `${ENVIRONMENT}/applications/:applicationId/deployments/:deploymentId`,
+    title: 'Deployment · Shipkeep',
+    data: { crumbs: ['Applications'] },
+    loadComponent: () =>
+      import('./delivery/deployment-page').then((module) => module.DeploymentPage),
   },
   {
     path: `${ENVIRONMENT}/applications/:applicationId`,

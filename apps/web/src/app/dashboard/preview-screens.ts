@@ -11,7 +11,6 @@ export type PreviewView =
   | 'server'
   | 'db'
   | 'service'
-  | 'deploy'
   | 'integrations'
   | 'sharedvars'
   | 'notifs'
@@ -1794,84 +1793,6 @@ export const PREVIEW_SCREENS: Readonly<Record<PreviewView, Screen>> = {
                 'Delete',
               ],
             ],
-          },
-        ],
-      },
-    ],
-  },
-  deploy: {
-    label: '15 Deployment',
-    title: 'Deployment 4f2c1a9',
-    sub: 'api-facturation · production · “Adds PDF export” · triggered by Inès L. via push to main',
-    crumbs: ['Atelier Nord', 'Client Lumen', 'production', 'api-facturation', '4f2c1a9'],
-    pills: [['live', 'oklch(0.78 0.13 155)'], ['1 min 15 s']],
-    actions: [
-      ['Roll back to 9c41e07', 'arrow-back-up', 0],
-      ['Redeploy', 'refresh', 1],
-    ],
-    blocks: [
-      {
-        type: 'stats',
-        items: [
-          ['git-commit', 'Queued', '0.8 s', 'signed webhook verified'],
-          ['hammer', 'Build', '38 s', 'cache 82% · srv-ams-6'],
-          ['database', 'Release', '9 s', '3 migrations'],
-          ['heartbeat', 'Health check', '14 s', '3/3 healthy', 'oklch(0.78 0.13 155)'],
-          ['arrows-exchange', 'Switchover', '12 s', 'previous version drained'],
-        ],
-      },
-      {
-        type: 'code',
-        title: 'Full log',
-        aside: 'Rootless BuildKit',
-        mh: '420px',
-        lines: [
-          {
-            p: '10:12:03 ',
-            t: 'webhook push lumen/api-facturation@4f2c1a9 · signature ok',
-          },
-          {
-            p: '10:12:03 ',
-            t: 'shipkeep.yml validated against schema v1',
-          },
-          {
-            p: '10:12:04 ',
-            t: 'BuildImage → srv-ams-6',
-          },
-          {
-            p: '10:12:06 ',
-            t: '#4 [deps 2/3] RUN npm ci --omit=dev  CACHED',
-          },
-          {
-            p: '10:12:31 ',
-            t: '#7 [build 3/3] RUN npm run build  24.1s',
-          },
-          {
-            p: '10:12:42 ',
-            t: 'push registry.internal/api-facturation:4f2c1a9 · 214 MB',
-          },
-          {
-            p: '10:12:51 ',
-            t: 'RunReleaseTask npm run migrate · 0042_invoice_pdf_export ok',
-          },
-          {
-            p: '10:12:52 ',
-            t: 'placement: srv-par-1, srv-fra-2, srv-ams-3 (spread)',
-          },
-          {
-            p: '10:12:58 ',
-            t: 'StartContainer ×3 · health GET /healthz',
-            c: '#EDEDEF',
-          },
-          {
-            p: '10:13:06 ',
-            t: 'health 3/3 · UpsertRoute factures.lumen.example',
-            c: 'oklch(0.78 0.13 155)',
-          },
-          {
-            p: '10:13:18 ',
-            t: 'previous version 9c41e07 drained then stopped · live',
-            c: 'oklch(0.78 0.13 155)',
           },
         ],
       },
