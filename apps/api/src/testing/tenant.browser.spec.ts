@@ -10,6 +10,7 @@ import {
   signIn,
   submit,
 } from './browser-identity';
+import { enrollTestNode } from './enroll-test-node';
 
 const API = '/api/v1/organizations';
 const APPLICATION = `version: 1
@@ -78,6 +79,8 @@ describe('organizations and roles in Chromium', () => {
   let organizationId: string;
   let projectId: string;
   let environmentId: string;
+  /** A server enrolled as an agent would, for its page (#264). */
+  let nodeId: string;
   let applicationId: string;
   const outsiderEmail = 'tenant-outsider@example.com';
 
@@ -114,6 +117,24 @@ describe('organizations and roles in Chromium', () => {
     organizationId = await createOrganization(owner, 'Acme', 'acme');
     projectId = await createProject(owner, organizationId);
     environmentId = await createEnvironment(owner, organizationId, projectId);
+    const session = (await (await owner.context().request.get('/api/v1/auth/session')).json()) as {
+      userId: string;
+    };
+    nodeId = await enrollTestNode(
+      { app: fixture.app, organizationId, actors: { owner: { id: session.userId } } },
+      {
+        facts: {
+          hostname: 'edge-browser.example.com',
+          os: 'Ubuntu',
+          os_version: '24.04',
+          cpu_count: 2,
+          memory_bytes: 4 * 2 ** 30,
+          disk_bytes: 40 * 2 ** 30,
+          disk_free_bytes: 30 * 2 ** 30,
+          agent_version: '0.1.0',
+        },
+      },
+    );
     outsider = await (await fixture.newContext()).newPage();
     await createAccount(outsider, fixture.messages, outsiderEmail);
     await createOrganization(outsider, 'Other', 'other');
@@ -126,6 +147,7 @@ describe('organizations and roles in Chromium', () => {
       `/orgs/${organizationId}/members`,
       `/orgs/${organizationId}/audit`,
       `/orgs/${organizationId}/servers`,
+      `/orgs/${organizationId}/servers/${nodeId}`,
       project,
       `${project}/environments/${environmentId}`,
     ]) {
@@ -429,5 +451,21 @@ describe('organizations and roles in Chromium', () => {
       expect(await owner.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     }
     await accessible(owner);
+  });
+
+  // Last, so the pages above leave the account's API budget (300 requests a minute) to the others.
+  it('shows a server, its agent and what runs on it, under the production CSP (#264)', async () => {
+    const server = `/orgs/${organizationId}/servers/${nodeId}`;
+    for (const section of ['general', 'agent', 'resources']) {
+      await owner.goto(`${server}?section=${section}`);
+      await owner.getByRole('heading', { name: 'edge-browser', exact: true, level: 1 }).waitFor();
+      await owner.waitForLoadState('networkidle');
+      await accessible(owner);
+    }
+    expect(await owner.locator('main').innerText()).toContain('No replica runs on this server.');
+    await owner.goto(`/orgs/${organizationId}/servers`);
+    await owner.getByRole('link', { name: 'edge-browser', exact: true }).click();
+    await owner.getByRole('heading', { name: 'edge-browser', exact: true, level: 1 }).waitFor();
+    expect(problems).toEqual([]);
   });
 });

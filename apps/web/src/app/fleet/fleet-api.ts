@@ -6,6 +6,8 @@ import { type Schema, WorkspaceApi } from '../workspace/workspace-api';
 export type FleetNode = Schema<'NodeDto'>;
 export type NodeMetrics = Schema<'NodeMetricsDto'>;
 export type JoinToken = Schema<'JoinTokenIssuedDto'>;
+export type NodeReplica = Schema<'NodeReplicaDto'>;
+export type NodeReplicaList = Schema<'NodeReplicaListDto'>;
 
 /**
  * Servers of an organization: listing, enrollment tokens, declared public addresses and confirmed
@@ -21,6 +23,22 @@ export class FleetApi extends WorkspaceApi {
         }),
       )
     ).items;
+  }
+  /** One server, removed ones included (#264). */
+  node(organizationId: string, nodeId: string): Promise<FleetNode> {
+    return this.required(() =>
+      this.client.GET('/api/v1/organizations/{organizationId}/nodes/{nodeId}', {
+        params: { path: { organizationId, nodeId } },
+      }),
+    );
+  }
+  /** The replicas placed on a server, at most 200, by application name (#264). */
+  nodeReplicas(organizationId: string, nodeId: string): Promise<NodeReplicaList> {
+    return this.required(() =>
+      this.client.GET('/api/v1/organizations/{organizationId}/nodes/{nodeId}/replicas', {
+        params: { path: { organizationId, nodeId } },
+      }),
+    );
   }
   issueJoinToken(organizationId: string, body: Schema<'ReauthenticateMfaDto'>): Promise<JoinToken> {
     return this.required(() =>

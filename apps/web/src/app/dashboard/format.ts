@@ -79,6 +79,24 @@ export function duration(from: string, to: string | null, now = Date.now()): str
   return `${String(Math.floor(minutes / 60))} h ${String(minutes % 60)} min`;
 }
 
+/**
+ * What an agent last saw of a replica (ADR 0022): null until it has seen it. A container the agent
+ * stopped itself for writing past its disk budget says so.
+ */
+export function replicaStatus(replica: {
+  readonly state: string | null;
+  readonly stopReason: string | null;
+}): Status | null {
+  if (!replica.state) return null;
+  if (replica.stopReason === 'disk_limit' && ['exited', 'dead'].includes(replica.state))
+    return { label: 'stopped: disk limit', color: RED };
+  if (replica.state === 'running') return { label: 'running', color: GREEN };
+  return {
+    label: replica.state,
+    color: ['missing', 'dead', 'exited'].includes(replica.state) ? RED : AMBER,
+  };
+}
+
 /** Seconds since a moment, for heartbeats. */
 export function ageSeconds(at: string | null, now = Date.now()): number | null {
   return at ? Math.max(0, Math.round((now - Date.parse(at)) / 1000)) : null;

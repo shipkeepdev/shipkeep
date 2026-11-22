@@ -35,7 +35,9 @@ export async function agentCsr(): Promise<string> {
  * setup takes passes `heartbeatAt` and gives the same time to the code under test as its clock.
  */
 export async function enrollTestNode(
-  fixture: Pick<TenantHttpFixture, 'app' | 'organizationId' | 'actors'>,
+  fixture: Pick<TenantHttpFixture, 'app' | 'organizationId'> & {
+    readonly actors: { readonly owner: { readonly id: string } };
+  },
   node: {
     readonly facts: Readonly<Record<string, unknown>>;
     readonly name?: string;

@@ -1,7 +1,7 @@
 import { type ShipkeepConfig } from '@shipkeep/config-schema';
 
 import { type Block, type Cell, type CellInput, type FieldItem } from '../dashboard/screen-model';
-import { AMBER, GREEN, GREY, RED } from '../dashboard/format';
+import { AMBER, GREEN, GREY, RED, replicaStatus } from '../dashboard/format';
 import { type SectionCopy } from './application-design';
 import { type DomainStatus, type Release, type Replica, type SecretMetadata } from './delivery-api';
 
@@ -35,6 +35,11 @@ const field = (l: string, v: string | undefined, extra: Partial<FieldItem> = {})
 const words = (command: readonly string[] | undefined) => command?.join(' ');
 const mono = (t: string, fg?: string): CellInput => ({ t, mono: true, ...(fg ? { fg } : {}) });
 const state = (t: string, color: string): Cell => ({ t, fg: color, dot: color });
+/** What the agent last saw of a replica, or that it has not reported yet. */
+function observed(replica: Replica): Cell {
+  const status = replicaStatus(replica);
+  return status ? state(status.label, status.color) : { t: 'not reported yet', dim: true };
+}
 const note = (text: string): Block => ({ type: 'note', text });
 
 /**
@@ -250,18 +255,7 @@ export function configSection(key: string, data: SectionData): SectionCopy | nul
               ? data.replicas.map((replica) => [
                   mono(replica.container || `#${String(replica.replica)}`),
                   mono(replica.nodeName),
-                  // Stopped by its agent for writing past resources.disk (ADR 0022).
-                  replica.stopReason === 'disk_limit' &&
-                  (replica.state === 'exited' || replica.state === 'dead')
-                    ? state('stopped: disk limit', RED)
-                    : replica.state === 'running'
-                      ? state('running', GREEN)
-                      : replica.state
-                        ? state(
-                            replica.state,
-                            ['missing', 'dead', 'exited'].includes(replica.state) ? RED : AMBER,
-                          )
-                        : { t: 'not reported yet', dim: true },
+                  observed(replica),
                 ])
               : [[{ t: 'No instance running yet.', dim: true }, '', '']],
           },
