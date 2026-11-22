@@ -215,6 +215,23 @@ describe('deployment page (#265)', () => {
     expect(reads.filter((path) => path.endsWith('/timeline'))).toHaveLength(2);
   });
 
+  it('reads the missing end again after a read of it fails', async () => {
+    let read = 0;
+    routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}/timeline`] = () => {
+      read++;
+      if (read === 2) return json({ status: 503 }, 503);
+      return json(read === 1 ? { ...timeline, steps: timeline.steps.slice(0, 3) } : timeline);
+    };
+    await open(`${PAGE}/deployments/${DEPLOYMENT}`);
+    await new Promise((resolve) => setTimeout(resolve, 6400));
+    await settle();
+    expect(element().textContent.replace(/\s+/g, ' ')).toContain(
+      'failed · The image could not be pulled.',
+    );
+    expect(read).toBe(3);
+    // Two polling rounds of 3 s each.
+  }, 15_000);
+
   it('keeps following a running deployment after a read fails', async () => {
     let phase: 'running' | 'failing' | 'done' = 'running';
     routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}`] = () =>

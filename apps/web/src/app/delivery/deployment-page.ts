@@ -298,25 +298,35 @@ export class DeploymentPage {
       this.deployment.set(deployment);
       this.timeline.set(timeline);
       this.state.set('ready');
-      if (!deployment.finishedAt) {
-        this.#settling = SETTLE_READS;
-        this.#next();
-      } else if (!timelineEnded(deployment, timeline) && this.#settling > 0) {
-        // Read side by side, the timeline can miss the step the deployment just ended with.
-        this.#settling--;
-        this.#next();
-      }
+      if (this.#again()) this.#next();
     } catch (error: unknown) {
       if (revision !== this.#revision) return;
       if (error instanceof IdentityRequestError && error.status === 404) {
         this.state.set('missing');
       } else if (this.state() !== 'ready') {
         this.state.set('failed');
-      } else if (!this.deployment()?.finishedAt) {
-        // A read failed while it ran: keep what the page shows and try again.
+      } else if (this.#again()) {
+        // A read failed while the page followed it: keep what it shows and try again.
         this.#next();
       }
     }
+  }
+
+  /**
+   * Whether to read again: while the deployment runs, then a few more times while its timeline
+   * misses the step it ended with (read side by side, the timeline can lag one step behind).
+   */
+  #again(): boolean {
+    const deployment = this.deployment();
+    const timeline = this.timeline();
+    if (!deployment || !timeline) return false;
+    if (!deployment.finishedAt) {
+      this.#settling = SETTLE_READS;
+      return true;
+    }
+    if (timelineEnded(deployment, timeline) || this.#settling === 0) return false;
+    this.#settling--;
+    return true;
   }
 
   /** Plans the next read; a later read or the page's end clears it. */
