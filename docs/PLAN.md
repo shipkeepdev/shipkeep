@@ -55,10 +55,10 @@ The milestones below describe the whole MVP. The first stable version ships part
 | 2    | Server detail, deployment detail, maintenance mode                     | #264, #265, #256                                        | Nothing; the full deployment log comes with step 4             |
 | 3    | Deployment from Git: providers, `shipkeep.yml` sync, builds (ADR 0012) | #213, #214, #215                                        | The GitHub App on the organization                             |
 | 4    | Logs and container exec (M6.1)                                         | #232                                                    | The maintainer's decision on the agent action for log shipping |
-| 5    | Real-server acceptance, control plane backup, upgrades                 | #200, #202, #16, #17, #18, #216, #239, #352, #231, #240 | The test VM and the domain                                     |
+| 5    | Real-server acceptance, control plane backup, upgrades                 | #200, #202, #16, #17, #18, #216, #239, #352, #231, #240 | The test VM and the domain; #231 lands before #240             |
 | 6    | Hardening and documentation (M10.2, M10.4)                             | #244, #246                                              | Nothing                                                        |
 
-**Releases:** `v0.1.0-beta.1` once steps 1 to 4 are merged, then `v0.1.0` once step 5 has passed on a real server. Each tag needs the maintainer's go-ahead.
+**Releases:** `v0.1.0-beta.1` once steps 1 to 4 are merged, then `v0.1.0` once step 5 has passed on a real server and step 6 is merged. Each tag needs the maintainer's go-ahead.
 
 ---
 
