@@ -17,6 +17,7 @@ import { DeploymentPipeline } from './application/deployment-pipeline';
 import {
   ACTION_HISTORY,
   ACTION_QUEUE,
+  DEPLOYMENT_STEPS,
   DEPLOYMENT_STORE,
   DEPLOYMENT_TRANSACTION,
   DEPLOYMENT_WAKER,
@@ -27,6 +28,7 @@ import {
 import { DeploymentQueue } from './infrastructure/deployment-queue';
 import { DeploymentWorker } from './infrastructure/deployment-worker';
 import { PrismaDeploymentStore } from './infrastructure/prisma-deployment.store';
+import { PrismaDeploymentSteps } from './infrastructure/prisma-deployment-steps.store';
 import { PrismaObservationStore } from './infrastructure/prisma-observation.store';
 import { PrismaPipelineStore } from './infrastructure/prisma-pipeline.store';
 import { RegistryResolver } from './infrastructure/registry/registry-resolver';
@@ -54,6 +56,7 @@ import { NodeReplicasController } from './interface/node-replicas.controller';
     { provide: PIPELINE_STORE, useClass: PrismaPipelineStore },
     { provide: ACTION_QUEUE, useExisting: AgentActions },
     { provide: ACTION_HISTORY, useExisting: AgentActions },
+    { provide: DEPLOYMENT_STEPS, useClass: PrismaDeploymentSteps },
     DeploymentQueue,
     { provide: DEPLOYMENT_WAKER, useExisting: DeploymentQueue },
     DeploymentPipeline,

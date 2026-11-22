@@ -29,8 +29,10 @@ import {
 } from '../../identity/application/resource-security-context';
 import { TenantAccess } from '../../organizations/application/tenant-access';
 import { SECRET_STORE, type SecretStore } from '../../secrets/application/ports';
+import { MAX_DEPLOYMENT_ACTIONS } from '../../fleet/application/agent-actions';
 import type { AgentActionView } from '../../fleet/domain/agent-action';
 import type { NodeReplica, ReplicaStatus } from '../domain/observations';
+import { deploymentSteps, type DeploymentStep, MAX_STEPS } from '../domain/timeline';
 import {
   applicationNotRunning,
   applicationRunning,
@@ -46,6 +48,8 @@ import {
 
 import {
   ACTION_HISTORY,
+  DEPLOYMENT_STEPS,
+  type DeploymentStepStore,
   type ActionHistory,
   DEPLOYMENT_STORE,
   DEPLOYMENT_TRANSACTION,
@@ -77,6 +81,7 @@ export class DeploymentCommands {
     @Inject(DEPLOYMENT_WAKER) private readonly waker: DeploymentWaker,
     @Inject(OBSERVATION_STORE) private readonly observations: ObservationStore,
     @Inject(ACTION_HISTORY) private readonly actionHistory: ActionHistory,
+    @Inject(DEPLOYMENT_STEPS) private readonly steps: DeploymentStepStore,
     private readonly accounts: AccountMutationAuthority,
     private readonly access: TenantAccess,
     private readonly confirmations: ConfirmationVerifier,
@@ -340,6 +345,35 @@ export class DeploymentCommands {
       const found = await this.store.find(application.id, deploymentId);
       if (!found) throw new NotFoundError('deployment');
       return found;
+    });
+  }
+
+  /**
+   * What one deployment went through (#265): its audited state changes and the agent actions it
+   * requested, oldest first. `truncated` says more actions exist than listed.
+   */
+  timeline(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+    deploymentId: string,
+  ): Promise<{ steps: DeploymentStep[]; actions: AgentActionView[]; truncated: boolean }> {
+    return this.scoped(context, 'environment.read', target, applicationId, async (application) => {
+      const found = await this.store.find(application.id, deploymentId);
+      if (!found) throw new NotFoundError('deployment');
+      const [events, actions] = await Promise.all([
+        this.steps.events(application.organizationId, found.id, MAX_STEPS),
+        this.actionHistory.forDeployment(
+          application.organizationId,
+          found.id,
+          MAX_DEPLOYMENT_ACTIONS + 1,
+        ),
+      ]);
+      return {
+        steps: deploymentSteps(events),
+        actions: actions.slice(0, MAX_DEPLOYMENT_ACTIONS),
+        truncated: actions.length > MAX_DEPLOYMENT_ACTIONS,
+      };
     });
   }
 

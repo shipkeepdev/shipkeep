@@ -4,6 +4,7 @@ import type { RegistryLogin } from '../../registries/domain/registry-credential'
 
 import type { Application } from '../../apps/domain/application';
 import type { AgentActionView } from '../../fleet/domain/agent-action';
+import type { StepEvent } from '../domain/timeline';
 import type {
   NodeReplica,
   ObservationChange,
@@ -157,6 +158,19 @@ export interface ActionHistory {
     beforeId: string | undefined,
     limit: number,
   ): Promise<AgentActionView[]>;
+  /** The deployment's actions, oldest first, at most `limit`; safe summaries only. */
+  forDeployment(
+    organizationId: string,
+    deploymentId: string,
+    limit: number,
+  ): Promise<AgentActionView[]>;
+}
+
+export const DEPLOYMENT_STEPS = Symbol('DeploymentSteps');
+/** The audited changes of one deployment's state (#265), read back for its timeline. */
+export interface DeploymentStepStore {
+  /** Run under `runTenant(organizationId)`: oldest first, at most `limit`. */
+  events(organizationId: string, deploymentId: string, limit: number): Promise<StepEvent[]>;
 }
 
 export const IMAGE_RESOLVER = Symbol('ImageResolver');

@@ -884,6 +884,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/timeline": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getDeploymentTimeline"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/domains": {
         readonly parameters: {
             readonly query?: never;
@@ -1514,6 +1530,27 @@ export type components = {
         readonly DeploymentListDto: {
             /** @description Most recent first, at most 50. */
             readonly items: readonly components["schemas"]["DeploymentDto"][];
+        };
+        readonly DeploymentStepDto: {
+            /**
+             * Format: date-time
+             * @description When the deployment entered `to`.
+             */
+            readonly at: string;
+            /** @enum {string|null} */
+            readonly from: "queued" | "building" | "built" | "releasing" | "scheduling" | "starting" | "health_checking" | "switching" | "draining" | "succeeded" | "failed" | "cancelled" | "rolled_back" | null;
+            /** @description For `failed`. */
+            readonly reason: string | null;
+            /** @enum {string} */
+            readonly to: "queued" | "building" | "built" | "releasing" | "scheduling" | "starting" | "health_checking" | "switching" | "draining" | "succeeded" | "failed" | "cancelled" | "rolled_back";
+        };
+        readonly DeploymentTimelineDto: {
+            /** @description Agent actions the deployment requested, oldest first, at most 200. */
+            readonly actions: readonly components["schemas"]["AgentActionDto"][];
+            /** @description Audited state changes, oldest first. */
+            readonly steps: readonly components["schemas"]["DeploymentStepDto"][];
+            /** @description True when the deployment requested more actions than listed. */
+            readonly truncated: boolean;
         };
         readonly DisplayNameDto: {
             /** @description The name to show; empty or null removes it. Trimmed, at most 64 characters. */
@@ -3762,6 +3799,31 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["QueuedDeploymentDto"];
+                };
+            };
+        };
+    };
+    readonly getDeploymentTimeline: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly deploymentId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeploymentTimelineDto"];
                 };
             };
         };
