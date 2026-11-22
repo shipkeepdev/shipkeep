@@ -25,6 +25,7 @@ import {
   type Deployment,
   type DeploymentTimeline,
   type EnvironmentRef,
+  type Release,
 } from './delivery-api';
 import { deploymentView, type Text } from './deployment-view';
 
@@ -164,6 +165,12 @@ export class DeploymentPage {
   private readonly timeline = signal<DeploymentTimeline | null>(null);
   private readonly application = signal<Application | null>(null);
   private readonly environmentName = signal<string | null>(null);
+  private readonly releases = signal<readonly Release[]>([]);
+  /** The release this deployment ran, when it is among the 50 most recent. */
+  private readonly release = computed(() => {
+    const d = this.deployment();
+    return d ? (this.releases().find((release) => release.id === d.releaseId) ?? null) : null;
+  });
   protected readonly state = signal<'loading' | 'ready' | 'missing' | 'failed'>('loading');
   private readonly now = signal(Date.now());
   #revision = 0;
@@ -192,8 +199,10 @@ export class DeploymentPage {
   protected readonly title = computed(() => {
     const d = this.deployment();
     if (!d) return '';
+    // The release number, as the application's agent actions name it; its id when unknown.
+    const number = this.release()?.number;
     return this.i18n.t(d.stop ? 'Stop of {release}' : 'Deployment {release}', {
-      release: d.releaseId.slice(0, 7),
+      release: number === undefined ? d.releaseId.slice(0, 7) : `#${String(number)}`,
     });
   });
   protected readonly elapsed = computed(() => {
@@ -208,6 +217,7 @@ export class DeploymentPage {
     return [
       this.application()?.name,
       this.environmentName(),
+      d.stop ? null : this.release()?.image,
       this.i18n.t(d.stop ? 'stop' : d.trigger),
       actor ? this.i18n.t('by {name}', { name: actor }) : null,
     ]
@@ -228,13 +238,14 @@ export class DeploymentPage {
         void this.loadNames();
       });
     });
+    // The shell loads its projects after the page may have its title: the trail waits for them.
     effect(() => {
       const title = this.title();
       const application = this.application();
       const environment = this.environmentName();
+      const project = this.shell.projects().find((p) => p.id === this.projectId())?.name;
       if (!title) return;
       untracked(() => {
-        const project = this.shell.projects().find((p) => p.id === this.projectId())?.name;
         const base = ['/orgs', this.organizationId(), 'projects', this.projectId()];
         this.crumbs.set([
           { label: project ?? '…', raw: true, link: base },
@@ -287,14 +298,16 @@ export class DeploymentPage {
   /** Names for the header and the trail; the page stands without them. */
   private async loadNames(): Promise<void> {
     const environment = this.environment();
-    const [application, env] = await Promise.all([
+    const [application, env, releases] = await Promise.all([
       this.api.application(environment, this.applicationId()).catch(() => null),
       this.workspace
         .environment(environment.organizationId, environment.projectId, environment.environmentId)
         .catch(() => null),
+      this.api.releases(environment, this.applicationId()).catch(() => []),
     ]);
     this.application.set(application);
     this.environmentName.set(env?.name ?? null);
+    this.releases.set(releases);
   }
 
   protected say(text: Text): string {

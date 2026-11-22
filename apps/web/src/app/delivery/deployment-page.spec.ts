@@ -4,6 +4,7 @@ import { RouterTestingHarness } from '@angular/router/testing';
 
 import { appRoutes } from '../app.routes';
 import { IDENTITY_FETCH } from '../identity/identity-api';
+import { PageCrumbs } from '../dashboard/page-crumbs';
 import { I18n } from '../ui/i18n';
 
 import { EVENT_SOURCE } from './live-events';
@@ -63,7 +64,7 @@ const json = (body: unknown, status = 200) =>
 
 describe('deployment page (#265)', () => {
   let harness: RouterTestingHarness;
-  let routes: Partial<Record<string, () => Response>>;
+  let routes: Partial<Record<string, () => Response | Promise<Response>>>;
   let reads: string[];
 
   beforeEach(async () => {
@@ -96,6 +97,21 @@ describe('deployment page (#265)', () => {
           ...stamp,
         }),
       [`GET ${APP_PATH}/deployments`]: () => json({ items: [deployment] }),
+      [`GET ${APP_PATH}/releases`]: () =>
+        json({
+          items: [
+            {
+              id: deployment.releaseId,
+              number: 4,
+              image: 'nginx:1.27',
+              imageDigest: null,
+              config: {},
+              configSha: 'a'.repeat(64),
+              createdBy: null,
+              createdAt: at(0),
+            },
+          ],
+        }),
       [`GET ${APP_PATH}/deployments/${DEPLOYMENT}`]: () => json(deployment),
       [`GET ${APP_PATH}/deployments/${DEPLOYMENT}/timeline`]: () => json(timeline),
     };
@@ -147,10 +163,11 @@ describe('deployment page (#265)', () => {
 
   it('shows each step with its time, and the agent actions between them', async () => {
     await open(`${PAGE}/deployments/${DEPLOYMENT}`);
-    expect(element().querySelector('h1')?.textContent).toContain('Deployment 4f2c1a9');
+    // Named by its release number, as the agent actions name it.
+    expect(element().querySelector('h1')?.textContent).toContain('Deployment #4');
     const text = element().textContent.replace(/\s+/g, ' ');
     expect(text).toContain('failed');
-    expect(text).toContain('billing-api · production · manual');
+    expect(text).toContain('billing-api · production · nginx:1.27 · manual');
     expect(text).toContain('Queued');
     expect(text).toContain('Placement');
     expect(text).toContain('Starting');
@@ -180,6 +197,31 @@ describe('deployment page (#265)', () => {
     await settle();
     expect(element().textContent).not.toContain('now ·');
     expect(reads.filter((path) => path.endsWith('/timeline'))).toHaveLength(2);
+  });
+
+  it('names the project in the trail once the shell has it, even after the title', async () => {
+    let release: (value: undefined) => void = () => undefined;
+    const held = new Promise<undefined>((resolve) => {
+      release = resolve;
+    });
+    routes[`GET /api/v1/organizations/${ORG}`] = () =>
+      json({ id: ORG, name: 'Acme', slug: 'acme', ...stamp });
+    routes[`GET /api/v1/organizations/${ORG}/projects`] = async () => {
+      await held;
+      return json({
+        items: [{ id: PROJECT, organizationId: ORG, name: 'Billing', slug: 'billing', ...stamp }],
+        nextCursor: null,
+      });
+    };
+    await open(`${PAGE}/deployments/${DEPLOYMENT}`);
+    const trail = () =>
+      TestBed.inject(PageCrumbs)
+        .trail()
+        .map((crumb) => crumb.label);
+    expect(trail()).toEqual(['…', 'production', 'billing-api', 'Deployment #4']);
+    release(undefined);
+    await settle();
+    expect(trail()).toEqual(['Billing', 'production', 'billing-api', 'Deployment #4']);
   });
 
   it('speaks French', async () => {

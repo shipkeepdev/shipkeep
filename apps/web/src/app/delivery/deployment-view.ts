@@ -15,7 +15,7 @@ export interface StepStat {
   readonly icon: IconName;
   readonly label: string;
   readonly duration: Text;
-  /** When it entered the step, dd/MM HH:mm:ss. */
+  /** When it entered the step, dd/MM HH:mm:ss; the timeline's lines give the time alone. */
   readonly at: string;
   readonly color?: string;
 }
@@ -123,7 +123,7 @@ export function deploymentView(
   return {
     status: deploymentStatus(deployment.state, deployment.stop),
     stats,
-    lines: lines.map(({ order: _order, ...line }) => ({ ...line, at: timestamp(line.at) })),
+    lines: lines.map(({ order: _order, ...line }) => ({ ...line, at: clockSeconds(line.at) })),
     truncated: timeline.truncated,
     finished,
   };
@@ -140,4 +140,11 @@ export function stepDuration(ms: number): Text {
     t: '{h} h {m} min',
     values: { h: Math.floor(minutes / 60), m: minutes % 60 },
   };
+}
+
+/** HH:mm:ss, as the design's log writes times: the steps above give the date. */
+function clockSeconds(at: string): string {
+  const date = new Date(at);
+  const two = (n: number) => String(n).padStart(2, '0');
+  return `${two(date.getHours())}:${two(date.getMinutes())}:${two(date.getSeconds())}`;
 }

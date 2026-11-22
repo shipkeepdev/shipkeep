@@ -476,7 +476,9 @@ describe('organizations and roles in Chromium', () => {
       .getByRole('link', { name: /^Open deployment / })
       .first()
       .click();
-    await owner.getByRole('heading', { name: /^Deployment [0-9a-f]{7}$/, level: 1 }).waitFor();
+    await owner
+      .getByRole('heading', { name: /^Deployment (#\d+|[0-9a-f]{7})$/, level: 1 })
+      .waitFor();
     await owner.getByText('Deployment queued').waitFor();
     await owner.waitForLoadState('networkidle');
     await accessible(owner);
