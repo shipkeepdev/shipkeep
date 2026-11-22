@@ -9,6 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
+import { RouterLink } from '@angular/router';
 
 import { ageSeconds, bytes, nodeStatus, percent } from '../dashboard/format';
 import { MutationRunner } from '../identity/mutation-runner';
@@ -44,7 +45,14 @@ const COLUMNS =
  */
 @Component({
   selector: 'sk-servers-page',
-  imports: [ConfirmByName, NodeMetricsPanel, PublicAddressesEditor, ReactiveFormsModule, T],
+  imports: [
+    ConfirmByName,
+    NodeMetricsPanel,
+    PublicAddressesEditor,
+    ReactiveFormsModule,
+    RouterLink,
+    T,
+  ],
   providers: [MutationRunner, PrivateClipboard],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -105,7 +113,11 @@ const COLUMNS =
                   "
                 >
                   <div class="min-w-0">
-                    <div class="truncate font-mono text-[12.5px]">{{ n.node.name }}</div>
+                    <a
+                      class="block truncate font-mono text-[12.5px] hover:underline"
+                      [routerLink]="['/orgs', organizationId(), 'servers', n.node.id]"
+                      >{{ n.node.name }}</a
+                    >
                     <div class="mt-0.5 truncate text-[11px] text-dim">{{ n.agent }}</div>
                   </div>
                   <div>
