@@ -126,11 +126,18 @@ describe('server page (#264)', () => {
     await open(`/orgs/${ORG}/servers/${NODE}?section=agent`);
     const text = element().textContent;
     expect(text).toContain('edge-1');
-    expect(text).toContain("Version de l'agent");
+    expect(text).toContain('Époque');
     expect(text).toMatch(/il y a \d+ s/);
     await open(`/orgs/${ORG}/servers/${NODE}?section=resources`);
     expect(element().textContent).toContain('Aucune réplique ne tourne sur ce serveur.');
     expect(element().textContent).toContain('Seules les 200 premières répliques sont listées.');
+    // A quarter of a core, with the French decimal comma.
+    routes[`GET ${BASE}/nodes/${NODE}/replicas`] = () =>
+      json({ items: [replica], truncated: false });
+    await open(`/orgs/${ORG}/servers`);
+    await open(`/orgs/${ORG}/servers/${NODE}?section=resources`);
+    expect(element().textContent).toContain('0,25');
+    expect(element().textContent).not.toContain('0.25');
   });
 
   it('says when the server is not there', async () => {

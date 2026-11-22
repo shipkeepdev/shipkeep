@@ -44,8 +44,11 @@ export interface ReplicaRow {
   readonly place: string;
   readonly link: readonly string[];
   readonly replica: number;
+  /** `#n` when the application runs more than one replica on this server; null otherwise. */
+  readonly replicaLabel: string | null;
   readonly container: string;
-  readonly cpu: string;
+  /** CPU reserved, in cores; the page writes it in the interface language. Null when none. */
+  readonly cpu: number | null;
   readonly memory: string;
   readonly status: Status | null;
 }
@@ -87,7 +90,13 @@ export function serverView(
   const reservedMemory = number('reserved_memory_bytes');
   const status = nodeStatus(node.status);
   const beat = ageSeconds(node.lastHeartbeatAt, now);
-  const applications = new Set(replicas.items.map((replica) => replica.application.id)).size;
+  const perApplication = new Map<string, number>();
+  for (const replica of replicas.items)
+    perApplication.set(
+      replica.application.id,
+      (perApplication.get(replica.application.id) ?? 0) + 1,
+    );
+  const applications = perApplication.size;
   const labels = Object.entries(node.labels as Record<string, unknown>).map(
     ([key, value]) => `${key}=${typeof value === 'string' ? value : JSON.stringify(value)}`,
   );
@@ -103,7 +112,7 @@ export function serverView(
         label: 'CPU',
         value: cpu === null ? raw('—') : { t: '{n} core', count: { n: cpu, other: '{n} cores' } },
         sub: reservedCpu
-          ? { t: '{cpu} reserved for the control plane', values: { cpu: cores(reservedCpu) } }
+          ? { t: '{cpu} reserved for the control plane', values: { cpu: reservedCpu / 1000 } }
           : undefined,
       },
       {
@@ -120,13 +129,13 @@ export function serverView(
       {
         icon: 'database',
         label: 'Disk',
-        value: raw(disk === null ? '—' : `${String(percent(disk - free, disk))} %`),
+        value: raw(disk === null ? '—' : (bytes(disk - free) ?? '0')),
         sub:
           disk === null
             ? undefined
             : {
-                t: '{free} free of {total}',
-                values: { free: bytes(free) ?? '0', total: bytes(disk) ?? '' },
+                t: 'of {total} · {percent} %',
+                values: { total: bytes(disk) ?? '', percent: percent(disk - free, disk) },
               },
         color:
           disk !== null && percent(disk - free, disk) >= 85 ? 'oklch(0.80 0.12 80)' : undefined,
@@ -148,7 +157,12 @@ export function serverView(
       { label: 'Architecture', value: text('architecture'), mono: true },
       { label: 'Docker', value: text('docker_version'), mono: true },
       { label: 'Caddy', value: text('caddy_version'), mono: true },
-      { label: 'Placement labels', value: labels.join(', ') || null, none: 'None', mono: true },
+      {
+        label: 'Placement labels',
+        value: labels.join(', ') || null,
+        none: 'No label',
+        mono: true,
+      },
       {
         label: 'Public addresses',
         value: node.publicAddresses.join(', ') || null,
@@ -164,8 +178,8 @@ export function serverView(
         sub: { t: 'suspect after 15 s without one' },
         color: beat === null ? undefined : status.color,
       },
-      { icon: 'clock', label: 'Lease epoch', value: raw(String(node.leaseEpoch)) },
-      { icon: 'plug-connected', label: 'Agent version', value: raw(text('agent_version') ?? '—') },
+      { icon: 'clock', label: 'Epoch', value: raw(String(node.leaseEpoch)) },
+      { icon: 'plug-connected', label: 'Version', value: raw(text('agent_version') ?? '—') },
     ],
     rows: replicas.items.map((replica) => ({
       id: replica.id,
@@ -182,8 +196,12 @@ export function serverView(
         replica.application.id,
       ],
       replica: replica.replica,
+      replicaLabel:
+        (perApplication.get(replica.application.id) ?? 0) > 1
+          ? `#${String(replica.replica)}`
+          : null,
       container: replica.container,
-      cpu: replica.cpuMillis ? cores(replica.cpuMillis) : '—',
+      cpu: replica.cpuMillis ? replica.cpuMillis / 1000 : null,
       memory: bytes(replica.memoryBytes) ?? '—',
       status: replicaStatus(replica),
     })),
@@ -194,9 +212,4 @@ export function serverView(
 /** A measured or typed value: shown as is, never looked up for translation. */
 export function raw(value: string): Text {
   return { t: '{v}', values: { v: value } };
-}
-
-/** Millicores as a number of cores: 250 → "0.25". */
-function cores(millis: number): string {
-  return String(Number((millis / 1000).toFixed(2)));
 }

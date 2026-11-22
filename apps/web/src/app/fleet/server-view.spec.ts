@@ -57,7 +57,7 @@ describe('server view (#264)', () => {
     expect(view.stats[0]?.value).toEqual({ t: '{n} core', count: { n: 4, other: '{n} cores' } });
     expect(view.stats.slice(1).map((s) => [s.label, s.value.values?.['v']])).toEqual([
       ['Memory', '8 GiB'],
-      ['Disk', '90 %'],
+      ['Disk', '90 GiB'],
       ['Replicas', '3'],
     ]);
     // 90 % of the disk used is a warning.
@@ -69,14 +69,21 @@ describe('server view (#264)', () => {
     expect(view.machine.find((f) => f.label === 'Placement labels')?.value).toBe('region=par');
     expect(view.machine.find((f) => f.label === 'Caddy')?.value).toBeNull();
     expect(view.agent[0]?.value).toEqual({ t: '{s} s ago', values: { s: 2 } });
+    expect(view.stats[2]?.sub).toEqual({
+      t: 'of {total} · {percent} %',
+      values: { total: '100 GiB', percent: 90 },
+    });
+    // The worker runs alone here: no replica number.
+    expect(view.rows[2]?.replicaLabel).toBeNull();
     expect(view.rows[0]).toEqual({
       id: 'r1',
       application: 'web',
       place: 'Shop · production',
       link: ['/orgs', ORG, 'projects', 'p1', 'environments', 'e1', 'applications', 'app-web'],
       replica: 0,
+      replicaLabel: '#0',
       container: 'sk-web-0123456789ab-r1-0',
-      cpu: '0.25',
+      cpu: 0.25,
       memory: '256 MiB',
       status: { label: 'running', color: 'oklch(0.78 0.13 155)' },
     });
@@ -94,7 +101,7 @@ describe('server view (#264)', () => {
     );
     expect(view.stats[0]?.sub).toEqual({
       t: '{cpu} reserved for the control plane',
-      values: { cpu: '0.5' },
+      values: { cpu: 0.5 },
     });
     expect(view.stats[1]?.sub).toEqual({
       t: '{memory} reserved for the control plane',

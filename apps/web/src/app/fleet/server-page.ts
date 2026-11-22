@@ -82,7 +82,7 @@ const COLUMNS =
             <div class="page-head">
               <div class="min-w-0">
                 <div class="flex flex-wrap items-center gap-3">
-                  <h1 class="page-title font-mono">{{ v.name }}</h1>
+                  <h1 class="page-title">{{ v.name }}</h1>
                   <span class="pill" [style.color]="v.status.color"
                     ><span class="dot" [style.background]="v.status.color"></span
                     >{{ v.status.label | t }}</span
@@ -94,7 +94,7 @@ const COLUMNS =
                   }
                 </div>
                 @if (v.sub) {
-                  <div class="mt-1.5 max-w-[720px] font-mono text-[12.5px] text-mute2">
+                  <div class="mt-1.5 max-w-[720px] text-[13px] text-pretty text-mute2">
                     {{ v.sub }}
                   </div>
                 }
@@ -170,14 +170,9 @@ const COLUMNS =
                     </div>
                     <div class="card overflow-x-auto">
                       <div class="min-w-[640px]">
-                        <div
-                          [class]="
-                            columns +
-                            ' grid gap-3 border-b border-line px-5 py-2.5 text-[11.5px] text-dim2'
-                          "
-                        >
-                          <span>{{ 'Application' | t }}</span
-                          ><span>{{ 'Project · env.' | t }}</span
+                        <div [class]="columns + ' grid-table th px-[18px] py-[11px]'">
+                          <span>{{ 'Resource' | t }}</span
+                          ><span>{{ 'Project' | t }}</span
                           ><span>{{ 'CPU' | t }}</span
                           ><span>{{ 'Memory' | t }}</span
                           ><span>{{ 'State' | t }}</span>
@@ -186,22 +181,24 @@ const COLUMNS =
                           <div
                             [class]="
                               columns +
-                              ' relative grid items-center gap-3 border-b border-line2 px-5 py-[11px] text-[13px] hover:bg-hover'
+                              ' grid-table relative border-t border-line2 px-[18px] py-3 text-[12.5px] hover:bg-hover'
                             "
+                            [attr.title]="r.container"
                           >
-                            <span class="flex min-w-0 flex-col">
+                            <span class="flex min-w-0 items-center gap-2">
+                              <sk-icon name="box" class="shrink-0 text-[15px] text-mute" />
                               <a
                                 [routerLink]="r.link"
                                 class="truncate after:absolute after:inset-0"
                                 >{{ r.application }}</a
                               >
-                              <span class="truncate font-mono text-[11px] text-dim">{{
-                                r.container
-                              }}</span>
+                              @if (r.replicaLabel) {
+                                <span class="shrink-0 text-dim">{{ r.replicaLabel }}</span>
+                              }
                             </span>
-                            <span class="truncate text-[12px] text-fg3">{{ r.place }}</span>
-                            <span class="font-mono text-[12px] text-fg2">{{ r.cpu }}</span>
-                            <span class="font-mono text-[12px] text-fg2">{{ r.memory }}</span>
+                            <span class="truncate text-fg3">{{ r.place }}</span>
+                            <span>{{ r.cpu === null ? '—' : decimal(r.cpu) }}</span>
+                            <span>{{ r.memory }}</span>
                             @if (r.status; as s) {
                               <span
                                 class="flex items-center gap-[7px] text-[12.5px]"
@@ -373,8 +370,24 @@ export class ServerPage {
   }
 
   protected say(text: Text): string {
+    // Fractions, such as reserved cores, take the interface language's decimal mark.
+    const values = text.values
+      ? Object.fromEntries(
+          Object.entries(text.values).map(([key, value]) => [
+            key,
+            typeof value === 'number' && !Number.isInteger(value) ? this.decimal(value) : value,
+          ]),
+        )
+      : undefined;
     return text.count
-      ? this.i18n.count(text.count.n, text.t, text.count.other, text.values)
-      : this.i18n.t(text.t, text.values);
+      ? this.i18n.count(text.count.n, text.t, text.count.other, values)
+      : this.i18n.t(text.t, values);
+  }
+
+  /** 0.25 in English, 0,25 in French: at most two decimals. */
+  protected decimal(value: number): string {
+    return value.toLocaleString(this.i18n.language() === 'fr' ? 'fr-FR' : 'en-US', {
+      maximumFractionDigits: 2,
+    });
   }
 }
