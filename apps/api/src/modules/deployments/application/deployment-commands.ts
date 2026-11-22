@@ -30,7 +30,7 @@ import {
 import { TenantAccess } from '../../organizations/application/tenant-access';
 import { SECRET_STORE, type SecretStore } from '../../secrets/application/ports';
 import type { AgentActionView } from '../../fleet/domain/agent-action';
-import type { ReplicaStatus } from '../domain/observations';
+import type { NodeReplica, ReplicaStatus } from '../domain/observations';
 import {
   applicationNotRunning,
   applicationRunning,
@@ -58,6 +58,8 @@ import {
 } from './ports';
 
 const CANCELLED_BY_USER = 'Cancelled by a user.';
+/** Replicas a server's page lists at most (#264). */
+export const NODE_REPLICAS = 200;
 
 /**
  * Releases and deployments of an application (SPEC 4 and 5.1, PLAN M3.4b2). Deploying snapshots
@@ -359,6 +361,26 @@ export class DeploymentCommands {
     return this.scoped(context, 'environment.read', target, applicationId, (application) =>
       this.observations.forApplication(application.id),
     );
+  }
+
+  /**
+   * The replicas placed on a server, at most `NODE_REPLICAS`, with the application, project and
+   * environment of each (#264). It needs `node.manage`, which only owners and admins hold, and
+   * they read every environment of the organization. `truncated` says more replicas exist.
+   */
+  nodeReplicas(
+    context: SecurityContext,
+    organizationId: string,
+    nodeId: string,
+  ): Promise<{ items: NodeReplica[]; truncated: boolean }> {
+    return this.accounts.run(context, async () => {
+      await this.access.require(context.userId, 'node.manage', { organizationId });
+      const found = await this.transaction.runTenant(organizationId, () =>
+        this.observations.onNode(organizationId, nodeId, NODE_REPLICAS + 1),
+      );
+      if (!found) throw new NotFoundError('resource');
+      return { items: found.slice(0, NODE_REPLICAS), truncated: found.length > NODE_REPLICAS };
+    });
   }
 
   /**

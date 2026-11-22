@@ -153,6 +153,18 @@ export class FleetAdministration {
     );
   }
 
+  /** One server of the organization, removed ones included, for its page (#264). */
+  getNode(context: SecurityContext, organizationId: string, nodeId: string): Promise<NodeRecord> {
+    return this.accounts.run(context, async () => {
+      await this.access.require(context.userId, 'node.manage', { organizationId });
+      const node = await this.transaction.runTenant(organizationId, () =>
+        this.nodes.findById(organizationId, nodeId),
+      );
+      if (!node) throw new NotFoundError('resource');
+      return node;
+    });
+  }
+
   listNodes(
     context: SecurityContext,
     organizationId: string,

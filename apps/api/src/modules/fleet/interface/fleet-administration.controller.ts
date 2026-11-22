@@ -124,6 +124,16 @@ export class FleetAdministrationController {
     );
   }
 
+  @Get(':organizationId/nodes/:nodeId')
+  @RequireTenant('node.manage', 'organization')
+  @IdentityAttemptLimit('api')
+  @ApiOkResponse({ type: NodeDto })
+  async getNode(@Req() request: IdentityRequest, @Param() path: NodePathDto): Promise<NodeDto> {
+    return nodeDto(
+      await this.fleet.getNode(resourceContext(request), path.organizationId, path.nodeId),
+    );
+  }
+
   @Get(':organizationId/nodes')
   @RequireTenant('node.manage', 'organization')
   @IdentityAttemptLimit('api')

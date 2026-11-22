@@ -37,6 +37,7 @@ function setup(allocations: ObservedAllocation[]) {
   const nodes: string[] = [];
   const store: ObservationStore = {
     forApplication: () => Promise.resolve([]),
+    onNode: () => Promise.resolve([]),
     placedOnNode: (_organization, nodeId) => {
       nodes.push(nodeId);
       return Promise.resolve(allocations);

@@ -4,7 +4,12 @@ import type { RegistryLogin } from '../../registries/domain/registry-credential'
 
 import type { Application } from '../../apps/domain/application';
 import type { AgentActionView } from '../../fleet/domain/agent-action';
-import type { ObservationChange, ObservedAllocation, ReplicaStatus } from '../domain/observations';
+import type {
+  NodeReplica,
+  ObservationChange,
+  ObservedAllocation,
+  ReplicaStatus,
+} from '../domain/observations';
 import type { Allocation, StepOutcome } from '../domain/pipeline';
 import type { NodeLoad, NodeView, ReplacingRelease } from '../domain/placement';
 import type { DeploymentRecord, DeploymentTrigger, Release, ReleaseDraft } from '../domain/release';
@@ -111,6 +116,11 @@ export interface ObservationStore {
   apply(organizationId: string, changes: readonly ObservationChange[], now: Date): Promise<void>;
   /** Placed replicas of the application, with where they run and their last observation. */
   forApplication(applicationId: string): Promise<ReplicaStatus[]>;
+  /**
+   * Run under `runTenant(organizationId)`: at most `limit` replicas placed on the server, by
+   * application name then replica, or undefined when the server is not in the organization.
+   */
+  onNode(organizationId: string, nodeId: string, limit: number): Promise<NodeReplica[] | undefined>;
 }
 
 export const DEPLOYMENT_WAKER = Symbol('DeploymentWaker');

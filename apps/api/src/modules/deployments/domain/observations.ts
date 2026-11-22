@@ -99,6 +99,26 @@ export function observationChanges(
   return changes;
 }
 
+/** A placed replica as its server's page shows it: what it runs and where it belongs (#264). */
+export interface NodeReplica {
+  readonly id: string;
+  readonly releaseId: string;
+  readonly replica: number;
+  readonly container: string;
+  /** What placement reserved for it on the server. */
+  readonly cpuMillis: number;
+  readonly memoryBytes: number;
+  readonly placedAt: Date;
+  readonly application: { readonly id: string; readonly name: string };
+  readonly project: { readonly id: string; readonly name: string };
+  readonly environment: { readonly id: string; readonly name: string };
+  /** Null until its agent has seen the container. */
+  readonly state: ObservedState | null;
+  /** Why its agent stopped it itself (ADR 0022); null otherwise. */
+  readonly stopReason: StopReason | null;
+  readonly observedAt: Date | null;
+}
+
 /** A placed replica as the API shows it: where it runs and what its agent last saw. */
 export interface ReplicaStatus {
   readonly id: string;

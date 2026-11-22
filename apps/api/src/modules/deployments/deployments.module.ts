@@ -31,6 +31,7 @@ import { PrismaObservationStore } from './infrastructure/prisma-observation.stor
 import { PrismaPipelineStore } from './infrastructure/prisma-pipeline.store';
 import { RegistryResolver } from './infrastructure/registry/registry-resolver';
 import { DeploymentController } from './interface/deployment.controller';
+import { NodeReplicasController } from './interface/node-replicas.controller';
 
 /** Releases, deployments and their pipeline (SPEC 4, 5.1; PLAN M3.4b2, M3.4c). */
 @Module({
@@ -44,7 +45,7 @@ import { DeploymentController } from './interface/deployment.controller';
     ConfirmationsModule,
     RegistriesModule,
   ],
-  controllers: [DeploymentController],
+  controllers: [DeploymentController, NodeReplicasController],
   providers: [
     DeploymentCommands,
     { provide: DEPLOYMENT_STORE, useClass: PrismaDeploymentStore },
