@@ -167,7 +167,7 @@ const LIVE_POLL_MS = 15_000;
               (click)="rollback(start.id)"
             >
               <sk-icon name="player-play" />{{
-                'Start {release}' | t: { release: start.releaseId.slice(0, 7) }
+                'Start {release}' | t: { release: releaseLabel(start) }
               }}
             </button>
           } @else if (previous(); as prev) {
@@ -178,7 +178,7 @@ const LIVE_POLL_MS = 15_000;
               (click)="rollback(prev.id)"
             >
               <sk-icon name="arrow-back-up" />{{
-                'Roll back to {release}' | t: { release: prev.releaseId.slice(0, 7) }
+                'Roll back to {release}' | t: { release: releaseLabel(prev) }
               }}
             </button>
           }
@@ -312,13 +312,16 @@ const LIVE_POLL_MS = 15_000;
                 <div class="flex items-baseline gap-2.5">
                   <span class="text-[14px] font-medium">{{
                     (d.stop ? 'Stop of {release}' : 'Deployment {release}')
-                      | t: { release: d.releaseId.slice(0, 7) }
+                      | t: { release: releaseLabel(d) }
                   }}</span>
                   <span class="text-[12.5px]" [style.color]="st.color">{{ st.label | t }}</span>
                 </div>
-                <span class="font-mono text-[11.5px] text-mute">{{
-                  duration(d.startedAt, d.finishedAt)
-                }}</span>
+                <span class="flex items-center gap-3">
+                  <span class="font-mono text-[11.5px] text-mute">{{
+                    duration(d.startedAt, d.finishedAt)
+                  }}</span>
+                  <a class="btn btn-xs" [routerLink]="['deployments', d.id]">{{ 'Details' | t }}</a>
+                </span>
               </div>
               <div class="grid grid-cols-6 gap-1.5 max-sm:grid-cols-3 max-sm:gap-y-4">
                 @for (s of pipeline(); track s.label) {
@@ -388,9 +391,14 @@ const LIVE_POLL_MS = 15_000;
               >
                 <span class="font-mono text-[11.5px] text-mute">{{ shortDate(d.startedAt) }}</span>
                 <div class="min-w-0 truncate">
-                  <span class="font-mono text-[11.5px] text-fg2">{{
-                    d.releaseId.slice(0, 7)
-                  }}</span>
+                  <a
+                    class="font-mono text-[11.5px] text-fg2 hover:underline"
+                    [routerLink]="['deployments', d.id]"
+                    [attr.aria-label]="
+                      'Open deployment {release}' | t: { release: releaseLabel(d) }
+                    "
+                    >{{ releaseLabel(d) }}</a
+                  >
                   <!-- A long cause is cut by the row: the whole of it is in the title. -->
                   <span class="ml-2 text-fg3" [attr.title]="d.error ? (d.error | t) : null">{{
                     d.error ?? (d.stop ? 'stop' : d.trigger) | t
@@ -935,6 +943,14 @@ export class ApplicationPage {
       .catch(() => {
         this.releases.set([]);
       });
+  }
+
+  /**
+   * The number of the release a deployment ran (#3), as the agent actions and the deployment page
+   * name it; the start of its id while the releases are not loaded, or for an older release.
+   */
+  protected releaseLabel(deployment: Deployment): string {
+    return this.deploymentLabels().get(deployment.id) ?? deployment.releaseId.slice(0, 7);
   }
 
   protected actor(deployment: Deployment): string {

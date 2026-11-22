@@ -468,4 +468,21 @@ describe('organizations and roles in Chromium', () => {
     await owner.getByRole('heading', { name: 'edge-browser', exact: true, level: 1 }).waitFor();
     expect(problems).toEqual([]);
   });
+
+  it('opens a deployment from its application and shows its timeline (#265)', async () => {
+    const application = `/orgs/${organizationId}/projects/${projectId}/environments/${environmentId}/applications/${applicationId}`;
+    await owner.goto(`${application}?tab=deployments`);
+    await owner
+      .getByRole('link', { name: /^Open deployment / })
+      .first()
+      .click();
+    await owner
+      .getByRole('heading', { name: /^Deployment (#\d+|[0-9a-f]{7})$/, level: 1 })
+      .waitFor();
+    await owner.getByText('Deployment queued').waitFor();
+    await owner.waitForLoadState('networkidle');
+    await accessible(owner);
+    expect(await owner.locator('main').innerText()).toContain('Timeline');
+    expect(problems).toEqual([]);
+  });
 });

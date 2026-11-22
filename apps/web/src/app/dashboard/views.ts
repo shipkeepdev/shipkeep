@@ -10,7 +10,6 @@ export const VIEW_PATHS: Readonly<Partial<Record<string, readonly string[]>>> = 
   data: ['databases'],
   db: ['databases', 'sample'],
   service: ['services', 'sample'],
-  deploy: ['deployments', 'sample'],
   obs: ['observability'],
   audit: ['audit'],
   access: ['members'],

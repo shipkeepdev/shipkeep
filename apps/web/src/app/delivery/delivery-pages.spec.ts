@@ -768,7 +768,8 @@ describe('delivery screens', () => {
     expect(element().querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain(
       'Deployments',
     );
-    expect(deploymentsText()).toContain('Deployment abcdef1');
+    // Named by its release number, like the agent actions and the deployment page (#265).
+    expect(deploymentsText()).toContain('Deployment #4');
     expect(deploymentsText()).not.toContain('Deployment 0190f5a');
   });
 

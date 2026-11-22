@@ -9,6 +9,8 @@ export type DomainStatus = Schema<'DomainDto'>;
 export type Replica = Schema<'ReplicaDto'>;
 export type Release = Schema<'ReleaseDto'>;
 export type AgentAction = Schema<'AgentActionDto'>;
+export type DeploymentTimeline = Schema<'DeploymentTimelineDto'>;
+export type DeploymentStep = Schema<'DeploymentStepDto'>;
 export type ApplicationMetrics = Schema<'ApplicationMetricsDto'>;
 export type MetricsRange = '1h' | '24h' | '7d';
 
@@ -173,6 +175,31 @@ export class DeliveryApi extends WorkspaceApi {
         ),
       )
     ).items;
+  }
+  deployment(
+    environment: EnvironmentRef,
+    applicationId: string,
+    deploymentId: string,
+  ): Promise<Deployment> {
+    return this.required(() =>
+      this.client.GET(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}',
+        { params: { path: { ...environment, applicationId, deploymentId } } },
+      ),
+    );
+  }
+  /** What one deployment went through: its steps and agent actions, oldest first (#265). */
+  timeline(
+    environment: EnvironmentRef,
+    applicationId: string,
+    deploymentId: string,
+  ): Promise<DeploymentTimeline> {
+    return this.required(() =>
+      this.client.GET(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/timeline',
+        { params: { path: { ...environment, applicationId, deploymentId } } },
+      ),
+    );
   }
   cancel(
     environment: EnvironmentRef,

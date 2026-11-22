@@ -1838,6 +1838,24 @@ export const FR: Readonly<Record<string, string>> = {
   '− Current version · + Your draft': '− Version actuelle · + Votre brouillon',
   '✓ 0041_vat_rounding         applied': '✓ 0041_vat_rounding         appliquée',
   '✓ 0042_invoice_pdf_export   applied': '✓ 0042_invoice_pdf_export   appliquée',
+  'Deployment not found': 'Déploiement introuvable',
+  'This deployment does not exist in this application, or you cannot see it.':
+    "Ce déploiement n'existe pas dans cette application, ou vous ne pouvez pas le voir.",
+  'This deployment could not be read.': "Ce déploiement n'a pas pu être lu.",
+  Timeline: 'Chronologie',
+  'steps and agent actions': 'étapes et actions des agents',
+  'No step recorded for this deployment.': 'Aucune étape enregistrée pour ce déploiement.',
+  'Only the first 200 agent actions are listed.':
+    'Seules les 200 premières actions des agents sont listées.',
+  'Build output and the output of the release command will appear here with builds and log collection.':
+    'La sortie du build et celle de la commande de release apparaîtront ici avec les builds et la collecte des logs.',
+  'by {name}': 'par {name}',
+  'Stop queued': 'Arrêt mis en file',
+  'Deployment queued': 'Déploiement mis en file',
+  Details: 'Détails',
+  'Open deployment {release}': 'Ouvrir le déploiement {release}',
+  Starting: 'Démarrage',
+  Draining: 'Drainage',
   'Server not found': 'Serveur introuvable',
   'This server does not exist in this organization, or you cannot see it.':
     "Ce serveur n'existe pas dans cette organisation, ou vous ne pouvez pas le voir.",
