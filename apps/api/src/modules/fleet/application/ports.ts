@@ -133,6 +133,12 @@ export interface AgentActionStore {
     beforeId: string | undefined,
     limit: number,
   ): Promise<AgentActionEntry[]>;
+  /** The deployment's actions, oldest first, at most `limit`. */
+  forDeployment(
+    organizationId: string,
+    deploymentId: string,
+    limit: number,
+  ): Promise<AgentActionEntry[]>;
 }
 export const AGENT_ACTION_STORE = Symbol('AgentActionStore');
 
