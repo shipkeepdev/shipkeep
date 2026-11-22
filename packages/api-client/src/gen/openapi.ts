@@ -532,6 +532,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getNode"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}/metrics": {
         readonly parameters: {
             readonly query?: never;
@@ -574,6 +590,22 @@ export type paths = {
         readonly get?: never;
         readonly put?: never;
         readonly post: operations["removeNode"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}/replicas": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listNodeReplicas"];
+        readonly put?: never;
+        readonly post?: never;
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -1693,6 +1725,11 @@ export type components = {
             readonly pendingExpiresAt: string | null;
             readonly recoveryCodesRemaining: number;
         };
+        readonly NamedRefDto: {
+            /** Format: uuid */
+            readonly id: string;
+            readonly name: string;
+        };
         readonly NodeDto: {
             /** Format: date-time */
             readonly createdAt: string;
@@ -1740,6 +1777,41 @@ export type components = {
             readonly items: readonly components["schemas"]["NodeDto"][];
             /** Format: uuid */
             readonly nextCursor: string | null;
+        };
+        readonly NodeReplicaDto: {
+            readonly application: components["schemas"]["NamedRefDto"];
+            readonly container: string;
+            /** @description CPU reserved on the server, in millicores. */
+            readonly cpuMillis: number;
+            readonly environment: components["schemas"]["NamedRefDto"];
+            /** Format: uuid */
+            readonly id: string;
+            /** @description Memory reserved on the server, in bytes. */
+            readonly memoryBytes: number;
+            /** Format: date-time */
+            readonly observedAt: string | null;
+            /** Format: date-time */
+            readonly placedAt: string;
+            readonly project: components["schemas"]["NamedRefDto"];
+            /** Format: uuid */
+            readonly releaseId: string;
+            readonly replica: number;
+            /**
+             * @description What the agent last saw; null until it has seen the container.
+             * @enum {string|null}
+             */
+            readonly state: "created" | "running" | "paused" | "restarting" | "exited" | "dead" | "missing" | null;
+            /**
+             * @description Why its agent stopped it itself (ADR 0022).
+             * @enum {string|null}
+             */
+            readonly stopReason: "disk_limit" | null;
+        };
+        readonly NodeReplicaListDto: {
+            /** @description By application name, at most 200. */
+            readonly items: readonly components["schemas"]["NodeReplicaDto"][];
+            /** @description True when the server runs more replicas than listed. */
+            readonly truncated: boolean;
         };
         readonly OrganizationCreatedDto: {
             readonly organization: components["schemas"]["OrganizationDto"];
@@ -2981,6 +3053,28 @@ export interface operations {
             };
         };
     };
+    readonly getNode: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly nodeId: string;
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+        };
+    };
     readonly nodeMetrics: {
         readonly parameters: {
             readonly query?: {
@@ -3062,6 +3156,28 @@ export interface operations {
                     readonly [name: string]: unknown;
                 };
                 content?: never;
+            };
+        };
+    };
+    readonly listNodeReplicas: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly nodeId: string;
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["NodeReplicaListDto"];
+                };
             };
         };
     };

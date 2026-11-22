@@ -1662,6 +1662,51 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/nodes/{nodeId}": {
+      "get": {
+        "operationId": "getNode",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/nodes": {
       "get": {
         "operationId": "listNodes",
@@ -4857,6 +4902,51 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/nodes/{nodeId}/replicas": {
+      "get": {
+        "operationId": "listNodeReplicas",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeReplicaListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/metrics": {
       "get": {
         "operationId": "applicationMetrics",
@@ -7978,6 +8068,132 @@
         },
         "required": [
           "items"
+        ]
+      },
+      "NamedRefDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ]
+      },
+      "NodeReplicaDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "releaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "replica": {
+            "type": "integer"
+          },
+          "container": {
+            "type": "string"
+          },
+          "cpuMillis": {
+            "type": "integer",
+            "description": "CPU reserved on the server, in millicores."
+          },
+          "memoryBytes": {
+            "type": "integer",
+            "description": "Memory reserved on the server, in bytes."
+          },
+          "placedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "application": {
+            "$ref": "#/components/schemas/NamedRefDto"
+          },
+          "project": {
+            "$ref": "#/components/schemas/NamedRefDto"
+          },
+          "environment": {
+            "$ref": "#/components/schemas/NamedRefDto"
+          },
+          "state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "created",
+              "running",
+              "paused",
+              "restarting",
+              "exited",
+              "dead",
+              "missing",
+              null
+            ],
+            "description": "What the agent last saw; null until it has seen the container."
+          },
+          "stopReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "disk_limit",
+              null
+            ],
+            "description": "Why its agent stopped it itself (ADR 0022)."
+          },
+          "observedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "releaseId",
+          "replica",
+          "container",
+          "cpuMillis",
+          "memoryBytes",
+          "placedAt",
+          "application",
+          "project",
+          "environment",
+          "state",
+          "stopReason",
+          "observedAt"
+        ]
+      },
+      "NodeReplicaListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "By application name, at most 200.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeReplicaDto"
+            }
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when the server runs more replicas than listed."
+          }
+        },
+        "required": [
+          "items",
+          "truncated"
         ]
       },
       "MetricPointDto": {
