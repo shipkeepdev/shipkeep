@@ -217,6 +217,8 @@ describe('role binding mutations over HTTP', () => {
       .set('Origin', origin)
       .send(body)
       .expect(401);
+    // The refusals above count as attempts: without a reset, a fast run meets the delay (429).
+    await resetLimits();
     await post(owner, `${projectPath()}/bindings`, {
       ...body,
       password: 'incorrect fixture passphrase',
