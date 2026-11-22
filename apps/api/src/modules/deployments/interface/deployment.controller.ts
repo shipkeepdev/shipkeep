@@ -25,6 +25,8 @@ import {
   deploymentDto,
   DeploymentListDto,
   DeploymentPathDto,
+  deploymentStepDto,
+  DeploymentTimelineDto,
   QueuedDeploymentDto,
   releaseDto,
   ReleaseListDto,
@@ -93,6 +95,28 @@ export class DeploymentController {
         path.deploymentId,
       ),
     );
+  }
+
+  /** Steps and agent actions of one deployment, for its page (#265). */
+  @Get(`${APPLICATION}/deployments/:deploymentId/timeline`)
+  @RequireTenant('environment.read', 'environment')
+  @AllowApiToken('environment.read')
+  @ApiOkResponse({ type: DeploymentTimelineDto })
+  async getDeploymentTimeline(
+    @Req() request: IdentityRequest,
+    @Param() path: DeploymentPathDto,
+  ): Promise<DeploymentTimelineDto> {
+    const timeline = await this.deployments.timeline(
+      resourceContext(request),
+      target(path),
+      path.applicationId,
+      path.deploymentId,
+    );
+    return {
+      steps: timeline.steps.map(deploymentStepDto),
+      actions: timeline.actions.map(agentActionDto),
+      truncated: timeline.truncated,
+    };
   }
 
   @Post(`${APPLICATION}/deployments/:deploymentId/cancel`)

@@ -4398,6 +4398,81 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/timeline": {
+      "get": {
+        "operationId": "getDeploymentTimeline",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "deploymentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeploymentTimelineDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/cancel": {
       "post": {
         "operationId": "cancelDeployment",
@@ -7731,103 +7806,68 @@
           "items"
         ]
       },
-      "DeleteApplicationDto": {
+      "DeploymentStepDto": {
         "type": "object",
         "properties": {
-          "confirmation": {
-            "type": "string",
-            "maxLength": 2048,
-            "description": "Confirmation token for `application.delete` on this application (SPEC 3.6)."
-          }
-        },
-        "required": [
-          "confirmation"
-        ]
-      },
-      "ReplicaDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "releaseId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "replica": {
-            "type": "integer"
-          },
-          "nodeId": {
-            "type": "string",
-            "format": "uuid"
-          },
-          "nodeName": {
-            "type": "string"
-          },
-          "container": {
-            "type": "string"
-          },
-          "state": {
+          "from": {
             "type": [
               "string",
               "null"
             ],
             "enum": [
-              "created",
-              "running",
-              "paused",
-              "restarting",
-              "exited",
-              "dead",
-              "missing",
+              "queued",
+              "building",
+              "built",
+              "releasing",
+              "scheduling",
+              "starting",
+              "health_checking",
+              "switching",
+              "draining",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "rolled_back",
               null
-            ],
-            "description": "What the agent last saw; null until it has seen the container."
+            ]
           },
-          "stopReason": {
-            "type": [
-              "string",
-              "null"
-            ],
+          "to": {
+            "type": "string",
             "enum": [
-              "disk_limit",
-              null
-            ],
-            "description": "Why its agent stopped it itself: disk_limit when it wrote more than its disk budget (ADR 0022)."
+              "queued",
+              "building",
+              "built",
+              "releasing",
+              "scheduling",
+              "starting",
+              "health_checking",
+              "switching",
+              "draining",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "rolled_back"
+            ]
           },
-          "observedAt": {
+          "at": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the deployment entered `to`."
+          },
+          "reason": {
             "type": [
               "string",
               "null"
             ],
-            "format": "date-time"
+            "maxLength": 512,
+            "description": "For `failed`."
           }
         },
         "required": [
-          "id",
-          "releaseId",
-          "replica",
-          "nodeId",
-          "nodeName",
-          "container",
-          "state",
-          "stopReason",
-          "observedAt"
-        ]
-      },
-      "ReplicaListDto": {
-        "type": "object",
-        "properties": {
-          "items": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/ReplicaDto"
-            }
-          }
-        },
-        "required": [
-          "items"
+          "from",
+          "to",
+          "at",
+          "reason"
         ]
       },
       "AgentActionResultDto": {
@@ -8029,6 +8069,133 @@
           "createdAt",
           "updatedAt",
           "completedAt"
+        ]
+      },
+      "DeploymentTimelineDto": {
+        "type": "object",
+        "properties": {
+          "steps": {
+            "description": "Audited state changes, oldest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeploymentStepDto"
+            }
+          },
+          "actions": {
+            "description": "Agent actions the deployment requested, oldest first, at most 200.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AgentActionDto"
+            }
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when the deployment requested more actions than listed."
+          }
+        },
+        "required": [
+          "steps",
+          "actions",
+          "truncated"
+        ]
+      },
+      "DeleteApplicationDto": {
+        "type": "object",
+        "properties": {
+          "confirmation": {
+            "type": "string",
+            "maxLength": 2048,
+            "description": "Confirmation token for `application.delete` on this application (SPEC 3.6)."
+          }
+        },
+        "required": [
+          "confirmation"
+        ]
+      },
+      "ReplicaDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "releaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "replica": {
+            "type": "integer"
+          },
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nodeName": {
+            "type": "string"
+          },
+          "container": {
+            "type": "string"
+          },
+          "state": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "created",
+              "running",
+              "paused",
+              "restarting",
+              "exited",
+              "dead",
+              "missing",
+              null
+            ],
+            "description": "What the agent last saw; null until it has seen the container."
+          },
+          "stopReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "disk_limit",
+              null
+            ],
+            "description": "Why its agent stopped it itself: disk_limit when it wrote more than its disk budget (ADR 0022)."
+          },
+          "observedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "releaseId",
+          "replica",
+          "nodeId",
+          "nodeName",
+          "container",
+          "state",
+          "stopReason",
+          "observedAt"
+        ]
+      },
+      "ReplicaListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReplicaDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "AgentActionPageDto": {

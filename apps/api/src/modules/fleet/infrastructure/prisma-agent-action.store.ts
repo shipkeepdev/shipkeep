@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 
 import { EnvelopeService } from '../../../platform/crypto/envelope.service';
-import type { AgentAction } from '../../../platform/prisma/generated/client';
+import type { AgentAction, Prisma } from '../../../platform/prisma/generated/client';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { AgentActionStore } from '../application/ports';
 import type {
@@ -117,29 +117,23 @@ export class PrismaAgentActionStore implements AgentActionStore {
       where: { organizationId, applicationId, ...(beforeId ? { id: { lt: beforeId } } : {}) },
       orderBy: { id: 'desc' },
       take: limit,
-      select: {
-        id: true,
-        nodeId: true,
-        kind: true,
-        state: true,
-        step: true,
-        attempts: true,
-        result: true,
-        error: true,
-        applicationId: true,
-        deploymentId: true,
-        createdAt: true,
-        updatedAt: true,
-        completedAt: true,
-        node: { select: { name: true } },
-      },
+      select: HISTORY,
     });
-    return rows.map(({ node, ...row }) => ({
-      ...row,
-      nodeName: node.name,
-      state: row.state as AgentActionState,
-      result: row.result ?? null,
-    }));
+    return rows.map(entry);
+  }
+
+  async forDeployment(
+    organizationId: string,
+    deploymentId: string,
+    limit: number,
+  ): Promise<AgentActionEntry[]> {
+    const rows = await this.database.client.agentAction.findMany({
+      where: { organizationId, deploymentId },
+      orderBy: { id: 'asc' },
+      take: limit,
+      select: HISTORY,
+    });
+    return rows.map(entry);
   }
 
   private async record(row: AgentAction): Promise<AgentActionRecord> {
@@ -163,4 +157,34 @@ function scope(organizationId: string): string {
 }
 function purpose(id: string): string {
   return `agent_action:${id}`;
+}
+
+/** What a history read selects: never the encrypted payload. */
+const HISTORY = {
+  id: true,
+  nodeId: true,
+  kind: true,
+  state: true,
+  step: true,
+  attempts: true,
+  result: true,
+  error: true,
+  applicationId: true,
+  deploymentId: true,
+  createdAt: true,
+  updatedAt: true,
+  completedAt: true,
+  node: { select: { name: true } },
+} as const;
+
+function entry({
+  node,
+  ...row
+}: Prisma.AgentActionGetPayload<{ select: typeof HISTORY }>): AgentActionEntry {
+  return {
+    ...row,
+    nodeName: node.name,
+    state: row.state as AgentActionState,
+    result: row.result ?? null,
+  };
 }

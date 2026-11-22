@@ -3,7 +3,10 @@ import { DEPLOYMENT_STATES } from '@shipkeep/domain';
 import { IsString, Length, Matches } from 'class-validator';
 
 import { ApplicationPathDto } from '../../apps/interface/application.dto';
+
+import { AgentActionDto } from './agent-action.dto';
 import { OBSERVED_STATES, type ReplicaStatus, STOP_REASONS } from '../domain/observations';
+import type { DeploymentStep } from '../domain/timeline';
 import { DEPLOYMENT_TRIGGERS, type DeploymentRecord, type Release } from '../domain/release';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
@@ -135,4 +138,28 @@ export function releaseDto(release: Release): ReleaseDto {
     createdBy: release.createdBy,
     createdAt: release.createdAt.toISOString(),
   };
+}
+
+export class DeploymentStepDto {
+  @ApiProperty({ type: String, nullable: true, enum: DEPLOYMENT_STATES }) from!: string | null;
+  @ApiProperty({ enum: DEPLOYMENT_STATES }) to!: string;
+  @ApiProperty({ format: 'date-time', description: 'When the deployment entered `to`.' })
+  at!: string;
+  @ApiProperty({ type: String, nullable: true, maxLength: 512, description: 'For `failed`.' })
+  reason!: string | null;
+}
+export class DeploymentTimelineDto {
+  @ApiProperty({ type: [DeploymentStepDto], description: 'Audited state changes, oldest first.' })
+  steps!: DeploymentStepDto[];
+  @ApiProperty({
+    type: [AgentActionDto],
+    description: 'Agent actions the deployment requested, oldest first, at most 200.',
+  })
+  actions!: AgentActionDto[];
+  @ApiProperty({ description: 'True when the deployment requested more actions than listed.' })
+  truncated!: boolean;
+}
+
+export function deploymentStepDto(step: DeploymentStep): DeploymentStepDto {
+  return { from: step.from, to: step.to, at: step.at.toISOString(), reason: step.reason };
 }

@@ -53,6 +53,8 @@ const STATES: Readonly<Partial<Record<OperationState, AgentActionState>>> = {
 const STEP = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
 /** Largest history page; callers may ask for one more row to learn whether another page exists. */
 export const MAX_HISTORY_PAGE = 100;
+/** Most actions one deployment's timeline lists; callers may ask for one more. */
+export const MAX_DEPLOYMENT_ACTIONS = 200;
 
 /**
  * Durable action queue between the control plane and its agents (PLAN M1.4a2). Delivery is at
@@ -161,6 +163,26 @@ export class AgentActions {
       throw new InvalidInputError('invalid_agent_action_page', 'Invalid agent action page.');
     const entries = await this.transaction.runTenant(organizationId, () =>
       this.store.forApplication(organizationId, applicationId, beforeId, limit),
+    );
+    return entries.map(actionView);
+  }
+
+  /**
+   * The deployment's actions, oldest first, with a safe summary (#265). The caller checks read
+   * access to the deployment's application; this only scopes rows to the deployment.
+   */
+  async forDeployment(
+    organizationId: string,
+    deploymentId: string,
+    limit: number,
+  ): Promise<AgentActionView[]> {
+    if (
+      !isTenantId(deploymentId) ||
+      !(Number.isInteger(limit) && limit >= 1 && limit <= MAX_DEPLOYMENT_ACTIONS + 1)
+    )
+      throw new InvalidInputError('invalid_agent_action_page', 'Invalid agent action page.');
+    const entries = await this.transaction.runTenant(organizationId, () =>
+      this.store.forDeployment(organizationId, deploymentId, limit),
     );
     return entries.map(actionView);
   }
