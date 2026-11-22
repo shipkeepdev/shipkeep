@@ -1,5 +1,6 @@
 import { resolve } from 'node:path';
 
+import type { INestApplication } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { chromium, type BrowserContext } from 'playwright';
 
@@ -15,6 +16,8 @@ export async function browserApp(): Promise<{
   newContext: () => Promise<BrowserContext>;
   origin: string;
   messages: string[];
+  /** The API behind the pages, for setup a browser cannot do, such as an agent enrolling. */
+  app: INestApplication;
   close: () => Promise<void>;
 }> {
   const restore: Record<string, string | undefined> = {};
@@ -86,7 +89,14 @@ export async function browserApp(): Promise<{
       context.setDefaultTimeout(15_000);
       return context;
     };
-    return { context: await newContext(), newContext, origin, messages: smtp.messages, close };
+    return {
+      context: await newContext(),
+      newContext,
+      origin,
+      messages: smtp.messages,
+      app: backend.app,
+      close,
+    };
   } catch (error: unknown) {
     await close();
     throw error;
