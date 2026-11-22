@@ -199,6 +199,95 @@ describe('deployment page (#265)', () => {
     expect(reads.filter((path) => path.endsWith('/timeline'))).toHaveLength(2);
   });
 
+  it('reads the timeline again when it missed the step the deployment ended with', async () => {
+    // Read side by side, the timeline can come from just before the deployment finished.
+    let complete = false;
+    routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}/timeline`] = () =>
+      json(complete ? timeline : { ...timeline, steps: timeline.steps.slice(0, 3) });
+    await open(`${PAGE}/deployments/${DEPLOYMENT}`);
+    expect(element().textContent).not.toContain('failed · The image could not be pulled.');
+    complete = true;
+    await new Promise((resolve) => setTimeout(resolve, 3200));
+    await settle();
+    expect(element().textContent.replace(/\s+/g, ' ')).toContain(
+      'failed · The image could not be pulled.',
+    );
+    expect(reads.filter((path) => path.endsWith('/timeline'))).toHaveLength(2);
+  });
+
+  it('keeps following a running deployment after a read fails', async () => {
+    let phase: 'running' | 'failing' | 'done' = 'running';
+    routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}`] = () =>
+      phase === 'failing'
+        ? json({ status: 503 }, 503)
+        : json(
+            phase === 'running'
+              ? { ...deployment, state: 'starting', error: null, finishedAt: null }
+              : deployment,
+          );
+    await open(`${PAGE}/deployments/${DEPLOYMENT}`);
+    phase = 'failing';
+    await new Promise((resolve) => setTimeout(resolve, 3200));
+    await settle();
+    // What it showed stays.
+    expect(element().textContent).toContain('now · starting…');
+    phase = 'done';
+    await new Promise((resolve) => setTimeout(resolve, 3200));
+    await settle();
+    expect(element().textContent).not.toContain('now ·');
+    // Two polling rounds of 3 s each.
+  }, 15_000);
+
+  it('stops reading once the page is gone, even with a read on its way', async () => {
+    let release: (value: undefined) => void = () => undefined;
+    const held = new Promise<undefined>((resolve) => {
+      release = resolve;
+    });
+    const path = `${APP_PATH}/deployments/${DEPLOYMENT}`;
+    routes[`GET ${path}`] = async () => {
+      await held;
+      return json({ ...deployment, state: 'starting', error: null, finishedAt: null });
+    };
+    await open(`${PAGE}/deployments/${DEPLOYMENT}`);
+    await open(`${PAGE}?tab=deployments`);
+    release(undefined);
+    await new Promise((resolve) => setTimeout(resolve, 3200));
+    await settle();
+    expect(reads.filter((read) => read === path)).toHaveLength(1);
+  });
+
+  it('keeps the names of the deployment it shows when an earlier one answers late', async () => {
+    const OTHER = '0190f5a8-7b1c-7e2d-8f3a-0000000000d2';
+    const OTHER_PATH = `${BASE}/applications/${OTHER}`;
+    const named = routes[`GET ${APP_PATH}`];
+    const releases = routes[`GET ${APP_PATH}/releases`];
+    if (!named || !releases) throw new Error('missing route');
+    let release: (value: undefined) => void = () => undefined;
+    const held = new Promise<undefined>((resolve) => {
+      release = resolve;
+    });
+    routes[`GET ${APP_PATH}`] = async () => {
+      await held;
+      return named();
+    };
+    routes[`GET ${OTHER_PATH}`] = async () => {
+      const body: unknown = await (await named()).json();
+      return json({ ...(body as object), id: OTHER, name: 'other-api' });
+    };
+    routes[`GET ${OTHER_PATH}/releases`] = releases;
+    routes[`GET ${OTHER_PATH}/deployments/${DEPLOYMENT}`] = () => json(deployment);
+    routes[`GET ${OTHER_PATH}/deployments/${DEPLOYMENT}/timeline`] = () => json(timeline);
+    const other = `/orgs/${ORG}/projects/${PROJECT}/environments/${ENV}/applications/${OTHER}`;
+    await open(`${PAGE}/deployments/${DEPLOYMENT}`);
+    await open(`${other}/deployments/${DEPLOYMENT}`);
+    const text = () => element().textContent.replace(/\s+/g, ' ');
+    expect(text()).toContain('other-api · production');
+    release(undefined);
+    await settle();
+    expect(text()).toContain('other-api · production');
+    expect(text()).not.toContain('billing-api');
+  });
+
   it('names the project in the trail once the shell has it, even after the title', async () => {
     let release: (value: undefined) => void = () => undefined;
     const held = new Promise<undefined>((resolve) => {

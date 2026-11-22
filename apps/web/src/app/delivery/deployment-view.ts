@@ -1,4 +1,4 @@
-import { AMBER, BLUE, deploymentStatus, GREEN, GREY, RED, type Status } from '../dashboard/format';
+import { BLUE, deploymentStatus, RED, type Status } from '../dashboard/format';
 import { type IconName } from '../shell/icons';
 
 import { agentActionRow, timestamp } from './agent-action-rows';
@@ -47,12 +47,21 @@ const STEPS: Readonly<Partial<Record<Deployment['state'], { label: string; icon:
   draining: { label: 'Draining', icon: 'player-pause' },
 };
 
-const ENDINGS: Readonly<Partial<Record<Deployment['state'], Status>>> = {
-  succeeded: { label: 'live', color: GREEN },
-  failed: { label: 'failed', color: RED },
-  cancelled: { label: 'cancelled', color: GREY },
-  rolled_back: { label: 'rolled back', color: AMBER },
-};
+/** The states a deployment ends in; the timeline names them as the header does. */
+const ENDINGS: ReadonlySet<Deployment['state']> = new Set([
+  'succeeded',
+  'failed',
+  'cancelled',
+  'rolled_back',
+]);
+
+/**
+ * Whether the timeline already holds the step a finished deployment ended with. The page reads
+ * the deployment and its timeline side by side, so the timeline can lag one step behind.
+ */
+export function timelineEnded(deployment: Deployment, timeline: DeploymentTimeline): boolean {
+  return deployment.finishedAt !== null && timeline.steps.at(-1)?.to === deployment.state;
+}
 
 /** One deployment's page from what it went through (#265). Pure. */
 export function deploymentView(
@@ -85,7 +94,8 @@ export function deploymentView(
   // Steps first, then actions, in their own order, when two share an instant.
   const lines: (TimelineLine & { order: number })[] = [
     ...steps.map((step, index): TimelineLine & { order: number } => {
-      const ending = ENDINGS[step.to];
+      // A stop that succeeded is "stopped", not "live", as the header says.
+      const ending = ENDINGS.has(step.to) ? deploymentStatus(step.to, deployment.stop) : null;
       if (ending)
         return {
           key: `s${String(index)}`,

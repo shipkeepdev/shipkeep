@@ -27,10 +27,12 @@ import {
   type EnvironmentRef,
   type Release,
 } from './delivery-api';
-import { deploymentView, type Text } from './deployment-view';
+import { deploymentView, type Text, timelineEnded } from './deployment-view';
 
 /** While a deployment runs, its page reads it again this often, as the application page does. */
 const POLL_MS = 3000;
+/** Once it has finished, how many more times the page reads a timeline still missing its end. */
+const SETTLE_READS = 3;
 
 /** 15 Deployment (#265): what one deployment went through, step by step, live while it runs. */
 @Component({
@@ -173,7 +175,11 @@ export class DeploymentPage {
   });
   protected readonly state = signal<'loading' | 'ready' | 'missing' | 'failed'>('loading');
   private readonly now = signal(Date.now());
+  /** Bumped by every read, so only the latest one lands. */
   #revision = 0;
+  /** Bumped when the page shows another deployment or goes away, so older names never land. */
+  #context = 0;
+  #settling = SETTLE_READS;
   #timer: ReturnType<typeof setTimeout> | undefined;
 
   private readonly environment = computed<EnvironmentRef>(() => ({
@@ -231,8 +237,13 @@ export class DeploymentPage {
       this.applicationId();
       this.deploymentId();
       untracked(() => {
+        this.#context++;
+        this.#settling = SETTLE_READS;
         this.deployment.set(null);
         this.timeline.set(null);
+        this.application.set(null);
+        this.environmentName.set(null);
+        this.releases.set([]);
         this.state.set('loading');
         void this.load();
         void this.loadNames();
@@ -263,6 +274,9 @@ export class DeploymentPage {
       this.now.set(Date.now());
     }, 1000);
     inject(DestroyRef).onDestroy(() => {
+      // A read still on its way must neither land nor plan the next one.
+      this.#revision++;
+      this.#context++;
       clearInterval(tick);
       clearTimeout(this.#timer);
     });
@@ -284,19 +298,37 @@ export class DeploymentPage {
       this.deployment.set(deployment);
       this.timeline.set(timeline);
       this.state.set('ready');
-      if (!deployment.finishedAt)
-        this.#timer = setTimeout(() => {
-          void this.load();
-        }, POLL_MS);
+      if (!deployment.finishedAt) {
+        this.#settling = SETTLE_READS;
+        this.#next();
+      } else if (!timelineEnded(deployment, timeline) && this.#settling > 0) {
+        // Read side by side, the timeline can miss the step the deployment just ended with.
+        this.#settling--;
+        this.#next();
+      }
     } catch (error: unknown) {
       if (revision !== this.#revision) return;
-      if (error instanceof IdentityRequestError && error.status === 404) this.state.set('missing');
-      else if (this.state() !== 'ready') this.state.set('failed');
+      if (error instanceof IdentityRequestError && error.status === 404) {
+        this.state.set('missing');
+      } else if (this.state() !== 'ready') {
+        this.state.set('failed');
+      } else if (!this.deployment()?.finishedAt) {
+        // A read failed while it ran: keep what the page shows and try again.
+        this.#next();
+      }
     }
+  }
+
+  /** Plans the next read; a later read or the page's end clears it. */
+  #next(): void {
+    this.#timer = setTimeout(() => {
+      void this.load();
+    }, POLL_MS);
   }
 
   /** Names for the header and the trail; the page stands without them. */
   private async loadNames(): Promise<void> {
+    const context = this.#context;
     const environment = this.environment();
     const [application, env, releases] = await Promise.all([
       this.api.application(environment, this.applicationId()).catch(() => null),
@@ -305,6 +337,7 @@ export class DeploymentPage {
         .catch(() => null),
       this.api.releases(environment, this.applicationId()).catch(() => []),
     ]);
+    if (context !== this.#context) return;
     this.application.set(application);
     this.environmentName.set(env?.name ?? null);
     this.releases.set(releases);

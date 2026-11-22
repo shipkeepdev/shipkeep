@@ -1,5 +1,5 @@
 import { type AgentAction, type Deployment, type DeploymentTimeline } from './delivery-api';
-import { deploymentView, stepDuration } from './deployment-view';
+import { deploymentView, stepDuration, timelineEnded } from './deployment-view';
 
 const at = (second: number) => new Date(Date.UTC(2026, 10, 22, 10, 0, second)).toISOString();
 const deployment: Deployment = {
@@ -86,6 +86,40 @@ describe('deployment view (#265)', () => {
   it('names a stop as such', () => {
     const view = deploymentView({ ...deployment, stop: true }, timeline);
     expect(view.lines[0]?.parts).toEqual([{ t: 'Stop queued' }]);
+  });
+
+  it('ends a stop that succeeded as stopped, as the header does', () => {
+    const steps = [
+      { from: null, to: 'queued' as const, at: at(0), reason: null },
+      { from: 'queued' as const, to: 'succeeded' as const, at: at(3), reason: null },
+    ];
+    const stopped = deploymentView(
+      { ...deployment, stop: true, state: 'succeeded', error: null, finishedAt: at(3) },
+      { steps, actions: [], truncated: false },
+    );
+    expect(stopped.status.label).toBe('stopped');
+    expect(stopped.lines.at(-1)?.parts).toEqual([{ t: 'stopped' }]);
+    // An ordinary deployment that succeeded is live; a stop that failed stays failed.
+    const live = deploymentView(
+      { ...deployment, state: 'succeeded', error: null, finishedAt: at(3) },
+      { steps, actions: [], truncated: false },
+    );
+    expect(live.lines.at(-1)?.parts).toEqual([{ t: 'live' }]);
+    expect(deploymentView({ ...deployment, stop: true }, timeline).lines.at(-1)?.parts).toEqual([
+      { t: 'failed' },
+      { t: 'The image could not be pulled.' },
+    ]);
+  });
+
+  it('knows when the timeline holds the step the deployment ended with', () => {
+    expect(timelineEnded(deployment, timeline)).toBe(true);
+    // Read side by side, the timeline can still miss it.
+    expect(timelineEnded(deployment, { ...timeline, steps: timeline.steps.slice(0, 3) })).toBe(
+      false,
+    );
+    expect(timelineEnded({ ...deployment, state: 'starting', finishedAt: null }, timeline)).toBe(
+      false,
+    );
   });
 
   it('writes durations in whole units', () => {
