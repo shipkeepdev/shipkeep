@@ -242,9 +242,9 @@ describe('deployment page (#265)', () => {
 
   it('opens from the application page', async () => {
     await open(`${PAGE}?tab=deployments`);
-    const link = element().querySelector<HTMLAnchorElement>(
-      'a[aria-label="Open deployment 4f2c1a9"]',
-    );
+    const link = element().querySelector<HTMLAnchorElement>('a[aria-label="Open deployment #4"]');
     expect(link?.getAttribute('href')).toBe(`${PAGE}/deployments/${DEPLOYMENT}`);
+    // The list names it by its release number, as the page does.
+    expect(link?.textContent).toBe('#4');
   });
 });
