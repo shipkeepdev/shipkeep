@@ -147,4 +147,26 @@ describe('server view (#264)', () => {
       null,
     ]);
   });
+
+  it('reads a full disk from a reported zero, and an unreported free space as unknown', () => {
+    const disk = (facts: Record<string, unknown>) =>
+      serverView(
+        ORG,
+        { ...node, facts: { disk_bytes: 100 * 2 ** 30, ...facts } },
+        {
+          items: [],
+          truncated: false,
+        },
+        NOW,
+      ).stats[2];
+    expect(disk({ disk_free_bytes: 0 })).toMatchObject({
+      value: { values: { v: '100 GiB' } },
+      sub: { t: 'of {total} · {percent} %', values: { total: '100 GiB', percent: 100 } },
+      color: 'oklch(0.80 0.12 80)',
+    });
+    const unknown = disk({});
+    expect(unknown.value).toEqual({ t: '{v}', values: { v: '—' } });
+    expect(unknown.sub).toEqual({ t: 'of {total}', values: { total: '100 GiB' } });
+    expect(unknown.color).toBeUndefined();
+  });
 });

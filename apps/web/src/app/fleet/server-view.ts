@@ -85,7 +85,18 @@ export function serverView(
   const cpu = number('cpu_count');
   const memory = number('memory_bytes');
   const disk = number('disk_bytes');
-  const free = number('disk_free_bytes') ?? 0;
+  // A reported 0 means a full disk; an absent value is unknown, never read as full.
+  const reportedFree = facts['disk_free_bytes'];
+  const free =
+    disk !== null &&
+    typeof reportedFree === 'number' &&
+    Number.isFinite(reportedFree) &&
+    reportedFree >= 0 &&
+    reportedFree <= disk
+      ? reportedFree
+      : null;
+  const used = disk !== null && free !== null ? disk - free : null;
+  const usedPercent = disk !== null && used !== null ? percent(used, disk) : null;
   const reservedCpu = number('reserved_cpu_millis');
   const reservedMemory = number('reserved_memory_bytes');
   const status = nodeStatus(node.status);
@@ -129,16 +140,17 @@ export function serverView(
       {
         icon: 'database',
         label: 'Disk',
-        value: raw(disk === null ? '—' : (bytes(disk - free) ?? '0')),
+        value: raw(used === null ? '—' : (bytes(used) ?? '0')),
         sub:
           disk === null
             ? undefined
-            : {
-                t: 'of {total} · {percent} %',
-                values: { total: bytes(disk) ?? '', percent: percent(disk - free, disk) },
-              },
-        color:
-          disk !== null && percent(disk - free, disk) >= 85 ? 'oklch(0.80 0.12 80)' : undefined,
+            : usedPercent === null
+              ? { t: 'of {total}', values: { total: bytes(disk) ?? '' } }
+              : {
+                  t: 'of {total} · {percent} %',
+                  values: { total: bytes(disk) ?? '', percent: usedPercent },
+                },
+        color: usedPercent !== null && usedPercent >= 85 ? 'oklch(0.80 0.12 80)' : undefined,
       },
       {
         icon: 'box',
