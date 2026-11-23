@@ -40,7 +40,7 @@ Losing the control plane's server loses the organizations, applications, release
 
 1. It needs explicit confirmation (`replace`, or `--replace-this-installation`).
 2. It stops the control plane.
-3. It restores the database in one transaction, so a failure leaves the database as it was.
+3. It restores the database into a new one, `shipkeep_restore`, in one transaction. Only once it is complete does it take the name `shipkeep`; the current database is kept as `shipkeep_before_restore_<time>`. A failure leaves the current database as it was. (`pg_restore --clean` over the current database is not used: it cannot drop what the job queue's partitioned tables inherit.)
 4. Only then, it replaces the key. The key it replaces is kept beside it.
 5. `docker compose up -d` runs the migrations, which bring an older backup to this version, and gives the database login its grants again.
 

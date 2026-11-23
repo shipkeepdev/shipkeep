@@ -214,7 +214,7 @@ sudo ./backup.sh restore shipkeep-20261123-1000.age backup-identity.txt
 It asks you to type `replace`, then:
 
 1. stops the control plane;
-2. restores the database in one transaction, so a failure leaves it as it was;
+2. restores the database into a new one, which takes the place of the current database only once complete; the current one is kept as `shipkeep_before_restore_…`, to drop once you are satisfied (the script prints the command);
 3. replaces the key-encryption key, keeping the previous one beside it;
 4. starts everything again, which applies the migrations of this version.
 

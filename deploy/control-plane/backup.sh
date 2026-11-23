@@ -87,21 +87,33 @@ case ${1:-} in
       [[ $answer == replace ]] || fail 'Nothing was changed.'
     fi
     read_compose_files
-    # Nothing may write to the database while it is replaced.
+    psql() {
+      compose exec -T postgres psql --username=shipkeep_admin --dbname=postgres --no-psqlrc \
+        --set=ON_ERROR_STOP=1 --quiet "$@"
+    }
+    # Nothing may use the database while it is replaced.
     compose stop control-plane
-    # The database first, in one transaction: a failure leaves it as it was.
+    # The database first, into a new one: the current database is untouched until it is complete.
+    # (pg_restore --clean cannot drop what the job queue's partitioned tables inherit.)
+    psql --command='DROP DATABASE IF EXISTS shipkeep_restore' --command='CREATE DATABASE shipkeep_restore OWNER shipkeep_admin' ||
+      fail 'Cannot prepare the database to restore into. The control plane is stopped: start it with docker compose up -d.'
     if ! cat -- "$identity" "$archive" | compose run --rm -T backup restore-database |
-      compose exec -T postgres pg_restore --username=shipkeep_admin --dbname=shipkeep \
-        --clean --if-exists --single-transaction --exit-on-error; then
+      compose exec -T postgres pg_restore --username=shipkeep_admin --dbname=shipkeep_restore \
+        --single-transaction --exit-on-error; then
       fail 'The database was not restored, and was left as it was. The control plane is stopped: run this again, or start it with docker compose up -d.'
     fi
+    # Then it takes the place of the current one, which is kept under another name.
+    previous=shipkeep_before_restore_$(date -u +%Y%m%d%H%M%S)
+    psql --command="ALTER DATABASE shipkeep RENAME TO $previous" --command='ALTER DATABASE shipkeep_restore RENAME TO shipkeep' ||
+      fail 'The restored database could not take the place of the current one. The control plane is stopped: run this again.'
     # Then the key, which the restored secrets are encrypted with. The one it replaces is kept.
     if ! cat -- "$identity" "$archive" | compose run --rm -T backup restore-key --replace-this-installation; then
-      fail 'The database is restored but its key is not: run this again before starting the control plane.'
+      fail "The database is restored but its key is not: run this again before starting the control plane. The previous database is $previous."
     fi
     # Migrations bring an older backup to this version; the database login gets its grants again.
     compose up -d
     printf 'Restored. Servers reconnect on their own once the domain of this installation points to this machine.\n' >&2
+    printf 'The previous database is kept as %s; drop it once you are satisfied:\n  docker compose exec postgres dropdb --username=shipkeep_admin %s\n' "$previous" "$previous" >&2
     ;;
   *)
     usage
