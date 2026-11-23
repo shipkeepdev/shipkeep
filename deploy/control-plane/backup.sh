@@ -100,6 +100,8 @@ case ${1:-} in
     if ! cat -- "$identity" "$archive" | compose run --rm -T backup restore-database |
       compose exec -T postgres pg_restore --username=shipkeep_admin --dbname=shipkeep_restore \
         --single-transaction --exit-on-error; then
+      # What was restored, if anything, goes: nothing of a refused archive is kept.
+      psql --command='DROP DATABASE IF EXISTS shipkeep_restore' >/dev/null 2>&1 || true
       fail 'The database was not restored, and was left as it was. The control plane is stopped: run this again, or start it with docker compose up -d.'
     fi
     # Then it takes the place of the current one, which is kept under another name. Both renames
