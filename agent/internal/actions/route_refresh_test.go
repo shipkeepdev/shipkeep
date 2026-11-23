@@ -117,6 +117,57 @@ func TestARefusedRouteIsNotCompletedByTheRefresh(t *testing.T) {
 	if got := dialsOf(router); !slices.Equal(got, []string{"172.18.0.5:8080"}) {
 		t.Fatalf("the refresh changed the route Caddy kept: %v (record %+v)", got, records.record(routeKey))
 	}
+	// The record describes the route Caddy kept again, so that route still follows its container.
+	if record := records.record(routeKey); !reflect.DeepEqual(record, oneContainer()) {
+		t.Fatalf("record after a refused upsert: %+v, want the one before it", record)
+	}
+	if err := refresh(t, router, fakeContainers{"sk-api-1": runningContainer(true, at("172.18.0.9"))}); err != nil {
+		t.Fatal(err)
+	}
+	if got := dialsOf(router); !slices.Equal(got, []string{"172.18.0.9:8080"}) {
+		t.Fatalf("the route Caddy kept no longer follows its container: %v", got)
+	}
+
+	// A refused first route leaves no record behind.
+	router.routes, records.routes = map[string]caddy.Route{}, map[string]journal.RouteRecord{}
+	if succeeded(routeRequest(t, router, &slept, upsert(route))) {
+		t.Fatal("refused route reported applied")
+	}
+	if len(records.routes) != 0 {
+		t.Fatalf("a refused first route kept a record: %v", records.routes)
+	}
+}
+
+// The same addresses in another order still carry their own weights: the refresh compares the
+// weights Caddy holds, not only the dials.
+func TestRouteRefresherRewritesWeightsThatMovedWithTheirAddresses(t *testing.T) {
+	record := journal.RouteRecord{
+		Upstreams: []journal.RouteUpstream{
+			{Container: "sk-api-1", Port: 8080, Weight: 99},
+			{Container: "sk-api-2", Port: 8080, Weight: 1},
+			{Container: "sk-api-3", Port: 8080, Weight: 1},
+		},
+		// sk-api-2 was down: the route holds sk-api-1 and sk-api-3.
+		Written: [][]string{{"172.18.0.5:8080", "172.18.0.7:8080"}},
+	}
+	router, _ := recordedRoute(routedTo([]string{"172.18.0.5:8080", "172.18.0.7:8080"}, 99, 1), record)
+	// sk-api-1 is gone, and sk-api-2 came back at the address sk-api-1 had.
+	stopped := runningContainer(true, at("172.18.0.9"))
+	stopped.State.Running = false
+	containers := fakeContainers{
+		"sk-api-1": stopped,
+		"sk-api-2": runningContainer(true, at("172.18.0.5")),
+		"sk-api-3": runningContainer(true, at("172.18.0.7")),
+	}
+	if err := refresh(t, router, containers); err != nil {
+		t.Fatal(err)
+	}
+	router.mu.Lock()
+	handler := router.routes[routeKey].Handle[0]
+	router.mu.Unlock()
+	if got := installedWeights(handler); !slices.Equal(got, []int{1, 1}) {
+		t.Fatalf("weights %v: sk-api-2 serves the first address with sk-api-1's weight", got)
+	}
 }
 
 func TestARouteKeepsItsRecordUntilCaddyRemovesIt(t *testing.T) {

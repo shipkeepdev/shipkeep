@@ -280,7 +280,14 @@ func TestRealCaddyFollowsARestartedContainer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a was not started again: %v", err)
 	}
-	if got := answer(); got != "a" {
+	// The pass starts a's process and moves the route; whoami takes a moment to listen.
+	deadline := time.Now().Add(30 * time.Second)
+	got := answer()
+	for got != "a" && time.Now().Before(deadline) {
+		time.Sleep(250 * time.Millisecond)
+		got = answer()
+	}
+	if got != "a" {
 		t.Fatalf("after reconciliation the route answered %q, want a (a moved from %s to %s)", got, before, after)
 	}
 }

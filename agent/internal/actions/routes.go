@@ -145,14 +145,29 @@ func upsertRoute(router Router, containers Containers, book *RouteBook, sleep fu
 				// A route to local containers is recorded before Caddy gets it, with the dials it is
 				// about to hold. If the write fails, the old route holds none of them, and
 				// reconciliation leaves it as it is rather than give it the new upstreams.
+				var before journal.RouteRecord
+				var hadRecord, recorded bool
 				if book != nil && len(local) > 0 {
+					if before, hadRecord, err = book.Store.RouteRecord(ctx, desired.ID); err != nil {
+						return journal.Outcome{}, fmt.Errorf("read route record: %w", err)
+					}
 					record := journal.RouteRecord{Upstreams: asked, Written: [][]string{dials(desired)}}
 					if err := book.Store.SetRouteRecord(ctx, desired.ID, record, time.Now()); err != nil {
 						return journal.Outcome{}, fmt.Errorf("record route: %w", err)
 					}
+					recorded = true
 				}
 				// One unit, ordered so that a failed write leaves every host reachable (ApplyRoute).
 				if err := router.ApplyRoute(ctx, desired, add, remove); err != nil {
+					// Caddy kept the route it had: the record describes that one again, so that it
+					// keeps following its containers. A crash before this point resumes the action.
+					if recorded {
+						if hadRecord {
+							err = errors.Join(err, book.Store.SetRouteRecord(ctx, desired.ID, before, time.Now()))
+						} else {
+							err = errors.Join(err, book.Store.ClearRouteRecord(ctx, desired.ID))
+						}
+					}
 					return journal.Outcome{}, fmt.Errorf("apply route: %w", err)
 				}
 				// The maintenance page and address upstreams have nothing to follow.
@@ -323,6 +338,30 @@ func proxyHandler(upstreams []caddy.Upstream, weights []int, weighted bool) cadd
 		handler.LoadBalancing = &caddy.LoadBalancing{SelectionPolicy: map[string]any{"policy": "weighted_round_robin", "weights": weights}}
 	}
 	return handler
+}
+
+// installedWeights reads the weights of a weighted round robin handler, as the agent wrote them or
+// as Caddy gives them back (JSON numbers); none for an unweighted one.
+func installedWeights(handler caddy.Handler) []int {
+	if handler.LoadBalancing == nil {
+		return nil
+	}
+	weights := []int{}
+	switch values := handler.LoadBalancing.SelectionPolicy["weights"].(type) {
+	case []int:
+		weights = append(weights, values...)
+	case []any:
+		for _, value := range values {
+			number, ok := value.(float64)
+			if !ok {
+				return nil
+			}
+			weights = append(weights, int(number))
+		}
+	default:
+		return nil
+	}
+	return weights
 }
 
 // resolveUpstreams returns a copy of template with every container upstream resolved to the
@@ -499,7 +538,13 @@ func (r RouteRefresher) refresh(ctx context.Context, id string) error {
 			return route, false
 		}
 		held = current
-		if slices.Equal(current, wanted) {
+		// Positional weights: the same addresses may now belong to other upstreams.
+		wantedWeights := []int(nil)
+		weighted := slices.ContainsFunc(record.Upstreams, func(u journal.RouteUpstream) bool { return u.Weight != 1 })
+		if weighted && len(wanted) > 0 {
+			wantedWeights = weights
+		}
+		if slices.Equal(current, wanted) && slices.Equal(installedWeights(route.Handle[0]), wantedWeights) {
 			return route, false
 		}
 		// Recorded first: if the write to Caddy fails, or the record after it, the next pass finds
@@ -515,7 +560,6 @@ func (r RouteRefresher) refresh(ctx context.Context, id string) error {
 			for _, dial := range wanted {
 				upstreams = append(upstreams, caddy.Upstream{Dial: dial})
 			}
-			weighted := slices.ContainsFunc(record.Upstreams, func(u journal.RouteUpstream) bool { return u.Weight != 1 })
 			route.Handle = []caddy.Handler{proxyHandler(upstreams, weights, weighted)}
 		}
 		held = wanted
