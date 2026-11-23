@@ -14,6 +14,8 @@ module.exports = {
       target: 'node',
       compiler: 'tsc',
       main: './src/main.ts',
+      // Instance backup (ADR 0026): a program of its own, which loads nothing of the application.
+      additionalEntryPoints: [{ entryName: 'backup', entryPath: './src/backup.ts' }],
       tsConfig: './tsconfig.app.json',
       optimization: false,
       outputHashing: 'none',

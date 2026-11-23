@@ -3,6 +3,7 @@ package actions
 import (
 	"context"
 	"errors"
+	"maps"
 	"reflect"
 	"slices"
 	"strings"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/shipkeepdev/shipkeep/agent/internal/caddy"
 	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
 	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
@@ -23,8 +25,90 @@ type fakeRouter struct {
 	plain      []string
 	server     bool
 	containers fakeContainers
-	// failUpsert makes UpsertRoute fail, as Caddy refusing the new route would.
-	failUpsert bool
+	// failUpsert makes UpsertRoute fail, as Caddy refusing the new route would; failUpdate and
+	// failRemove do the same for UpdateRoute and RemoveRoute.
+	failUpsert, failUpdate, failRemove bool
+	// book, when set, keeps the record of each route, as the journal does.
+	book *RouteBook
+	// onWrite runs as each route write starts, with the router's lock not held.
+	onWrite func()
+}
+
+// fakeRecords is the journal's record of routes to local containers (ADR 0017).
+type fakeRecords struct {
+	mu     sync.Mutex
+	routes map[string]journal.RouteRecord
+	// failSet makes the next SetRouteRecord calls fail, one per entry: true fails that call.
+	failSet []bool
+}
+
+func (f *fakeRecords) SetRouteRecord(_ context.Context, route string, record journal.RouteRecord, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if len(f.failSet) > 0 {
+		fail := f.failSet[0]
+		f.failSet = f.failSet[1:]
+		if fail {
+			return errors.New("journal: disk I/O error")
+		}
+	}
+	if f.routes == nil {
+		f.routes = map[string]journal.RouteRecord{}
+	}
+	f.routes[route] = journal.RouteRecord{Upstreams: slices.Clone(record.Upstreams), Written: slices.Clone(record.Written)}
+	return nil
+}
+
+func (f *fakeRecords) ClearRouteRecord(_ context.Context, route string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.routes, route)
+	return nil
+}
+
+func (f *fakeRecords) RouteRecord(_ context.Context, route string) (journal.RouteRecord, bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	record, ok := f.routes[route]
+	return record, ok, nil
+}
+
+func (f *fakeRecords) RecordedRoutes(context.Context) ([]string, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	routes := slices.Collect(maps.Keys(f.routes))
+	slices.Sort(routes)
+	return routes, nil
+}
+
+func (f *fakeRecords) record(route string) journal.RouteRecord {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.routes[route]
+}
+
+func (f *fakeRouter) wrote() {
+	if f.onWrite != nil {
+		f.onWrite()
+	}
+}
+
+// UpdateRoute changes a stored route as the Caddy client does, under the fake's lock.
+func (f *fakeRouter) UpdateRoute(_ context.Context, id string, change func(caddy.Route) (caddy.Route, bool)) error {
+	f.wrote()
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	route, ok := f.routes[id]
+	if !ok {
+		return nil
+	}
+	if updated, write := change(route); write {
+		if f.failUpdate {
+			return errors.New("caddy PATCH: status 500")
+		}
+		f.routes[id] = updated
+	}
+	return nil
 }
 
 // fakeContainers answers container inspections for route upstreams (ADR 0017).
@@ -33,9 +117,16 @@ type fakeContainers map[string]docker.Container
 func (f fakeContainers) Container(_ context.Context, ref string) (docker.Container, error) {
 	container, ok := f[ref]
 	if !ok {
-		return docker.Container{}, errors.New("no such container")
+		return docker.Container{}, docker.ErrNotFound
 	}
 	return container, nil
+}
+
+// downContainers is a Docker daemon that does not answer.
+type downContainers struct{}
+
+func (downContainers) Container(context.Context, string) (docker.Container, error) {
+	return docker.Container{}, errors.New("docker GET: connection refused")
 }
 
 func runningContainer(managed bool, networks map[string]string) docker.Container {
@@ -66,6 +157,7 @@ func (f *fakeRouter) Route(_ context.Context, id string) (caddy.Route, bool, err
 
 // ApplyRoute follows the order of the Caddy client: removals, the route, then additions.
 func (f *fakeRouter) ApplyRoute(ctx context.Context, route caddy.Route, add, remove []string) error {
+	f.wrote()
 	if err := f.SetPlainHosts(ctx, nil, remove); err != nil {
 		return err
 	}
@@ -79,8 +171,12 @@ func (f *fakeRouter) ApplyRoute(ctx context.Context, route caddy.Route, add, rem
 	return f.SetPlainHosts(ctx, add, nil)
 }
 func (f *fakeRouter) RemoveRoute(_ context.Context, id string) error {
+	f.wrote()
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.failRemove {
+		return errors.New("caddy DELETE: status 500")
+	}
 	delete(f.routes, id)
 	return nil
 }
@@ -102,7 +198,7 @@ func routeRequest(t *testing.T, router *fakeRouter, slept *[]time.Duration, req 
 		*slept = append(*slept, duration)
 		return nil
 	}
-	d := &Dispatcher{Journal: open(t), Handlers: RouteHandlers(router, router.containers, sleep), Epoch: func() uint64 { return 3 }}
+	d := &Dispatcher{Journal: open(t), Handlers: RouteHandlers(router, router.containers, router.book, sleep), Epoch: func() uint64 { return 3 }}
 	req.ActionId, req.IdempotencyKey, req.LeaseEpoch = testID, "route", 3
 	req.DeadlineUnixMs = time.Now().Add(time.Minute).UnixMilli()
 	out := &recorder{}

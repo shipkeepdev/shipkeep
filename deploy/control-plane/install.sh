@@ -697,7 +697,7 @@ main() {
     return 0
   fi
   read_image "$here/image"
-  for file in compose.yml compose.single-machine.yml Caddyfile; do
+  for file in compose.yml compose.single-machine.yml Caddyfile backup.sh; do
     [[ -f $here/$file && ! -L $here/$file ]] || fail "Run this installer from a release bundle: $file is missing."
   done
   assert_root_directory "$directory"
@@ -792,6 +792,8 @@ main() {
   assert_root_directory "$directory"
   writing=1
   install -m 0644 "$here/compose.yml" "$here/compose.single-machine.yml" "$here/Caddyfile" "$directory/"
+  # Instance backup and restore (ADR 0026).
+  install -m 0755 "$here/backup.sh" "$directory/"
   # What a run stopped before .env left behind: never used, since nothing started without .env.
   rm -f -- "$directory/.env.new" "$directory/install-state.new"
   # What --resume yes needs to finish, nothing secret, in place before .env: whoever finds .env

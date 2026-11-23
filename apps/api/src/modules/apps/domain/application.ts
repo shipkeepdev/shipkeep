@@ -39,6 +39,62 @@ export interface ApplicationConfig {
 }
 
 /**
+ * What the schema describes but no deployment applies yet (SPEC 2.2). Each is refused rather than
+ * ignored, so that a configuration never says something Shipkeep does not do: a volume that is not
+ * mounted loses what the application writes there at its next deployment. Leaving a field out, or
+ * saying what is already done (an empty list, `previews.enabled: false`, `strategy: rolling`), is
+ * accepted.
+ */
+const UNAPPLIED: readonly {
+  readonly field: string;
+  readonly what: string;
+  readonly why: string;
+  readonly present: (config: ShipkeepConfig) => boolean;
+}[] = [
+  {
+    field: '/volumes',
+    what: 'volumes',
+    why: 'nothing would be mounted, and what the application writes there would be lost at its next deployment.',
+    present: (config) => (config.volumes?.length ?? 0) > 0,
+  },
+  {
+    field: '/databases',
+    what: 'databases',
+    why: 'managed databases are planned.',
+    present: (config) => (config.databases?.length ?? 0) > 0,
+  },
+  {
+    field: '/previews',
+    what: 'previews',
+    why: 'preview environments are planned. Leave previews out, or set enabled: false.',
+    present: (config) => config.previews !== undefined && config.previews.enabled !== false,
+  },
+  {
+    field: '/deploy/strategy',
+    what: 'deploy.strategy: recreate',
+    why: 'every deployment starts the new replicas before it stops the previous ones (rolling).',
+    present: (config) => config.deploy?.strategy === 'recreate',
+  },
+  {
+    field: '/deploy/keep_images',
+    what: 'deploy.keep_images',
+    why: 'servers do not remove old images yet.',
+    present: (config) => config.deploy?.keep_images !== undefined,
+  },
+];
+
+/** Refuses a configuration that uses a field no deployment applies yet (`UNAPPLIED`). */
+export function assertConfigApplied(config: ShipkeepConfig): void {
+  const unapplied = UNAPPLIED.find((field) => field.present(config));
+  if (unapplied !== undefined)
+    throw new InvalidInputError(
+      'unsupported_config_field',
+      `${unapplied.what} is not supported yet: ${unapplied.why}`,
+      { field: unapplied.field },
+    );
+}
+
+/**
  * Validates a `shipkeep.yml` document (already parsed) for an application created through the API.
  * Only image sources are accepted until git and Compose sources land; the image reference itself
  * is checked by the schema. Errors list JSON pointers and schema messages, never input values.
@@ -55,6 +111,7 @@ export function applicationConfig(value: unknown): ApplicationConfig {
       'unsupported_application_source',
       'Only image applications (build.type: image) can be created for now.',
     );
+  assertConfigApplied(config);
   // Wildcards need DNS-01 (SPEC 2.2), which neither the agent nor the control plane offers yet.
   if (config.domains?.some((hostname) => hostname.startsWith('*.')))
     throw new InvalidInputError(

@@ -114,6 +114,8 @@
     ]
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "3.1164.0",
+    "@aws-sdk/lib-storage": "3.1164.0",
     "@bufbuild/protobuf": "2.16.0",
     "@connectrpc/connect": "^2.3.0",
     "@connectrpc/connect-node": "^2.3.0",
@@ -128,6 +130,7 @@
     "@shipkeep/config-schema": "workspace:*",
     "@shipkeep/domain": "workspace:*",
     "@shipkeep/proto-ts": "workspace:*",
+    "age-encryption": "0.3.1",
     "argon2": "0.44.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",

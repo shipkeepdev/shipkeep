@@ -223,7 +223,11 @@ export function configSection(key: string, data: SectionData): SectionCopy | nul
                 ]),
               },
             ]
-          : [note('No volume. Declare one under volumes: in shipkeep.yml.')],
+          : [
+              note(
+                'Volumes are not supported yet: a container keeps what it writes only until it is replaced, at the next deployment.',
+              ),
+            ],
       };
     case 'placement':
       return {
