@@ -19,6 +19,7 @@ import {
 import {
   type Application,
   type ApplicationTarget,
+  assertConfigApplied,
   assertDomainsAvailable,
 } from '../../apps/domain/application';
 import { domainsReleased } from '../../apps/domain/domain-events';
@@ -116,8 +117,10 @@ export class DeploymentCommands {
       target,
       applicationId,
       async (application) => {
-        // A configuration saved before the control plane's name was refused is refused here.
+        // A configuration saved before the control plane's name was refused is refused here, and so
+        // is one saved before the fields no deployment applies were refused.
         assertDomainsAvailable(application.config, [this.controlPlaneHost]);
+        assertConfigApplied(application.config);
         const draft = releaseDraft(application.config);
         const set = await this.secrets.list(target);
         assertSecretsSet(
