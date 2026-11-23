@@ -34,6 +34,10 @@ const (
 	// DiskBudgetLabel records the disk budget the agent enforces (ADR 0022). Only the agent sets
 	// it: labels from the control plane never start with "sk.".
 	DiskBudgetLabel = "sk.disk_bytes"
+	// ProbePortLabel records the one TCP port the spec declares, the application's own. An HTTP
+	// health probe uses it rather than guessing among the ports the image also exposes (a whoami
+	// image exposes 80 while the application listens on 8080). Only the agent sets it.
+	ProbePortLabel  = "sk.probe_port"
 	minDiskBytes    = 64 << 20
 	maxDiskBytes    = 1 << 40
 	maxWorkingDir   = 1024
@@ -92,6 +96,9 @@ func containerConfig(spec *agentv1.ContainerSpec, workloads Workloads) (string, 
 	ports, err := exposedPorts(spec.GetPorts())
 	if err != nil {
 		return "", docker.ContainerConfig{}, err
+	}
+	if port, ok := probePort(spec.GetPorts()); ok {
+		labels[ProbePortLabel] = strconv.FormatUint(uint64(port), 10)
 	}
 	host := docker.HostConfig{
 		NetworkMode: spec.GetNetwork(),
@@ -218,6 +225,20 @@ func containerMounts(input []*agentv1.Mount) ([]docker.Mount, error) {
 
 // exposedPorts declares container ports on the Docker network. Nothing is published on the host:
 // Caddy reaches containers over their network (SPEC 3.3).
+// probePort is the spec's TCP port when it declares exactly one.
+func probePort(input []*agentv1.PortMapping) (uint32, bool) {
+	var found []uint32
+	for _, port := range input {
+		if port.GetProtocol() != agentv1.PortMapping_PROTOCOL_UDP {
+			found = append(found, port.GetContainerPort())
+		}
+	}
+	if len(found) != 1 {
+		return 0, false
+	}
+	return found[0], true
+}
+
 func exposedPorts(input []*agentv1.PortMapping) (map[string]struct{}, error) {
 	if len(input) > maxPorts {
 		return nil, errInput

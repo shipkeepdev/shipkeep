@@ -144,6 +144,12 @@ func probeAddress(container docker.Container, port uint32) (netip.AddrPort, erro
 		if err != nil || !address.IsPrivate() {
 			continue
 		}
+		// The port the spec declared, when the agent recorded one: the image may expose others.
+		if port == 0 {
+			if value, err := strconv.ParseUint(container.Config.Labels[ProbePortLabel], 10, 16); err == nil && value != 0 {
+				port = uint32(value)
+			}
+		}
 		if port == 0 {
 			tcp := []string{}
 			for exposed := range container.Config.ExposedPorts {

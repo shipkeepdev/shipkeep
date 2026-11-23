@@ -3,6 +3,9 @@ version: '2'
 run:
   timeout: 5m
   tests: true
+  # The tests against a real Docker and Caddy (#16, #17) are linted like the others.
+  build-tags:
+    - integration
 
 linters:
   default: standard
