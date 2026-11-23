@@ -249,7 +249,7 @@ State-report collection (M1.6b1) reads Docker's complete managed-container inven
 
 `HealthCheck` probes a managed container from the agent:
 
-- **Target:** its private network address only, never loopback, link-local (for example cloud metadata) or public addresses. The port is the requested TCP port, or for HTTP the single exposed TCP port.
+- **Target:** its private network address only, never loopback, link-local (for example cloud metadata) or public addresses. The port is the requested TCP port. For HTTP, it is the one TCP port the container's spec declared, which the agent records at creation (label `sk.probe_port`), because the image may expose others; failing that, the single exposed TCP port.
 - **HTTP:** a `GET` that never follows redirects; 2xx and 3xx count as healthy. The path is absolute and not network-path, printable, at most 2048 bytes.
 - **Timing:** interval 1 s–1 min, timeout no longer than the interval, start period up to 10 min, thresholds 1–10, overall deadline up to 30 min.
 

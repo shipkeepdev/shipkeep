@@ -36,6 +36,25 @@ func create(t *testing.T, engine *fakeEngine, spec *agentv1.ContainerSpec) *agen
 	return run(t, engine, &agentv1.ActionRequest{Action: &agentv1.ActionRequest_CreateContainer{CreateContainer: &agentv1.CreateContainer{Spec: spec}}})
 }
 
+// Without exactly one TCP port in the spec, no port is recorded: the probe never guesses.
+func TestCreateContainerRecordsTheProbePortOnlyWhenItIsKnown(t *testing.T) {
+	for name, ports := range map[string][]*agentv1.PortMapping{
+		"no port":   nil,
+		"two ports": {{ContainerPort: 8080}, {ContainerPort: 9090}},
+		"udp only":  {{ContainerPort: 5353, Protocol: agentv1.PortMapping_PROTOCOL_UDP}},
+	} {
+		engine := newFakeEngine()
+		spec := validSpec()
+		spec.Ports = ports
+		if update := create(t, engine, spec); !succeeded(update) {
+			t.Fatalf("%s: create failed: %v", name, update)
+		}
+		if label, ok := engine.created[0].Labels[ProbePortLabel]; ok {
+			t.Fatalf("%s: probe port %q recorded", name, label)
+		}
+	}
+}
+
 func TestCreateContainerSendsOnlyConfinedSettings(t *testing.T) {
 	engine := newFakeEngine()
 	if update := create(t, engine, validSpec()); !succeeded(update) || update.GetResult().GetContainerId() != "csk-api-r42" {
@@ -56,7 +75,8 @@ func TestCreateContainerSendsOnlyConfinedSettings(t *testing.T) {
 	if _, ok := config.ExposedPorts["8080/tcp"]; !ok {
 		t.Fatal("port not exposed on the network")
 	}
-	if config.Labels[docker.ManagedLabel] != "true" || config.Labels[identityLabel] != "sk-api-r42" || len(config.Labels[specLabel]) != 64 {
+	if config.Labels[docker.ManagedLabel] != "true" || config.Labels[identityLabel] != "sk-api-r42" || len(config.Labels[specLabel]) != 64 ||
+		config.Labels[ProbePortLabel] != "8080" {
 		t.Fatalf("labels: %v", config.Labels)
 	}
 	if !slices.Contains(config.Env, "DATABASE_URL=postgres://private-secret") {
