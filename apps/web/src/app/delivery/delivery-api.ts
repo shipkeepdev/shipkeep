@@ -236,6 +236,27 @@ export class DeliveryApi extends WorkspaceApi {
       ),
     );
   }
+  /**
+   * Queues entering or leaving maintenance (ADR 0025): the routes serve the agent's maintenance
+   * page, or the replicas again. The replicas keep running either way.
+   */
+  maintenance(
+    environment: EnvironmentRef,
+    applicationId: string,
+    change: 'enter' | 'leave',
+  ): Promise<Deployment> {
+    return this.required(() =>
+      change === 'enter'
+        ? this.client.POST(
+            '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/maintenance/enter',
+            { params: { path: { ...environment, applicationId } } },
+          )
+        : this.client.POST(
+            '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/maintenance/leave',
+            { params: { path: { ...environment, applicationId } } },
+          ),
+    );
+  }
   /** Single-use token proving the user typed the application's exact name (SPEC 3.6). */
   async confirmDeletion(
     organizationId: string,

@@ -359,8 +359,11 @@ describe('delivery screens', () => {
       };
       await harness.navigateByUrl(danger);
       await settle();
-      // No sample row is left: only what the control plane can do.
-      expect(configText()).not.toContain('maintenance');
+      // Without a domain there is no route to show a maintenance page on.
+      expect(configText()).toContain(
+        'It has no domain, so there is no route to show a maintenance page on.',
+      );
+      expect(button('Enable')?.disabled).toBe(true);
       expect(configText()).toContain('Stop it first');
       expect(button('Delete')?.disabled).toBe(true);
       expect(button('Stop')?.disabled).toBe(false);
@@ -413,6 +416,120 @@ describe('delivery screens', () => {
       expect(card).toContain('Routes and replicas removed');
       expect(card).not.toContain('Health check');
       expect(card).not.toContain('live');
+    });
+
+    it('puts the application in maintenance after asking once more, and holds deploys until it leaves', async () => {
+      const live = { ...deployment('succeeded'), id: 'd-new', releaseId: 'r-new', stop: false };
+      const change = (state: string, maintenance: 'enter' | 'leave', id: string) => ({
+        ...deployment(state),
+        id,
+        releaseId: 'r-new',
+        stop: false,
+        maintenance,
+      });
+      let deployments: unknown[] = [live];
+      routes = {
+        [`GET ${BASE}/applications/${APP}`]: () => json(application),
+        [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: deployments }),
+        [`GET ${BASE}/applications/${APP}/replicas`]: () => json({ items: [replica] }),
+        [`GET ${BASE}/applications/${APP}/domains`]: () =>
+          json({
+            items: [
+              {
+                hostname: 'billing.example.com',
+                status: 'public',
+                addresses: ['203.0.113.4'],
+                match: 'serving',
+              },
+            ],
+          }),
+        [`POST ${BASE}/applications/${APP}/maintenance/enter`]: () => {
+          deployments = [change('queued', 'enter', 'd-enter'), live];
+          return json(change('queued', 'enter', 'd-enter'), 201);
+        },
+        [`POST ${BASE}/applications/${APP}/maintenance/leave`]: () =>
+          json(change('queued', 'leave', 'd-leave'), 201),
+      };
+      await harness.navigateByUrl(danger);
+      await settle();
+      expect(configText()).toContain('Caddy serves a maintenance page; containers keep running.');
+      await click('Enable');
+      // Visitors would lose the application: nothing is sent before the second click.
+      expect(posts()).toEqual([]);
+      await click('Keep it live');
+      await click('Enable');
+      await click('Enable it now');
+      expect(posts()).toEqual([`${BASE}/applications/${APP}/maintenance/enter`]);
+      expect(element().querySelector('.page-head .pill')?.textContent).toContain(
+        'entering maintenance',
+      );
+
+      deployments = [change('succeeded', 'enter', 'd-enter'), live];
+      sources[0]?.emit({ applicationId: APP });
+      await settle();
+      expect(element().querySelector('.page-head .pill')?.textContent).toContain('in maintenance');
+      // Deploying and rolling back wait until maintenance is left; the page says why.
+      const deploy = Array.from(element().querySelectorAll('.page-head button')).find((b) =>
+        b.textContent.includes('Deploy'),
+      ) as HTMLButtonElement | undefined;
+      expect(deploy?.disabled).toBe(true);
+      expect(element().querySelector('.note-warn')?.textContent).toContain(
+        'In maintenance: visitors see the maintenance page',
+      );
+      expect(element().querySelector('.page-head')?.textContent).not.toContain('Roll back');
+      expect(deploymentsText()).toContain('maintenance');
+      const card = element().querySelector('#panel-deployments .card')?.textContent ?? '';
+      expect(card).toContain('Maintenance of r-new');
+      expect(card).toContain('maintenance requested');
+      expect(card).toContain('Routes switched');
+      expect(card).not.toContain('Health check');
+
+      // Leaving needs no second click: it gives visitors the application back.
+      expect(configText()).toContain('Leave maintenance');
+      await click('Disable');
+      expect(posts().at(-1)).toBe(`${BASE}/applications/${APP}/maintenance/leave`);
+    });
+
+    it('keeps the second click of maintenance and stop disabled once a deployment has started', async () => {
+      const live = { ...deployment('succeeded'), id: 'd-new', releaseId: 'r-new', stop: false };
+      let deployments: unknown[] = [live];
+      routes = {
+        [`GET ${BASE}/applications/${APP}`]: () => json(application),
+        [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: deployments }),
+        [`GET ${BASE}/applications/${APP}/replicas`]: () => json({ items: [replica] }),
+        [`GET ${BASE}/applications/${APP}/domains`]: () =>
+          json({
+            items: [
+              {
+                hostname: 'billing.example.com',
+                status: 'public',
+                addresses: ['203.0.113.4'],
+                match: 'serving',
+              },
+            ],
+          }),
+      };
+      await harness.navigateByUrl(danger);
+      await settle();
+      await click('Enable');
+      await click('Stop');
+      const second = (label: string) =>
+        Array.from(element().querySelectorAll('button')).find(
+          (b) => b.textContent.trim() === label,
+        );
+      expect(second('Enable it now')?.disabled).toBe(false);
+      expect(second('Stop it now')?.disabled).toBe(false);
+
+      // A deployment starts while both questions are open: the server would refuse either change.
+      deployments = [
+        { ...deployment('queued'), id: 'd-next', releaseId: 'r-next', stop: false },
+        live,
+      ];
+      sources[0]?.emit({ applicationId: APP });
+      await settle();
+      expect(second('Enable it now')?.disabled).toBe(true);
+      expect(second('Stop it now')?.disabled).toBe(true);
+      expect(posts()).toEqual([]);
     });
 
     it('deletes a stopped application once its exact name is typed, then leaves the page', async () => {

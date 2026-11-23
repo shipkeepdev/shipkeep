@@ -49,6 +49,7 @@ Losing the control plane's server loses the organizations, applications, release
 1. It needs explicit confirmation (`replace`, or `--replace-this-installation`).
 2. It stops the control plane.
 3. It restores the database into a new one, `shipkeep_restore`, in one transaction. Only once it is complete does it take the name `shipkeep`, and the current database is kept as `shipkeep_before_restore_<time>`; both renames are one transaction. Sessions still open on the current database are ended first: the control plane is stopped, so they are connections it left behind, as when `up -d` recreates the network namespace it shares, and PostgreSQL refuses to rename a database in use. (`pg_restore --clean` over the current database is not used: it cannot drop what the job queue's partitioned tables inherit.)
+   - Before that, every session of the restored database is revoked, and every unused email link. They are as they were at the backup's time, so a session revoked since then would be live again. Everyone signs in again.
 4. Only then, it writes the backup key for the identity it was given, and replaces the key-encryption key. The key it replaces is kept beside it.
 5. `docker compose up -d` runs the migrations, which bring an older backup to this version, and gives the database login its grants again.
 
@@ -71,6 +72,6 @@ A backup from a newer version is refused: its newest migration must be one this 
 
 - The agents keep their certificates, and the restored database holds the same certificate authority and server identities. Once the domain points to the new machine, they reconnect without being enrolled again.
 - The operator copies archives off the server or sends them to S3, and keeps the identity somewhere else again.
-- Sessions are in the database, so they are in the archive and come back with it. Metrics (VictoriaMetrics) and Caddy's certificates are not in the archive: they are history, or obtained again.
+- A restore brings back the state of the backup's time. Sessions are in the archive, but the restore ends them all. What else changed since the backup comes back as it was: a password changed since works no more, the previous one works again, an API token revoked since is valid again, a member removed since is a member again. After a restore that follows a compromise, change those passwords again, revoke those tokens and remove those members. Metrics (VictoriaMetrics) and Caddy's certificates are not in the archive: they are history, or obtained again.
 - Running `keygen` again replaces the server's backup key for the backups that follow. Earlier archives open with the identity they were made for.
 - `.env` is not in the archive. A fresh installation has its own passwords, and the SMTP settings are typed again.

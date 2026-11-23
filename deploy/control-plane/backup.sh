@@ -19,6 +19,15 @@ fail() {
   exit 1
 }
 
+# The file being written, removed on any exit until it is renamed into place: an interrupted
+# keygen must not leave the identity on this server. So is the directory an archive fetched from
+# S3 waits in. A signal becomes an exit, which runs the trap.
+partial='' work=''
+trap '[[ -z $partial ]] || rm -f -- "$partial"; [[ -z $work ]] || rm -rf -- "$work"' EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
 usage() {
   fail 'Usage: ./backup.sh keygen IDENTITY_FILE | create ARCHIVE | create --s3 | list | check | restore ARCHIVE|s3:NAME IDENTITY_FILE [--replace-this-installation]'
 }
@@ -52,6 +61,8 @@ compose() {
 fresh() {
   [[ -n $1 ]] || usage
   [[ ! -e $1 && ! -L $1 ]] || fail "$1 exists: choose another name."
+  [[ ! -e $1.partial && ! -L $1.partial ]] || fail "$1.partial exists: an earlier run was stopped. Delete it first."
+  partial=$1.partial
 }
 
 case ${1:-} in
@@ -59,11 +70,9 @@ case ${1:-} in
     (($# == 2)) || usage
     fresh "$2"
     read_compose_files
-    compose run --rm -T backup keygen >"$2.partial" || {
-      rm -f -- "$2.partial"
-      fail 'The key pair was not created.'
-    }
-    mv -- "$2.partial" "$2"
+    compose run --rm -T backup keygen >"$partial" || fail 'The key pair was not created.'
+    mv -- "$partial" "$2"
+    partial=''
     printf 'Identity written to %s. Copy it off this server, then delete it here: restoring needs it.\n' "$2" >&2
     ;;
   create)
@@ -84,11 +93,11 @@ case ${1:-} in
       printf 'Backup stored as %s.\n' "$name" >&2
     else
       fresh "$2"
-      if ! dump | compose run --rm -T backup create >"$2.partial"; then
-        rm -f -- "$2.partial"
+      if ! dump | compose run --rm -T backup create >"$partial"; then
         fail 'The backup was not created; nothing was written.'
       fi
-      mv -- "$2.partial" "$2"
+      mv -- "$partial" "$2"
+      partial=''
       printf 'Backup written to %s. Copy it off this server.\n' "$2" >&2
     fi
     ;;
@@ -105,7 +114,6 @@ case ${1:-} in
     if [[ $archive == s3:* ]]; then
       # Fetched into a private directory: it is encrypted, and removed when this ends.
       work=$(mktemp -d)
-      trap 'rm -rf -- "$work"' EXIT
       compose run --rm -T backup-transfer download "${archive#s3:}" >"$work/archive.age" ||
         fail "Cannot fetch ${archive#s3:} from the S3 destination; nothing was changed."
       archive=$work/archive.age
@@ -117,22 +125,33 @@ case ${1:-} in
       IFS= read -r answer || answer=''
       [[ $answer == replace ]] || fail 'Nothing was changed.'
     fi
+    # psql DATABASE ARGUMENTS...
     psql() {
-      compose exec -T postgres psql --username=shipkeep_admin --dbname=postgres --no-psqlrc \
+      local database=$1
+      shift
+      compose exec -T postgres psql --username=shipkeep_admin --dbname="$database" --no-psqlrc \
         --set=ON_ERROR_STOP=1 --quiet "$@"
     }
     # Nothing may use the database while it is replaced.
     compose stop control-plane
     # The database first, into a new one: the current database is untouched until it is complete.
     # (pg_restore --clean cannot drop what the job queue's partitioned tables inherit.)
-    psql --command='DROP DATABASE IF EXISTS shipkeep_restore' --command='CREATE DATABASE shipkeep_restore OWNER shipkeep_admin' ||
+    psql postgres --command='DROP DATABASE IF EXISTS shipkeep_restore' --command='CREATE DATABASE shipkeep_restore OWNER shipkeep_admin' ||
       fail 'Cannot prepare the database to restore into. The control plane is stopped: start it with docker compose up -d.'
     if ! cat -- "$identity" "$archive" | compose run --rm -T backup restore-database |
       compose exec -T postgres pg_restore --username=shipkeep_admin --dbname=shipkeep_restore \
         --single-transaction --exit-on-error; then
       # What was restored, if anything, goes: nothing of a refused archive is kept.
-      psql --command='DROP DATABASE IF EXISTS shipkeep_restore' >/dev/null 2>&1 || true
+      psql postgres --command='DROP DATABASE IF EXISTS shipkeep_restore' >/dev/null 2>&1 || true
       fail 'The database was not restored, and was left as it was. The control plane is stopped: run this again, or start it with docker compose up -d.'
+    fi
+    # The restored database is as it was at the backup's time, so a session revoked since then would
+    # be live again. Every session ends, and so does every unused email link: people sign in again.
+    if ! psql shipkeep_restore --single-transaction \
+      --command='UPDATE user_sessions SET revoked_at = now() WHERE revoked_at IS NULL' \
+      --command='UPDATE identity_tokens SET used_at = now() WHERE used_at IS NULL' >/dev/null; then
+      psql postgres --command='DROP DATABASE IF EXISTS shipkeep_restore' >/dev/null 2>&1 || true
+      fail 'The sessions of the restored database could not be ended, so it was not used: the current database was left as it was. The control plane is stopped: run this again, or start it with docker compose up -d.'
     fi
     # Then it takes the place of the current one, which is kept under another name. Both renames
     # are one transaction: if either fails, shipkeep is still the current database. The control
@@ -140,7 +159,7 @@ case ${1:-} in
     # connection whose end never reached PostgreSQL, as when `up -d` recreates the namespace the
     # control plane shares. Those are ended first, or the rename would be refused.
     previous=shipkeep_before_restore_$(date -u +%Y%m%d%H%M%S)
-    psql --single-transaction \
+    psql postgres --single-transaction \
       --command="SELECT count(pg_terminate_backend(pid, 10000)) FROM pg_stat_activity WHERE datname = 'shipkeep' AND pid <> pg_backend_pid()" \
       --command="ALTER DATABASE shipkeep RENAME TO $previous" --command='ALTER DATABASE shipkeep_restore RENAME TO shipkeep' >/dev/null ||
       fail 'The restored database could not take the place of the current one, which was left as it was. The control plane is stopped: run this again, or start it with docker compose up -d.'
@@ -150,7 +169,7 @@ case ${1:-} in
     fi
     # Migrations bring an older backup to this version; the database login gets its grants again.
     compose up -d
-    printf 'Restored. Servers reconnect on their own once the domain of this installation points to this machine.\n' >&2
+    printf 'Restored. Servers reconnect on their own once the domain of this installation points to this machine. Every session was ended: everyone signs in again.\n' >&2
     printf 'The previous database is kept as %s; drop it once you are satisfied:\n  docker compose exec postgres dropdb --username=shipkeep_admin %s\n' "$previous" "$previous" >&2
     ;;
   *)
