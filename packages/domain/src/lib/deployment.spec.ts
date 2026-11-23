@@ -23,7 +23,7 @@ function deployment(
 ): Deployment {
   return { id: 'd', state, plan, startedAt: now, finishedAt: null, error: null };
 }
-function walk(plan: { build: boolean; release: boolean; stop?: boolean }): DeploymentState[] {
+function walk(plan: Deployment['plan']): DeploymentState[] {
   const states: DeploymentState[] = ['queued'];
   let current = deployment('queued', plan);
   while (current.state !== 'succeeded') {
@@ -81,6 +81,26 @@ describe('SPEC 5.1 deployment state machine', () => {
       state: 'succeeded',
       finishedAt: now,
     });
+  });
+
+  it('only switches routes to enter or leave maintenance (ADR 0025)', () => {
+    for (const maintenance of ['enter', 'leave'] as const) {
+      expect(walk({ build: false, release: false, maintenance })).toEqual([
+        'queued',
+        'switching',
+        'succeeded',
+      ]);
+      // Nothing is built, released, placed, started or drained, whatever the rest of the plan says.
+      expect(walk({ build: true, release: true, maintenance })).toEqual([
+        'queued',
+        'switching',
+        'succeeded',
+      ]);
+      const changing = deployment('queued', { build: false, release: false, maintenance });
+      expect(stop(changing, 'cancelled', null, now).routing).toBe('untouched');
+      // Interrupted while it switches, the routes go back to what they served.
+      expect(stop(advance(changing, now), 'failed', 'x', now).routing).toBe('restore_previous');
+    }
   });
 
   it('never advances a finished deployment and only rolls back a succeeded one', () => {
