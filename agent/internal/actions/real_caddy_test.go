@@ -12,8 +12,10 @@ package actions
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"strings"
 	"sync"
@@ -34,25 +36,37 @@ type load struct {
 	address  string
 	total    atomic.Int64
 	failures atomic.Int64
-	mu       sync.Mutex
+	// idleRaces counts requests sent again after their idle kept-alive connection was closed.
+	idleRaces atomic.Int64
+	mu        sync.Mutex
 	// names holds the replica that answered each request, in order, and errors the first failures.
 	names  []string
 	errors []string
 }
 
 func (l *load) get(ctx context.Context, client *http.Client) (int, string, error) {
+	status, body, _, err := l.traced(ctx, client)
+	return status, body, err
+}
+
+// traced also says whether the request went out on a kept-alive connection that was idle.
+func (l *load) traced(ctx context.Context, client *http.Client) (int, string, bool, error) {
+	var reusedIdle bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{GotConn: func(info httptrace.GotConnInfo) {
+		reusedIdle = info.Reused && info.WasIdle
+	}})
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+l.address+"/", nil)
 	if err != nil {
-		return 0, "", err
+		return 0, "", false, err
 	}
 	request.Host = itHost
 	response, err := client.Do(request)
 	if err != nil {
-		return 0, "", err
+		return 0, "", reusedIdle, err
 	}
 	defer response.Body.Close() //nolint:errcheck // read-only body
 	body, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
-	return response.StatusCode, string(body), err
+	return response.StatusCode, string(body), reusedIdle, err
 }
 
 func (l *load) run(ctx context.Context, clients int) *sync.WaitGroup {
@@ -61,13 +75,21 @@ func (l *load) run(ctx context.Context, clients int) *sync.WaitGroup {
 		wg.Go(func() {
 			client := &http.Client{Timeout: 10 * time.Second}
 			for ctx.Err() == nil {
-				status, body, err := l.get(context.WithoutCancel(ctx), client)
+				status, body, reusedIdle, err := l.traced(context.WithoutCancel(ctx), client)
+				// Caddy closes its idle keep-alive connections when its configuration changes, as
+				// any server may. A GET sent on one at that instant fails without having been
+				// served, and HTTP lets a client send it again on a new connection (RFC 9112,
+				// 9.3.1), as browsers do. That is the one failure retried, once; it is counted.
+				if err != nil && reusedIdle {
+					l.idleRaces.Add(1)
+					status, body, reusedIdle, err = l.traced(context.WithoutCancel(ctx), client)
+				}
 				l.total.Add(1)
 				l.mu.Lock()
 				if err != nil || status != http.StatusOK {
 					l.failures.Add(1)
 					if len(l.errors) < 5 {
-						l.errors = append(l.errors, strings.TrimSpace(errorText(status, err)))
+						l.errors = append(l.errors, fmt.Sprintf("[reused idle connection: %v] %s", reusedIdle, strings.TrimSpace(errorText(status, err))))
 					}
 				} else {
 					l.names = append(l.names, whoamiName(body))
@@ -164,6 +186,9 @@ func TestRealCaddySwitchesUnderLoadWithoutAFailedRequest(t *testing.T) {
 	defer traffic.mu.Unlock()
 	if failures := traffic.failures.Load(); failures != 0 {
 		t.Fatalf("%d of %d requests failed during the switch, first: %v", failures, traffic.total.Load(), traffic.errors)
+	}
+	if races := traffic.idleRaces.Load(); races != 0 {
+		t.Logf("%d requests were sent again after Caddy closed their idle connection", races)
 	}
 	if traffic.total.Load() < 100 {
 		t.Fatalf("only %d requests: the load was not constant", traffic.total.Load())
