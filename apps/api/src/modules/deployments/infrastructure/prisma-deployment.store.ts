@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { ShipkeepConfig } from '@shipkeep/config-schema';
-import { DEPLOYMENT_STATES, type DeploymentState } from '@shipkeep/domain';
+import { DEPLOYMENT_STATES, type DeploymentState, MAINTENANCE_CHANGES } from '@shipkeep/domain';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
@@ -136,6 +136,7 @@ export class PrismaDeploymentStore implements DeploymentStore {
         planBuild: record.plan.build,
         planRelease: record.plan.release,
         planStop: record.plan.stop === true,
+        planMaintenance: record.plan.maintenance ?? null,
         trigger,
         actorId,
         startedAt: now,
@@ -244,6 +245,7 @@ function deployment(row: {
   planBuild: boolean;
   planRelease: boolean;
   planStop: boolean;
+  planMaintenance: string | null;
   trigger: string;
   actorId: string | null;
   error: string | null;
@@ -253,6 +255,9 @@ function deployment(row: {
   const state = DEPLOYMENT_STATES.find((candidate) => candidate === row.state);
   const trigger = DEPLOYMENT_TRIGGERS.find((candidate) => candidate === row.trigger);
   if (!state || !trigger) throw new Error('Unknown deployment state or trigger in storage.');
+  const maintenance = MAINTENANCE_CHANGES.find((change) => change === row.planMaintenance);
+  if (row.planMaintenance !== null && !maintenance)
+    throw new Error('Unknown maintenance change in storage.');
   return {
     id: row.id,
     organizationId: row.organizationId,
@@ -263,6 +268,7 @@ function deployment(row: {
       build: row.planBuild,
       release: row.planRelease,
       ...(row.planStop ? { stop: true } : {}),
+      ...(maintenance ? { maintenance } : {}),
     },
     trigger,
     actorId: row.actorId,

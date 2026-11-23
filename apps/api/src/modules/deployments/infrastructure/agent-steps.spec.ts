@@ -7,7 +7,7 @@ import { containerPlan } from '../domain/container-plan';
 import type { PipelineStep } from '../domain/pipeline';
 
 import { agentAction, type SecretValues } from './agent-steps';
-import { plannedActions } from './agent-steps.vectors.spec-helpers';
+import { maintenanceActions, plannedActions } from './agent-steps.vectors.spec-helpers';
 
 const NODE = '0190f5a8-7b1c-7e2d-8f3a-00000000000a';
 const IMAGE = `ghcr.io/acme/billing@sha256:${'c'.repeat(64)}`;
@@ -294,7 +294,16 @@ describe('agent compatibility vectors', () => {
   it('matches the vectors the Go agent validates (agent/internal/actions)', async () => {
     // A full pipeline run, with a fixture secret: the Go test checks every action passes the
     // agent's own validation, so planner and agent cannot drift apart silently.
-    const planned = plannedActions();
+    // Then entering and leaving maintenance (ADR 0025): the page without upstream, then the
+    // replicas again.
+    const planned = [...plannedActions(), ...maintenanceActions()];
+    const routes = maintenanceActions().map((action) =>
+      action.case === 'upsertRoute' ? action.value.route : undefined,
+    );
+    expect(routes).toMatchObject([
+      { maintenance: true, upstreams: [], hosts: ['api.acme.example.com'] },
+      { maintenance: false, upstreams: [{ port: 3000 }], hosts: ['api.acme.example.com'] },
+    ]);
     // The application declares no `resources`: both containers carry the default limits, which
     // the agent requires (#301).
     const specs = planned.flatMap((action) =>

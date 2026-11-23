@@ -916,6 +916,38 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/maintenance/enter": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["enterMaintenance"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/maintenance/leave": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["leaveMaintenance"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/metrics": {
         readonly parameters: {
             readonly query?: never;
@@ -1514,6 +1546,11 @@ export type components = {
             readonly finishedAt: string | null;
             /** Format: uuid */
             readonly id: string;
+            /**
+             * @description Set for a maintenance change (ADR 0025): `enter` puts the maintenance page on the routes, `leave` the replicas again. Nothing is started or stopped. Null otherwise.
+             * @enum {string|null}
+             */
+            readonly maintenance: "enter" | "leave" | null;
             /** @description True when a release command runs before the switch. */
             readonly release: boolean;
             /** Format: uuid */
@@ -3848,6 +3885,54 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["DomainListDto"];
+                };
+            };
+        };
+    };
+    readonly enterMaintenance: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+        };
+    };
+    readonly leaveMaintenance: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["DeploymentDto"];
                 };
             };
         };
