@@ -209,7 +209,7 @@ sudo ./backup.sh create --s3    # streams straight to the storage; the archive i
 sudo ./backup.sh list
 ```
 
-The archive is encrypted before it leaves this server, and the container that uploads it never sees the key. An archive is never replaced. Keep backups as long as you need with the storage's lifecycle rules. For a backup every night at 03:00, add a line to root's crontab (`sudo crontab -e`):
+The archive is encrypted before it leaves this server, and the container that uploads it never sees the key. An archive is never replaced. Keep backups as long as you need with the storage's lifecycle rules. Whoever holds the access key can delete backups too: give it only the prefix, and turn on the bucket's versioning or object lock so that a deleted backup can be recovered. For a backup every night at 03:00, add a line to root's crontab (`sudo crontab -e`):
 
 ```text
 0 3 * * * cd /opt/shipkeep && ./backup.sh create --s3
