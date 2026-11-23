@@ -1,0 +1,136 @@
+/* The landing page's Cadre look (apps/landing/site.css) on Starlight: black, white and grays, Geist,
+   hairline borders, no colored accent. Light mode is the same palette turned over. */
+
+:root {
+  --sl-font: 'Geist Variable', 'Geist', system-ui, sans-serif;
+  --sl-font-mono: 'Geist Mono Variable', 'Geist Mono', ui-monospace, monospace;
+
+  --sl-color-white: #ffffff;
+  --sl-color-gray-1: #f2f2f3;
+  --sl-color-gray-2: #d6d6da;
+  --sl-color-gray-3: #a6a6ac;
+  --sl-color-gray-4: #8e8e94;
+  --sl-color-gray-5: #2a2a2e;
+  --sl-color-gray-6: #141417;
+  --sl-color-black: #000000;
+
+  --sl-color-accent-low: #1c1c1f;
+  --sl-color-accent: #f2f2f3;
+  --sl-color-accent-high: #ffffff;
+
+  --sl-color-text: #d6d6da;
+  --sl-color-bg-nav: #000000;
+  --sl-color-bg-sidebar: #000000;
+  --sl-color-hairline-light: #2a2a2e;
+  --sl-color-hairline: #232326;
+  --sl-color-hairline-shade: #000000;
+
+  --sl-text-h1: 2.5rem;
+  --sl-line-height-headings: 1.1;
+}
+
+:root[data-theme='light'] {
+  --sl-color-white: #000000;
+  --sl-color-gray-1: #0a0a0b;
+  --sl-color-gray-2: #2a2a2e;
+  --sl-color-gray-3: #5a5a60;
+  --sl-color-gray-4: #6e6e74;
+  --sl-color-gray-5: #dcdcdf;
+  --sl-color-gray-6: #f2f2f3;
+  --sl-color-gray-7: #f7f7f8;
+  --sl-color-black: #ffffff;
+
+  --sl-color-accent-low: #ececee;
+  --sl-color-accent: #0a0a0b;
+  --sl-color-accent-high: #000000;
+
+  --sl-color-text: #2a2a2e;
+  --sl-color-text-accent: #000000;
+  --sl-color-text-invert: #ffffff;
+  --sl-color-bg-nav: #ffffff;
+  --sl-color-bg-sidebar: #ffffff;
+  --sl-color-bg-accent: #0a0a0b;
+  --sl-color-hairline-light: #dcdcdf;
+  --sl-color-hairline: #e6e6e8;
+  --sl-color-hairline-shade: #e6e6e8;
+}
+
+/* The wordmark, as on the landing page: uppercase and spaced. */
+.site-title {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--sl-color-white);
+}
+.site-title img {
+  height: 1.4rem;
+  width: auto;
+}
+
+/* Headings: light and tight, like the landing's. */
+.sl-markdown-content :is(h1, h2, h3),
+h1#_top {
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  color: var(--sl-color-white);
+}
+h1#_top {
+  font-weight: 400;
+  letter-spacing: -0.035em;
+}
+
+/* Sidebar group labels: small uppercase, the landing's step labels. */
+.sidebar-content .group-label .large {
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--sl-color-gray-3);
+}
+.sidebar-content a[aria-current='page'],
+.sidebar-content a[aria-current='page']:hover {
+  background: var(--sl-color-gray-1);
+  color: var(--sl-color-black);
+  font-weight: 500;
+}
+
+/* Links are underlined and white, not blue. */
+.sl-markdown-content a:not(:where(.not-content *)) {
+  color: var(--sl-color-white);
+  text-decoration: underline;
+  text-decoration-color: var(--sl-color-gray-4);
+  text-underline-offset: 3px;
+}
+.sl-markdown-content a:not(:where(.not-content *)):hover {
+  text-decoration-color: var(--sl-color-white);
+}
+
+/* Asides keep to the palette: a hairline frame and a white rule, like the landing's status line,
+   whatever their kind. */
+.starlight-aside {
+  --sl-color-asides-text-accent: var(--sl-color-white);
+  --sl-color-asides-border: var(--sl-color-white);
+  background-color: var(--sl-color-gray-6);
+  border: 1px solid var(--sl-color-hairline-light);
+  border-inline-start: 0.25rem solid var(--sl-color-asides-border);
+  border-radius: 0 12px 12px 0;
+}
+
+/* Code and tables sit in hairline frames with round corners. */
+.sl-markdown-content :not(pre) > code {
+  border: 1px solid var(--sl-color-hairline-light);
+  border-radius: 6px;
+  padding: 0.1em 0.35em;
+}
+.sl-markdown-content table {
+  border-radius: 12px;
+}
+
+:focus-visible {
+  outline: 2px solid var(--sl-color-white);
+  outline-offset: 2px;
+}
+::selection {
+  background: rgba(152, 152, 156, 0.45);
+}

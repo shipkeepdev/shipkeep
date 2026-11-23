@@ -1,0 +1,4 @@
+dist/
+.astro/
+# Copied from the repository at build time (scripts/sync-repo-docs.mjs).
+src/content/docs/start/install.md
