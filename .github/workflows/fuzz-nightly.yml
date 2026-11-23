@@ -1,0 +1,49 @@
+name: fuzz-nightly
+
+# Every Go fuzz target the threat model asks for, five minutes each, every night (#244). A finding
+# fails the run and prints the failing input: add it to the target's corpus with the fix. A new
+# target goes in the matrix below.
+on:
+  schedule:
+    - cron: '23 2 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fuzz-nightly
+  cancel-in-progress: false
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { package: ./lib/config, target: FuzzLoad }
+          - { package: ./agent/internal/actions, target: FuzzRouteValidation }
+          - { package: ./agent/internal/actions, target: FuzzHealthSpec }
+          - { package: ./agent/internal/actions, target: FuzzContainerSpec }
+          - { package: ./agent/internal/actions, target: FuzzMountTargets }
+          - { package: ./agent/internal/actions, target: FuzzResourceAndImageValidation }
+          - { package: ./agent/internal/confirm, target: FuzzParseNeverAcceptsAlteredTokens }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: |
+            agent/go.sum
+            lib/go.sum
+      - name: Fuzz for five minutes
+        env:
+          PACKAGE: ${{ matrix.package }}
+          TARGET: ${{ matrix.target }}
+        run: go test -run='^$' -fuzz="^${TARGET}\$" -fuzztime=5m "$PACKAGE"
+      - name: Failing input
+        if: failure()
+        run: git ls-files --others --exclude-standard -- '*testdata/fuzz/*' | xargs -r tail -n +1

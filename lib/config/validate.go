@@ -10,6 +10,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
+	"math/big"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -202,12 +205,19 @@ func scalarValue(n *yaml.Node) (any, error) {
 	case "!!bool":
 		// yaml.v3 resolves only true/false (YAML 1.2 core) to !!bool; yes/no stay !!str.
 		return n.Value == "true", nil
-	case "!!int", "!!float":
-		num := json.Number(n.Value)
-		if _, err := num.Float64(); err != nil {
+	case "!!int":
+		value, ok := yamlInteger(n.Value)
+		if !ok {
 			return nil, fmt.Errorf("line %d: invalid number %q", n.Line, n.Value)
 		}
-		return num, nil
+		return json.Number(value.String()), nil
+	case "!!float":
+		value, err := strconv.ParseFloat(n.Value, 64)
+		if err != nil || math.IsInf(value, 0) || math.IsNaN(value) {
+			return nil, fmt.Errorf("line %d: invalid number %q", n.Line, n.Value)
+		}
+		// Written back in JSON's own form: `.5` or `+1.0` are YAML, not JSON (#244).
+		return json.Number(strconv.FormatFloat(value, 'g', -1, 64)), nil
 	case "!!binary", "!!timestamp", "!!merge":
 		return nil, fmt.Errorf("line %d: YAML tag %s is not allowed", n.Line, n.Tag)
 	default:
@@ -216,6 +226,33 @@ func scalarValue(n *yaml.Node) (any, error) {
 		}
 		return n.Value, nil
 	}
+}
+
+// yamlInteger reads an integer as the YAML 1.2 core schema writes it, as the control plane's
+// parser does: decimal with an optional sign and leading zeros (`01` is 1), `0o` octal or `0x`
+// hexadecimal. Anything else is refused rather than guessed.
+func yamlInteger(text string) (*big.Int, bool) {
+	sign, digits, base := "", text, 10
+	if strings.HasPrefix(digits, "-") || strings.HasPrefix(digits, "+") {
+		sign, digits = digits[:1], digits[1:]
+	}
+	if hex, ok := strings.CutPrefix(digits, "0x"); ok {
+		digits, base = hex, 16
+	} else if octal, ok := strings.CutPrefix(digits, "0o"); ok {
+		digits, base = octal, 8
+	}
+	// Only decimal takes a sign; with an explicit base, SetString refuses underscores.
+	if digits == "" || (sign != "" && base != 10) || strings.ContainsAny(digits, "+-") {
+		return nil, false
+	}
+	value, ok := new(big.Int).SetString(digits, base)
+	if !ok {
+		return nil, false
+	}
+	if sign == "-" {
+		value.Neg(value)
+	}
+	return value, true
 }
 
 // collectIssues flattens the validator's error tree into leaf issues with JSON pointers.
