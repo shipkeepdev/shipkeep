@@ -220,7 +220,7 @@ It asks you to type `replace`, then:
 
 Point the domain to the new machine: the servers reconnect on their own, with the identity they already have. A backup from a newer version is refused. Sessions come back with the database. Metrics, Caddy's certificate and the `.env` settings do not: the SMTP settings are typed again.
 
-If a step fails, the script says what state it left and stops there, with the control plane stopped. Until the restored database takes the place of the current one, the current one is unchanged. If the key step fails after that, the restored database is in place, with this installation's key, which cannot read it: run the restore again before starting the control plane. The previous database is kept under the name the script prints.
+If a step fails, the script says what state it left and stops there, with the control plane stopped. Until the restored database takes the place of the current one, the current one is unchanged. If the key step fails after that, the restored database is in place, and the key file holds this installation's key or the restored one, never neither: run the restore again before starting the control plane. The previous database is kept under the name the script prints.
 
 ### Back up the key-encryption key
 

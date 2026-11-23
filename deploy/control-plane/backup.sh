@@ -111,7 +111,7 @@ case ${1:-} in
       fail 'The restored database could not take the place of the current one, which was left as it was. The control plane is stopped: run this again, or start it with docker compose up -d.'
     # Then the key, which the restored secrets are encrypted with. The one it replaces is kept.
     if ! cat -- "$identity" "$archive" | compose run --rm -T backup restore-key --replace-this-installation; then
-      fail "The database is restored, but the key-encryption key is still this installation's, which cannot read it. The control plane is stopped: run this again before starting it. The previous database is kept as $previous."
+      fail "The database is restored, but the key-encryption key may not be: the key file holds this installation's key or the restored one. The control plane is stopped: run this again before starting it. The previous database is kept as $previous."
     fi
     # Migrations bring an older backup to this version; the database login gets its grants again.
     compose up -d
