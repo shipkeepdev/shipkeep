@@ -48,7 +48,7 @@ Losing the control plane's server loses the organizations, applications, release
 
 1. It needs explicit confirmation (`replace`, or `--replace-this-installation`).
 2. It stops the control plane.
-3. It restores the database into a new one, `shipkeep_restore`, in one transaction. Only once it is complete does it take the name `shipkeep`, and the current database is kept as `shipkeep_before_restore_<time>`; both renames are one transaction. (`pg_restore --clean` over the current database is not used: it cannot drop what the job queue's partitioned tables inherit.)
+3. It restores the database into a new one, `shipkeep_restore`, in one transaction. Only once it is complete does it take the name `shipkeep`, and the current database is kept as `shipkeep_before_restore_<time>`; both renames are one transaction. Sessions still open on the current database are ended first: the control plane is stopped, so they are connections it left behind, as when `up -d` recreates the network namespace it shares, and PostgreSQL refuses to rename a database in use. (`pg_restore --clean` over the current database is not used: it cannot drop what the job queue's partitioned tables inherit.)
 4. Only then, it writes the backup key for the identity it was given, and replaces the key-encryption key. The key it replaces is kept beside it.
 5. `docker compose up -d` runs the migrations, which bring an older backup to this version, and gives the database login its grants again.
 

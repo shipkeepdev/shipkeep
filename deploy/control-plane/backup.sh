@@ -105,9 +105,14 @@ case ${1:-} in
       fail 'The database was not restored, and was left as it was. The control plane is stopped: run this again, or start it with docker compose up -d.'
     fi
     # Then it takes the place of the current one, which is kept under another name. Both renames
-    # are one transaction: if either fails, shipkeep is still the current database.
+    # are one transaction: if either fails, shipkeep is still the current database. The control
+    # plane is stopped, so a session still open on the database is one it left behind: a
+    # connection whose end never reached PostgreSQL, as when `up -d` recreates the namespace the
+    # control plane shares. Those are ended first, or the rename would be refused.
     previous=shipkeep_before_restore_$(date -u +%Y%m%d%H%M%S)
-    psql --single-transaction --command="ALTER DATABASE shipkeep RENAME TO $previous" --command='ALTER DATABASE shipkeep_restore RENAME TO shipkeep' ||
+    psql --single-transaction \
+      --command="SELECT count(pg_terminate_backend(pid, 10000)) FROM pg_stat_activity WHERE datname = 'shipkeep' AND pid <> pg_backend_pid()" \
+      --command="ALTER DATABASE shipkeep RENAME TO $previous" --command='ALTER DATABASE shipkeep_restore RENAME TO shipkeep' >/dev/null ||
       fail 'The restored database could not take the place of the current one, which was left as it was. The control plane is stopped: run this again, or start it with docker compose up -d.'
     # Then the key, which the restored secrets are encrypted with. The one it replaces is kept.
     if ! cat -- "$identity" "$archive" | compose run --rm -T backup restore-key --replace-this-installation; then
