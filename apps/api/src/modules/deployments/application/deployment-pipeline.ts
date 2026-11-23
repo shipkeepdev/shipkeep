@@ -121,8 +121,13 @@ export class DeploymentPipeline {
     const now = clock();
     switch (decision.kind) {
       case 'done':
-        // A deployment cancelled through the API still holds its replicas: clean them up once.
-        if (context.deployment.state === 'cancelled' && context.allocations.length)
+        // A deployment cancelled through the API still holds its replicas: clean them up once. A
+        // maintenance change holds none, but may have switched routes: put back what they served
+        // (ADR 0025). Running it again only finds the same keyed steps already queued.
+        if (
+          context.deployment.state === 'cancelled' &&
+          (context.allocations.length || context.deployment.plan.maintenance)
+        )
           await this.tenant(application, () =>
             this.recover(loaded, cancelledRouting(context), now),
           );
