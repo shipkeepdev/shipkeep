@@ -12,7 +12,10 @@
       "build": {
         "command": "node scripts/sync-repo-docs.mjs && astro build",
         "options": {
-          "cwd": "apps/docs"
+          "cwd": "apps/docs",
+          "env": {
+            "ASTRO_TELEMETRY_DISABLED": "1"
+          }
         },
         "cache": true,
         "inputs": [
@@ -27,13 +30,19 @@
         "continuous": true,
         "command": "node scripts/sync-repo-docs.mjs && astro dev",
         "options": {
-          "cwd": "apps/docs"
+          "cwd": "apps/docs",
+          "env": {
+            "ASTRO_TELEMETRY_DISABLED": "1"
+          }
         }
       },
       "sync": {
         "command": "node scripts/sync-repo-docs.mjs && astro sync",
         "options": {
-          "cwd": "apps/docs"
+          "cwd": "apps/docs",
+          "env": {
+            "ASTRO_TELEMETRY_DISABLED": "1"
+          }
         },
         "cache": true,
         "inputs": [

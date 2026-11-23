@@ -123,7 +123,7 @@ The `shipkeep` CLI does the same from a terminal or a CI job.
 
    `deploy` creates the application the first time and saves its configuration after that, then deploys it and follows it until it succeeds or fails.
 
-5. **Follow and roll back.**
+5. **Follow and roll back.** These commands need the same identifiers as `deploy`, which saves only the address and the token. Set the three variables once in your shell, for example `export SHIPKEEP_ORG=… SHIPKEEP_PROJECT=… SHIPKEEP_ENV=…`, or pass `--org`, `--project` and `--env` to each.
    - `shipkeep status` lists the applications of the environment, with their last deployment and their running replicas.
    - `shipkeep rollback` returns to the last good deployment of an earlier release.
    - `shipkeep secrets set DATABASE_URL` reads the value from a hidden prompt or a pipe.
