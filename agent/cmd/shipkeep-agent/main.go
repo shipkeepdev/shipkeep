@@ -22,6 +22,7 @@ import (
 	"github.com/shipkeepdev/shipkeep/agent/internal/config"
 	"github.com/shipkeepdev/shipkeep/agent/internal/egress"
 	"github.com/shipkeepdev/shipkeep/agent/internal/logging"
+	"github.com/shipkeepdev/shipkeep/agent/internal/upgrade"
 	"github.com/shipkeepdev/shipkeep/lib/buildinfo"
 )
 
@@ -31,6 +32,8 @@ const (
 	exitError  = 1
 	exitUsage  = 2
 	exitConfig = 3
+	// exitUnconfirmed: an upgraded binary did not reach the control plane in time (ADR 0028).
+	exitUnconfirmed = 4
 )
 
 // devDir is the local directory used by --dev, relative to the working directory.
@@ -73,6 +76,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "egress" {
 		return runEgress(ctx, args[1:], stderr)
 	}
+	if len(args) > 0 && args[0] == "upgrade-guard" {
+		return runUpgradeGuard(args[1:], stderr)
+	}
 	opts, err := parseFlags(args, stderr)
 	if err != nil {
 		return exitUsage
@@ -111,8 +117,46 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		return exitConfig
 	}
 	if err := a.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+		if errors.Is(err, agent.ErrUpgradeUnconfirmed) {
+			logger.Error("upgraded agent unconfirmed; systemd starts it again and the guard counts the attempt")
+			return exitUnconfirmed
+		}
 		logger.Error("agent failed", "error", err)
 		return exitError
+	}
+	return exitOK
+}
+
+// runUpgradeGuard runs before each start of the agent, from the installer's own copy of the
+// binary, which an upgrade never replaces (ADR 0028). It counts the starts of a new binary and,
+// after upgrade.MaxAttempts of them without a confirmed Hello, puts the previous binary back. It
+// always exits 0: it must never keep the agent from starting. Its only input is the configuration.
+func runUpgradeGuard(args []string, stderr io.Writer) int {
+	logger, err := logging.New(stderr, "info", "json",
+		slog.String("component", "shipkeep-upgrade-guard"),
+		slog.String("version", buildinfo.Version),
+	)
+	if err != nil {
+		return exitOK
+	}
+	fs := flag.NewFlagSet("shipkeep-agent upgrade-guard", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", config.DefaultPath, "path to agent.yaml")
+	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
+		logger.Error("upgrade guard: unexpected arguments; nothing done")
+		return exitOK
+	}
+	cfg, err := config.Load(*configPath, config.Default(), false)
+	if err != nil {
+		logger.Error("upgrade guard: configuration unreadable; nothing done", "error", err)
+		return exitOK
+	}
+	rolledBack, err := upgrade.Guard(cfg.Paths.StateDir)
+	switch {
+	case err != nil:
+		logger.Error("upgrade guard failed; the agent starts as it is", "error", err)
+	case rolledBack:
+		logger.Error("upgraded agent failed to start too often; the previous binary is back")
 	}
 	return exitOK
 }
