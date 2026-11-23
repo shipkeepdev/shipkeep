@@ -893,8 +893,6 @@ export const FR: Readonly<Record<string, string>> = {
     "Aucun jeton n'est lié à ce projet. Créez-en un depuis la page de sécurité de votre compte.",
   'No variable yet. Declare them under env: and secrets: in shipkeep.yml.':
     'Aucune variable. Déclarez-les sous env: et secrets: dans shipkeep.yml.',
-  'No volume. Declare one under volumes: in shipkeep.yml.':
-    'Aucun volume. Déclarez-en un sous volumes: dans shipkeep.yml.',
   'Not available yet: this part of Shipkeep is still being built.':
     'Pas encore disponible : cette partie de Shipkeep est en construction.',
   'Not deployed yet.': 'Pas encore déployée.',
@@ -1456,6 +1454,8 @@ export const FR: Readonly<Record<string, string>> = {
   'Visible to administrators': 'Visible par les administrateurs',
   Volume: 'Volume',
   'Volumes and backups': 'Volumes et sauvegardes',
+  'Volumes are not supported yet: a container keeps what it writes only until it is replaced, at the next deployment.':
+    "Les volumes ne sont pas encore pris en charge : un conteneur garde ce qu'il écrit seulement jusqu'à son remplacement, au déploiement suivant.",
   'Volumes mounted into containers. An app with a volume stays attached to its server.':
     'Volumes montés dans les conteneurs. Une app avec volume reste attachée à son serveur.',
   Vulnerabilities: 'Vulnérabilités',
