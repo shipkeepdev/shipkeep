@@ -1,6 +1,6 @@
 // Instance backup (ADR 0026, #231): the control plane's database and its key-encryption key in one
-// archive, encrypted with age to a public key, so that creating a backup needs no secret and only
-// whoever holds the matching identity, kept off this server, can read one.
+// archive, encrypted with age to a public key, so that creating a backup does not need the identity
+// and only whoever holds it, kept off this server, can read one.
 //
 // The archive is an age file. Its plaintext is a manifest line (JSON), then a `pg_dump --format=
 // custom` stream. age authenticates every chunk and the end of the stream, so a changed or cut
