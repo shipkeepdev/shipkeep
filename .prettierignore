@@ -27,3 +27,6 @@ pnpm-lock.yaml
 /apps/docs/src/content/docs/reference/shipkeep-yml.md
 # Generated from the CLI's own help by cli/internal/commands/reference_test.go (pnpm gen).
 /apps/docs/src/content/docs/reference/cli.md
+# Byte for byte as released and as generated: signatures and their trusted root (ADR 0028).
+/agent/internal/upgrade/testdata
+/agent/internal/upgrade/trusted_root.json
