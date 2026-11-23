@@ -103,13 +103,17 @@ function key(settings: S3Settings, name: string): string {
   return `${settings.prefix}${name}`;
 }
 
-/** Copies standard input to a new object; an existing one is never replaced. */
+/**
+ * Copies standard input to a new object; an existing one is never replaced. The check before is
+ * for a clear refusal; the write itself is conditional (`If-None-Match: *`, on the single request
+ * or on the completion of a multipart upload), so two uploads of one name cannot both succeed.
+ */
 export async function upload(settings: S3Settings, name: string, input: Readable): Promise<void> {
   const s3 = client(settings);
   const target = key(settings, name);
+  const taken = new BackupRefusal(`${name} is already in the bucket: choose another name.`);
   try {
-    if (await exists(s3, settings.bucket, target))
-      throw new BackupRefusal(`${name} is already in the bucket: choose another name.`);
+    if (await exists(s3, settings.bucket, target)) throw taken;
     await new Upload({
       client: s3,
       params: {
@@ -117,6 +121,7 @@ export async function upload(settings: S3Settings, name: string, input: Readable
         Key: target,
         Body: input,
         ContentType: 'application/octet-stream',
+        IfNoneMatch: '*',
       },
       partSize: PART_BYTES,
       queueSize: 2,
@@ -124,6 +129,12 @@ export async function upload(settings: S3Settings, name: string, input: Readable
       leavePartsOnError: false,
     }).done();
   } catch (error: unknown) {
+    // 412: the object appeared since the check. 409: another conditional write of it is under way.
+    if (
+      error instanceof S3ServiceException &&
+      (error.$metadata.httpStatusCode === 412 || error.$metadata.httpStatusCode === 409)
+    )
+      throw taken;
     throw refusal(error);
   } finally {
     s3.destroy();

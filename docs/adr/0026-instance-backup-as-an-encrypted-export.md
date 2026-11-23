@@ -63,8 +63,8 @@ A backup from a newer version is refused: its newest migration must be one this 
 **S3 destination (M5.4b)**: any S3-compatible storage, set in `.env` (`SHIPKEEP_BACKUP_S3_*`).
 
 - `backup.js upload | download | discard | list | check` run in a second container, `backup-transfer`. It has the network the storage needs, and no volume: it moves archives that are already encrypted, and never sees the key-encryption key nor anything in clear. The encrypting container keeps no network.
-- `./backup.sh create --s3` pipes the dump through the encryption into a multipart upload: the archive is never a file on the server. If the pipeline fails after the upload took what it was given, the script deletes that object.
-- An archive is never replaced, and `./backup.sh restore s3:NAME` fetches it into a private directory before the restore.
+- `./backup.sh create --s3` pipes the dump through the encryption into a multipart upload: the archive is never a file on the server. Each name carries a random part, so that installations sharing a bucket never choose the same one. If the dump or its encryption fails after the upload stored what it was given, the script deletes that object, and only that one: a refused or failed upload stored nothing of the run, and never leads to a deletion. The deletion is best effort: if it fails, the script names the incomplete object to delete.
+- An archive is never replaced: the upload checks the name first, for a clear refusal, and the write itself is conditional (`If-None-Match: *`, on the single request or on the completion of the multipart upload), so two uploads of one name cannot both succeed. `./backup.sh restore s3:NAME` fetches it into a private directory before the restore.
 - HTTPS only, unless plain HTTP is said explicitly for a storage on the same machine. The requests carry the access key id, and an attacker in the path could drop a backup unseen.
 - The client is the AWS SDK for JavaScript (Apache-2.0), which speaks to every S3-compatible storage. Retention is left to the storage's lifecycle rules, and a schedule to cron, which INSTALL.md shows.
 

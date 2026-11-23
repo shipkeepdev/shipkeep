@@ -82,12 +82,21 @@ case ${1:-} in
       compose exec -T postgres pg_dump --username=shipkeep_admin --dbname=shipkeep --format=custom
     }
     if [[ $2 == --s3 ]]; then
-      # Straight to the storage: the archive is never a file on this server.
-      name=shipkeep-$(date -u +%Y%m%d-%H%M%S).age
-      if ! dump | compose run --rm -T backup create | compose run --rm -T backup-transfer upload "$name"; then
-        # The upload may have taken all it was given of a dump that failed: never keep that.
-        compose run --rm -T backup-transfer discard "$name" >/dev/null 2>&1 ||
-          printf 'Delete %s from the storage: it is incomplete.\n' "$name" >&2
+      # Straight to the storage: the archive is never a file on this server. The random part keeps
+      # two installations that share a bucket from ever choosing the same name.
+      name=shipkeep-$(date -u +%Y%m%d-%H%M%S)-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n').age
+      set +e
+      dump | compose run --rm -T backup create | compose run --rm -T backup-transfer upload "$name"
+      status=("${PIPESTATUS[@]}")
+      set -e
+      if [[ ${status[*]} != '0 0 0' ]]; then
+        # An upload that succeeded while the dump or its encryption failed stored an incomplete
+        # archive of this run: it is deleted. A refused or failed upload stored nothing of this run,
+        # and an object of that name, if any, is someone else's: it is never touched.
+        if [[ ${status[2]} == 0 ]]; then
+          compose run --rm -T backup-transfer discard "$name" >/dev/null 2>&1 ||
+            printf 'Delete %s from the storage: it is incomplete.\n' "$name" >&2
+        fi
         fail 'The backup was not stored.'
       fi
       printf 'Backup stored as %s.\n' "$name" >&2
