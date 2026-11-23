@@ -379,6 +379,24 @@ func (c *Client) TLSHosts(ctx context.Context) ([]string, error) {
 	return hosts, nil
 }
 
+// UpdateRoute rewrites the route with this id as change returns it, holding the lock every
+// read-then-write on routes takes, so that it never overwrites a route written in between. change
+// gets the stored route and says whether to write the one it returns. An absent route is left
+// alone.
+func (c *Client) UpdateRoute(ctx context.Context, id string, change func(Route) (Route, bool)) error {
+	c.routes.Lock()
+	defer c.routes.Unlock()
+	route, present, err := c.Route(ctx, id)
+	if err != nil || !present {
+		return err
+	}
+	updated, write := change(route)
+	if !write {
+		return nil
+	}
+	return c.upsertRoute(ctx, updated)
+}
+
 // Route returns the stored route with id, if any.
 func (c *Client) Route(ctx context.Context, id string) (Route, bool, error) {
 	var route Route
