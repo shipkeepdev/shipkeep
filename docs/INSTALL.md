@@ -181,9 +181,70 @@ Docker pulls every image through `shipkeep-egress`, a proxy on `127.0.0.1:7480` 
 
 On failure, `journalctl -u shipkeep-agent` (or `-u shipkeep-egress` for a refused pull) on the server says why. The installer refuses a server that already has Shipkeep or Caddy; [`deploy/README.md`](../deploy/README.md) lists what to remove to start over.
 
-## Back up the key-encryption key
+## Back up and restore
 
-The `kek` step prints `Back it up: it cannot be recreated.` Every secret stored by Shipkeep is encrypted under that key. Without it, a database backup cannot be read.
+`backup.sh`, next to `compose.yml`, saves what the control plane cannot recreate: its database, which holds the certificate authority and every secret, and the key-encryption key those secrets are encrypted with (ADR 0026). The archive is encrypted to a key pair that you keep off this server. Run it with `sudo` from the installation directory. An installation made before this script existed takes it from the release bundle.
+
+Once, create the key pair:
+
+```sh
+sudo ./backup.sh keygen backup-identity.txt
+```
+
+Copy `backup-identity.txt` to a password manager or another place that is not this server, then delete it here. Whoever holds it can read every backup and every secret in it, and a restore needs it. The server keeps only what making backups needs, in the `keys` volume: the public key they are encrypted to, and a key derived from the identity that authenticates each archive. A restore refuses an archive it does not authenticate, so someone who knows the public key and can replace an archive where you keep it still cannot have it restored. Running `keygen` again replaces that pair for the backups that follow; earlier archives open with the identity they were made for.
+
+Create a backup, then copy it off this server:
+
+```sh
+sudo ./backup.sh create shipkeep-$(date +%Y%m%d-%H%M).age
+```
+
+`pg_dump` runs in the PostgreSQL container and streams through the encryption. No plaintext dump is written to disk.
+
+To send backups to S3 instead, or as well, set the `SHIPKEEP_BACKUP_S3_*` settings in `.env` (`.env.example` lists them). They work with any S3-compatible storage: AWS, Backblaze B2, Cloudflare R2, Scaleway, Wasabi or MinIO. Give the access key the right to write, read, list and delete objects under the prefix, then check the settings:
+
+```sh
+sudo ./backup.sh check
+sudo ./backup.sh create --s3    # streams straight to the storage; the archive is never a file here
+sudo ./backup.sh list
+```
+
+The archive is encrypted before it leaves this server, and the container that uploads it never sees the key. An archive is never replaced. If a backup fails after its upload, the script deletes what it stored, or names it for you to delete when it cannot. Keep backups as long as you need with the storage's lifecycle rules. Whoever holds the access key can delete backups too: give it only the prefix, and turn on the bucket's versioning or object lock so that a deleted backup can be recovered. For a backup every night at 03:00, add a line to root's crontab (`sudo crontab -e`):
+
+```text
+0 3 * * * cd /opt/shipkeep && ./backup.sh create --s3
+```
+
+Restore into a fresh installation of the same version or a later one, on the same domain:
+
+1. Install the control plane on the new machine with the installer.
+2. Copy the archive and the identity file there.
+3. Run:
+
+```sh
+sudo ./backup.sh restore shipkeep-20261123-1000.age backup-identity.txt
+# or, from the S3 destination (the same settings in .env):
+sudo ./backup.sh restore s3:shipkeep-20261123-100000-3f9a1c2e.age backup-identity.txt
+```
+
+It asks you to type `replace`, then:
+
+1. stops the control plane;
+2. restores the database into a new one, which takes the place of the current database only once complete; the current one is kept as `shipkeep_before_restore_…`, to drop once you are satisfied (the script prints the command);
+3. replaces the key-encryption key, keeping the previous one beside it, and keeps backing up to the identity you restored with;
+4. starts everything again, which applies the migrations of this version.
+
+The restore prints the time the backup was made: check that it is the one you meant. Someone who can write to where archives are kept cannot forge one, but could put an older backup in its place.
+
+Point the domain to the new machine: the servers reconnect on their own, with the identity they already have. Everyone signs in again: the restore ends every session.
+
+The restore brings back the installation as it was when the backup was made. A password changed since then is the previous one again, an API token revoked since is valid again, and a member removed since is back. After a compromise, change those passwords, revoke those tokens and remove those members again. A backup from a newer version is refused. Sessions come back with the database. Metrics, Caddy's certificate and the `.env` settings do not: the SMTP settings are typed again.
+
+If a step fails, the script says what state it left and stops there, with the control plane stopped. Until the restored database takes the place of the current one, the current one is unchanged. If the key step fails after that, the restored database is in place, and the key file holds this installation's key or the restored one, never neither: run the restore again before starting the control plane. The previous database is kept under the name the script prints.
+
+### Back up the key-encryption key
+
+The `kek` step prints `Back it up: it cannot be recreated.` The archive above holds the key. To keep a copy of the key alone as well:
 
 Run this command, and the `docker compose` commands of the next sections, from the installation directory: `/opt/shipkeep` when the installer made it. After the installer, run them with `sudo`, also when your user can use Docker: `.env` is readable by root only, and it is edited as root.
 

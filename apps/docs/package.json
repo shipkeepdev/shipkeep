@@ -1,0 +1,75 @@
+{
+  "name": "@shipkeep/docs",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "nx": {
+    "name": "docs",
+    "tags": [
+      "type:app"
+    ],
+    "targets": {
+      "build": {
+        "command": "node scripts/sync-repo-docs.mjs && astro build",
+        "options": {
+          "cwd": "apps/docs",
+          "env": {
+            "ASTRO_TELEMETRY_DISABLED": "1"
+          }
+        },
+        "cache": true,
+        "inputs": [
+          "default",
+          "{workspaceRoot}/docs/INSTALL.md"
+        ],
+        "outputs": [
+          "{projectRoot}/dist"
+        ]
+      },
+      "serve": {
+        "continuous": true,
+        "command": "node scripts/sync-repo-docs.mjs && astro dev",
+        "options": {
+          "cwd": "apps/docs",
+          "env": {
+            "ASTRO_TELEMETRY_DISABLED": "1"
+          }
+        }
+      },
+      "sync": {
+        "command": "node scripts/sync-repo-docs.mjs && astro sync",
+        "options": {
+          "cwd": "apps/docs",
+          "env": {
+            "ASTRO_TELEMETRY_DISABLED": "1"
+          }
+        },
+        "cache": true,
+        "inputs": [
+          "default",
+          "{workspaceRoot}/docs/INSTALL.md"
+        ],
+        "outputs": [
+          "{projectRoot}/.astro",
+          "{projectRoot}/src/content/docs/start/install.md"
+        ]
+      },
+      "lint": {
+        "dependsOn": [
+          "sync"
+        ]
+      },
+      "typecheck": {
+        "dependsOn": [
+          "sync"
+        ]
+      }
+    }
+  },
+  "devDependencies": {
+    "@astrojs/starlight": "0.43.1",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@fontsource-variable/geist-mono": "^5.3.0",
+    "astro": "7.4.12"
+  }
+}
