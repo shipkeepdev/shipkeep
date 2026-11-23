@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -282,8 +282,13 @@ describe('backup commands', () => {
     const identity =
       /^(AGE-SECRET-KEY-1\S+)$/m.exec(Buffer.from(identityFile).toString())?.[1] ?? '';
     expect(await readBackupKey(at.backupKeyFile)).toEqual(await backupKeyFor(identity));
-    expect((await stat(at.backupKeyFile)).mode & 0o777).toBe(0o400);
-    expect(await readFile(at.backupKeyFile, 'utf8')).not.toContain('AGE-SECRET-KEY');
+    const written = await open(at.backupKeyFile, 'r');
+    try {
+      expect((await written.stat()).mode & 0o777).toBe(0o400);
+      expect(await written.readFile('utf8')).not.toContain('AGE-SECRET-KEY');
+    } finally {
+      await written.close();
+    }
 
     const data = dump();
     const created = await run('backup-create', data, at.env);
