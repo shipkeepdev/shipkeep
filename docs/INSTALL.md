@@ -234,6 +234,8 @@ It asks you to type `replace`, then:
 3. replaces the key-encryption key, keeping the previous one beside it, and keeps backing up to the identity you restored with;
 4. starts everything again, which applies the migrations of this version.
 
+The restore prints the time the backup was made: check that it is the one you meant. Someone who can write to where archives are kept cannot forge one, but could put an older backup in its place.
+
 Point the domain to the new machine: the servers reconnect on their own, with the identity they already have. Everyone signs in again: the restore ends every session.
 
 The restore brings back the installation as it was when the backup was made. A password changed since then is the previous one again, an API token revoked since is valid again, and a member removed since is back. After a compromise, change those passwords, revoke those tokens and remove those members again. A backup from a newer version is refused. Sessions come back with the database. Metrics, Caddy's certificate and the `.env` settings do not: the SMTP settings are typed again.
