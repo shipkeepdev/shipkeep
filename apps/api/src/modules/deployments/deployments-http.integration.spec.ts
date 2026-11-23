@@ -151,4 +151,62 @@ describe('deployments over HTTP', () => {
         expect(response.body).toMatchObject({ code: 'application_not_found' });
       });
   });
+
+  it('refuses a field no deployment applies, also in a configuration saved before', async () => {
+    const volumes = [{ name: 'data', path: '/var/lib/ledger' }];
+    const base = {
+      version: 1,
+      name: 'ledger',
+      build: { type: 'image', image: 'ghcr.io/acme/ledger:2.0.0' },
+      run: { port: 8080 },
+    };
+    // An unmounted volume would lose what the application writes there at its next deployment.
+    await fixture
+      .post(`${fixture.environment}/applications`, 'owner', { config: { ...base, volumes } })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'unsupported_config_field',
+          details: { field: '/volumes' },
+        });
+      });
+    const created = (
+      await fixture
+        .post(`${fixture.environment}/applications`, 'owner', { config: base })
+        .expect(201)
+    ).body as { id: string; configSha: string };
+    const ledger = `${fixture.environment}/applications/${created.id}`;
+    await fixture
+      .post(`${ledger}/config`, 'owner', {
+        expectedConfigSha: created.configSha,
+        config: { ...base, deploy: { strategy: 'recreate' } },
+      })
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toMatchObject({ details: { field: '/deploy/strategy' } });
+      });
+
+    // A configuration stored before the refusal existed is refused when deployed.
+    const admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+    try {
+      await admin.query('UPDATE applications SET config = config || $2::jsonb WHERE id = $1', [
+        created.id,
+        JSON.stringify({ volumes }),
+      ]);
+    } finally {
+      await admin.end();
+    }
+    await fixture
+      .post(`${ledger}/deployments`, 'owner', {})
+      .expect(400)
+      .expect((response) => {
+        expect(response.body).toMatchObject({
+          code: 'unsupported_config_field',
+          details: { field: '/volumes' },
+        });
+      });
+    const releases = await fixture.get(`${ledger}/releases`, 'owner').expect(200);
+    expect((releases.body as { items: unknown[] }).items).toEqual([]);
+  });
 });
