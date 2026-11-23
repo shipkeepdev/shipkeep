@@ -95,6 +95,15 @@ jobs:
           working-directory: cli
           install-mode: none
       - run: go test -race -count=1 ./agent/... ./cli/... ./lib/...
+      - name: Every fuzz target runs nightly
+        run: |
+          missing=$(git grep -h -o '^func Fuzz[A-Za-z0-9_]*' -- '*.go' | sed 's/^func //' | while read -r target; do
+            grep -q "target: $target }" .github/workflows/fuzz-nightly.yml || echo "$target"
+          done)
+          if [ -n "$missing" ]; then
+            echo "Fuzz targets missing from fuzz-nightly.yml: $missing"
+            exit 1
+          fi
       - name: Agent binary size budget (30 MB, PLAN M1.1)
         run: |
           CGO_ENABLED=0 go build -trimpath -ldflags='-s -w' -o /tmp/shipkeep-agent ./agent/cmd/shipkeep-agent

@@ -110,7 +110,7 @@ Build containers (untrusted code) inside rootless BuildKit
   - TypeScript: any static or dynamic import of `child_process`, `execa`, `shelljs`, `zx`, `cross-spawn`, `node-pty`.
   - TypeScript: Prisma `$queryRawUnsafe` and `$executeRawUnsafe`.
   - TypeScript: `eval`, `new Function`, string arguments to `setTimeout` and `setInterval`.
-- Fuzzing (Go native fuzzing) for: `shipkeep.yml` parser (Go side), Compose validator, every agent action validator, routing table builder.
+- Fuzzing (Go native fuzzing), five minutes per target every night (`fuzz-nightly.yml`, #244): the `shipkeep.yml` loader (`lib/config`), the route builder (`FuzzRouteValidation`, maintenance routes included), the health check, container spec, mount, resource and image validators of the agent, and confirmation tokens. Each target states what an accepted input must satisfy, so a validator that lets something through fails the run, not only one that panics. CI fails when a Go fuzz target is missing from the nightly matrix. The Compose validator is TypeScript (`compose.ts`) and nothing calls it yet: Compose applications are outside the first stable version (#221, #222). Its fuzzing comes with them, with a TypeScript fuzzer chosen then; until then it keeps its pseudo-random test.
 - Dependency updates through Renovate, security updates merged within 7 days.
 - Release artifacts: signed with cosign keyless, SBOM (SPDX) generated with Syft, provenance attestation.
 - `SECURITY.md` with a disclosure process and a 90-day disclosure policy from v0.1; a dedicated security email address is added once the project domain is registered.
