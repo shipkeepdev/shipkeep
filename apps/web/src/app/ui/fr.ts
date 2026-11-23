@@ -1252,8 +1252,8 @@ export const FR: Readonly<Record<string, string>> = {
   'Start the application': "Démarrer l'application",
   'Start {release}': 'Démarrer {release}',
   'Stop the application': "Arrêter l'application",
-  'Stopping frees the servers and keeps everything else. Deleting cannot be undone.':
-    'Arrêter libère les serveurs et conserve tout le reste. Supprimer est irréversible.',
+  'Maintenance shows visitors a page while the replicas keep running. Stopping frees the servers and keeps everything else. Deleting cannot be undone.':
+    'La maintenance montre une page aux visiteurs pendant que les répliques continuent de tourner. Arrêter libère les serveurs et conserve tout le reste. Supprimer est irréversible.',
   'Stopping…': 'Arrêt…',
   Storage: 'Stockage',
   'Stored SSH keys': 'Clés SSH stockées',
@@ -1883,4 +1883,32 @@ export const FR: Readonly<Record<string, string>> = {
   'None declared': 'Aucune déclarée',
   'suspect after 15 s without one': 'suspect après 15 s sans signal',
   'of {total} · {percent} %': 'sur {total} · {percent} %',
+  // Maintenance (#256, ADR 0025)
+  Disable: 'Désactiver',
+  'Enter maintenance': 'Mettre en maintenance',
+  'Leave maintenance': 'Sortir de la maintenance',
+  'Caddy serves a maintenance page; containers keep running.':
+    'Caddy sert une page de maintenance, les conteneurs restent actifs.',
+  'Visitors see the maintenance page and the replicas keep running. Disabling it sends visitors to them again.':
+    'Les visiteurs voient la page de maintenance et les répliques continuent de tourner. La désactiver les renvoie vers elles.',
+  'It has no domain, so there is no route to show a maintenance page on.':
+    "Elle n'a aucun domaine : il n'y a pas de route où afficher une page de maintenance.",
+  'Enable it now': "L'activer maintenant",
+  'Keep it live': 'La laisser en ligne',
+  'Entering…': 'Activation…',
+  'Leaving…': 'Désactivation…',
+  'Maintenance of {release}': 'Maintenance de {release}',
+  'End of maintenance of {release}': 'Fin de maintenance de {release}',
+  maintenance: 'maintenance',
+  'end of maintenance': 'fin de maintenance',
+  'maintenance requested': 'maintenance demandée',
+  'end of maintenance requested': 'fin de maintenance demandée',
+  'Maintenance queued': 'Maintenance mise en file',
+  'End of maintenance queued': 'Fin de maintenance mise en file',
+  'Routes switched': 'Routes basculées',
+  'in maintenance': 'en maintenance',
+  'entering maintenance': 'mise en maintenance',
+  'leaving maintenance': 'sortie de maintenance',
+  'In maintenance: visitors see the maintenance page, and the replicas keep running. Leave maintenance to deploy again.':
+    'En maintenance : les visiteurs voient la page de maintenance et les répliques continuent de tourner. Sortez de la maintenance pour déployer à nouveau.',
 };
