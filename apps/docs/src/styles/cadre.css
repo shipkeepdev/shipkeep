@@ -134,3 +134,11 @@ h1#_top {
 ::selection {
   background: rgba(152, 152, 156, 0.45);
 }
+
+/* A field name in a heading reads as the heading, not as a block of code. */
+.sl-markdown-content :is(h1, h2, h3, h4) code {
+  background: none;
+  border: 0;
+  padding: 0;
+  font-size: 0.92em;
+}
