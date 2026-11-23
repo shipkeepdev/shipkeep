@@ -412,6 +412,11 @@ succeeded -> rolled_back (when a later rollback targets the previous release)
   - Success marks those allocations stopped, which frees what they reserved (section 6). The application, its releases and its history stay.
   - A failed stop leaves the replicas it could not remove placed, with their reservation, and can be asked again.
   - After a stop nothing serves: any deployment that succeeded can be rolled back to, and deploying starts the application again.
+- Entering or leaving maintenance (ADR 0025) is a deployment of the release that runs, whose plan has `maintenance` (`enter` or `leave`): `queued -> switching -> succeeded`. It starts, stops and places nothing, and needs no image.
+  - `switching` sends `UpsertRoute` to every node that hosts a placed replica of the application, with its domains: entering sends the maintenance page (`maintenance`, no upstream) once the requests the replicas serve have drained; leaving sends the replicas again, with nothing to drain.
+  - Every replica keeps running and keeps its reservation, whether the change succeeds or fails.
+  - A failure or a cancellation during `switching` puts back what the routes served: the replicas when entering, the page when leaving.
+  - The application is in maintenance when its last succeeded deployment entered it. A stop that succeeds afterwards ends it.
 - A failure before `switching` never changes routing.
 - A failure during `switching` restores the previous upstream set atomically.
 - The aggregate is `packages/domain/src/lib/deployment.ts`. A deployment's plan, fixed when it is queued, records whether it builds (image sources skip `building` and `built`) and whether it runs a release command. Stopping it as failed or cancelled reports whether traffic is untouched (before `switching`), must be restored (during it) or already on the new release (`draining`). Failure reasons are stored bounded to 512 characters, without control characters.
@@ -637,6 +642,13 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - The release command does not run again, because migrations of an older version must not be replayed over newer data. Secrets use their current values, and the application's own configuration does not change, so the next deployment uses it again.
     - When the rollback succeeds, the deployment it replaced becomes `rolled_back`, audited as `deployment.rolled_back`.
   - `POST …/applications/{applicationId}/stop` (201, `deploy.run`) queues a stop: a deployment of the release that runs, whose plan has `stop` (section 5.1). It creates no release and needs no secret. `application_not_running` (409) when the application has no placed replica, `deployment_in_progress` (409) while another deployment runs. `stop` is true on that deployment in every deployment answer.
+  - `POST …/applications/{applicationId}/maintenance/enter` and `…/maintenance/leave` (201, `deploy.run`) queue a maintenance change (section 5.1, ADR 0025). Like a stop, it creates no release and needs no secret. Refused with 409:
+    - `deployment_in_progress` while another deployment runs;
+    - `maintenance_already_on` or `maintenance_not_on` when the application already is, or is not, in maintenance;
+    - `application_not_running` when it has no placed replica;
+    - when entering, `application_without_domain` when its release has no domain, so no route to show the page on, and `agent_outdated` when an agent released before the page (`0.1.0-alpha.1` to `0.1.0-alpha.3`) hosts a replica, with those servers' names in `details.servers`.
+    - `maintenance` is `enter` or `leave` on that deployment in every deployment answer, and null on the others. The application's row is locked, as for a deployment, so the two cannot pass their checks at the same time.
+    - While the application is in maintenance, a deployment and a rollback are refused with 409 `application_in_maintenance`, so no new release starts behind the page unseen. A stop is allowed.
   - `POST …/applications/{applicationId}/delete` (204, `environment.update`) deletes an application. Destructive: the body carries a `confirmation` token for `application.delete` on this application (section 3.6), spent in the same transaction, and the command is audited as `application.deleted` with the confirmation id.
     - Refused with 409 `application_running` while a replica is placed and 409 `deployment_in_progress` while a deployment runs, so no container is left on a server: stop the application first. A refusal does not spend the confirmation.
     - The application's row is locked first, so a deployment queued at the same moment is either seen or refused.

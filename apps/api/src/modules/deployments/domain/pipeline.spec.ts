@@ -26,6 +26,8 @@ const DIGEST = `sha256:${'c'.repeat(64)}`;
 const NOW = new Date('2026-11-05T12:00:00Z');
 const AGENT_NAME = /^sk-[a-z0-9-]{1,60}$/;
 const AGENT_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
+/** What a node's route serves in maintenance, in the simulated world. */
+const PAGE = 'maintenance page';
 
 const full: ShipkeepConfig = {
   version: 1,
@@ -106,7 +108,7 @@ function execute(
   if (step.kind === 'upsert_route')
     world.routes.set(
       step.nodeId,
-      step.upstreams.map((u) => u.container),
+      step.maintenance ? [PAGE] : step.upstreams.map((u) => u.container),
     );
   if (step.kind === 'remove_route') world.routes.delete(step.nodeId);
   if (step.kind === 'stop_container' || step.kind === 'remove_container')
@@ -252,6 +254,72 @@ describe('deployment pipeline', () => {
       // Recovery has nothing to undo: no new replica exists and no route points at one.
       expect(world.executed.every((step) => step.kind !== 'create_container')).toBe(true);
       expect(world.executed.every((step) => step.kind !== 'upsert_route')).toBe(true);
+    });
+  });
+
+  describe('maintenance (ADR 0025)', () => {
+    const ENTER = { build: false, release: false, maintenance: 'enter' as const };
+    const LEAVE = { build: false, release: false, maintenance: 'leave' as const };
+    const routes = (world: World) => Object.fromEntries(world.routes);
+    const failOn = (nodeId: string) => (step: PipelineStep) =>
+      step.kind === 'upsert_route' && step.nodeId === nodeId
+        ? ({ state: 'failed' } as const)
+        : undefined;
+
+    it('puts the page on the route of every node that hosts a replica, and keeps them', () => {
+      const world = simulate(full, undefined, ENTER);
+      expect(world.states).toEqual(['queued', 'switching', 'succeeded']);
+      expect(routes(world)).toEqual({ [NODES[0]]: [PAGE], [OLD_NODE]: [PAGE] });
+      // Only the routes change: nothing is resolved, placed, started or stopped.
+      expect(world.executed.map((step) => step.kind)).toEqual(['upsert_route', 'upsert_route']);
+      expect(world.stopped.size).toBe(0);
+      expect(world.pinned).toBeNull();
+      expect(world.allocations).toEqual([]);
+      for (const step of world.executed) {
+        expect(step).toMatchObject({ maintenance: true, upstreams: [], hosts: full.domains });
+        // The requests the replicas serve finish before the switch succeeds.
+        if (step.kind === 'upsert_route') expect(step.drainMs).toBeGreaterThan(0);
+        expect(step.key).toMatch(AGENT_KEY);
+      }
+    });
+
+    it('puts the replicas back when it leaves, with nothing to drain', () => {
+      const world = simulate(full, undefined, LEAVE);
+      expect(world.states).toEqual(['queued', 'switching', 'succeeded']);
+      expect(routes(world)).toEqual({
+        [NODES[0]]: [previous[0]?.container],
+        [OLD_NODE]: [previous[1]?.container],
+      });
+      expect(world.stopped.size).toBe(0);
+      for (const step of world.executed) {
+        expect(step).not.toHaveProperty('maintenance');
+        if (step.kind === 'upsert_route') expect(step.drainMs).toBe(0);
+      }
+    });
+
+    it('puts the replicas back on every node when entering is interrupted', () => {
+      const world = simulate(full, failOn(OLD_NODE), ENTER);
+      expect(world.states).toEqual(['queued', 'switching', 'failed']);
+      expect(routes(world)).toEqual({
+        [NODES[0]]: [previous[0]?.container],
+        [OLD_NODE]: [previous[1]?.container],
+      });
+      // Nothing to clean up: no replica was created, and none is stopped.
+      expect(world.executed.some((step) => step.kind === 'remove_container')).toBe(false);
+      expect(world.stopped.size).toBe(0);
+    });
+
+    it('puts the page back on every node when leaving is interrupted', () => {
+      const world = simulate(full, failOn(OLD_NODE), LEAVE);
+      expect(world.states).toEqual(['queued', 'switching', 'failed']);
+      expect(routes(world)).toEqual({ [NODES[0]]: [PAGE], [OLD_NODE]: [PAGE] });
+      expect(world.stopped.size).toBe(0);
+    });
+
+    it('has no route to change without domains', () => {
+      const world = simulate(minimal, undefined, ENTER);
+      expect(world.states).toEqual(['queued', 'switching', 'succeeded']);
+      expect(world.executed).toEqual([]);
     });
   });
 

@@ -152,6 +152,44 @@ export class DeploymentController {
     );
   }
 
+  /** Queues the switch of the routes to the maintenance page; the replicas keep running. */
+  @Post(`${APPLICATION}/maintenance/enter`)
+  @HttpCode(201)
+  @RequireTenant('deploy.run', 'environment')
+  @AllowApiToken('deploy.run')
+  @ApiCreatedResponse({ type: DeploymentDto })
+  async enterMaintenance(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+  ): Promise<DeploymentDto> {
+    return deploymentDto(
+      await this.deployments.enterMaintenance(
+        resourceContext(request),
+        target(path),
+        path.applicationId,
+      ),
+    );
+  }
+
+  /** Queues the switch of the routes back to the replicas. */
+  @Post(`${APPLICATION}/maintenance/leave`)
+  @HttpCode(201)
+  @RequireTenant('deploy.run', 'environment')
+  @AllowApiToken('deploy.run')
+  @ApiCreatedResponse({ type: DeploymentDto })
+  async leaveMaintenance(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+  ): Promise<DeploymentDto> {
+    return deploymentDto(
+      await this.deployments.leaveMaintenance(
+        resourceContext(request),
+        target(path),
+        path.applicationId,
+      ),
+    );
+  }
+
   /** Destructive: requires a confirmation token for this application (SPEC 3.6, rule 7). */
   @Post(`${APPLICATION}/delete`)
   @HttpCode(204)

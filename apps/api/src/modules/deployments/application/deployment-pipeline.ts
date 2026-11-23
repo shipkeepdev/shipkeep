@@ -207,12 +207,16 @@ export class DeploymentPipeline {
       this.pipeline.steps(deployment.id),
     ]);
     if (!application || !release) return undefined;
-    // A stop places nothing: every placed replica is one it removes, whatever its release.
+    // A stop places nothing: every placed replica is one it removes, whatever its release. A
+    // maintenance change places nothing either, and only changes the routes of every placed
+    // replica: none of them is stopped when it succeeds (ADR 0025).
     const stopping = deployment.plan.stop === true;
-    const previous = stopping ? allocations : allocations.filter((a) => a.releaseId !== release.id);
+    const maintenance = deployment.plan.maintenance !== undefined;
+    const previous =
+      stopping || maintenance ? allocations : allocations.filter((a) => a.releaseId !== release.id);
     return {
       application,
-      previousReleases: [...new Set(previous.map((a) => a.releaseId))],
+      previousReleases: maintenance ? [] : [...new Set(previous.map((a) => a.releaseId))],
       context: {
         deployment,
         application: {
@@ -228,7 +232,8 @@ export class DeploymentPipeline {
             : null,
           config: release.config,
         },
-        allocations: stopping ? [] : allocations.filter((a) => a.releaseId === release.id),
+        allocations:
+          stopping || maintenance ? [] : allocations.filter((a) => a.releaseId === release.id),
         previous,
         steps,
       },
@@ -472,7 +477,9 @@ export class DeploymentPipeline {
     const steps = recovery(loaded.context, routing);
     await this.enqueue(loaded, steps, now);
     if (routing !== 'new_release_serving') {
-      await this.pipeline.stop(loaded.application.id, [loaded.context.release.id], now);
+      // A maintenance change runs the release that serves: its replicas keep running.
+      if (!loaded.context.deployment.plan.maintenance)
+        await this.pipeline.stop(loaded.application.id, [loaded.context.release.id], now);
       await this.releaseDomains(loaded.application, now);
     }
   }

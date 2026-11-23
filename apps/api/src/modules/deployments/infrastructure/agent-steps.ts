@@ -115,6 +115,7 @@ export function agentAction(
             })),
             tlsMode: TlsMode.AUTO_HTTP,
             drainTimeout: duration(step.drainMs),
+            maintenance: step.maintenance === true,
           },
         }),
       };
