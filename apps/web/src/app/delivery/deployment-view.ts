@@ -3,6 +3,7 @@ import { type IconName } from '../shell/icons';
 
 import { agentActionRow, timestamp } from './agent-action-rows';
 import { type Deployment, type DeploymentTimeline } from './delivery-api';
+import { deploymentKind, type DeploymentKind } from './deployment-kind';
 
 /** English source text and its values, translated by the page. */
 export interface Text {
@@ -35,6 +36,14 @@ export interface DeploymentView {
   readonly truncated: boolean;
   readonly finished: boolean;
 }
+
+/** The first line of its timeline, by what the deployment does. */
+const QUEUED: Readonly<Record<DeploymentKind, string>> = {
+  deploy: 'Deployment queued',
+  stop: 'Stop queued',
+  enter: 'Maintenance queued',
+  leave: 'End of maintenance queued',
+};
 
 const STEPS: Readonly<Partial<Record<Deployment['state'], { label: string; icon: IconName }>>> = {
   queued: { label: 'Queued', icon: 'clock' },
@@ -95,7 +104,9 @@ export function deploymentView(
   const lines: (TimelineLine & { order: number })[] = [
     ...steps.map((step, index): TimelineLine & { order: number } => {
       // A stop that succeeded is "stopped", not "live", as the header says.
-      const ending = ENDINGS.has(step.to) ? deploymentStatus(step.to, deployment.stop) : null;
+      const ending = ENDINGS.has(step.to)
+        ? deploymentStatus(step.to, deployment.stop, deployment.maintenance)
+        : null;
       if (ending)
         return {
           key: `s${String(index)}`,
@@ -110,7 +121,7 @@ export function deploymentView(
         at: step.at,
         parts:
           step.to === 'queued'
-            ? [{ t: deployment.stop ? 'Stop queued' : 'Deployment queued' }]
+            ? [{ t: QUEUED[deploymentKind(deployment)] }]
             : [{ t: STEPS[step.to]?.label ?? step.to }],
       };
     }),
@@ -131,7 +142,7 @@ export function deploymentView(
   ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at) || a.order - b.order);
 
   return {
-    status: deploymentStatus(deployment.state, deployment.stop),
+    status: deploymentStatus(deployment.state, deployment.stop, deployment.maintenance),
     stats,
     lines: lines.map(({ order: _order, ...line }) => ({ ...line, at: clockSeconds(line.at) })),
     truncated: timeline.truncated,

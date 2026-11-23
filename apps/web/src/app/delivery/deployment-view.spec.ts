@@ -112,6 +112,37 @@ describe('deployment view (#265)', () => {
     ]);
   });
 
+  it('names a maintenance change, and its outcome, as the header does (ADR 0025)', () => {
+    const steps = [
+      { from: null, to: 'queued' as const, at: at(0), reason: null },
+      { from: 'queued' as const, to: 'switching' as const, at: at(1), reason: null },
+      { from: 'switching' as const, to: 'succeeded' as const, at: at(31), reason: null },
+    ];
+    const changed = { ...deployment, state: 'succeeded' as const, error: null, finishedAt: at(31) };
+    const entered = deploymentView(
+      { ...changed, maintenance: 'enter' },
+      {
+        steps,
+        actions: [],
+        truncated: false,
+      },
+    );
+    expect(entered.lines[0]?.parts).toEqual([{ t: 'Maintenance queued' }]);
+    expect(entered.lines.at(-1)?.parts).toEqual([{ t: 'in maintenance' }]);
+    expect(entered.status.label).toBe('in maintenance');
+    expect(entered.stats.map((stat) => stat.label)).toEqual(['Queued', 'Switchover']);
+    const left = deploymentView(
+      { ...changed, maintenance: 'leave' },
+      {
+        steps,
+        actions: [],
+        truncated: false,
+      },
+    );
+    expect(left.lines[0]?.parts).toEqual([{ t: 'End of maintenance queued' }]);
+    expect(left.lines.at(-1)?.parts).toEqual([{ t: 'live' }]);
+  });
+
   it('knows when the timeline holds the step the deployment ended with', () => {
     expect(timelineEnded(deployment, timeline)).toBe(true);
     // Read side by side, the timeline can still miss it.

@@ -340,6 +340,29 @@ describe('deployment page (#265)', () => {
     expect(text).toContain('billing-api');
   });
 
+  it('names a maintenance change, and promises no build output for it (ADR 0025)', async () => {
+    const entered = { ...deployment, state: 'succeeded', error: null, maintenance: 'enter' };
+    routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}`] = () => json(entered);
+    routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}/timeline`] = () =>
+      json({
+        ...timeline,
+        steps: [
+          { from: null, to: 'queued', at: at(0), reason: null },
+          { from: 'queued', to: 'switching', at: at(1), reason: null },
+          { from: 'switching', to: 'succeeded', at: at(31), reason: null },
+        ],
+        actions: [],
+      });
+    await open(`${PAGE}/deployments/${DEPLOYMENT}`);
+    expect(element().querySelector('h1')?.textContent).toContain('Maintenance of #4');
+    const text = element().textContent.replace(/\s+/g, ' ');
+    expect(text).toContain('billing-api · production · maintenance');
+    expect(text).not.toContain('nginx:1.27');
+    expect(text).toContain('Maintenance queued');
+    expect(text).toContain('in maintenance');
+    expect(text).not.toContain('Build output');
+  });
+
   it('says when the deployment is not there', async () => {
     routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}`] = () => json({ status: 404 }, 404);
     await open(`${PAGE}/deployments/${DEPLOYMENT}`);

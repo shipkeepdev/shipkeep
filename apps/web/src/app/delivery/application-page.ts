@@ -62,6 +62,13 @@ import {
   type Replica,
   type SecretMetadata,
 } from './delivery-api';
+import {
+  deploymentKind,
+  inMaintenance,
+  KIND_CAUSE,
+  KIND_TITLE,
+  ranAVersion,
+} from './deployment-kind';
 import { startTarget } from './start-target';
 
 const STEPS: readonly { label: string; states: readonly string[] }[] = [
@@ -76,6 +83,11 @@ const STEPS: readonly { label: string; states: readonly string[] }[] = [
 const STOP_STEPS: typeof STEPS = [
   { label: 'Queued', states: ['queued'] },
   { label: 'Routes and replicas removed', states: ['draining'] },
+];
+/** A maintenance change only switches the routes; the replicas keep running (ADR 0025). */
+const MAINTENANCE_STEPS: typeof STEPS = [
+  { label: 'Queued', states: ['queued'] },
+  { label: 'Routes switched', states: ['switching'] },
 ];
 const SAMPLE_SECTIONS = new Set(['tasks', 'approvals', 'webhooks']);
 /** Sections with their own content instead of configuration blocks. */
@@ -186,7 +198,9 @@ const LIVE_POLL_MS = 15_000;
             class="btn btn-primary"
             type="button"
             [style.background]="active() ? '#8B8B93' : null"
-            [disabled]="!current || runner.busy() || !!runner.cooldown() || !!active()"
+            [disabled]="
+              !current || runner.busy() || !!runner.cooldown() || !!active() || maintained()
+            "
             (click)="deploy()"
           >
             <sk-icon name="rocket" />{{
@@ -197,6 +211,21 @@ const LIVE_POLL_MS = 15_000;
       </div>
       @if (missing()) {
         <div class="alert" role="alert">{{ missing() | t }}</div>
+      }
+      @if (maintained()) {
+        <div class="note note-warn flex-wrap items-center" role="status">
+          <sk-icon name="alert-triangle" class="text-amber" />
+          <span class="min-w-[200px] flex-1">{{
+            'In maintenance: visitors see the maintenance page, and the replicas keep running. Leave maintenance to deploy again.'
+              | t
+          }}</span>
+          <a
+            class="btn btn-xs"
+            [routerLink]="[]"
+            [queryParams]="{ tab: 'config', section: 'danger' }"
+            >{{ 'Leave maintenance' | t }}</a
+          >
+        </div>
       }
       @if (runner.problem(); as problem) {
         <div class="alert" role="alert">{{ problem | t }}</div>
@@ -286,8 +315,11 @@ const LIVE_POLL_MS = 15_000;
                 [running]="replicas.items().length > 0"
                 [deploying]="!!active()"
                 [startable]="!!startable()"
+                [maintenance]="maintained()"
+                [domain]="!!firstDomain()"
                 (start)="startAgain()"
                 (stopped)="refresh()"
+                (maintenanceChanged)="refresh()"
                 (deleted)="leave()"
               />
             } @else {
@@ -306,13 +338,12 @@ const LIVE_POLL_MS = 15_000;
           class="flex flex-col gap-3.5"
         >
           @if (focus(); as d) {
-            @let st = status(d.state, d.stop);
+            @let st = status(d.state, d.stop, d.maintenance);
             <div class="card p-5">
               <div class="mb-[18px] flex flex-wrap items-center justify-between gap-2.5">
                 <div class="flex items-baseline gap-2.5">
                   <span class="text-[14px] font-medium">{{
-                    (d.stop ? 'Stop of {release}' : 'Deployment {release}')
-                      | t: { release: releaseLabel(d) }
+                    title(d) | t: { release: releaseLabel(d) }
                   }}</span>
                   <span class="text-[12.5px]" [style.color]="st.color">{{ st.label | t }}</span>
                 </div>
@@ -346,9 +377,8 @@ const LIVE_POLL_MS = 15_000;
                 <div>
                   <span class="text-dim3">{{ clock(d.startedAt) }} </span
                   ><span class="text-fg3">{{
-                    d.stop
-                      ? ('stop requested' | t)
-                      : ('{trigger} deployment started' | t: { trigger: (d.trigger | t) })
+                    requested(d) ??
+                      ('{trigger} deployment started' | t: { trigger: (d.trigger | t) })
                   }}</span>
                 </div>
                 @if (d.build) {
@@ -385,7 +415,7 @@ const LIVE_POLL_MS = 15_000;
               {{ 'Deployments' | t }}
             </h2>
             @for (d of deployments.items(); track d.id) {
-              @let st = status(d.state, d.stop);
+              @let st = status(d.state, d.stop, d.maintenance);
               <div
                 class="grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_minmax(0,0.9fr)_minmax(0,0.8fr)] items-center gap-3 border-t border-line2 px-5 py-[11px] text-[13px] max-sm:grid-cols-2"
               >
@@ -401,7 +431,7 @@ const LIVE_POLL_MS = 15_000;
                   >
                   <!-- A long cause is cut by the row: the whole of it is in the title. -->
                   <span class="ml-2 text-fg3" [attr.title]="d.error ? (d.error | t) : null">{{
-                    d.error ?? (d.stop ? 'stop' : d.trigger) | t
+                    d.error ?? cause(d) | t
                   }}</span>
                 </div>
                 <span class="flex items-center gap-[7px] text-[12.5px]" [style.color]="st.color"
@@ -634,6 +664,24 @@ export class ApplicationPage {
   );
   protected readonly seconds = (at: string): number => Date.parse(at) / 1000;
   protected readonly status = deploymentStatus;
+  protected title(deployment: Deployment): string {
+    return KIND_TITLE[deploymentKind(deployment)];
+  }
+  protected cause(deployment: Deployment): string {
+    return KIND_CAUSE[deploymentKind(deployment)] ?? deployment.trigger;
+  }
+  /** The first line of a stop's or a maintenance change's log, translated. */
+  protected requested(deployment: Deployment): string | null {
+    const kind = deploymentKind(deployment);
+    if (kind === 'deploy') return null;
+    return this.i18n.t(
+      kind === 'stop'
+        ? 'stop requested'
+        : kind === 'enter'
+          ? 'maintenance requested'
+          : 'end of maintenance requested',
+    );
+  }
   protected readonly duration = duration;
   protected readonly clock = clock;
   protected readonly shortDate = shortDate;
@@ -703,7 +751,7 @@ export class ApplicationPage {
     if (key === 'danger')
       return {
         title: 'Danger zone',
-        desc: 'Stopping frees the servers and keeps everything else. Deleting cannot be undone.',
+        desc: 'Maintenance shows visitors a page while the replicas keep running. Stopping frees the servers and keeps everything else. Deleting cannot be undone.',
         blocks: [],
       };
     if (key in APP_SAMPLES) return APP_SAMPLES[key as keyof typeof APP_SAMPLES];
@@ -734,7 +782,7 @@ export class ApplicationPage {
   protected readonly headline = computed(() => {
     const latest = this.deployments.items().at(0);
     if (!latest) return null;
-    const status = deploymentStatus(latest.state, latest.stop);
+    const status = deploymentStatus(latest.state, latest.stop, latest.maintenance);
     // A succeeded deployment says live; the replicas say whether the application still runs.
     if (status.label !== 'live' || this.replicas.state() !== 'ready') return status;
     return servingStatus(this.running(), this.replicas.items().length);
@@ -751,7 +799,8 @@ export class ApplicationPage {
     const d = this.focus();
     if (!d) return [];
     const done = d.state === 'succeeded' || d.state === 'rolled_back';
-    const steps = d.stop ? STOP_STEPS : STEPS;
+    const kind = deploymentKind(d);
+    const steps = kind === 'stop' ? STOP_STEPS : kind === 'deploy' ? STEPS : MAINTENANCE_STEPS;
     const at = steps.findIndex((step) => step.states.includes(d.state));
     return steps.map((step, i) => {
       const past = done || (at >= 0 && i < at);
@@ -769,6 +818,8 @@ export class ApplicationPage {
   });
   /** After a stop, the deployment to roll back to in order to start the application again. */
   protected readonly startable = computed(() => startTarget(this.deployments.items()));
+  /** Visitors see the maintenance page: deploying waits until it is left (ADR 0025). */
+  protected readonly maintained = computed(() => inMaintenance(this.deployments.items()));
   /** The version before the one serving now, offered as a one-click rollback. */
   protected readonly previous = computed(
     () => this.deployments.items().find((d) => this.canRollBack(d)) ?? null,
@@ -1012,8 +1063,9 @@ export class ApplicationPage {
 
   /** Versions that ran, other than the one serving now (the latest success). */
   protected canRollBack(deployment: Deployment): boolean {
-    // A stop ran no version of its own: the deployment it stopped is the one to go back to.
-    if (deployment.stop) return false;
+    // A stop or a maintenance change ran no version of its own: the deployment it stopped is the
+    // one to go back to. In maintenance, the server refuses a rollback, as it refuses a deploy.
+    if (!ranAVersion(deployment) || this.maintained()) return false;
     if (deployment.state !== 'succeeded' && deployment.state !== 'rolled_back') return false;
     const latest = this.deployments.items().find((item) => item.state === 'succeeded');
     // After a stop nothing serves, so every version that ran can be started again.
