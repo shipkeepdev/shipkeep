@@ -115,7 +115,7 @@ The action is journaled step by step, so an agent restarted in the middle resume
    - malicious inputs: version, URL, redirect, archive entries, sizes, a bundle of another workflow, tag or digest, a downgrade;
    - a real swap and rollback in a container with systemd: a new binary that exits, and one that hangs.
 2. The agent on separate control plane machines: installer, role, not schedulable.
-3. `UpgradeControlPlane`, with its snapshot and rollback, tested by forcing a failed migration.
+3. `UpgradeControlPlane`, with its snapshot and rollback, tested by forcing a failed migration, and by requesting a deployment during the checks, which must be refused.
 4. The VM acceptance of #240, which also needs #200.
 
 ## Consequences
