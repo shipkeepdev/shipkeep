@@ -120,6 +120,8 @@ function simulate(
   config: ShipkeepConfig,
   inject?: (step: PipelineStep) => StepOutcome | undefined,
   planned: DeploymentRecord['plan'] = { build: false, release: config.release !== undefined },
+  /** What the routes serve before the deployment: the replicas, or the maintenance page. */
+  serving: 'replicas' | 'page' = 'replicas',
 ) {
   const world: World = {
     deployment: {
@@ -139,8 +141,8 @@ function simulate(
     allocations: [],
     steps: new Map(),
     routes: new Map([
-      [NODES[0], [previous[0]?.container ?? '']],
-      [OLD_NODE, [previous[1]?.container ?? '']],
+      [NODES[0], serving === 'page' ? [PAGE] : [previous[0]?.container ?? '']],
+      [OLD_NODE, serving === 'page' ? [PAGE] : [previous[1]?.container ?? '']],
     ]),
     stopped: new Set(),
     executed: [],
@@ -284,13 +286,15 @@ describe('deployment pipeline', () => {
     });
 
     it('puts the replicas back when it leaves, with nothing to drain', () => {
-      const world = simulate(full, undefined, LEAVE);
+      // The routes serve the page before: the test sees them change.
+      const world = simulate(full, undefined, LEAVE, 'page');
       expect(world.states).toEqual(['queued', 'switching', 'succeeded']);
       expect(routes(world)).toEqual({
         [NODES[0]]: [previous[0]?.container],
         [OLD_NODE]: [previous[1]?.container],
       });
       expect(world.stopped.size).toBe(0);
+      expect(world.executed).toHaveLength(2);
       for (const step of world.executed) {
         expect(step).not.toHaveProperty('maintenance');
         if (step.kind === 'upsert_route') expect(step.drainMs).toBe(0);

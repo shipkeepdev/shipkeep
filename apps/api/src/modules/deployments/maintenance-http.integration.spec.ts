@@ -208,6 +208,30 @@ describe('maintenance over HTTP', () => {
       .expect(refused('maintenance_not_on'));
   });
 
+  it('puts the replicas back on the route when entering is cancelled after the switch', async () => {
+    const application = await running('cancelled-api', ['cancelled.example.com']);
+    const entering = (
+      await fixture.post(`${application}/maintenance/enter`, 'owner', {}).expect(201)
+    ).body as DeploymentBody;
+    const pipeline = fixture.app.get(DeploymentPipeline);
+    expect(await pipeline.run(fixture.organizationId, entering.id, () => NOW)).toBe('wait');
+    // The agent switched the route to the page; the user cancels before the deployment ends.
+    await admin.query(
+      `UPDATE agent_actions SET state = 'succeeded', completed_at = now(), updated_at = now()
+       WHERE deployment_id = $1 AND state = 'queued'`,
+      [entering.id],
+    );
+    await fixture.post(`${application}/deployments/${entering.id}/cancel`, 'owner', {}).expect(200);
+    expect(await pipeline.run(fixture.organizationId, entering.id, () => NOW)).toBe('done');
+    // The route goes back to the replica, which keeps running.
+    expect(await kinds(entering.id)).toEqual(['upsertRoute', 'upsertRoute']);
+    expect(await replicas(application)).toBe(1);
+    await fixture
+      .post(`${application}/maintenance/leave`, 'owner', {})
+      .expect(409)
+      .expect(refused('maintenance_not_on'));
+  });
+
   it('ends with a stop, and is refused without a domain or with an older agent', async () => {
     const application = await running('stopped-in-maintenance', ['paused.example.com']);
     // An agent released before the page would refuse its route: entering is refused first.
