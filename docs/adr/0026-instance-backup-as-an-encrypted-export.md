@@ -55,7 +55,7 @@ Losing the control plane's server loses the organizations, applications, release
 A failure stops the restore, with the control plane stopped, and the script says which state it left:
 
 - Up to and including the renames, the current database is unchanged.
-- If step 4 fails, the restored database is `shipkeep`, and the key is still the installation's, which cannot read it. The previous database is kept under the name the script prints. Running the restore again completes it.
+- If step 4 fails, the restored database is `shipkeep`. The key file holds one whole key, never none: the installation's, or the restored one if only the last sync to disk failed. The previous key gets a second name first, and the restored key replaces it in one rename. The previous database is kept under the name the script prints. Running the restore again completes it.
 
 A backup from a newer version is refused: its newest migration must be one this image carries.
 

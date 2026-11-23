@@ -13,7 +13,7 @@
 // wrote the manifest wrote the rest.
 
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
-import { open, readdir, readFile, rename, rm } from 'node:fs/promises';
+import { link, open, readdir, readFile, rename, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
 import { Decrypter, Encrypter, generateX25519Identity, identityToRecipient } from 'age-encryption';
@@ -271,7 +271,7 @@ export async function drain(stream: ReadableStream<Uint8Array>): Promise<void> {
 /**
  * Replaces the key-encryption key with `kek`, read-only for its owner, as `ensure-kek.mjs` writes
  * it. The key it replaces is kept next to it, named for the moment, and the new one is renamed into
- * place only once it is on disk.
+ * place only once it is on disk. Whichever step fails, the path holds one whole key.
  */
 export async function replaceKek(path: string, kek: Uint8Array, now: Date): Promise<void> {
   if (kek.length !== KEK_BYTES) throw new BackupRefusal('A key-encryption key is 32 bytes.');
@@ -289,11 +289,19 @@ export async function replaceKek(path: string, kek: Uint8Array, now: Date): Prom
     .replace(/[^0-9]/g, '')
     .slice(0, 14)}`;
   try {
-    await rename(path, kept);
+    // The key it replaces gets a second name, and stays under its own. The rename then puts the
+    // restored key in its place in one step: the path holds one key or the other, never neither.
+    try {
+      await link(path, kept);
+    } catch (error: unknown) {
+      if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+    }
+    await rename(temporary, path);
   } catch (error: unknown) {
-    if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
+    // No copy of the restored key is left beside the one in use.
+    await rm(temporary, { force: true });
+    throw error;
   }
-  await rename(temporary, path);
   await syncDirectory(path);
 }
 
