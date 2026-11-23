@@ -1,0 +1,16 @@
+98ebcc66524476171c44849a085b54834c0f752f60a96a244a129a3a40f4ae1a  shipkeep-agent_0.1.0-alpha.3_linux_amd64.tar.gz
+837266b67c1c149d35d8cedc145a9eecec846413271d75010b2047be3188d0d9  shipkeep-agent_0.1.0-alpha.3_linux_amd64.tar.gz.sbom.json
+e0bc724956979538d76a828884067f83be5d17b1df7391306a774ba50fc890a9  shipkeep-agent_0.1.0-alpha.3_linux_arm64.tar.gz
+de05473ba65055395ffc5e603f0cb219f9542ff6cae4bb8e3e875aedcb07f76c  shipkeep-agent_0.1.0-alpha.3_linux_arm64.tar.gz.sbom.json
+a4834b95c46f10338b2894a045c2606eb577d47f366bd2ee20a5fb57141b144e  shipkeep_0.1.0-alpha.3_darwin_amd64.tar.gz
+d1afb7969a75a4ab4be15a7045f50d54bb82094dd7f26d18b23d4200025b6e02  shipkeep_0.1.0-alpha.3_darwin_amd64.tar.gz.sbom.json
+8eb267b0b0adf5926b1a847d04d3dacd22016703538006da5c386cdf24ba1320  shipkeep_0.1.0-alpha.3_darwin_arm64.tar.gz
+3ff8264321a00e1d51b1e766e44a2a8a9490e3a02c0219d743d9e23cd7e9dc69  shipkeep_0.1.0-alpha.3_darwin_arm64.tar.gz.sbom.json
+1e3d138e8219b4277c16b8cc757acf8ad6b68ae1d107aa91a6c2a79932949ac4  shipkeep_0.1.0-alpha.3_linux_amd64.tar.gz
+527ddb08b1e715aea1d0a3fa54ef2e921db4aea590f85f0af39da329ff706bba  shipkeep_0.1.0-alpha.3_linux_amd64.tar.gz.sbom.json
+d7dcb12f91c8ae4a842f817e18f8ea99d917ee5e88946f684d492736b73c94d8  shipkeep_0.1.0-alpha.3_linux_arm64.tar.gz
+b000e6585c46f2788b2cf35d5d4a78ddd75fddf1a06b9f1bbf9f47f5d62617f8  shipkeep_0.1.0-alpha.3_linux_arm64.tar.gz.sbom.json
+3d46a0c0da442bb6f04a138ee9d78c53d842d7e02300dc3d350124908d5ab2c8  shipkeep_0.1.0-alpha.3_windows_amd64.zip
+1b9b9a3c29232b051819afe7562f86c263fdcf48205a1cd68f6f0773e50ba57d  shipkeep_0.1.0-alpha.3_windows_amd64.zip.sbom.json
+53c956ffe8bbb565e3027094a2ba28d3a776d716e60fc4123f6e9f163165ee56  shipkeep_0.1.0-alpha.3_windows_arm64.zip
+ab6a4c6b0aeff7a9c6418fb506f56316af3ccf3ad90f4dff91d2e636971fc42a  shipkeep_0.1.0-alpha.3_windows_arm64.zip.sbom.json
