@@ -21,10 +21,7 @@ import { API_VERSION } from './platform/health/health.controller';
 import { API_PREFIX } from './platform/http/constants';
 import { installWebApp } from './platform/http/web-app';
 import { buildOpenApiDocument, OPENAPI_JSON_PATH } from './platform/openapi/openapi';
-import { runBackup } from './platform/backup/backup-commands';
-import { BackupRefusal } from './platform/backup/instance-backup';
 import {
-  isBackupCommand,
   needsPassword,
   OperatorUsageError,
   operatorExitCode,
@@ -75,17 +72,6 @@ async function main(): Promise<void> {
 async function operate(argv: readonly string[]): Promise<void> {
   // Read before anything starts: a mistyped command opens no database connection.
   const command = parseOperatorCommand(argv);
-  if (isBackupCommand(command)) {
-    // No database connection and nothing listening: the database comes and goes through pipes.
-    await runBackup(command, {
-      stdin: process.stdin,
-      stdout: process.stdout,
-      stderr: process.stderr,
-      env: process.env,
-      now: new Date(),
-    });
-    return;
-  }
   const password = needsPassword(command)
     ? await readPassword(process.stdin, process.stderr)
     : undefined;
@@ -104,10 +90,7 @@ if (operatorArguments.length > 0) {
     (error: unknown) => {
       // A refusal says why in words meant for people. Anything else stays short: the cause may
       // hold connection details or settings.
-      const refused =
-        error instanceof OperatorUsageError ||
-        error instanceof BackupRefusal ||
-        isDomainError(error);
+      const refused = error instanceof OperatorUsageError || isDomainError(error);
       const message = refused
         ? error.message
         : 'The command failed. Run it with the settings of the control plane, and check that the database answers.';

@@ -5,7 +5,6 @@
 //   node main.js organization create --name <name> --slug <slug> --owner <address> [--id <uuidv7>]
 //   node main.js server join-token --organization <id>
 //   node main.js server ca-fingerprint
-//   node main.js backup keygen | create | restore-database | restore-key --replace-this-installation
 //
 // The password never comes as an argument or a variable, where other processes could read it: it
 // is typed without echo on a terminal, or is the first line of a pipe. The last three are for the
@@ -16,7 +15,6 @@ import type { Readable, Writable } from 'node:stream';
 import type { INestApplicationContext } from '@nestjs/common';
 import { isDomainError, isTenantId, Secret, SYSTEM_ACTOR } from '@shipkeep/domain';
 
-import type { BackupCommand } from './platform/backup/backup-commands';
 import { IssueJoinToken } from './modules/fleet/application/issue-join-token';
 import {
   CERTIFICATE_AUTHORITY,
@@ -32,8 +30,6 @@ export const USAGE = [
   '  node main.js organization create --name <name> --slug <slug> --owner <address> [--id <uuidv7>]',
   '  node main.js server join-token --organization <id>',
   '  node main.js server ca-fingerprint',
-  '  node main.js backup keygen | create | restore-database | restore-key --replace-this-installation',
-  'The backup commands run through deploy/control-plane/backup.sh, which pipes the database through them.',
   'The password is read from standard input: typed without echo on a terminal, or the first line of a pipe.',
   "A join token is written to standard output only when it is not a terminal, such as the agent's token file.",
 ].join('\n');
@@ -56,13 +52,7 @@ export type OperatorCommand =
       readonly id?: string;
     }
   | { readonly action: 'join-token'; readonly organizationId: string }
-  | { readonly action: 'ca-fingerprint' }
-  | BackupCommand;
-
-/** The backup commands run without the application (ADR 0026). */
-export function isBackupCommand(command: OperatorCommand): command is BackupCommand {
-  return command.action.startsWith('backup-');
-}
+  | { readonly action: 'ca-fingerprint' };
 
 /**
  * The exit status of a failed command: 2 for a command that cannot be read, 3 when the account to
@@ -134,15 +124,6 @@ export function parseOperatorCommand(argv: readonly string[]): OperatorCommand {
   }
   if (group === 'server' && action === 'ca-fingerprint' && argv.length === 2)
     return { action: 'ca-fingerprint' };
-  if (group === 'backup') {
-    if (action === 'keygen' && argv.length === 2) return { action: 'backup-keygen' };
-    if (action === 'create' && argv.length === 2) return { action: 'backup-create' };
-    if (action === 'restore-database' && argv.length === 2)
-      return { action: 'backup-restore-database' };
-    // Replacing the key-encryption key is destructive: it is said in full (CLAUDE.md rule 7).
-    if (action === 'restore-key' && argv.length === 3 && argv[2] === '--replace-this-installation')
-      return { action: 'backup-restore-key' };
-  }
   throw new OperatorUsageError();
 }
 
@@ -337,8 +318,6 @@ export async function runOperatorCommand(
   output: Writable,
   fallback: Writable,
 ): Promise<void> {
-  // The backup commands run without the application (main.ts): never here.
-  if (isBackupCommand(command)) throw new OperatorUsageError();
   if (command.action === 'organization-create') {
     const owner = await app.get(OperatorAccountCommands).activeAccountId(command.owner);
     const organization = await app

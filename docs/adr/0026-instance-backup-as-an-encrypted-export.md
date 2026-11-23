@@ -25,9 +25,9 @@ Losing the control plane's server loses the organizations, applications, release
 - The identity is kept off the server. Whoever holds it reads every backup and every secret in it.
 - X25519 rather than age's hybrid post-quantum keys: the age tool of current distributions can then read an archive too.
 
-**Commands of the control plane image** (`node main.js backup keygen | create | restore-database | restore-key --replace-this-installation`):
+**A program of the control plane image, apart from `main.js`** (`node backup.js keygen | create | restore-database | restore-key --replace-this-installation`):
 
-- They run without the application, and with no network.
+- It loads neither the application nor its settings, opens no database connection, and runs with no network.
 - The encryption is the `age-encryption` library (BSD-3-Clause), by the author of age, which streams.
 - The key-encryption key is the one secret not encrypted with the envelope service (CLAUDE.md), because the backup is what holds it.
 

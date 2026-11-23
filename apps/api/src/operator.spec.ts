@@ -25,25 +25,6 @@ describe('operator command line', () => {
     ).toEqual({ action: 'reset-password', email: 'owner@example.com' });
   });
 
-  it('reads the backup commands, and restores a key only when told so in full (ADR 0026)', () => {
-    expect(parseOperatorCommand(['backup', 'keygen'])).toEqual({ action: 'backup-keygen' });
-    expect(parseOperatorCommand(['backup', 'create'])).toEqual({ action: 'backup-create' });
-    expect(parseOperatorCommand(['backup', 'restore-database'])).toEqual({
-      action: 'backup-restore-database',
-    });
-    expect(parseOperatorCommand(['backup', 'restore-key', '--replace-this-installation'])).toEqual({
-      action: 'backup-restore-key',
-    });
-    for (const argv of [
-      ['backup', 'restore-key'],
-      ['backup', 'restore-key', '--yes'],
-      ['backup', 'create', '--to', '/tmp/x'],
-      ['backup', 'restore'],
-      ['backup', 'keygen', 'extra'],
-    ])
-      expect(() => parseOperatorCommand(argv), JSON.stringify(argv)).toThrow(OperatorUsageError);
-  });
-
   it('refuses anything else, without repeating it', () => {
     const hostile = 'x; rm -rf / $(id) `id` sk_test_fake_value';
     for (const argv of [

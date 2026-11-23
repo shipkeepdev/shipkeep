@@ -119,7 +119,7 @@ services:
   backup:
     <<: *shipkeep
     profiles: [backup]
-    entrypoint: ['node', 'main.js', 'backup']
+    entrypoint: ['node', 'backup.js']
     environment:
       SHIPKEEP_KEK_FILE: /var/lib/shipkeep/kek
       # The age public key backups are encrypted to (`./backup.sh keygen`): not a secret.

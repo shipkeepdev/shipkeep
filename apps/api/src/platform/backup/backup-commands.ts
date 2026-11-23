@@ -1,5 +1,5 @@
-// The `node main.js backup …` commands (ADR 0026). They run without the application: no database
-// connection, nothing listening. deploy/control-plane/backup.sh runs them with `pg_dump` and
+// The commands of `node backup.js` (ADR 0026), a program apart from the control plane: it loads
+// neither the application nor its settings, opens no database connection and listens on nothing. deploy/control-plane/backup.sh runs them with `pg_dump` and
 // `pg_restore` from the PostgreSQL container, through pipes, so that no plaintext dump is written to
 // disk.
 
@@ -17,6 +17,36 @@ import {
   replaceKek,
   splitIdentity,
 } from './instance-backup';
+
+export const BACKUP_USAGE = [
+  'Usage, through deploy/control-plane/backup.sh, which pipes the database through these commands:',
+  '  node backup.js keygen',
+  '  node backup.js create',
+  '  node backup.js restore-database',
+  '  node backup.js restore-key --replace-this-installation',
+].join('\n');
+
+/** A command that cannot be read. Its message is the usage, never what was typed. */
+export class BackupUsageError extends Error {
+  constructor() {
+    super(BACKUP_USAGE);
+    this.name = 'BackupUsageError';
+  }
+}
+
+/** Reads the arguments after `node backup.js`. The list is closed. */
+export function parseBackupCommand(argv: readonly string[]): BackupCommand {
+  const [action, ...rest] = argv;
+  if (rest.length === 0) {
+    if (action === 'keygen') return { action: 'backup-keygen' };
+    if (action === 'create') return { action: 'backup-create' };
+    if (action === 'restore-database') return { action: 'backup-restore-database' };
+  }
+  // Replacing the key-encryption key is destructive: it is said in full (CLAUDE.md rule 7).
+  if (action === 'restore-key' && rest.length === 1 && rest[0] === '--replace-this-installation')
+    return { action: 'backup-restore-key' };
+  throw new BackupUsageError();
+}
 
 export type BackupCommand =
   | { readonly action: 'backup-keygen' }

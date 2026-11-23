@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 
-import { runBackup } from './backup-commands';
+import { BackupUsageError, parseBackupCommand, runBackup } from './backup-commands';
 import {
   BackupRefusal,
   createArchive,
@@ -160,6 +160,25 @@ describe('instance backup archive (ADR 0026)', () => {
 });
 
 describe('backup commands', () => {
+  it('reads a closed list, and restores a key only when told so in full', () => {
+    expect(parseBackupCommand(['keygen'])).toEqual({ action: 'backup-keygen' });
+    expect(parseBackupCommand(['create'])).toEqual({ action: 'backup-create' });
+    expect(parseBackupCommand(['restore-database'])).toEqual({ action: 'backup-restore-database' });
+    expect(parseBackupCommand(['restore-key', '--replace-this-installation'])).toEqual({
+      action: 'backup-restore-key',
+    });
+    for (const argv of [
+      [],
+      ['restore-key'],
+      ['restore-key', '--yes'],
+      ['create', '--to', '/tmp/x'],
+      ['restore'],
+      ['keygen', 'extra'],
+      ['account', 'create', '--email', 'a@example.com'],
+    ])
+      expect(() => parseBackupCommand(argv), JSON.stringify(argv)).toThrow(BackupUsageError);
+  });
+
   async function run(
     action: Parameters<typeof runBackup>[0]['action'],
     input: Uint8Array,
