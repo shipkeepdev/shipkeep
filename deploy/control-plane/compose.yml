@@ -131,6 +131,22 @@ services:
     network_mode: none
     restart: 'no'
 
+  # Moves encrypted archives to and from an S3-compatible storage (ADR 0026). It has the network
+  # the storage needs and no volume: it never sees the key-encryption key, nor anything in clear.
+  backup-transfer:
+    <<: *shipkeep
+    profiles: [backup]
+    entrypoint: ['node', 'backup.js']
+    environment:
+      SHIPKEEP_BACKUP_S3_ENDPOINT: ${SHIPKEEP_BACKUP_S3_ENDPOINT:-}
+      SHIPKEEP_BACKUP_S3_REGION: ${SHIPKEEP_BACKUP_S3_REGION:-}
+      SHIPKEEP_BACKUP_S3_BUCKET: ${SHIPKEEP_BACKUP_S3_BUCKET:-}
+      SHIPKEEP_BACKUP_S3_PREFIX: ${SHIPKEEP_BACKUP_S3_PREFIX:-shipkeep/}
+      SHIPKEEP_BACKUP_S3_ACCESS_KEY_ID: ${SHIPKEEP_BACKUP_S3_ACCESS_KEY_ID:-}
+      SHIPKEEP_BACKUP_S3_SECRET_ACCESS_KEY: ${SHIPKEEP_BACKUP_S3_SECRET_ACCESS_KEY:-}
+      SHIPKEEP_BACKUP_S3_ALLOW_HTTP: ${SHIPKEEP_BACKUP_S3_ALLOW_HTTP:-false}
+    restart: 'no'
+
   # Metrics the agents report through the control plane (ADR 0024). Internal network only: no port is
   # published, and only the API reads it. Losing it loses history, not state.
   victoriametrics:

@@ -201,6 +201,20 @@ sudo ./backup.sh create shipkeep-$(date +%Y%m%d-%H%M).age
 
 `pg_dump` runs in the PostgreSQL container and streams through the encryption. No plaintext dump is written to disk.
 
+To send backups to S3 instead, or as well, set the `SHIPKEEP_BACKUP_S3_*` settings in `.env` (`.env.example` lists them). They work with any S3-compatible storage: AWS, Backblaze B2, Cloudflare R2, Scaleway, Wasabi or MinIO. Give the access key the right to write, read, list and delete objects under the prefix, then check the settings:
+
+```sh
+sudo ./backup.sh check
+sudo ./backup.sh create --s3    # streams straight to the storage; the archive is never a file here
+sudo ./backup.sh list
+```
+
+The archive is encrypted before it leaves this server, and the container that uploads it never sees the key. An archive is never replaced. If a backup fails after its upload, the script deletes what it stored, or names it for you to delete when it cannot. Keep backups as long as you need with the storage's lifecycle rules. Whoever holds the access key can delete backups too: give it only the prefix, and turn on the bucket's versioning or object lock so that a deleted backup can be recovered. For a backup every night at 03:00, add a line to root's crontab (`sudo crontab -e`):
+
+```text
+0 3 * * * cd /opt/shipkeep && ./backup.sh create --s3
+```
+
 Restore into a fresh installation of the same version or a later one, on the same domain:
 
 1. Install the control plane on the new machine with the installer.
@@ -209,6 +223,8 @@ Restore into a fresh installation of the same version or a later one, on the sam
 
 ```sh
 sudo ./backup.sh restore shipkeep-20261123-1000.age backup-identity.txt
+# or, from the S3 destination (the same settings in .env):
+sudo ./backup.sh restore s3:shipkeep-20261123-100000-3f9a1c2e.age backup-identity.txt
 ```
 
 It asks you to type `replace`, then:
@@ -217,6 +233,8 @@ It asks you to type `replace`, then:
 2. restores the database into a new one, which takes the place of the current database only once complete; the current one is kept as `shipkeep_before_restore_…`, to drop once you are satisfied (the script prints the command);
 3. replaces the key-encryption key, keeping the previous one beside it, and keeps backing up to the identity you restored with;
 4. starts everything again, which applies the migrations of this version.
+
+The restore prints the time the backup was made: check that it is the one you meant. Someone who can write to where archives are kept cannot forge one, but could put an older backup in its place.
 
 Point the domain to the new machine: the servers reconnect on their own, with the identity they already have. Everyone signs in again: the restore ends every session.
 
