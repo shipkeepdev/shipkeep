@@ -181,9 +181,46 @@ Docker pulls every image through `shipkeep-egress`, a proxy on `127.0.0.1:7480` 
 
 On failure, `journalctl -u shipkeep-agent` (or `-u shipkeep-egress` for a refused pull) on the server says why. The installer refuses a server that already has Shipkeep or Caddy; [`deploy/README.md`](../deploy/README.md) lists what to remove to start over.
 
-## Back up the key-encryption key
+## Back up and restore
 
-The `kek` step prints `Back it up: it cannot be recreated.` Every secret stored by Shipkeep is encrypted under that key. Without it, a database backup cannot be read.
+`backup.sh`, next to `compose.yml`, saves what the control plane cannot recreate: its database, which holds the certificate authority and every secret, and the key-encryption key those secrets are encrypted with (ADR 0026). The archive is encrypted to a key pair that you keep off this server. Run it with `sudo` from the installation directory. An installation made before this script existed takes it from the release bundle.
+
+Once, create the key pair and set its public key:
+
+```sh
+sudo ./backup.sh keygen backup-identity.txt
+```
+
+It prints `Public key: age1…`. Add `SHIPKEEP_BACKUP_RECIPIENT=age1…` to `.env`. Copy `backup-identity.txt` to a password manager or another place that is not this server, then delete it here. Whoever holds it can read every backup and every secret in it.
+
+Create a backup, then copy it off this server:
+
+```sh
+sudo ./backup.sh create shipkeep-$(date +%Y%m%d-%H%M).age
+```
+
+`pg_dump` runs in the PostgreSQL container and streams through the encryption. No plaintext dump is written to disk.
+
+Restore into a fresh installation of the same version or a later one, on the same domain:
+
+1. Install the control plane on the new machine with the installer.
+2. Copy the archive and the identity file there.
+3. Run:
+
+```sh
+sudo ./backup.sh restore shipkeep-20261123-1000.age backup-identity.txt
+```
+
+It asks you to type `replace`, then:
+
+1. stops the control plane;
+2. restores the database in one transaction, so a failure leaves it as it was;
+3. replaces the key-encryption key, keeping the previous one beside it;
+4. starts everything again, which applies the migrations of this version.
+
+Point the domain to the new machine: the servers reconnect on their own, with the identity they already have. A backup from a newer version is refused. Sessions come back with the database. Metrics, Caddy's certificate and the `.env` settings do not: the SMTP settings are typed again.
+
+The `kek` step prints `Back it up: it cannot be recreated.` The archive above holds the key. To keep a copy of the key alone as well:
 
 Run this command, and the `docker compose` commands of the next sections, from the installation directory: `/opt/shipkeep` when the installer made it. After the installer, run them with `sudo`, also when your user can use Docker: `.env` is readable by root only, and it is edited as root.
 

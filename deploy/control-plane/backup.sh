@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+# Instance backup of the Shipkeep control plane (ADR 0026, docs/INSTALL.md, "Back up and restore").
+# Run it as root, from the directory of compose.yml (/opt/shipkeep):
+#
+#   ./backup.sh keygen IDENTITY_FILE            once: a key pair; keep IDENTITY_FILE off this server
+#   ./backup.sh create ARCHIVE                  the database and the key-encryption key, encrypted
+#   ./backup.sh restore ARCHIVE IDENTITY_FILE   into a fresh installation, same version or later
+#
+# The database never touches the disk in clear: pg_dump and pg_restore run in the postgres
+# container, and their output goes through the control plane image's `backup` commands in a pipe.
+set -Eeuo pipefail
+umask 077
+
+fail() {
+  printf '%s\n' "$*" >&2
+  exit 1
+}
+
+usage() {
+  fail 'Usage: ./backup.sh keygen IDENTITY_FILE | create ARCHIVE | restore ARCHIVE IDENTITY_FILE [--replace-this-installation]'
+}
+
+directory=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
+cd -- "$directory"
+[[ -f compose.yml ]] || fail "Run this script from the directory of compose.yml: $directory has none."
+command -v docker >/dev/null || fail 'Docker is not installed here.'
+
+# The compose files the installation was started with, as Docker Compose recorded them on its
+# containers: on a single machine (ADR 0021) the override is one of them, and `up` must keep it.
+files=()
+read_compose_files() {
+  local container labels path
+  container=$(docker compose --file compose.yml ps --quiet postgres) || fail 'Docker Compose does not answer.'
+  [[ -n $container ]] || fail 'PostgreSQL is not running: start the control plane with docker compose up -d first.'
+  labels=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project.config_files"}}' "$container")
+  IFS=, read -r -a paths <<<"$labels"
+  for path in "${paths[@]}"; do
+    [[ $path == "$directory"/* && -f $path && ! -L $path ]] || fail "Unexpected compose file: $path"
+    files+=(--file "$path")
+  done
+  ((${#files[@]})) || fail 'Cannot tell which compose files started this installation.'
+}
+
+compose() {
+  docker compose "${files[@]}" "$@"
+}
+
+# Writes to a new file next to the target, then renames it: never a part of one under the name.
+fresh() {
+  [[ -n $1 ]] || usage
+  [[ ! -e $1 && ! -L $1 ]] || fail "$1 exists: choose another name."
+}
+
+case ${1:-} in
+  keygen)
+    (($# == 2)) || usage
+    fresh "$2"
+    read_compose_files
+    compose run --rm -T backup keygen >"$2.partial" || {
+      rm -f -- "$2.partial"
+      fail 'The key pair was not created.'
+    }
+    mv -- "$2.partial" "$2"
+    printf 'Identity written to %s. Copy it off this server, then delete it here.\n' "$2" >&2
+    ;;
+  create)
+    (($# == 2)) || usage
+    fresh "$2"
+    read_compose_files
+    if ! compose exec -T postgres pg_dump --username=shipkeep_admin --dbname=shipkeep --format=custom |
+      compose run --rm -T backup create >"$2.partial"; then
+      rm -f -- "$2.partial"
+      fail 'The backup was not created; nothing was written.'
+    fi
+    mv -- "$2.partial" "$2"
+    printf 'Backup written to %s. Copy it off this server.\n' "$2" >&2
+    ;;
+  restore)
+    (($# == 3 || $# == 4)) || usage
+    archive=$2 identity=$3
+    [[ -f $archive && -r $archive ]] || fail "Cannot read the archive $archive."
+    [[ -f $identity && -r $identity ]] || fail "Cannot read the identity file $identity."
+    if [[ ${4:-} != --replace-this-installation ]]; then
+      [[ -z ${4:-} ]] || usage
+      printf 'This replaces the database and the key-encryption key of this installation with the backup. Type replace to continue: ' >&2
+      IFS= read -r answer || answer=''
+      [[ $answer == replace ]] || fail 'Nothing was changed.'
+    fi
+    read_compose_files
+    # Nothing may write to the database while it is replaced.
+    compose stop control-plane
+    # The database first, in one transaction: a failure leaves it as it was.
+    if ! cat -- "$identity" "$archive" | compose run --rm -T backup restore-database |
+      compose exec -T postgres pg_restore --username=shipkeep_admin --dbname=shipkeep \
+        --clean --if-exists --single-transaction --exit-on-error; then
+      fail 'The database was not restored, and was left as it was. The control plane is stopped: run this again, or start it with docker compose up -d.'
+    fi
+    # Then the key, which the restored secrets are encrypted with. The one it replaces is kept.
+    if ! cat -- "$identity" "$archive" | compose run --rm -T backup restore-key --replace-this-installation; then
+      fail 'The database is restored but its key is not: run this again before starting the control plane.'
+    fi
+    # Migrations bring an older backup to this version; the database login gets its grants again.
+    compose up -d
+    printf 'Restored. Servers reconnect on their own once the domain of this installation points to this machine.\n' >&2
+    ;;
+  *)
+    usage
+    ;;
+esac

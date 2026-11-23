@@ -1,0 +1,54 @@
+# ADR 0026: Instance backup as an encrypted export
+
+- Status: Accepted
+- Date: 2026-11-23
+
+## Context
+
+Losing the control plane's server loses the organizations, applications, releases, secrets and the identity of every server. The plan asks for an instance backup of the control plane's database, its certificate authority and its key-encryption key, to a separate target, restored into a fresh control plane that re-adopts the existing agents (M5.4, #231).
+
+- The certificate authority is in the database, encrypted under the key-encryption key, like every other secret (SPEC 9).
+- The key-encryption key is a file in the `keys` volume. Without it, a database backup cannot be read.
+- Backup targets (M5.2) are outside the first stable version. On 2026-11-23 the maintainer chose an encrypted export kept by the operator for now, and an S3 destination after it, both in that version.
+
+## Decision
+
+**One archive.** It holds the database and the key-encryption key:
+
+- It is an age file (age-encryption.org/v1), the format SPEC 10 names for backups.
+- Its plaintext is a manifest line (JSON: format, version, creation time, the newest database migration of the image that made it, and the key), then a `pg_dump --format=custom` stream.
+- age authenticates each chunk and the end of the stream, so a changed or cut archive is refused, not restored in part.
+
+**Encrypted to a public key.** `backup keygen` makes an X25519 key pair:
+
+- The public key goes in `.env` (`SHIPKEEP_BACKUP_RECIPIENT`). Creating a backup then needs no secret, which a scheduled upload to S3 will also need.
+- The identity is kept off the server. Whoever holds it reads every backup and every secret in it.
+- X25519 rather than age's hybrid post-quantum keys: the age tool of current distributions can then read an archive too.
+
+**Commands of the control plane image** (`node main.js backup keygen | create | restore-database | restore-key --replace-this-installation`):
+
+- They run without the application, and with no network.
+- The encryption is the `age-encryption` library (BSD-3-Clause), by the author of age, which streams.
+- The key-encryption key is the one secret not encrypted with the envelope service (CLAUDE.md), because the backup is what holds it.
+
+**`pg_dump` and `pg_restore` run in the PostgreSQL container**, the only image that carries them, as `exec`.
+
+- `deploy/control-plane/backup.sh` connects them to the commands with pipes, so no plaintext dump is written to disk.
+- The control plane process still starts no process (ARCHITECTURE).
+
+**A restore runs in this order:**
+
+1. It needs explicit confirmation (`replace`, or `--replace-this-installation`).
+2. It stops the control plane.
+3. It restores the database in one transaction, so a failure leaves the database as it was.
+4. Only then, it replaces the key. The key it replaces is kept beside it.
+5. `docker compose up -d` runs the migrations, which bring an older backup to this version, and gives the database login its grants again.
+
+A backup from a newer version is refused: its newest migration must be one this image carries.
+
+## Consequences
+
+- The agents keep their certificates, and the restored database holds the same certificate authority and server identities. Once the domain points to the new machine, they reconnect without being enrolled again.
+- The operator copies archives off the server, and keeps the identity somewhere else again. The S3 destination that follows reuses the archive and the commands; only where the archive goes changes.
+- Sessions, metrics (VictoriaMetrics) and Caddy's certificates are not in the archive. Sessions are in the database and come back; the rest is history or obtained again.
+- `.env` is not in the archive. A fresh installation has its own passwords, and the SMTP settings are typed again.
