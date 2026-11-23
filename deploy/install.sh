@@ -188,6 +188,41 @@ memory_total_bytes() {
 valid_local_control_plane() {
   [[ $1 =~ ^127\.0\.0\.1:([0-9]{1,5})$ ]] && ((10#${BASH_REMATCH[1]} > 0 && 10#${BASH_REMATCH[1]} <= 65535))
 }
+# The agent's unit (ADR 0028). systemd restarts the agent whatever happens (no start limit), and
+# waits for its READY=1: at once on a normal start, after the control plane's welcome for a new
+# binary. Before each start the upgrade guard, from the root-owned copy of the agent that an
+# upgrade never replaces, counts a new binary's starts and puts the previous one back after three.
+agent_unit() {
+  cat <<'UNIT'
+[Unit]
+Description=Shipkeep node agent
+After=network-online.target docker.service shipkeep-caddy.service systemd-tmpfiles-setup.service
+Wants=network-online.target shipkeep-caddy.service
+Requires=docker.service
+StartLimitIntervalSec=0
+[Service]
+Type=notify
+NotifyAccess=main
+User=shipkeep
+Group=shipkeep
+SupplementaryGroups=docker
+ExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config /etc/shipkeep/agent.yaml
+ExecStart=/var/lib/shipkeep/bin/shipkeep-agent --config /etc/shipkeep/agent.yaml
+TimeoutStartSec=360
+Restart=always
+RestartSec=5
+# No capabilities: Caddy owns the ports, and WireGuard adds what it needs with M4.1.
+CapabilityBoundingSet=
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/etc/shipkeep /var/lib/shipkeep /run/shipkeep
+UMask=0077
+[Install]
+WantedBy=multi-user.target
+UNIT
+}
 # Prints the slice of the applications on a single machine, whose memory is the machine's $1 bytes
 # minus the reservation, and whose CPU weight is below the control plane's (ADR 0021).
 workloads_slice_unit() {
@@ -484,30 +519,7 @@ LimitNOFILE=1048576
 [Install]
 WantedBy=multi-user.target
 UNIT
-cat > /etc/systemd/system/shipkeep-agent.service <<'UNIT'
-[Unit]
-Description=Shipkeep node agent
-After=network-online.target docker.service shipkeep-caddy.service systemd-tmpfiles-setup.service
-Wants=network-online.target shipkeep-caddy.service
-Requires=docker.service
-[Service]
-User=shipkeep
-Group=shipkeep
-SupplementaryGroups=docker
-ExecStart=/var/lib/shipkeep/bin/shipkeep-agent --config /etc/shipkeep/agent.yaml
-Restart=always
-RestartSec=5
-# No capabilities: Caddy owns the ports, and WireGuard adds what it needs with M4.1.
-CapabilityBoundingSet=
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-PrivateTmp=true
-ReadWritePaths=/etc/shipkeep /var/lib/shipkeep /run/shipkeep
-UMask=0077
-[Install]
-WantedBy=multi-user.target
-UNIT
+agent_unit >/etc/systemd/system/shipkeep-agent.service
 chmod 0644 /etc/systemd/system/shipkeep-{agent,caddy}.service
 install_egress "$work"
 if [[ -n $local_control_plane ]]; then
