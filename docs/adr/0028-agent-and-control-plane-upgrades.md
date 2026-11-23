@@ -55,17 +55,18 @@ On 2026-11-23 the maintainer chose, and then accepted this record:
 
 1. The agent writes the verified binary to `bin/shipkeep-agent.next`, mode 0755, and syncs it to disk.
 2. It records in its journal that an upgrade is pending, from which version to which.
-3. It gives the running binary a second name, `bin/shipkeep-agent.previous`, with a hard link: it never leaves the path.
+3. It gives the running binary a second name without it ever leaving its path: a hard link to `bin/shipkeep-agent.previous.new`, renamed over `bin/shipkeep-agent.previous`. A later upgrade replaces the previous one the same way.
 4. It renames `.next` onto `shipkeep-agent`, then reports the action as succeeded and exits. systemd starts the new binary.
 
-**The rollback does not depend on the new binary.** The unit gets `StartLimitBurst=5`, `StartLimitIntervalSec=600` and `OnFailure=shipkeep-agent-rollback.service`.
+**The rollback does not depend on the new binary.** The agent's unit is `Type=notify`, restarts always (`StartLimitIntervalSec=0`), and runs a guard before each start.
 
-- The new agent marks the upgrade done once it has connected to the control plane and completed its first `Hello`.
-- If it has not done so within 5 minutes, it exits with a dedicated status, and systemd starts it again. A binary that crashes at start fails the same way.
-- After five failures, systemd starts `shipkeep-agent-rollback.service`. That unit runs the installer's own copy of the agent, `/usr/local/libexec/shipkeep-egress`, which root owns and an upgrade never replaces, in a `rollback-agent` mode, as `shipkeep`.
-  - It puts `.previous` back in place, only while an upgrade is pending.
-  - It records the rollback, then clears the start limit and starts the agent again (`ExecStartPost=+systemctl reset-failed …` and `+systemctl start …`, the only commands that run as root).
-  - The previous agent then reports the failed upgrade on its next `Hello`.
+- **The guard.** `ExecStartPre` runs the installer's own copy of the agent, `/usr/local/libexec/shipkeep-egress`, in an `upgrade-guard` mode, as `shipkeep`. Root owns that copy, and an upgrade never replaces it.
+  - While an upgrade is pending, the guard counts the starts in a durable record (temporary file, sync, rename).
+  - After 3 starts that did not succeed, it renames `.previous` over `shipkeep-agent`, records the rollback, and clears the pending state. The previous binary then starts, and reports the failed upgrade on its next `Hello`.
+  - The guard always exits 0, so that it never keeps the agent from starting.
+- **Success.** A new agent with an upgrade pending to its own version tells systemd it is ready (`READY=1`) only after its first `Hello` is acknowledged. At that point it marks the upgrade done.
+- **Failure.** If that has not happened within 5 minutes, the new agent exits non-zero. If it hangs before that, systemd stops it after `TimeoutStartSec` (6 minutes). Either way systemd starts it again, and the guard counts that start. So every failure is counted, whatever its kind and however long it takes.
+- **A normal start** sends `READY=1` as soon as the agent runs, without waiting for the control plane, since agents must run through its outages (CLAUDE.md rule 10). An upgrade started during an outage fails its `Hello`, and the previous binary comes back.
 
 **Rollout.** The control plane sends `UpgradeAgent` to one server at a time.
 
@@ -95,14 +96,14 @@ Its unit gets `/opt/shipkeep` in `ReadWritePaths`, on that machine only. `.env` 
 
 **The procedure follows ARCHITECTURE section 5:**
 
-1. **Verify.** Download the control plane bundle of the version (`shipkeep-control-plane_<version>.tar.gz`) and its Sigstore bundle, with the rules of section 1. Check the image reference it names, which is pinned by digest, against the reference in the action.
-2. **Snapshot.**
-   - Take an instance backup (ADR 0026) into `/var/lib/shipkeep/upgrades/<time>/`: the database and the key-encryption key, encrypted to the operator's public key.
-   - Keep the current `compose.yml`, `image.env` and `Caddyfile` beside it.
-   - Without a backup key on the server (`./backup.sh keygen`), the upgrade is refused: there would be nothing to go back to.
+1. **Verify.** Download the control plane bundle of the version (`shipkeep-control-plane_<version>.tar.gz`) and its Sigstore bundle, with the rules of section 1. Check the image reference it names, which is pinned by digest, against the reference in the action. Check that the disk has room for a second copy of the database.
+2. **Snapshot, with nothing writing.**
+   - Stop the control plane. Nothing writes to the database from then on, so no change is lost by a rollback.
+   - Copy the database inside PostgreSQL, as `shipkeep_before_upgrade_<time>` (`CREATE DATABASE … TEMPLATE shipkeep`). The copy never leaves the database server, is never a file in clear, and needs no key to come back. Keep the key-encryption key as `kek.before-upgrade-<time>`, and the current `compose.yml`, `image.env` and `Caddyfile`, under `/var/lib/shipkeep/upgrades/<time>/`.
+   - When a backup key is on the server (ADR 0026), also take an instance backup there, for the operator: it is not what the rollback uses, since its identity is kept off the server.
 3. **Upgrade.** Write the bundle's files and the new `image.env`, then run `pull` and `up -d --wait`. Migrations run in the `migrate` step, as on every start.
 4. **Check.** `/api/v1/health` must answer 200 with the new version within 5 minutes, and the control plane must accept agents again.
-5. **Roll back on failure.** Put the previous files back, then restore the snapshot as `backup.sh restore` does: the restored database takes the place of the migrated one, and the previous image runs.
+5. **Roll back on failure.** Stop the control plane, put the previous files and key back, and rename the copy over the migrated database in one transaction, as the restore of ADR 0026 does. Then start the previous image. Once an upgrade succeeds, the copy is dropped after a delay that the operator sets, by default 7 days.
 
 The action is journaled step by step, so an agent restarted in the middle resumes it or rolls it back. During the upgrade the control plane is down: agents keep their workloads and routes (CLAUDE.md rule 10) and reconnect.
 
@@ -110,9 +111,9 @@ The action is journaled step by step, so an agent restarted in the middle resume
 
 ### 4. Delivery order
 
-1. Release signing of each agent archive, and `UpgradeAgent` with its rollback unit and installer changes. Tests:
+1. Release signing of each agent archive, and `UpgradeAgent` with its upgrade guard and installer changes. Tests:
    - malicious inputs: version, URL, redirect, archive entries, sizes, a bundle of another workflow, tag or digest, a downgrade;
-   - a real swap and rollback in a container with systemd.
+   - a real swap and rollback in a container with systemd: a new binary that exits, and one that hangs.
 2. The agent on separate control plane machines: installer, role, not schedulable.
 3. `UpgradeControlPlane`, with its snapshot and rollback, tested by forcing a failed migration.
 4. The VM acceptance of #240, which also needs #200.
@@ -123,5 +124,7 @@ The action is journaled step by step, so an agent restarted in the middle resume
 - The trust in a release is the trust in Shipkeep's `release.yml` and in Sigstore's public infrastructure, checked offline. A stolen GitHub account that can push a tag can still publish a release. Protecting tags and the release workflow (branch and tag rules, required reviews) carries that risk.
 - The agent on the control plane machine gains the power to replace the control plane. It was root-equivalent there through Docker already.
 - `sigstore-go` and its dependencies enter the agent, and are checked by the license job (Apache-2.0).
-- Installations made before this change need the installer's new systemd units. The agent refuses `UpgradeAgent` while `shipkeep-agent-rollback.service` is not installed, and says to run the installer again.
+- Installations made before this change need the installer's new agent unit, with its guard. The agent refuses `UpgradeAgent` while its unit has no `upgrade-guard` step, and says to run the installer again.
+- A control plane upgrade needs room for a second copy of the database, for as long as the copy is kept. It no longer needs a backup key on the server, since the rollback does not decrypt anything.
+- The control plane is stopped from the snapshot to the end of the upgrade. Agents keep their workloads and routes meanwhile.
 - `SHIPKEEP_IMAGE` moves to `image.env`, a change in INSTALL.md's upgrade steps.
