@@ -15,7 +15,7 @@
     "proto:lint": "buf lint && buf format -d --exit-code",
     "proto:breaking": "buf breaking --against '.git#branch=main'",
     "gen:proto": "buf generate",
-    "gen:config": "node tools/gen/config-schema.mjs && tools/gen/config-go.sh",
+    "gen:config": "node tools/gen/config-schema.mjs && tools/gen/config-go.sh && node tools/gen/config-reference.mjs",
     "dev:infra": "docker compose --project-directory . -f deploy/dev/compose.yml up -d --wait",
     "dev:infra:down": "docker compose --project-directory . -f deploy/dev/compose.yml down",
     "dev:infra:reset": "docker compose --project-directory . -f deploy/dev/compose.yml down -v",

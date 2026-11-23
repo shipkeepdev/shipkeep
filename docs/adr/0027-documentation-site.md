@@ -26,7 +26,8 @@ Today, user documentation lives in `docs/INSTALL.md` and the README:
 **Each text is written once.**
 
 - `docs/INSTALL.md` stays the installation guide, where the installer and the README link to it. `scripts/sync-repo-docs.mjs` copies it into the site at build time, takes its first heading off, and turns its links to other repository files into links to GitHub. The copy is not committed, and the page's edit link points to `docs/INSTALL.md`.
-- The `shipkeep.yml` and CLI references will be generated from their sources, the JSON Schema and the CLI, as part of `pnpm gen`, and CI will check that they are current.
+- The `shipkeep.yml` reference is generated from the JSON Schema by `tools/gen/config-reference.mjs`, as part of `pnpm gen`, and CI checks that it is current. The schema says what a field is; the generator adds what the control plane does with it today (defaults, and the fields it refuses until they are applied, SPEC 2.2), from two lists kept in step with the control plane.
+- The CLI reference will be generated from the CLI the same way.
 
 **Publishing is the maintainer's step.** The site builds to `apps/docs/dist`, which any static host serves. Where it is served, and under which domain (#202), is decided when it goes online. Until then the pages set no canonical address and no sitemap.
 

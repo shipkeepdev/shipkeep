@@ -23,3 +23,5 @@ pnpm-lock.yaml
 /apps/docs/.astro
 # Copied from docs/INSTALL.md at build time (apps/docs/scripts/sync-repo-docs.mjs).
 /apps/docs/src/content/docs/start/install.md
+# Generated from the JSON Schema by tools/gen/config-reference.mjs (pnpm gen).
+/apps/docs/src/content/docs/reference/shipkeep-yml.md
