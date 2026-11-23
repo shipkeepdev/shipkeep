@@ -29,6 +29,31 @@
         "options": {
           "cwd": "apps/docs"
         }
+      },
+      "sync": {
+        "command": "node scripts/sync-repo-docs.mjs && astro sync",
+        "options": {
+          "cwd": "apps/docs"
+        },
+        "cache": true,
+        "inputs": [
+          "default",
+          "{workspaceRoot}/docs/INSTALL.md"
+        ],
+        "outputs": [
+          "{projectRoot}/.astro",
+          "{projectRoot}/src/content/docs/start/install.md"
+        ]
+      },
+      "lint": {
+        "dependsOn": [
+          "sync"
+        ]
+      },
+      "typecheck": {
+        "dependsOn": [
+          "sync"
+        ]
       }
     }
   },
