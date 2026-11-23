@@ -113,6 +113,24 @@ services:
         condition: service_completed_successfully
     restart: unless-stopped
 
+  # Instance backup (ADR 0026): backup.sh runs it, never `up`. It creates and opens the encrypted
+  # archive of the database and the key-encryption key; pg_dump and pg_restore run in the postgres
+  # container and reach it through pipes. No network: it needs none.
+  backup:
+    <<: *shipkeep
+    profiles: [backup]
+    entrypoint: ['node', 'backup.js']
+    environment:
+      SHIPKEEP_KEK_FILE: /var/lib/shipkeep/kek
+      # What `./backup.sh keygen` leaves here: the public key backups are encrypted to, and the key
+      # that proves they come from this server. Not the identity, which is kept elsewhere.
+      SHIPKEEP_BACKUP_KEY_FILE: /var/lib/shipkeep/backup-key
+    volumes:
+      # Written by keygen (the backup key) and by a restore (both keys).
+      - keys:/var/lib/shipkeep
+    network_mode: none
+    restart: 'no'
+
   # Metrics the agents report through the control plane (ADR 0024). Internal network only: no port is
   # published, and only the API reads it. Losing it loses history, not state.
   victoriametrics:

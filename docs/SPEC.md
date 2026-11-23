@@ -121,6 +121,7 @@ compose:
   - `disk` (default `1Gi`, between `64Mi` and `1Ti`) is the size each container's writable layer may reach. It is not reserved by placement. The agent measures it and stops a container above it, with the reason `disk_limit` (ADR 0022).
   - `run.read_only_root: true` runs each container with a read-only root filesystem and a `64Mi` tmpfs at `/tmp`, which counts in its memory: it then writes only there and to its volumes. Off by default.
   - The release task runs under the same limits. It needs no reservation of its own: it runs on the first replica's node before that replica starts, in the room already reserved for it.
+- The control plane refuses what the schema describes but no deployment applies yet, on save and again on deploy (`unsupported_config_field`, with the field's JSON pointer), rather than ignore it: a volume that is not mounted would lose what the application writes there at its next deployment. Refused for now: a non-empty `volumes` or `databases`, `previews` unless `enabled: false`, `deploy.strategy: recreate` (every deployment is rolling), and `deploy.keep_images`. Each is accepted again when the feature that applies it lands.
 - Domains: valid hostnames, max 50 per app, wildcard only with DNS-01 configured.
 - Volume paths: absolute, no `..`, not under `/proc`, `/sys`, `/dev`, `/etc`, `/var/run`.
 - Compose files are parsed and validated by the control plane, as an allow list that fails closed: a key is translated to what the typed `ContainerSpec` can express, ignored with a warning when it has no effect on safety (`container_name`, `hostname`, `networks`, `logging`), or refused with its reason.
@@ -743,7 +744,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - Volumes: `tar` stream of the volume, encrypted the same way. Consistent snapshots for databases use the dump path, not volume tar.
 - Schedules in cron syntax with retention (`keep` count). Restore to the same or another node, into the same or a new volume or database.
 - Every backup records size and SHA-256. A weekly automatic restore test into a scratch container is available as a policy.
-- Instance backup: control plane PostgreSQL, CA material and KEK, to a separate target.
+- Instance backup (ADR 0026): control plane PostgreSQL (the CA is in it) and the KEK, in one age archive encrypted to the operator's public key, made and restored with `deploy/control-plane/backup.sh`. Its plaintext is a manifest line (format, version, creation time, newest migration, KEK, and an HMAC of those under a key derived from the operator's identity, which `keygen` leaves on the server), then `pg_dump --format=custom`; no plaintext dump is written to disk. A restore asks for confirmation, refuses an archive whose HMAC does not match the identity it is given before any of it reaches `pg_restore`, stops the control plane, restores the database into a new one in one transaction, ends every session and unused email link in it, which takes the place of the current database once complete (the current one is kept under another name), then replaces the KEK (the previous one is kept beside it); a backup from a newer version is refused. An S3 destination follows.
 
 ## 11. Previews
 
