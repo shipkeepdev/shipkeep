@@ -1,21 +1,24 @@
 // The commands of `node backup.js` (ADR 0026), a program apart from the control plane: it loads
-// neither the application nor its settings, opens no database connection and listens on nothing. deploy/control-plane/backup.sh runs them with `pg_dump` and
-// `pg_restore` from the PostgreSQL container, through pipes, so that no plaintext dump is written to
-// disk.
+// neither the application nor its settings, opens no database connection and listens on nothing.
+// deploy/control-plane/backup.sh runs them with `pg_dump` and `pg_restore` from the PostgreSQL
+// container, through pipes, so that no plaintext dump is written to disk.
 
 import { Readable, type Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 import {
   BackupRefusal,
+  backupKeyFor,
   createArchive,
   drain,
   migrations,
   newIdentity,
   openArchive,
+  readBackupKey,
   readKek,
   replaceKek,
   splitIdentity,
+  writeBackupKey,
 } from './instance-backup';
 
 export const BACKUP_USAGE = [
@@ -71,13 +74,15 @@ export async function runBackup(command: BackupCommand, io: BackupIo): Promise<v
       // The identity reads every backup: it goes to a file, never to a terminal.
       binaryOut(io, 'Write the identity to a file: backup keygen > backup-identity.txt');
       const { identity, recipient } = await newIdentity();
+      // The identity is written out first: the server never backs up to one nobody was given.
       await write(
         io.stdout,
         `# Shipkeep instance backups. Keep this file off the server.\n# public key: ${recipient}\n${identity}\n`,
       );
+      await writeBackupKey(backupKeyFile(io), await backupKeyFor(identity));
       await write(
         io.stderr,
-        `Public key: ${recipient}\nSet SHIPKEEP_BACKUP_RECIPIENT=${recipient} in .env. Whoever holds the identity can read every backup and every secret in it: keep it off this server.\n`,
+        `Backups of this server are now encrypted to ${recipient}. Whoever holds the identity can read every backup and every secret in it: keep it off this server.\n`,
       );
       return;
     }
@@ -85,7 +90,7 @@ export async function runBackup(command: BackupCommand, io: BackupIo): Promise<v
       binaryIn(io, 'Standard input is the database dump: backup.sh create runs pg_dump into it.');
       binaryOut(io, 'Write the archive to a file: backup.sh create does.');
       const archive = await createArchive({
-        recipient: io.env['SHIPKEEP_BACKUP_RECIPIENT'] ?? '',
+        key: await readBackupKey(backupKeyFile(io)),
         kek: await readKek(kekFile(io)),
         migration: (await migrations(io.env['SHIPKEEP_MIGRATIONS_DIR'] ?? MIGRATIONS)).at(-1) ?? '',
         now: io.now,
@@ -121,10 +126,12 @@ export async function runBackup(command: BackupCommand, io: BackupIo): Promise<v
       const opened = await open(io);
       // The key changes only for an archive age has authenticated to its end.
       await drain(opened.dump);
+      // The restored installation backs up to the identity it was restored with.
+      await writeBackupKey(backupKeyFile(io), await backupKeyFor(opened.identity));
       await replaceKek(kekFile(io), opened.kek, io.now);
       await write(
         io.stderr,
-        `Key-encryption key restored from the backup of ${opened.manifest.createdAt}; the one it replaced is kept beside it.\n`,
+        `Key-encryption key restored from the backup of ${opened.manifest.createdAt}; the one it replaced is kept beside it. Backups are encrypted to this identity again.\n`,
       );
       return;
     }
@@ -135,16 +142,23 @@ async function open(io: BackupIo) {
   const { identity, archive } = await splitIdentity(
     Readable.toWeb(io.stdin) as ReadableStream<Uint8Array>,
   );
-  return openArchive({
+  const opened = await openArchive({
     identity,
     archive,
     migrations: await migrations(io.env['SHIPKEEP_MIGRATIONS_DIR'] ?? MIGRATIONS),
   });
+  return { ...opened, identity };
 }
 
 function kekFile(io: BackupIo): string {
   const path = io.env['SHIPKEEP_KEK_FILE'];
   if (!path) throw new BackupRefusal('SHIPKEEP_KEK_FILE is not set.');
+  return path;
+}
+
+function backupKeyFile(io: BackupIo): string {
+  const path = io.env['SHIPKEEP_BACKUP_KEY_FILE'];
+  if (!path) throw new BackupRefusal('SHIPKEEP_BACKUP_KEY_FILE is not set.');
   return path;
 }
 

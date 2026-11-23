@@ -122,10 +122,11 @@ services:
     entrypoint: ['node', 'backup.js']
     environment:
       SHIPKEEP_KEK_FILE: /var/lib/shipkeep/kek
-      # The age public key backups are encrypted to (`./backup.sh keygen`): not a secret.
-      SHIPKEEP_BACKUP_RECIPIENT: ${SHIPKEEP_BACKUP_RECIPIENT:-}
+      # What `./backup.sh keygen` leaves here: the public key backups are encrypted to, and the key
+      # that proves they come from this server. Not the identity, which is kept elsewhere.
+      SHIPKEEP_BACKUP_KEY_FILE: /var/lib/shipkeep/backup-key
     volumes:
-      # Written only by a restore, which replaces the key.
+      # Written by keygen (the backup key) and by a restore (both keys).
       - keys:/var/lib/shipkeep
     network_mode: none
     restart: 'no'
