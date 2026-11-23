@@ -180,7 +180,7 @@ describe('backup commands', () => {
   });
 
   async function run(
-    action: Parameters<typeof runBackup>[0]['action'],
+    action: 'backup-keygen' | 'backup-create' | 'backup-restore-database' | 'backup-restore-key',
     input: Uint8Array,
     env: Record<string, string>,
   ) {

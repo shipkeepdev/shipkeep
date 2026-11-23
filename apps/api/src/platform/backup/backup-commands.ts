@@ -17,6 +17,7 @@ import {
   replaceKek,
   splitIdentity,
 } from './instance-backup';
+import { ARCHIVE_NAME, check, discard, download, list, s3Settings, upload } from './s3-transfer';
 
 export const BACKUP_USAGE = [
   'Usage, through deploy/control-plane/backup.sh, which pipes the database through these commands:',
@@ -24,6 +25,8 @@ export const BACKUP_USAGE = [
   '  node backup.js create',
   '  node backup.js restore-database',
   '  node backup.js restore-key --replace-this-installation',
+  'and, in the container that reaches the S3 storage and never sees the key:',
+  '  node backup.js upload NAME | download NAME | discard NAME | list | check',
 ].join('\n');
 
 /** A command that cannot be read. Its message is the usage, never what was typed. */
@@ -45,6 +48,14 @@ export function parseBackupCommand(argv: readonly string[]): BackupCommand {
   // Replacing the key-encryption key is destructive: it is said in full (CLAUDE.md rule 7).
   if (action === 'restore-key' && rest.length === 1 && rest[0] === '--replace-this-installation')
     return { action: 'backup-restore-key' };
+  if (rest.length === 0 && action === 'list') return { action: 'backup-list' };
+  if (rest.length === 0 && action === 'check') return { action: 'backup-check' };
+  const [name] = rest;
+  if (rest.length === 1 && name && ARCHIVE_NAME.test(name)) {
+    if (action === 'upload') return { action: 'backup-upload', name };
+    if (action === 'download') return { action: 'backup-download', name };
+    if (action === 'discard') return { action: 'backup-discard', name };
+  }
   throw new BackupUsageError();
 }
 
@@ -52,7 +63,13 @@ export type BackupCommand =
   | { readonly action: 'backup-keygen' }
   | { readonly action: 'backup-create' }
   | { readonly action: 'backup-restore-database' }
-  | { readonly action: 'backup-restore-key' };
+  | { readonly action: 'backup-restore-key' }
+  | {
+      readonly action: 'backup-upload' | 'backup-download' | 'backup-discard';
+      readonly name: string;
+    }
+  | { readonly action: 'backup-list' }
+  | { readonly action: 'backup-check' };
 
 export interface BackupIo {
   readonly stdin: Readable & { isTTY?: boolean };
@@ -110,6 +127,38 @@ export async function runBackup(command: BackupCommand, io: BackupIo): Promise<v
       await pipeline(
         Readable.fromWeb(opened.dump as Parameters<typeof Readable.fromWeb>[0]),
         io.stdout,
+      );
+      return;
+    }
+    case 'backup-upload': {
+      binaryIn(io, 'Standard input is the archive: backup.sh create --s3 sends it.');
+      await upload(s3Settings(io.env), command.name, io.stdin);
+      await write(io.stderr, `Uploaded ${command.name}.\n`);
+      return;
+    }
+    case 'backup-download': {
+      binaryOut(io, 'Write the archive to a file: backup.sh restore s3:NAME does.');
+      await download(s3Settings(io.env), command.name, io.stdout);
+      return;
+    }
+    case 'backup-discard': {
+      await discard(s3Settings(io.env), command.name);
+      return;
+    }
+    case 'backup-list': {
+      const archives = await list(s3Settings(io.env));
+      await write(
+        io.stdout,
+        archives.map((a) => `${a.at}  ${String(a.bytes).padStart(12)}  ${a.name}\n`).join(''),
+      );
+      return;
+    }
+    case 'backup-check': {
+      const settings = s3Settings(io.env);
+      await check(settings);
+      await write(
+        io.stderr,
+        `The S3 destination works: an object was written then deleted under ${settings.bucket}/${settings.prefix}.\n`,
       );
       return;
     }
