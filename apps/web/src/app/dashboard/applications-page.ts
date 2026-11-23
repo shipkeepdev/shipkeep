@@ -56,7 +56,7 @@ const COLUMNS =
           } @else {
             @for (a of store.applications(); track a.id) {
               @let last = a.deployments.at(0);
-              @let s = last ? status(last.state, last.stop) : null;
+              @let s = last ? status(last.state, last.stop, last.maintenance) : null;
               <div
                 [class]="
                   columns +

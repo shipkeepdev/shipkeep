@@ -27,6 +27,7 @@ import {
   type EnvironmentRef,
   type Release,
 } from './delivery-api';
+import { deploymentKind, KIND_CAUSE, KIND_TITLE } from './deployment-kind';
 import { deploymentView, type Text, timelineEnded } from './deployment-view';
 
 /** While a deployment runs, its page reads it again this often, as the application page does. */
@@ -138,13 +139,16 @@ const SETTLE_READS = 3;
                   <span>{{ 'Only the first 200 agent actions are listed.' | t }}</span>
                 </div>
               }
-              <div class="note">
-                <sk-icon name="info-circle" class="text-mute" />
-                <span>{{
-                  'Build output and the output of the release command will appear here with builds and log collection.'
-                    | t
-                }}</span>
-              </div>
+              <!-- A stop or a maintenance change builds nothing and runs no release command. -->
+              @if (deploys()) {
+                <div class="note">
+                  <sk-icon name="info-circle" class="text-mute" />
+                  <span>{{
+                    'Build output and the output of the release command will appear here with builds and log collection.'
+                      | t
+                  }}</span>
+                </div>
+              }
             </section>
           </div>
         }
@@ -202,12 +206,17 @@ export class DeploymentPage {
     const timeline = this.timeline();
     return deployment && timeline ? deploymentView(deployment, timeline, this.now()) : null;
   });
+  /** True for a deployment of a release, the only kind with build and release output. */
+  protected readonly deploys = computed(() => {
+    const d = this.deployment();
+    return d ? deploymentKind(d) === 'deploy' : false;
+  });
   protected readonly title = computed(() => {
     const d = this.deployment();
     if (!d) return '';
     // The release number, as the application's agent actions name it; its id when unknown.
     const number = this.release()?.number;
-    return this.i18n.t(d.stop ? 'Stop of {release}' : 'Deployment {release}', {
+    return this.i18n.t(KIND_TITLE[deploymentKind(d)], {
       release: number === undefined ? d.releaseId.slice(0, 7) : `#${String(number)}`,
     });
   });
@@ -223,8 +232,9 @@ export class DeploymentPage {
     return [
       this.application()?.name,
       this.environmentName(),
-      d.stop ? null : this.release()?.image,
-      this.i18n.t(d.stop ? 'stop' : d.trigger),
+      // A stop or a maintenance change runs the release that serves: no image of its own.
+      deploymentKind(d) === 'deploy' ? this.release()?.image : null,
+      this.i18n.t(KIND_CAUSE[deploymentKind(d)] ?? d.trigger),
       actor ? this.i18n.t('by {name}', { name: actor }) : null,
     ]
       .filter(Boolean)

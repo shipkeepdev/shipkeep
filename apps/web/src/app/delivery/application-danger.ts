@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   inject,
   input,
   output,
@@ -15,9 +16,9 @@ import { ConfirmByName } from '../workspace/confirm-by-name';
 import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-api';
 
 /**
- * The two actions of an application's danger zone that exist: stopping it and deleting it
- * (issue #256). Stopping asks once more in place; deleting asks for the application's name, which
- * the server checks before it issues the confirmation.
+ * The actions of an application's danger zone (issue #256): maintenance, stopping it and deleting
+ * it. Entering maintenance and stopping ask once more in place; deleting asks for the
+ * application's name, which the server checks before it issues the confirmation.
  */
 @Component({
   selector: 'sk-application-danger',
@@ -31,6 +32,54 @@ import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-a
     }
     <div class="overflow-hidden rounded-2xl border border-[rgb(255_92_92/35%)] bg-black">
       <div class="flex items-center justify-between gap-4 px-5 py-4 max-sm:flex-wrap">
+        <div>
+          <div class="text-[13.5px]">
+            {{ (maintenance() ? 'Leave maintenance' : 'Enter maintenance') | t }}
+          </div>
+          <div class="mt-[3px] text-[12px] text-mute2">{{ maintenanceHint() | t }}</div>
+        </div>
+        @if (maintenance()) {
+          <button
+            class="btn"
+            type="button"
+            [disabled]="busy() || deploying()"
+            (click)="changeMaintenance('leave')"
+          >
+            {{ (runner.busy() ? 'Leaving…' : 'Disable') | t }}
+          </button>
+        } @else if (entering()) {
+          <div class="flex flex-wrap gap-2.5">
+            <button
+              class="btn btn-danger"
+              type="button"
+              [disabled]="busy()"
+              (click)="changeMaintenance('enter')"
+            >
+              {{ (runner.busy() ? 'Entering…' : 'Enable it now') | t }}
+            </button>
+            <button
+              class="btn"
+              type="button"
+              [disabled]="runner.busy()"
+              (click)="ask(entering, false)"
+            >
+              {{ 'Keep it live' | t }}
+            </button>
+          </div>
+        } @else {
+          <button
+            class="btn btn-danger"
+            type="button"
+            [disabled]="busy() || !running() || deploying() || !domain()"
+            (click)="ask(entering, true)"
+          >
+            {{ 'Enable' | t }}
+          </button>
+        }
+      </div>
+      <div
+        class="flex items-center justify-between gap-4 border-t border-line2 px-5 py-4 max-sm:flex-wrap"
+      >
         <div>
           <div class="text-[13.5px]">
             {{ (startable() ? 'Start the application' : 'Stop the application') | t }}
@@ -139,7 +188,22 @@ export class ApplicationDanger {
   readonly stopped = output();
   /** The application no longer exists. */
   readonly deleted = output();
+  /** True when visitors see the maintenance page (ADR 0025). */
+  readonly maintenance = input(false);
+  /** True when the application has a domain, so a route to show the page on. */
+  readonly domain = input(false);
+  /** Entering or leaving maintenance was queued: the page reloads the deployments. */
+  readonly maintenanceChanged = output();
+  protected readonly entering = signal(false);
   protected readonly stopping = signal(false);
+  protected readonly maintenanceHint = computed(() => {
+    if (this.maintenance())
+      return 'Visitors see the maintenance page and the replicas keep running. Disabling it sends visitors to them again.';
+    if (!this.running()) return 'It has no running replica.';
+    if (!this.domain())
+      return 'It has no domain, so there is no route to show a maintenance page on.';
+    return 'Caddy serves a maintenance page; containers keep running.';
+  });
   protected readonly deleting = signal(false);
 
   protected busy(): boolean {
@@ -154,6 +218,15 @@ export class ApplicationDanger {
   protected ask(question: WritableSignal<boolean>, open: boolean): void {
     this.runner.reset();
     question.set(open);
+  }
+
+  protected async changeMaintenance(change: 'enter' | 'leave'): Promise<void> {
+    if (change === 'leave') this.runner.reset();
+    const outcome = await this.runner.run({ maintenance: this.application().id, change }, () =>
+      this.api.maintenance(this.environment(), this.application().id, change),
+    );
+    this.entering.set(false);
+    if (outcome.ok) this.maintenanceChanged.emit();
   }
 
   protected async stop(): Promise<void> {
