@@ -79,6 +79,32 @@ describe('applicationConfig', () => {
       expect(rejection(unsupported).code).toBe('unsupported_application_source');
   });
 
+  it('refuses what the schema describes but no deployment applies yet, instead of ignoring it', () => {
+    const refusals: [Record<string, unknown>, string][] = [
+      // An unmounted volume loses what the application writes there at its next deployment.
+      [{ volumes: [{ name: 'data', path: '/var/lib/app' }] }, '/volumes'],
+      [{ databases: [{ ref: 'main', env: 'DATABASE_URL' }] }, '/databases'],
+      [{ previews: { enabled: true } }, '/previews'],
+      [{ previews: { ttl: '72h' } }, '/previews'],
+      [{ deploy: { strategy: 'recreate' } }, '/deploy/strategy'],
+      [{ deploy: { keep_images: 5 } }, '/deploy/keep_images'],
+    ];
+    for (const [fields, pointer] of refusals) {
+      const error = rejection(image(fields));
+      expect(error.code, pointer).toBe('unsupported_config_field');
+      expect(error.details).toEqual({ field: pointer });
+      expect(error.message).toContain('not supported yet');
+    }
+    // Saying what is already done, or nothing, is fine.
+    for (const fields of [
+      { volumes: [] },
+      { databases: [] },
+      { previews: { enabled: false } },
+      { deploy: { strategy: 'rolling', drain_timeout: '30s' } },
+    ])
+      expect(applicationConfig(image(fields)).name, JSON.stringify(fields)).toBe('billing-api');
+  });
+
   it('bounds the stored configuration size', () => {
     const env = Object.fromEntries(
       Array.from({ length: 100 }, (_, index) => [`VAR_${String(index)}`, 'v'.repeat(1000)]),
