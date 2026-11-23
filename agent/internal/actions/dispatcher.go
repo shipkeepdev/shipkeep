@@ -43,6 +43,11 @@ var failureTexts = map[string]string{
 	docker.CauseDiskFull:            "no space left on the server",
 	causeImageVolume:                "the image declares a volume the configuration does not mount",
 	causeEgressUnguarded:            "the server's Docker does not go through its egress proxy",
+	causeUpgradeDevBuild:            "a development build of the agent is not upgraded",
+	causeUpgradeNotNewer:            "the agent already runs this version or a later one",
+	causeUpgradeUnitOld:             "the agent's service predates upgrades: run the installer again",
+	causeUpgradeUnverified:          "the release archive did not verify",
+	causeUpgradeUnavailable:         "the release archive could not be downloaded",
 }
 
 // failureText is the fixed text for a failed operation: its cause when the agent lists it.
