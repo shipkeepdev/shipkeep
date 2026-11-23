@@ -2,10 +2,12 @@ package journal
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
+	"slices"
 	"time"
 
 	"google.golang.org/protobuf/encoding/protojson"
@@ -23,76 +25,115 @@ const localSchema = `CREATE TABLE IF NOT EXISTS desired(resource_id TEXT PRIMARY
  CREATE TABLE IF NOT EXISTS used_confirmations(jti TEXT PRIMARY KEY,expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS intent(container TEXT PRIMARY KEY,running INTEGER NOT NULL CHECK(running IN (0,1)),updated_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS stop_reason(container TEXT PRIMARY KEY,reason TEXT NOT NULL,stopped_at INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS route_upstreams(route_id TEXT PRIMARY KEY,upstreams_json TEXT NOT NULL,updated_at INTEGER NOT NULL);`
+ CREATE TABLE IF NOT EXISTS route_records(route_id TEXT PRIMARY KEY,record_json TEXT NOT NULL,updated_at INTEGER NOT NULL);`
 
-// RouteUpstream is a managed container a route proxies to (ADR 0017): its place among the
-// route's upstreams, its name and port, and the address the agent last resolved it to.
+// RouteUpstream is one upstream of a route as the action asked for it (ADR 0017): a managed
+// container with its port, or a fixed address, and its weight.
 type RouteUpstream struct {
-	Index     int    `json:"index"`
-	Container string `json:"container"`
-	Port      uint16 `json:"port"`
-	Dial      string `json:"dial"`
+	Container string `json:"container,omitempty"`
+	Port      uint16 `json:"port,omitempty"`
+	Address   string `json:"address,omitempty"`
+	Weight    int    `json:"weight"`
 }
 
-// maxRouteUpstreams bounds a record as UpsertRoute bounds a route.
-const maxRouteUpstreams = 64
+// RouteRecord is what the agent keeps of a route that proxies to local containers: its upstreams
+// as asked, and the dial lists it wrote to Caddy or is about to write, one or two. Reconciliation
+// rewrites the route only while Caddy holds one of those lists: a route the agent did not write
+// is left alone, and a write cut short is found again on the next pass.
+type RouteRecord struct {
+	Upstreams []RouteUpstream `json:"upstreams"`
+	Written   [][]string      `json:"written"`
+}
 
-// SetRouteUpstreams records the containers a route proxies to, so that reconciliation can follow a
-// container that comes back at another address. A route without one (addresses only, or the
-// maintenance page) has no record.
-func (s *Store) SetRouteUpstreams(ctx context.Context, route string, upstreams []RouteUpstream, now time.Time) error {
-	if !identifier.MatchString(route) || len(upstreams) > maxRouteUpstreams {
-		return errors.New("invalid route upstreams")
+// A record is bounded as UpsertRoute bounds a route.
+const (
+	maxRouteUpstreams = 64
+	maxRouteWritten   = 2
+	maxDialBytes      = 64
+)
+
+// SetRouteRecord records a route that proxies to local containers, replacing its record.
+func (s *Store) SetRouteRecord(ctx context.Context, route string, record RouteRecord, now time.Time) error {
+	if !identifier.MatchString(route) || !validRouteRecord(record) {
+		return errors.New("invalid route record")
 	}
-	if len(upstreams) == 0 {
-		return s.ClearRouteUpstreams(ctx, route)
-	}
-	for _, upstream := range upstreams {
-		if upstream.Index < 0 || upstream.Index >= maxRouteUpstreams || !identifier.MatchString(upstream.Container) || upstream.Port == 0 || len(upstream.Dial) > 64 {
-			return errors.New("invalid route upstreams")
-		}
-	}
-	data, err := json.Marshal(upstreams)
+	data, err := json.Marshal(record)
 	if err != nil {
-		return fmt.Errorf("encode route upstreams: %w", err)
+		return fmt.Errorf("encode route record: %w", err)
 	}
-	if _, err := s.db.ExecContext(ctx, "INSERT INTO route_upstreams(route_id,upstreams_json,updated_at) VALUES(?,?,?) ON CONFLICT(route_id) DO UPDATE SET upstreams_json=excluded.upstreams_json,updated_at=excluded.updated_at", route, string(data), now.UnixMilli()); err != nil {
-		return fmt.Errorf("record route upstreams: %w", err)
+	if _, err := s.db.ExecContext(ctx, "INSERT INTO route_records(route_id,record_json,updated_at) VALUES(?,?,?) ON CONFLICT(route_id) DO UPDATE SET record_json=excluded.record_json,updated_at=excluded.updated_at", route, string(data), now.UnixMilli()); err != nil {
+		return fmt.Errorf("record route: %w", err)
 	}
 	return nil
 }
 
-// ClearRouteUpstreams forgets a route's containers: removed, or no longer proxying to any.
-func (s *Store) ClearRouteUpstreams(ctx context.Context, route string) error {
-	if _, err := s.db.ExecContext(ctx, "DELETE FROM route_upstreams WHERE route_id=?", route); err != nil {
-		return fmt.Errorf("forget route upstreams: %w", err)
+// ClearRouteRecord forgets a route: removed, or no longer proxying to a local container.
+func (s *Store) ClearRouteRecord(ctx context.Context, route string) error {
+	if _, err := s.db.ExecContext(ctx, "DELETE FROM route_records WHERE route_id=?", route); err != nil {
+		return fmt.Errorf("forget route record: %w", err)
 	}
 	return nil
 }
 
-// RouteUpstreams returns every recorded route with its containers. A record that cannot be read is
-// skipped rather than trusted.
-func (s *Store) RouteUpstreams(ctx context.Context) (map[string][]RouteUpstream, error) {
-	rows, err := s.db.QueryContext(ctx, "SELECT route_id,upstreams_json FROM route_upstreams ORDER BY route_id")
+// RouteRecord returns a route's record. One that cannot be read is reported absent rather than
+// trusted.
+func (s *Store) RouteRecord(ctx context.Context, route string) (RouteRecord, bool, error) {
+	var data string
+	err := s.db.QueryRowContext(ctx, "SELECT record_json FROM route_records WHERE route_id=?", route).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return RouteRecord{}, false, nil
+	}
 	if err != nil {
-		return nil, fmt.Errorf("read route upstreams: %w", err)
+		return RouteRecord{}, false, fmt.Errorf("read route record: %w", err)
+	}
+	var record RouteRecord
+	decoded := json.Unmarshal([]byte(data), &record) == nil
+	return record, decoded && validRouteRecord(record), nil
+}
+
+// RecordedRoutes lists the routes that have a record.
+func (s *Store) RecordedRoutes(ctx context.Context) ([]string, error) {
+	rows, err := s.db.QueryContext(ctx, "SELECT route_id FROM route_records ORDER BY route_id")
+	if err != nil {
+		return nil, fmt.Errorf("read route records: %w", err)
 	}
 	defer rows.Close() //nolint:errcheck // read-only cursor
-	routes := map[string][]RouteUpstream{}
+	routes := []string{}
 	for rows.Next() {
-		var route, data string
-		if err := rows.Scan(&route, &data); err != nil {
-			return nil, fmt.Errorf("scan route upstreams: %w", err)
+		var route string
+		if err := rows.Scan(&route); err != nil {
+			return nil, fmt.Errorf("scan route records: %w", err)
 		}
-		var upstreams []RouteUpstream
-		if json.Unmarshal([]byte(data), &upstreams) == nil && len(upstreams) <= maxRouteUpstreams {
-			routes[route] = upstreams
-		}
+		routes = append(routes, route)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("read route upstreams: %w", err)
+		return nil, fmt.Errorf("read route records: %w", err)
 	}
 	return routes, nil
+}
+
+func validRouteRecord(record RouteRecord) bool {
+	if len(record.Upstreams) == 0 || len(record.Upstreams) > maxRouteUpstreams || len(record.Written) == 0 || len(record.Written) > maxRouteWritten {
+		return false
+	}
+	containers := 0
+	for _, upstream := range record.Upstreams {
+		container := upstream.Container != "" || upstream.Port != 0
+		if container {
+			containers++
+		}
+		if upstream.Weight < 1 || upstream.Weight > 100 ||
+			container && (!identifier.MatchString(upstream.Container) || upstream.Port == 0 || upstream.Address != "") ||
+			!container && (upstream.Address == "" || len(upstream.Address) > maxDialBytes) {
+			return false
+		}
+	}
+	for _, dials := range record.Written {
+		if len(dials) > maxRouteUpstreams || slices.ContainsFunc(dials, func(dial string) bool { return dial == "" || len(dial) > maxDialBytes }) {
+			return false
+		}
+	}
+	return containers > 0
 }
 
 // PutDesired stores a typed container specification, stripping every debug_redact field recursively.

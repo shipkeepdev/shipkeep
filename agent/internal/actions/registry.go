@@ -12,6 +12,6 @@ func Registry(engine Engine, confirmations Confirmer, router Router, intents Int
 	}
 	handlers := map[string]Handler{"collect_facts": facts}
 	maps.Copy(handlers, DockerHandlers(engine, confirmations, intents, options...))
-	maps.Copy(handlers, RouteHandlers(router, engine, settings.routeRecords, nil, settings.reservedHosts...))
+	maps.Copy(handlers, RouteHandlers(router, engine, settings.routeBook, nil, settings.reservedHosts...))
 	return handlers
 }

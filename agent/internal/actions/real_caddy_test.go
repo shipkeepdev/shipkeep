@@ -118,7 +118,7 @@ func TestRealCaddySwitchesUnderLoadWithoutAFailedRequest(t *testing.T) {
 		t.Fatal(err)
 	}
 	agent := newRealAgent(t, nil)
-	for kind, handler := range RouteHandlers(router, agent.engine, agent.store, nil) {
+	for kind, handler := range RouteHandlers(router, agent.engine, &RouteBook{Store: agent.store}, nil) {
 		agent.dispatcher.Handlers[kind] = handler
 	}
 	const v1, v2 = "sk-it-web-r1-0", "sk-it-web-r2-0"
@@ -183,7 +183,8 @@ func TestRealCaddySwitchesUnderLoadWithoutAFailedRequest(t *testing.T) {
 
 // Acceptance of M1.6 (#18): with no control plane, a container that crashed is started again by
 // the reconciler and its route follows it, even when another container took its old address while
-// it was down. Without the route refresh, that route would send the traffic to the other one.
+// it was down. While it is down, the route answers 503. Without the route refresh, that route
+// would send the traffic to the other one.
 func TestRealCaddyFollowsARestartedContainer(t *testing.T) {
 	socket, address := os.Getenv("SHIPKEEP_IT_CADDY_ADMIN"), os.Getenv("SHIPKEEP_IT_CADDY_ADDRESS")
 	if socket == "" || address == "" {
@@ -194,7 +195,8 @@ func TestRealCaddyFollowsARestartedContainer(t *testing.T) {
 		t.Fatal(err)
 	}
 	agent := newRealAgent(t, nil)
-	for kind, handler := range RouteHandlers(router, agent.engine, agent.store, nil) {
+	book := &RouteBook{Store: agent.store}
+	for kind, handler := range RouteHandlers(router, agent.engine, book, nil) {
 		agent.dispatcher.Handlers[kind] = handler
 	}
 	const a, b, host = "sk-it-moved-a-r1-0", "sk-it-moved-b-r1-0", "moved.example.test"
@@ -217,6 +219,9 @@ func TestRealCaddyFollowsARestartedContainer(t *testing.T) {
 		}
 		defer response.Body.Close() //nolint:errcheck // read-only body
 		body, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+		if response.StatusCode == http.StatusServiceUnavailable {
+			return "unavailable"
+		}
 		return whoamiName(string(body))
 	}
 	idA := agent.must("create a", itCreate(whoamiSpec(a, "a")), time.Minute).GetResult().GetContainerId()
@@ -254,10 +259,19 @@ func TestRealCaddyFollowsARestartedContainer(t *testing.T) {
 		t.Logf("b got %s, not a's old %s: the route cannot reach it, the test still checks a comes back", taken, before)
 	}
 
+	// While a is down, its route sends nothing to the address b may now hold: it answers 503.
+	refresher := RouteRefresher{Router: router, Containers: agent.engine, Book: book}
+	if err := refresher.Refresh(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if got := answer(); got != "unavailable" {
+		t.Fatalf("with a stopped, the route answered %q, want 503", got)
+	}
+
 	// One reconciliation pass, as the agent runs every 30 s without a control plane.
 	reconciler := reconcile.Reconciler{
 		Engine: agent.engine, State: agent.store, Logger: slog.New(slog.DiscardHandler),
-		Routes: RouteRefresher{Router: router, Containers: agent.engine, Records: agent.store},
+		Routes: refresher,
 	}
 	if err := reconciler.Pass(ctx); err != nil {
 		t.Fatal(err)

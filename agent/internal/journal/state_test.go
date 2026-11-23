@@ -5,6 +5,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
+	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -187,42 +190,59 @@ func TestLocalStateUpgradePreservesOperations(t *testing.T) {
 	}
 }
 
-func TestRouteUpstreamsAreRecordedReplacedAndForgotten(t *testing.T) {
+func TestRouteRecordsAreRecordedReplacedAndForgotten(t *testing.T) {
 	store, err := Open(t.Context(), t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer store.Close() //nolint:errcheck // test cleanup
 	ctx, now := t.Context(), time.Unix(1_700_000_000, 0)
-	upstreams := []RouteUpstream{{Index: 0, Container: "sk-api-1", Port: 8080, Dial: "172.18.0.5:8080"}}
-	if err := store.SetRouteUpstreams(ctx, "sk-route-api", upstreams, now); err != nil {
+	record := RouteRecord{
+		Upstreams: []RouteUpstream{{Container: "sk-api-1", Port: 8080, Weight: 1}, {Address: "10.210.0.4:8080", Weight: 3}},
+		Written:   [][]string{{"172.18.0.5:8080", "10.210.0.4:8080"}},
+	}
+	if err := store.SetRouteRecord(ctx, "sk-route-api", record, now); err != nil {
 		t.Fatal(err)
 	}
-	upstreams[0].Dial = "172.18.0.9:8080"
-	if err := store.SetRouteUpstreams(ctx, "sk-route-api", upstreams, now); err != nil {
+	// Written ahead of a change: two lists, and the 503 answer, which holds none.
+	record.Written = [][]string{{"172.18.0.5:8080", "10.210.0.4:8080"}, {}}
+	if err := store.SetRouteRecord(ctx, "sk-route-api", record, now); err != nil {
 		t.Fatal(err)
 	}
-	routes, err := store.RouteUpstreams(ctx)
-	if err != nil || len(routes) != 1 || routes["sk-route-api"][0].Dial != "172.18.0.9:8080" {
-		t.Fatalf("record not replaced: %v %v", routes, err)
+	got, found, err := store.RouteRecord(ctx, "sk-route-api")
+	if err != nil || !found || !reflect.DeepEqual(got, record) {
+		t.Fatalf("record not replaced: %+v %v %v", got, found, err)
 	}
-	// No container left (the maintenance page, or addresses only): no record.
-	if err := store.SetRouteUpstreams(ctx, "sk-route-api", nil, now); err != nil {
+	if routes, err := store.RecordedRoutes(ctx); err != nil || !slices.Equal(routes, []string{"sk-route-api"}) {
+		t.Fatalf("recorded routes %v %v", routes, err)
+	}
+	if err := store.ClearRouteRecord(ctx, "sk-route-api"); err != nil {
 		t.Fatal(err)
 	}
-	if routes, _ := store.RouteUpstreams(ctx); len(routes) != 0 {
-		t.Fatalf("record kept without containers: %v", routes)
+	if _, found, _ := store.RouteRecord(ctx, "sk-route-api"); found {
+		t.Fatal("record kept after it was forgotten")
 	}
-	for name, bad := range map[string][]RouteUpstream{
-		"bad container": {{Container: "../x", Port: 80}},
-		"no port":       {{Container: "sk-a", Port: 0}},
-		"bad index":     {{Index: -1, Container: "sk-a", Port: 80}},
+	one := func(upstream RouteUpstream) RouteRecord {
+		return RouteRecord{Upstreams: []RouteUpstream{upstream}, Written: [][]string{{"172.18.0.5:8080"}}}
+	}
+	for name, bad := range map[string]RouteRecord{
+		"no upstream":       {Written: [][]string{{}}},
+		"no container":      one(RouteUpstream{Address: "10.210.0.4:8080", Weight: 1}),
+		"bad container":     one(RouteUpstream{Container: "../x", Port: 80, Weight: 1}),
+		"no port":           one(RouteUpstream{Container: "sk-a", Weight: 1}),
+		"both forms":        one(RouteUpstream{Container: "sk-a", Port: 80, Address: "10.0.0.1:80", Weight: 1}),
+		"no weight":         one(RouteUpstream{Container: "sk-a", Port: 80}),
+		"weight too high":   one(RouteUpstream{Container: "sk-a", Port: 80, Weight: 101}),
+		"nothing written":   {Upstreams: one(RouteUpstream{Container: "sk-a", Port: 80, Weight: 1}).Upstreams},
+		"three lists":       {Upstreams: one(RouteUpstream{Container: "sk-a", Port: 80, Weight: 1}).Upstreams, Written: [][]string{{}, {}, {}}},
+		"empty dial":        {Upstreams: one(RouteUpstream{Container: "sk-a", Port: 80, Weight: 1}).Upstreams, Written: [][]string{{""}}},
+		"oversized address": one(RouteUpstream{Address: strings.Repeat("1", 65), Weight: 1}),
 	} {
-		if err := store.SetRouteUpstreams(ctx, "sk-route-api", bad, now); err == nil {
+		if err := store.SetRouteRecord(ctx, "sk-route-api", bad, now); err == nil {
 			t.Errorf("%s accepted", name)
 		}
 	}
-	if err := store.SetRouteUpstreams(ctx, "../route", upstreams, now); err == nil {
+	if err := store.SetRouteRecord(ctx, "../route", record, now); err == nil {
 		t.Error("invalid route id accepted")
 	}
 }

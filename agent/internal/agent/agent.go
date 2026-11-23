@@ -82,14 +82,16 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 	if err != nil {
 		return err
 	}
+	// The route actions and the refresher share one book: a route and its record change together.
+	routes := &actions.RouteBook{Store: store}
 	// The reconciler keeps workloads in their recorded state even while the control plane is
 	// unreachable (CLAUDE.md rule 10), routes included: a container restarted at another address
 	// keeps receiving its own traffic (ADR 0017). It stops before the journal closes.
 	reconcileCtx, stopReconcile := context.WithCancel(ctx)
 	var reconciling sync.WaitGroup
 	reconciling.Go(func() {
-		routes := actions.RouteRefresher{Router: router, Containers: engine, Records: store}
-		reconcile.Reconciler{Engine: engine, State: store, Routes: routes, Logger: a.logger}.Run(reconcileCtx)
+		refresher := actions.RouteRefresher{Router: router, Containers: engine, Book: routes}
+		reconcile.Reconciler{Engine: engine, State: store, Routes: refresher, Logger: a.logger}.Run(reconcileCtx)
 	})
 	defer func() {
 		stopReconcile()
@@ -118,7 +120,7 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 		a.logger.Warn("development mode: CA fingerprint pinning may be disabled, never use on a real server")
 	}
 
-	if err := a.runGateway(ctx, store, engine, router); err != nil && ctx.Err() == nil {
+	if err := a.runGateway(ctx, store, engine, router, routes); err != nil && ctx.Err() == nil {
 		return err
 	}
 

@@ -9,6 +9,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/protobuf/types/known/durationpb"
@@ -33,12 +34,35 @@ type Containers interface {
 	Container(ctx context.Context, ref string) (docker.Container, error)
 }
 
-// RouteRecords keeps the containers each route proxies to (the journal), so that reconciliation
-// follows a container that comes back at another address.
-type RouteRecords interface {
-	SetRouteUpstreams(ctx context.Context, route string, upstreams []journal.RouteUpstream, now time.Time) error
-	ClearRouteUpstreams(ctx context.Context, route string) error
+// RouteStore keeps a record of each route that proxies to local containers (the journal), so that
+// reconciliation follows a container that comes back at another address.
+type RouteStore interface {
+	RouteRecord(ctx context.Context, route string) (journal.RouteRecord, bool, error)
+	SetRouteRecord(ctx context.Context, route string, record journal.RouteRecord, now time.Time) error
+	ClearRouteRecord(ctx context.Context, route string) error
+	RecordedRoutes(ctx context.Context) ([]string, error)
 }
+
+// RouteBook is the store of route records with the lock that orders every change to a recorded
+// route. The route actions and the refresher share one, and each writes a route to Caddy and its
+// record under it: neither replaces a route or a record the other has just written.
+type RouteBook struct {
+	Store RouteStore
+	mu    sync.Mutex
+}
+
+// lock takes the book's lock and returns its release; a nil book records nothing and locks nothing.
+func (b *RouteBook) lock() func() {
+	if b == nil {
+		return func() {}
+	}
+	b.mu.Lock()
+	return b.mu.Unlock
+}
+
+// errNotServing is a container upstream that cannot take traffic: absent, not managed, not
+// running, or without a private address on a Shipkeep network.
+var errNotServing = fmt.Errorf("%w: upstream container not serving", errInput)
 
 // localUpstream is a container upstream, resolved to a dial address when the route is applied.
 type localUpstream struct {
@@ -63,23 +87,23 @@ var (
 
 // RouteHandlers returns the Caddy-backed route handlers; sleep waits for draining (tests shorten it).
 // A route for a reserved host, or a wildcard that covers one, is refused (ADR 0021).
-func RouteHandlers(router Router, containers Containers, records RouteRecords, sleep func(context.Context, time.Duration) error, reserved ...string) map[string]Handler {
+func RouteHandlers(router Router, containers Containers, book *RouteBook, sleep func(context.Context, time.Duration) error, reserved ...string) map[string]Handler {
 	if sleep == nil {
 		sleep = wait
 	}
 	return map[string]Handler{
 		"upsert_route": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
-			return upsertRoute(router, containers, records, sleep, req.GetUpsertRoute().GetRoute(), reserved)
+			return upsertRoute(router, containers, book, sleep, req.GetUpsertRoute().GetRoute(), reserved)
 		}, Result: resourceResult},
 		"remove_route": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
-			return removeRoute(router, records, sleep, req.GetRemoveRoute())
+			return removeRoute(router, book, sleep, req.GetRemoveRoute())
 		}, Result: resourceResult},
 	}
 }
 
 // upsertRoute switches traffic atomically, then waits for in-flight requests to drain from the
 // replaced upstreams before reporting success (switch-then-drain, ADR 0005).
-func upsertRoute(router Router, containers Containers, records RouteRecords, sleep func(context.Context, time.Duration) error, route *agentv1.Route, reserved []string) (journal.Plan, error) {
+func upsertRoute(router Router, containers Containers, book *RouteBook, sleep func(context.Context, time.Duration) error, route *agentv1.Route, reserved []string) (journal.Plan, error) {
 	template, local, plain, drain, err := caddyRoute(route)
 	if err != nil {
 		return journal.Plan{}, err
@@ -89,6 +113,7 @@ func upsertRoute(router Router, containers Containers, records RouteRecords, sle
 			return journal.Plan{}, errInput
 		}
 	}
+	asked := askedUpstreams(route, template, local)
 	// Unknown after a restart: draining again is harmless, skipping it is not.
 	replaced := true
 	return journal.Plan{Version: "upsert-route-v1", Steps: []journal.Step{
@@ -96,6 +121,7 @@ func upsertRoute(router Router, containers Containers, records RouteRecords, sle
 			Name:      "apply",
 			RetrySafe: true,
 			Apply: func(ctx context.Context) (journal.Outcome, error) {
+				defer book.lock()()
 				desired, err := resolveUpstreams(ctx, containers, template, local)
 				if err != nil {
 					return journal.Outcome{}, err
@@ -116,15 +142,23 @@ func upsertRoute(router Router, containers Containers, records RouteRecords, sle
 					remove = append(remove, hosts...)
 				}
 				remove = slices.DeleteFunc(remove, func(host string) bool { return plain && slices.Contains(hosts, host) })
+				// A route to local containers is recorded before Caddy gets it, with the dials it is
+				// about to hold. If the write fails, the old route holds none of them, and
+				// reconciliation leaves it as it is rather than give it the new upstreams.
+				if book != nil && len(local) > 0 {
+					record := journal.RouteRecord{Upstreams: asked, Written: [][]string{dials(desired)}}
+					if err := book.Store.SetRouteRecord(ctx, desired.ID, record, time.Now()); err != nil {
+						return journal.Outcome{}, fmt.Errorf("record route: %w", err)
+					}
+				}
 				// One unit, ordered so that a failed write leaves every host reachable (ApplyRoute).
 				if err := router.ApplyRoute(ctx, desired, add, remove); err != nil {
 					return journal.Outcome{}, fmt.Errorf("apply route: %w", err)
 				}
-				// What each container resolved to, for reconciliation; none for the maintenance
-				// page or address upstreams, which clears an older record.
-				if records != nil {
-					if err := records.SetRouteUpstreams(ctx, desired.ID, recorded(desired, local), time.Now()); err != nil {
-						return journal.Outcome{}, fmt.Errorf("record route upstreams: %w", err)
+				// The maintenance page and address upstreams have nothing to follow.
+				if book != nil && len(local) == 0 {
+					if err := book.Store.ClearRouteRecord(ctx, desired.ID); err != nil {
+						return journal.Outcome{}, fmt.Errorf("forget route record: %w", err)
 					}
 				}
 				return journal.Outcome{ResourceID: desired.ID}, nil
@@ -147,7 +181,7 @@ func upsertRoute(router Router, containers Containers, records RouteRecords, sle
 	}}, nil
 }
 
-func removeRoute(router Router, records RouteRecords, sleep func(context.Context, time.Duration) error, action *agentv1.RemoveRoute) (journal.Plan, error) {
+func removeRoute(router Router, book *RouteBook, sleep func(context.Context, time.Duration) error, action *agentv1.RemoveRoute) (journal.Plan, error) {
 	if !routeID.MatchString(action.GetRouteId()) {
 		return journal.Plan{}, errInput
 	}
@@ -161,20 +195,25 @@ func removeRoute(router Router, records RouteRecords, sleep func(context.Context
 			Name:      "remove",
 			RetrySafe: true,
 			Apply: func(ctx context.Context) (journal.Outcome, error) {
+				defer book.lock()()
 				previous, existed, err := router.Route(ctx, id)
 				if err != nil {
 					return journal.Outcome{}, fmt.Errorf("read route: %w", err)
 				}
-				if records != nil {
-					if err := records.ClearRouteUpstreams(ctx, id); err != nil {
-						return journal.Outcome{}, fmt.Errorf("forget route upstreams: %w", err)
+				if existed {
+					if err := router.RemoveRoute(ctx, id); err != nil {
+						return journal.Outcome{}, fmt.Errorf("remove route: %w", err)
+					}
+				}
+				// Only once the route is gone: until then, reconciliation keeps following its
+				// containers.
+				if book != nil {
+					if err := book.Store.ClearRouteRecord(ctx, id); err != nil {
+						return journal.Outcome{}, fmt.Errorf("forget route record: %w", err)
 					}
 				}
 				if !existed {
 					return journal.Outcome{ResourceID: id}, nil
-				}
-				if err := router.RemoveRoute(ctx, id); err != nil {
-					return journal.Outcome{}, fmt.Errorf("remove route: %w", err)
 				}
 				if err := router.SetPlainHosts(ctx, nil, hostsOf(previous)); err != nil {
 					return journal.Outcome{}, fmt.Errorf("set plain hosts: %w", err)
@@ -264,10 +303,7 @@ func caddyRoute(route *agentv1.Route) (caddy.Route, []localUpstream, bool, time.
 	if err != nil {
 		return caddy.Route{}, nil, false, 0, err
 	}
-	handler := caddy.Handler{Handler: "reverse_proxy", Upstreams: upstreams}
-	if weighted {
-		handler.LoadBalancing = &caddy.LoadBalancing{SelectionPolicy: map[string]any{"policy": "weighted_round_robin", "weights": weights}}
-	}
+	handler := proxyHandler(upstreams, weights, weighted)
 	if route.GetMaintenance() {
 		handler = caddy.MaintenanceHandler()
 	}
@@ -278,6 +314,15 @@ func caddyRoute(route *agentv1.Route) (caddy.Route, []localUpstream, bool, time.
 	}
 	match := caddy.HostMatch(hosts, protocol)
 	return caddy.Route{ID: caddy.RouteID(route.GetRouteId()), Match: []caddy.Match{match}, Handle: []caddy.Handler{handler}, Terminal: true}, local, plain, drain, nil
+}
+
+// proxyHandler proxies to upstreams, by weighted round robin when the route gave weights.
+func proxyHandler(upstreams []caddy.Upstream, weights []int, weighted bool) caddy.Handler {
+	handler := caddy.Handler{Handler: "reverse_proxy", Upstreams: upstreams}
+	if weighted {
+		handler.LoadBalancing = &caddy.LoadBalancing{SelectionPolicy: map[string]any{"policy": "weighted_round_robin", "weights": weights}}
+	}
+	return handler
 }
 
 // resolveUpstreams returns a copy of template with every container upstream resolved to the
@@ -351,11 +396,14 @@ func wait(ctx context.Context, duration time.Duration) error {
 // by name order, with port (ADR 0017).
 func containerDial(ctx context.Context, containers Containers, name string, port uint16) (string, error) {
 	container, err := containers.Container(ctx, name)
+	if errors.Is(err, docker.ErrNotFound) {
+		return "", errNotServing
+	}
 	if err != nil {
 		return "", fmt.Errorf("inspect upstream container: %w", err)
 	}
 	if container.Config.Labels[docker.ManagedLabel] != "true" || !container.State.Running {
-		return "", errInput
+		return "", errNotServing
 	}
 	networks := []string{}
 	for network := range container.NetworkSettings.Networks {
@@ -370,21 +418,31 @@ func containerDial(ctx context.Context, containers Containers, name string, port
 			return netip.AddrPortFrom(address, port).String(), nil
 		}
 	}
-	return "", errInput
+	return "", errNotServing
 }
 
-// recorded lists the container upstreams of an applied route with the address each resolved to.
-func recorded(route caddy.Route, local []localUpstream) []journal.RouteUpstream {
-	upstreams := make([]journal.RouteUpstream, 0, len(local))
-	for _, upstream := range local {
-		upstreams = append(upstreams, journal.RouteUpstream{
-			Index:     upstream.index,
-			Container: upstream.name,
-			Port:      upstream.port,
-			Dial:      route.Handle[0].Upstreams[upstream.index].Dial,
-		})
+// askedUpstreams lists a validated route's upstreams as the journal records them: containers by
+// name and port, addresses as given, each with its weight.
+func askedUpstreams(route *agentv1.Route, template caddy.Route, local []localUpstream) []journal.RouteUpstream {
+	asked := make([]journal.RouteUpstream, 0, len(route.GetUpstreams()))
+	for index, upstream := range route.GetUpstreams() {
+		asked = append(asked, journal.RouteUpstream{Address: template.Handle[0].Upstreams[index].Dial, Weight: max(int(upstream.GetWeight()), 1)})
 	}
-	return upstreams
+	for _, upstream := range local {
+		asked[upstream.index] = journal.RouteUpstream{Container: upstream.name, Port: upstream.port, Weight: asked[upstream.index].Weight}
+	}
+	return asked
+}
+
+// dials lists the addresses a route proxies to, in order: none for the agent's 503 answer.
+func dials(route caddy.Route) []string {
+	addresses := []string{}
+	if len(route.Handle) == 1 {
+		for _, upstream := range route.Handle[0].Upstreams {
+			addresses = append(addresses, upstream.Dial)
+		}
+	}
+	return addresses
 }
 
 // RouteUpdater rewrites one route under the Caddy client's lock (caddy.Client.UpdateRoute).
@@ -392,67 +450,121 @@ type RouteUpdater interface {
 	UpdateRoute(ctx context.Context, id string, change func(caddy.Route) (caddy.Route, bool)) error
 }
 
-// RouteStore reads and writes the recorded container upstreams of routes (the journal).
-type RouteStore interface {
-	RouteRecords
-	RouteUpstreams(ctx context.Context) (map[string][]journal.RouteUpstream, error)
-}
-
-// RouteRefresher follows containers that came back at another address (ADR 0017, PLAN M1.6). Docker
-// gives a restarted container whatever address is free: another container may have taken its old
-// one, and the route would then send its traffic there. Each pass resolves every recorded
-// container again and moves the route to its new address, as long as the route still holds the
-// address the agent set: a route an action wrote meanwhile is left to that action. A container that
-// is not running is left until it runs again.
+// RouteRefresher follows the containers of recorded routes (ADR 0017, PLAN M1.6). Docker gives a
+// restarted container whatever address is free: another container may have taken its old one, and
+// the route would then send its traffic there. Each pass resolves every recorded container again
+// and gives the route the address of each one that runs. A container that does not run gets no
+// traffic, and a route none of whose containers runs answers 503, rather than keep an address
+// another container may now hold. Only a route that holds dials the agent wrote is changed: one
+// written by anything else is left as it is.
 type RouteRefresher struct {
 	Router     RouteUpdater
 	Containers Containers
-	Records    RouteStore
+	Book       *RouteBook
 	Now        func() time.Time
 }
 
 // Refresh runs one pass over every recorded route.
 func (r RouteRefresher) Refresh(ctx context.Context) error {
-	routes, err := r.Records.RouteUpstreams(ctx)
+	routes, err := r.Book.Store.RecordedRoutes(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("list route records: %w", err)
 	}
 	var failures []error
-	for id, upstreams := range routes {
-		current := slices.Clone(upstreams)
-		changed := false
-		err := r.Router.UpdateRoute(ctx, id, func(route caddy.Route) (caddy.Route, bool) {
-			if len(route.Handle) != 1 || route.Handle[0].Handler != "reverse_proxy" {
-				return route, false
-			}
-			handler := route.Handle[0]
-			handler.Upstreams = slices.Clone(handler.Upstreams)
-			for i, upstream := range upstreams {
-				if upstream.Index >= len(handler.Upstreams) || handler.Upstreams[upstream.Index].Dial != upstream.Dial {
-					continue
-				}
-				dial, err := containerDial(ctx, r.Containers, upstream.Container, upstream.Port)
-				if err != nil || dial == upstream.Dial || slices.ContainsFunc(handler.Upstreams, func(u caddy.Upstream) bool { return u.Dial == dial }) {
-					continue
-				}
-				handler.Upstreams[upstream.Index] = caddy.Upstream{Dial: dial}
-				current[i].Dial = dial
-				changed = true
-			}
-			route.Handle = []caddy.Handler{handler}
-			return route, changed
-		})
-		if err != nil {
-			failures = append(failures, fmt.Errorf("refresh route: %w", err))
-			continue
-		}
-		if changed {
-			if err := r.Records.SetRouteUpstreams(ctx, id, current, r.now()); err != nil {
-				failures = append(failures, err)
-			}
+	for _, id := range routes {
+		if err := r.refresh(ctx, id); err != nil {
+			failures = append(failures, fmt.Errorf("refresh route %s: %w", id, err))
 		}
 	}
 	return errors.Join(failures...)
+}
+
+// refresh brings one route to its containers' current addresses, under the book's lock, so that
+// no route action writes the route or its record in between.
+func (r RouteRefresher) refresh(ctx context.Context, id string) error {
+	defer r.Book.lock()()
+	record, found, err := r.Book.Store.RouteRecord(ctx, id)
+	if err != nil || !found {
+		return err
+	}
+	wanted, weights, err := r.resolve(ctx, record.Upstreams)
+	if err != nil {
+		return err
+	}
+	var held []string
+	var ahead error
+	err = r.Router.UpdateRoute(ctx, id, func(route caddy.Route) (caddy.Route, bool) {
+		current, ours := written(route, record)
+		if !ours {
+			return route, false
+		}
+		held = current
+		if slices.Equal(current, wanted) {
+			return route, false
+		}
+		// Recorded first: if the write to Caddy fails, or the record after it, the next pass finds
+		// the route holding one of the two lists and takes it from there.
+		next := record
+		next.Written = [][]string{current, wanted}
+		if ahead = r.Book.Store.SetRouteRecord(ctx, id, next, r.now()); ahead != nil {
+			return route, false
+		}
+		route.Handle = []caddy.Handler{caddy.UnavailableHandler()}
+		if len(wanted) > 0 {
+			upstreams := make([]caddy.Upstream, 0, len(wanted))
+			for _, dial := range wanted {
+				upstreams = append(upstreams, caddy.Upstream{Dial: dial})
+			}
+			weighted := slices.ContainsFunc(record.Upstreams, func(u journal.RouteUpstream) bool { return u.Weight != 1 })
+			route.Handle = []caddy.Handler{proxyHandler(upstreams, weights, weighted)}
+		}
+		held = wanted
+		return route, true
+	})
+	if err != nil || ahead != nil {
+		return errors.Join(err, ahead)
+	}
+	if held == nil || len(record.Written) == 1 && slices.Equal(record.Written[0], held) {
+		return nil
+	}
+	record.Written = [][]string{held}
+	return r.Book.Store.SetRouteRecord(ctx, id, record, r.now())
+}
+
+// resolve lists the dials the route should hold now, with their weights, in the route's order:
+// each address, and the current address of each container that runs.
+func (r RouteRefresher) resolve(ctx context.Context, upstreams []journal.RouteUpstream) ([]string, []int, error) {
+	wanted, weights := []string{}, []int{}
+	for _, upstream := range upstreams {
+		dial := upstream.Address
+		if upstream.Container != "" {
+			resolved, err := containerDial(ctx, r.Containers, upstream.Container, upstream.Port)
+			if errors.Is(err, errNotServing) {
+				continue
+			}
+			if err != nil {
+				// Docker did not answer: nothing is changed on a guess.
+				return nil, nil, err
+			}
+			dial = resolved
+		}
+		if slices.Contains(wanted, dial) {
+			return nil, nil, errors.New("two upstreams of the route resolve to one address")
+		}
+		wanted = append(wanted, dial)
+		weights = append(weights, upstream.Weight)
+	}
+	return wanted, weights, nil
+}
+
+// written returns the dials route holds, and whether the agent wrote them: a reverse proxy, or the
+// 503 answer, holding one of the record's lists.
+func written(route caddy.Route, record journal.RouteRecord) ([]string, bool) {
+	if len(route.Handle) != 1 || route.Handle[0].Handler != "reverse_proxy" && !caddy.IsUnavailable(route.Handle[0]) {
+		return nil, false
+	}
+	current := dials(route)
+	return current, slices.ContainsFunc(record.Written, func(list []string) bool { return slices.Equal(list, current) })
 }
 
 func (r RouteRefresher) now() time.Time {
