@@ -40,7 +40,13 @@ export default defineConfig({
           ],
         },
         { label: 'Concepts', items: [{ autogenerate: { directory: 'concepts' } }] },
-        { label: 'Reference', items: [{ label: 'shipkeep.yml', slug: 'reference/shipkeep-yml' }] },
+        {
+          label: 'Reference',
+          items: [
+            { label: 'shipkeep.yml', slug: 'reference/shipkeep-yml' },
+            { label: 'CLI', slug: 'reference/cli' },
+          ],
+        },
       ],
     }),
   ],

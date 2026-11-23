@@ -21,23 +21,45 @@ import (
 	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
-const usage = `Usage: shipkeep <command> [flags]
+// Command is one command of the CLI, as `shipkeep` lists it and its reference page describes it.
+type Command struct {
+	// Name is what follows `shipkeep`, such as "secrets set".
+	Name string
+	// Args names the positional arguments, between the name and the flags.
+	Args string
+	// Summary is one line.
+	Summary string
+}
 
-  login            Save a control plane address and an API token
-  logout           Forget them on this machine
-  init             Write a shipkeep.yml
-  status           Show applications, their latest deployment and replicas
-  secrets list     Show the names of an environment's secrets
-  secrets set      Set a secret, reading its value from standard input
-  secrets unset    Remove a secret
-  deploy           Save shipkeep.yml on the control plane and deploy it
-  rollback         Return to an earlier good release
-  server remove    Remove a server, given its exact name with --confirm
+// Commands lists every command, in the order of the usage text.
+var Commands = []Command{
+	{Name: "login", Summary: "Save a control plane address and an API token"},
+	{Name: "logout", Summary: "Forget the saved address and token on this machine"},
+	{Name: "init", Summary: "Write a shipkeep.yml"},
+	{Name: "status", Summary: "Show applications, their latest deployment and replicas"},
+	{Name: "secrets list", Summary: "Show the names of an environment's secrets"},
+	{Name: "secrets set", Args: "NAME", Summary: "Set a secret, reading its value from standard input"},
+	{Name: "secrets unset", Args: "NAME", Summary: "Remove a secret"},
+	{Name: "deploy", Summary: "Save shipkeep.yml on the control plane and deploy it"},
+	{Name: "rollback", Summary: "Return to an earlier good release"},
+	{Name: "server remove", Args: "SERVER_ID", Summary: "Remove a server, given its exact name with --confirm"},
+}
 
-Commands that reach an environment take --org, --project and --env, or
+// usageFooter follows the list of commands in the usage text.
+const usageFooter = `Commands that reach an environment take --org, --project and --env, or
 SHIPKEEP_ORG, SHIPKEEP_PROJECT and SHIPKEEP_ENV. SHIPKEEP_URL and SHIPKEEP_TOKEN
 replace the saved login, for automation.
 `
+
+var usage = func() string {
+	var text strings.Builder
+	text.WriteString("Usage: shipkeep <command> [flags]\n\n")
+	for _, command := range Commands {
+		fmt.Fprintf(&text, "  %-16s %s\n", command.Name, command.Summary)
+	}
+	text.WriteString("\n" + usageFooter)
+	return text.String()
+}()
 
 // App holds what a command touches outside itself, so that tests can replace it.
 type App struct {
