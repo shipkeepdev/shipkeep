@@ -23,4 +23,8 @@ The deployment pipeline (PLAN M3.4c) needs to switch a route to the containers i
 
 - The control plane never needs container IPs, and a container restart is handled locally.
 - The action list is unchanged. The new input is validated by the agent, with malicious-input tests, and grants no new reach: only managed containers on Shipkeep networks, at private addresses.
-- If a container's address changes after the route was applied, the agent's reconciler moves the route to the new address (M1.6, #18): the journal records each route's containers and the address each resolved to, and every pass resolves them again. Docker gives a restarted container whatever address is free, so without this, a route could send its traffic to another container that took the old one. Routes across nodes (M4.4) remain to do.
+- If a container's address changes after the route was applied, the agent's reconciler moves the route to the new address (M1.6, #18). Docker gives a restarted container whatever address is free, so without this, a route could send its traffic to another container that took the old one.
+  - The journal records each route's upstreams as asked, and the dials the agent wrote, before it writes them. Every pass resolves the containers again, and changes a route only while it holds dials the agent recorded.
+  - A container that does not run gets no traffic, since its old address may be another container's. A route with no running container answers 503 until one runs again.
+  - The route actions and the pass write a route and its record under one lock.
+- Routes across nodes (M4.4) remain to do.
