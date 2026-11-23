@@ -234,6 +234,10 @@ message Route {
   repeated Upstream upstreams = 3;
   TlsMode tls_mode = 4;
   google.protobuf.Duration drain_timeout = 5;
+  // When true, Caddy answers every request for these hosts with the agent's own maintenance page
+  // (503, `Retry-After`), and `upstreams` must be empty: the replicas keep running behind it. The
+  // page is built into the agent; no text of it comes from the control plane (ADR 0025).
+  bool maintenance = 6;
 }
 
 // WireGuard peer definition.

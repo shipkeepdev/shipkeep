@@ -178,13 +178,18 @@ func removeRoute(router Router, sleep func(context.Context, time.Duration) error
 }
 
 // caddyRoute validates a route and builds its typed Caddy form. Container upstreams are returned
-// separately with an empty dial address, filled by resolveUpstreams when the route is applied.
+// separately with an empty dial address, filled by resolveUpstreams when the route is applied. A
+// maintenance route has no upstream: Caddy answers with the agent's own page (ADR 0025).
 func caddyRoute(route *agentv1.Route) (caddy.Route, []localUpstream, bool, time.Duration, error) {
 	fail := func() (caddy.Route, []localUpstream, bool, time.Duration, error) {
 		return caddy.Route{}, nil, false, 0, errInput
 	}
 	if route == nil || !routeID.MatchString(route.GetRouteId()) || len(route.GetHosts()) == 0 || len(route.GetHosts()) > maxHosts ||
-		len(route.GetUpstreams()) == 0 || len(route.GetUpstreams()) > maxUpstreams {
+		len(route.GetUpstreams()) > maxUpstreams {
+		return fail()
+	}
+	// Exactly one of the two: upstreams to proxy to, or the maintenance page.
+	if route.GetMaintenance() != (len(route.GetUpstreams()) == 0) {
 		return fail()
 	}
 	hosts := []string{}
@@ -242,6 +247,9 @@ func caddyRoute(route *agentv1.Route) (caddy.Route, []localUpstream, bool, time.
 	handler := caddy.Handler{Handler: "reverse_proxy", Upstreams: upstreams}
 	if weighted {
 		handler.LoadBalancing = &caddy.LoadBalancing{SelectionPolicy: map[string]any{"policy": "weighted_round_robin", "weights": weights}}
+	}
+	if route.GetMaintenance() {
+		handler = caddy.MaintenanceHandler()
 	}
 	// Under automatic HTTPS the route answers HTTPS only, so that plain HTTP gets Caddy's redirect.
 	protocol := caddy.HTTPS

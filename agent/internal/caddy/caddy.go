@@ -99,14 +99,16 @@ func (m Match) bounded() bool {
 	return m.HeaderRegexp["Host"].Pattern == hostBound
 }
 
-// Handler is a reverse_proxy handler, or the static_response of the control plane's redirect.
+// Handler is a reverse_proxy handler, or a static_response: the control plane's redirect, or the
+// maintenance page.
 type Handler struct {
 	Handler       string         `json:"handler"`
 	Upstreams     []Upstream     `json:"upstreams,omitempty"`
 	LoadBalancing *LoadBalancing `json:"load_balancing,omitempty"`
-	// StatusCode and Headers belong to a static_response.
+	// StatusCode, Headers and Body belong to a static_response.
 	StatusCode int                 `json:"status_code,omitempty"`
 	Headers    map[string][]string `json:"headers,omitempty"`
+	Body       string              `json:"body,omitempty"`
 }
 
 // Upstream is one backend address.
