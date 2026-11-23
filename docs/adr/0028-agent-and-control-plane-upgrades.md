@@ -1,6 +1,6 @@
 # ADR 0028: Agent and control plane upgrades
 
-- Status: Proposed
+- Status: Accepted
 - Date: 2026-11-23
 
 ## Context
@@ -18,7 +18,7 @@ What exists today:
 - The agent runs as `shipkeep` from `/var/lib/shipkeep/bin/shipkeep-agent`, a file it owns (`deploy/install.sh`). systemd restarts it (`Restart=always`).
 - The control plane runs with Docker Compose in `/opt/shipkeep`, which root owns, and `.env` is root's alone. An agent runs on that machine only in the single-machine form (ADR 0021). Upgrading is manual: edit `SHIPKEEP_IMAGE`, `docker compose pull`, `up -d`.
 
-On 2026-11-23 the maintainer chose:
+On 2026-11-23 the maintainer chose, and then accepted this record:
 
 - the agent verifies a new binary against the release's Sigstore signature, offline;
 - the agent upgrades the control plane, as ARCHITECTURE section 5 plans, rather than an operator script.
