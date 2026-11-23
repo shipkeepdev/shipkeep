@@ -19,3 +19,7 @@ pnpm-lock.yaml
 /apps/landing/index.html
 /apps/landing/en/index.html
 /apps/landing/site.css
+/apps/docs/dist
+/apps/docs/.astro
+# Copied from docs/INSTALL.md at build time (apps/docs/scripts/sync-repo-docs.mjs).
+/apps/docs/src/content/docs/start/install.md
