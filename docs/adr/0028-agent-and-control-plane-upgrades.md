@@ -96,9 +96,10 @@ Its unit gets `/opt/shipkeep` in `ReadWritePaths`, on that machine only. `.env` 
 
 **The procedure follows ARCHITECTURE section 5:**
 
-1. **Verify.** Refuse while a deployment is active. Download the control plane bundle of the version (`shipkeep-control-plane_<version>.tar.gz`) and its Sigstore bundle, with the rules of section 1. Check the image reference it names, which is pinned by digest, against the reference in the action. Check that the disk has room for a second copy of the database.
+1. **Verify.** Download the control plane bundle of the version (`shipkeep-control-plane_<version>.tar.gz`) and its Sigstore bundle, with the rules of section 1. Check the image reference it names, which is pinned by digest, against the reference in the action. Check that the disk has room for a second copy of the database.
 2. **Snapshot, with nothing writing.**
    - Close the public entry: on a single machine, the agent serves the maintenance page (ADR 0025) on the control plane's own route, which it keeps; on a separate machine, it stops the Compose Caddy. Then stop the control plane, and end any session still open on its database, as the restore of ADR 0026 does. Nothing writes to the database from then on, and PostgreSQL can copy it.
+   - Only then, with no request able to start one, check in the database that no deployment is active. If one is, start the control plane again, reopen the entry and refuse: the upgrade is asked again once the deployment ended.
    - Copy the database inside PostgreSQL, as `shipkeep_before_upgrade_<time>` (`CREATE DATABASE … TEMPLATE shipkeep`). The copy never leaves the database server, is never a file in clear, and needs no key to come back. Keep the key-encryption key as `kek.before-upgrade-<time>`, and the current `compose.yml`, `image.env` and `Caddyfile`, under `/var/lib/shipkeep/upgrades/<time>/`.
    - When a backup key is on the server (ADR 0026), also take an instance backup there, for the operator: it is not what the rollback uses, since its identity is kept off the server.
 3. **Upgrade.** Write the bundle's files and the new `image.env`, then run `pull` and `up -d --wait` for every service but the public entry. Migrations run in the `migrate` step, as on every start.
@@ -115,7 +116,7 @@ The action is journaled step by step, so an agent restarted in the middle resume
    - malicious inputs: version, URL, redirect, archive entries, sizes, a bundle of another workflow, tag or digest, a downgrade;
    - a real swap and rollback in a container with systemd: a new binary that exits, and one that hangs.
 2. The agent on separate control plane machines: installer, role, not schedulable.
-3. `UpgradeControlPlane`, with its snapshot and rollback, tested by forcing a failed migration, and by requesting a deployment during the checks, which must be refused.
+3. `UpgradeControlPlane`, with its snapshot and rollback, tested by forcing a failed migration, by requesting a deployment during the checks, which must be refused, and by starting one just before the entry closes, which must make the upgrade refuse.
 4. The VM acceptance of #240, which also needs #200.
 
 ## Consequences
