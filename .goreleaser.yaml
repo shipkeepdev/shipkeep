@@ -49,10 +49,18 @@ checksum:
 sboms:
   - artifacts: archive
 
-# Keyless signature of the checksum file (Sigstore), verified with `cosign verify-blob`.
+# Keyless signatures (Sigstore), verified with `cosign verify-blob`: the checksum file, and each
+# agent archive on its own, which an agent verifies offline before it upgrades (ADR 0028).
 signs:
-  - cmd: cosign
+  - id: checksum
+    cmd: cosign
     artifacts: checksum
+    signature: '${artifact}.sigstore.json'
+    args: [sign-blob, '--bundle=${signature}', '${artifact}', --yes]
+  - id: agent
+    cmd: cosign
+    artifacts: archive
+    ids: [agent]
     signature: '${artifact}.sigstore.json'
     args: [sign-blob, '--bundle=${signature}', '${artifact}', --yes]
 
