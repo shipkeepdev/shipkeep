@@ -186,3 +186,43 @@ func TestLocalStateUpgradePreservesOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRouteUpstreamsAreRecordedReplacedAndForgotten(t *testing.T) {
+	store, err := Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() //nolint:errcheck // test cleanup
+	ctx, now := t.Context(), time.Unix(1_700_000_000, 0)
+	upstreams := []RouteUpstream{{Index: 0, Container: "sk-api-1", Port: 8080, Dial: "172.18.0.5:8080"}}
+	if err := store.SetRouteUpstreams(ctx, "sk-route-api", upstreams, now); err != nil {
+		t.Fatal(err)
+	}
+	upstreams[0].Dial = "172.18.0.9:8080"
+	if err := store.SetRouteUpstreams(ctx, "sk-route-api", upstreams, now); err != nil {
+		t.Fatal(err)
+	}
+	routes, err := store.RouteUpstreams(ctx)
+	if err != nil || len(routes) != 1 || routes["sk-route-api"][0].Dial != "172.18.0.9:8080" {
+		t.Fatalf("record not replaced: %v %v", routes, err)
+	}
+	// No container left (the maintenance page, or addresses only): no record.
+	if err := store.SetRouteUpstreams(ctx, "sk-route-api", nil, now); err != nil {
+		t.Fatal(err)
+	}
+	if routes, _ := store.RouteUpstreams(ctx); len(routes) != 0 {
+		t.Fatalf("record kept without containers: %v", routes)
+	}
+	for name, bad := range map[string][]RouteUpstream{
+		"bad container": {{Container: "../x", Port: 80}},
+		"no port":       {{Container: "sk-a", Port: 0}},
+		"bad index":     {{Index: -1, Container: "sk-a", Port: 80}},
+	} {
+		if err := store.SetRouteUpstreams(ctx, "sk-route-api", bad, now); err == nil {
+			t.Errorf("%s accepted", name)
+		}
+	}
+	if err := store.SetRouteUpstreams(ctx, "../route", upstreams, now); err == nil {
+		t.Error("invalid route id accepted")
+	}
+}

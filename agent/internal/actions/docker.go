@@ -74,6 +74,7 @@ type handlerOptions struct {
 	egressUnchecked bool
 	reservedHosts   []string
 	workloads       Workloads
+	routeRecords    RouteRecords
 }
 
 // Workloads places application containers on the machine that hosts the control plane (ADR 0021):
@@ -95,6 +96,11 @@ func WithWorkloads(w Workloads) Option {
 // control plane's name on the machine that hosts it (ADR 0021), whose route the agent keeps itself.
 func WithReservedHosts(hosts ...string) Option {
 	return func(o *handlerOptions) { o.reservedHosts = append(o.reservedHosts, hosts...) }
+}
+
+// WithRouteRecords records the containers each route proxies to, for reconciliation (ADR 0017).
+func WithRouteRecords(records RouteRecords) Option {
+	return func(o *handlerOptions) { o.routeRecords = records }
 }
 
 // WithoutEgressCheck lets pulls run without the daemon going through the egress proxy. Only an

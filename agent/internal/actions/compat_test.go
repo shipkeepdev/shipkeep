@@ -23,7 +23,7 @@ func TestControlPlaneActionsPassAgentValidation(t *testing.T) {
 	}
 	defer file.Close() //nolint:errcheck // read-only test fixture
 	handlers := dockerHandlers(newFakeEngine(), confirmer{}, &fakeProber{}, nil)
-	for kind, handler := range RouteHandlers(&fakeRouter{routes: map[string]caddy.Route{}}, fakeContainers{}, nil) {
+	for kind, handler := range RouteHandlers(&fakeRouter{routes: map[string]caddy.Route{}}, fakeContainers{}, nil, nil) {
 		handlers[kind] = handler
 	}
 	scanner := bufio.NewScanner(file)

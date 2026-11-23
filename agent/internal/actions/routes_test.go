@@ -14,6 +14,7 @@ import (
 
 	"github.com/shipkeepdev/shipkeep/agent/internal/caddy"
 	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
 	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
@@ -25,6 +26,59 @@ type fakeRouter struct {
 	containers fakeContainers
 	// failUpsert makes UpsertRoute fail, as Caddy refusing the new route would.
 	failUpsert bool
+	// records, when set, keeps the containers of each route, as the journal does.
+	records RouteRecords
+}
+
+// fakeRecords is the journal's record of route containers (ADR 0017).
+type fakeRecords struct {
+	mu     sync.Mutex
+	routes map[string][]journal.RouteUpstream
+}
+
+func (f *fakeRecords) SetRouteUpstreams(_ context.Context, route string, upstreams []journal.RouteUpstream, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.routes == nil {
+		f.routes = map[string][]journal.RouteUpstream{}
+	}
+	if len(upstreams) == 0 {
+		delete(f.routes, route)
+		return nil
+	}
+	f.routes[route] = slices.Clone(upstreams)
+	return nil
+}
+
+func (f *fakeRecords) ClearRouteUpstreams(_ context.Context, route string) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	delete(f.routes, route)
+	return nil
+}
+
+func (f *fakeRecords) RouteUpstreams(context.Context) (map[string][]journal.RouteUpstream, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	routes := map[string][]journal.RouteUpstream{}
+	for id, upstreams := range f.routes {
+		routes[id] = slices.Clone(upstreams)
+	}
+	return routes, nil
+}
+
+// UpdateRoute changes a stored route as the Caddy client does, under the fake's lock.
+func (f *fakeRouter) UpdateRoute(_ context.Context, id string, change func(caddy.Route) (caddy.Route, bool)) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	route, ok := f.routes[id]
+	if !ok {
+		return nil
+	}
+	if updated, write := change(route); write {
+		f.routes[id] = updated
+	}
+	return nil
 }
 
 // fakeContainers answers container inspections for route upstreams (ADR 0017).
@@ -102,7 +156,7 @@ func routeRequest(t *testing.T, router *fakeRouter, slept *[]time.Duration, req 
 		*slept = append(*slept, duration)
 		return nil
 	}
-	d := &Dispatcher{Journal: open(t), Handlers: RouteHandlers(router, router.containers, sleep), Epoch: func() uint64 { return 3 }}
+	d := &Dispatcher{Journal: open(t), Handlers: RouteHandlers(router, router.containers, router.records, sleep), Epoch: func() uint64 { return 3 }}
 	req.ActionId, req.IdempotencyKey, req.LeaseEpoch = testID, "route", 3
 	req.DeadlineUnixMs = time.Now().Add(time.Minute).UnixMilli()
 	out := &recorder{}
@@ -379,5 +433,80 @@ func TestMaintenanceRoutesServeTheAgentsPage(t *testing.T) {
 	maintenance.TlsMode = agentv1.TlsMode_TLS_MODE_OFF
 	if !succeeded(routeRequest(t, router, &slept, upsert(maintenance))) || !slices.Equal(router.plain, []string{"api.acme.example.com"}) {
 		t.Fatalf("maintenance with TLS off not served on plain HTTP: %v", router.plain)
+	}
+}
+
+// A route records the containers it proxies to, with their address, and forgets them when it no
+// longer has any (ADR 0017).
+func TestRoutesRecordTheirContainers(t *testing.T) {
+	records := &fakeRecords{}
+	router := &fakeRouter{routes: map[string]caddy.Route{}, records: records, containers: fakeContainers{
+		"sk-api-1": runningContainer(true, map[string]string{"sk-acme": "172.18.0.5"}),
+	}}
+	var slept []time.Duration
+	route := validRoute("")
+	route.Upstreams = []*agentv1.Upstream{{Container: "sk-api-1", Port: 8080}}
+	if !succeeded(routeRequest(t, router, &slept, upsert(route))) {
+		t.Fatal("route not applied")
+	}
+	want := []journal.RouteUpstream{{Index: 0, Container: "sk-api-1", Port: 8080, Dial: "172.18.0.5:8080"}}
+	if got := records.routes[caddy.RouteID("api-prod")]; !slices.Equal(got, want) {
+		t.Fatalf("recorded %v, want %v", got, want)
+	}
+	maintenance := validRoute("")
+	maintenance.Upstreams, maintenance.Maintenance = nil, true
+	if !succeeded(routeRequest(t, router, &slept, upsert(maintenance))) || len(records.routes) != 0 {
+		t.Fatalf("the maintenance page kept a record: %v", records.routes)
+	}
+	if !succeeded(routeRequest(t, router, &slept, upsert(route))) || len(records.routes) != 1 {
+		t.Fatal("route not recorded again")
+	}
+	remove := &agentv1.ActionRequest{Action: &agentv1.ActionRequest_RemoveRoute{RemoveRoute: &agentv1.RemoveRoute{RouteId: "api-prod"}}}
+	if !succeeded(routeRequest(t, router, &slept, remove)) || len(records.routes) != 0 {
+		t.Fatalf("a removed route kept its record: %v", records.routes)
+	}
+}
+
+// A container that came back at another address gets its traffic back; a route an action changed
+// since, or a container that is not running, is left alone (ADR 0017, PLAN M1.6).
+func TestRouteRefresherFollowsAContainerThatMoved(t *testing.T) {
+	id := caddy.RouteID("api-prod")
+	setup := func(dial string) (*fakeRouter, *fakeRecords) {
+		records := &fakeRecords{routes: map[string][]journal.RouteUpstream{
+			id: {{Index: 0, Container: "sk-api-1", Port: 8080, Dial: "172.18.0.5:8080"}},
+		}}
+		router := &fakeRouter{routes: map[string]caddy.Route{id: {
+			ID: id, Handle: []caddy.Handler{{Handler: "reverse_proxy", Upstreams: []caddy.Upstream{{Dial: dial}}}},
+		}}}
+		return router, records
+	}
+	moved := fakeContainers{"sk-api-1": runningContainer(true, map[string]string{"sk-acme": "172.18.0.9"})}
+
+	router, records := setup("172.18.0.5:8080")
+	if err := (RouteRefresher{Router: router, Containers: moved, Records: records}).Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if dial := router.routes[id].Handle[0].Upstreams[0].Dial; dial != "172.18.0.9:8080" || records.routes[id][0].Dial != dial {
+		t.Fatalf("route not moved: %s, recorded %v", dial, records.routes[id])
+	}
+
+	// An action wrote the route since the record: it is that action's to keep.
+	router, records = setup("172.18.0.7:8080")
+	if err := (RouteRefresher{Router: router, Containers: moved, Records: records}).Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if dial := router.routes[id].Handle[0].Upstreams[0].Dial; dial != "172.18.0.7:8080" {
+		t.Fatalf("a newer route was overwritten: %s", dial)
+	}
+
+	// Not running: left until it runs again.
+	stopped := runningContainer(true, map[string]string{"sk-acme": "172.18.0.9"})
+	stopped.State.Running = false
+	router, records = setup("172.18.0.5:8080")
+	if err := (RouteRefresher{Router: router, Containers: fakeContainers{"sk-api-1": stopped}, Records: records}).Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if dial := router.routes[id].Handle[0].Upstreams[0].Dial; dial != "172.18.0.5:8080" {
+		t.Fatalf("route moved to a stopped container: %s", dial)
 	}
 }
