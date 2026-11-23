@@ -19,7 +19,7 @@ Today, user documentation lives in `docs/INSTALL.md` and the README:
 
 - Starlight (MIT), on Astro (MIT), turns Markdown into a static documentation site. It brings the navigation, the table of contents of each page, light and dark themes, and a search that runs in the browser on an index built with the site (Pagefind, MIT). It has no server and no external service.
 - Both are development dependencies: the built site is HTML, CSS and a little JavaScript, and nothing of it ships in the control plane image or the binaries. The license check (ADR 0014) covers production dependencies only.
-- Images are not processed (`passthroughImageService`), and telemetry is off. The site loads nothing from another origin. Geist and Geist Mono are bundled from `@fontsource-variable`, as in the web UI (ADR 0014: OFL-1.1 fonts, approved).
+- Images are not processed (`passthroughImageService`), and Astro's telemetry is turned off in every Nx target of the site (`ASTRO_TELEMETRY_DISABLED`). The site loads nothing from another origin. Geist and Geist Mono are bundled from `@fontsource-variable`, as in the web UI (ADR 0014: OFL-1.1 fonts, approved).
 - The look follows the landing page: black, white and grays, Geist, hairline borders, the chevron mark and the uppercase wordmark (`src/styles/cadre.css`).
 - Nx builds it (`nx run docs:build`), so CI builds it on every pull request that touches it.
 

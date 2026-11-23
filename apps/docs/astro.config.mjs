@@ -7,8 +7,6 @@ import { defineConfig, passthroughImageService } from 'astro/config';
 export default defineConfig({
   // No image processing: the pages use SVG and the demo recording as they are.
   image: { service: passthroughImageService() },
-  // Nothing here reports usage anywhere.
-  telemetry: false,
   integrations: [
     starlight({
       title: 'Shipkeep',
