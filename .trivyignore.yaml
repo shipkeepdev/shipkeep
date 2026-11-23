@@ -148,3 +148,79 @@ vulnerabilities:
       - 'usr/local/bin/gosu'
     statement: Go standard library in gosu (postgres image), which only switches user at start.
     expired_at: 2026-12-18
+  # MIT krb5 in postgres:17 (Debian 13): the client libraries libgssapi-krb5-2, libk5crypto3,
+  # libkrb5-3 and libkrb5support0. Fixed in Debian (1.21.3-5+deb13u2), not yet in the official
+  # image (still deb13u1 in its digest of 2026-11-23). Every finding is in the KDC or in kadmind,
+  # neither of which runs in the image, and Shipkeep authenticates to PostgreSQL with SCRAM on the
+  # private Compose network, never with GSSAPI. Listed one by one, so that a new finding in krb5
+  # still fails the scan.
+  - id: CVE-2026-107364
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-112315
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-112316
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-112317
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-112318
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-112319
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-112320
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-112321
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-112322
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-112323
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-118380
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-119079
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-71199
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
+  - id: CVE-2026-71200
+    statement: >-
+      krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
+      do not run there. Fixed in Debian, not yet in the official postgres image.
+    expired_at: 2026-12-18
