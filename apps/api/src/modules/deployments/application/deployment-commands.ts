@@ -3,6 +3,7 @@ import {
   ConflictError,
   createEvent,
   type DomainEvent,
+  type MaintenanceChange,
   NotFoundError,
   type Permission,
   type Secret,
@@ -31,6 +32,17 @@ import { TenantAccess } from '../../organizations/application/tenant-access';
 import { SECRET_STORE, type SecretStore } from '../../secrets/application/ports';
 import { MAX_DEPLOYMENT_ACTIONS } from '../../fleet/application/agent-actions';
 import type { AgentActionView } from '../../fleet/domain/agent-action';
+import {
+  agentsWithoutMaintenancePage,
+  applicationInMaintenance,
+  inMaintenance,
+  maintenanceAlreadyOn,
+  maintenanceDraft,
+  maintenanceNotOn,
+  maintenanceWithoutDomain,
+  maintenanceWithoutReplica,
+  servesMaintenancePage,
+} from '../domain/maintenance';
 import type { NodeReplica, ReplicaStatus } from '../domain/observations';
 import { deploymentSteps, type DeploymentStep, MAX_STEPS } from '../domain/timeline';
 import {
@@ -59,6 +71,8 @@ import {
   type DeploymentWaker,
   OBSERVATION_STORE,
   type ObservationStore,
+  PIPELINE_STORE,
+  type PipelineStore,
 } from './ports';
 
 const CANCELLED_BY_USER = 'Cancelled by a user.';
@@ -82,6 +96,7 @@ export class DeploymentCommands {
     @Inject(OBSERVATION_STORE) private readonly observations: ObservationStore,
     @Inject(ACTION_HISTORY) private readonly actionHistory: ActionHistory,
     @Inject(DEPLOYMENT_STEPS) private readonly steps: DeploymentStepStore,
+    @Inject(PIPELINE_STORE) private readonly pipeline: PipelineStore,
     private readonly accounts: AccountMutationAuthority,
     private readonly access: TenantAccess,
     private readonly confirmations: ConfirmationVerifier,
@@ -111,6 +126,9 @@ export class DeploymentCommands {
         );
         const running = await this.store.active(application.id);
         if (running) throw deploymentInProgress(running.state);
+        // A new release would start behind the page unseen: leaving maintenance comes first.
+        if (inMaintenance(await this.store.serving(application.id)))
+          throw applicationInMaintenance();
         const release = await this.store.createRelease(application, draft, context.userId, now);
         if (!release) throw deploymentInProgress();
         const deployment = await this.store.queue(release, draft, 'manual', context.userId, now);
@@ -150,7 +168,9 @@ export class DeploymentCommands {
       async (application) => {
         const previous = await this.store.find(application.id, deploymentId);
         if (!previous) throw new NotFoundError('deployment');
-        assertRollbackTarget(previous, await this.store.serving(application.id));
+        const serving = await this.store.serving(application.id);
+        if (inMaintenance(serving)) throw applicationInMaintenance();
+        assertRollbackTarget(previous, serving);
         const source = await this.store.release(application.id, previous.releaseId);
         if (!source) throw new NotFoundError('release');
         assertDomainsAvailable(source.config, [this.controlPlaneHost]);
@@ -239,6 +259,89 @@ export class DeploymentCommands {
       await this.waker.wake(application.organizationId, deployment.id);
       return deployment;
     });
+  }
+
+  /**
+   * Puts the application in maintenance (ADR 0025, issue #256): queues a deployment of the release
+   * that runs whose routes serve the agent's maintenance page, while the replicas keep running.
+   */
+  enterMaintenance(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+    now = new Date(),
+  ): Promise<DeploymentRecord> {
+    return this.changeMaintenance(context, target, applicationId, 'enter', now);
+  }
+
+  /** Takes the application out of maintenance: its routes serve its replicas again (ADR 0025). */
+  leaveMaintenance(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+    now = new Date(),
+  ): Promise<DeploymentRecord> {
+    return this.changeMaintenance(context, target, applicationId, 'leave', now);
+  }
+
+  /**
+   * Refused while another deployment runs, when the application already is (or is not) in
+   * maintenance, and when no replica runs. Entering is also refused when the application has no
+   * domain, so no route to show the page on, and when an agent that hosts a replica predates the
+   * page. Locked like a deployment, so the two cannot pass their checks at the same time.
+   */
+  private changeMaintenance(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+    change: MaintenanceChange,
+    now: Date,
+  ): Promise<DeploymentRecord> {
+    return this.scoped(
+      context,
+      'deploy.run',
+      target,
+      applicationId,
+      async (application) => {
+        const running = await this.store.active(application.id);
+        if (running) throw deploymentInProgress(running.state);
+        const on = inMaintenance(await this.store.serving(application.id));
+        if (change === 'enter' && on) throw maintenanceAlreadyOn();
+        if (change === 'leave' && !on) throw maintenanceNotOn();
+        const replicas = await this.observations.forApplication(application.id);
+        const placed = replicas.at(0);
+        if (!placed) throw maintenanceWithoutReplica();
+        const release = await this.store.release(application.id, placed.releaseId);
+        if (!release) throw new NotFoundError('release');
+        if (change === 'enter') {
+          if (!release.config.domains?.length) throw maintenanceWithoutDomain();
+          const hosting = new Set(replicas.map((replica) => replica.nodeId));
+          const outdated = (await this.pipeline.nodes(application.organizationId)).filter(
+            (node) => hosting.has(node.id) && !servesMaintenancePage(node.facts['agent_version']),
+          );
+          if (outdated.length)
+            throw agentsWithoutMaintenancePage(outdated.map((node) => node.name));
+        }
+        const deployment = await this.store.queue(
+          release,
+          maintenanceDraft(release, change),
+          'manual',
+          context.userId,
+          now,
+        );
+        if (!deployment) throw deploymentInProgress();
+        await this.events.publish([
+          this.event('deployment.queued', context, application, deployment.id, now, {
+            releaseId: release.id,
+            trigger: deployment.trigger,
+            plan: change === 'enter' ? 'maintenance_enter' : 'maintenance_leave',
+          }),
+        ]);
+        await this.waker.wake(application.organizationId, deployment.id);
+        return deployment;
+      },
+      true,
+    );
   }
 
   /**

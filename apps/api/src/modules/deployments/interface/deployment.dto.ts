@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { DEPLOYMENT_STATES } from '@shipkeep/domain';
+import { DEPLOYMENT_STATES, MAINTENANCE_CHANGES } from '@shipkeep/domain';
 import { IsString, Length, Matches } from 'class-validator';
 
 import { ApplicationPathDto } from '../../apps/interface/application.dto';
@@ -37,6 +37,13 @@ export class DeploymentDto {
       'True for a stop: nothing is started, and the routes and running replicas are removed.',
   })
   stop!: boolean;
+  @ApiProperty({
+    enum: MAINTENANCE_CHANGES,
+    nullable: true,
+    description:
+      'Set for a maintenance change (ADR 0025): `enter` puts the maintenance page on the routes, `leave` the replicas again. Nothing is started or stopped. Null otherwise.',
+  })
+  maintenance!: 'enter' | 'leave' | null;
   @ApiProperty({ enum: DEPLOYMENT_TRIGGERS }) trigger!: string;
   @ApiProperty({ type: String, nullable: true }) actorId!: string | null;
   @ApiProperty({ type: String, nullable: true, maxLength: 512 }) error!: string | null;
@@ -119,6 +126,7 @@ export function deploymentDto(deployment: DeploymentRecord): DeploymentDto {
     build: deployment.plan.build,
     release: deployment.plan.release,
     stop: deployment.plan.stop === true,
+    maintenance: deployment.plan.maintenance ?? null,
     trigger: deployment.trigger,
     actorId: deployment.actorId,
     error: deployment.error,

@@ -19,18 +19,24 @@ func TestRoutesCannotTakeTheControlPlanesName(t *testing.T) {
 		"wildcard of its parent": {"*.example.com"},
 		"wildcard among others":  {"api.example.com", "*.example.com"},
 	} {
-		router := &fakeRouter{routes: map[string]caddy.Route{}}
-		route := validRoute("172.18.0.5:8080")
-		route.Hosts = hosts
-		d := &Dispatcher{Journal: open(t), Handlers: RouteHandlers(router, router.containers, func(context.Context, time.Duration) error { return nil }, cp), Epoch: func() uint64 { return 3 }}
-		req := upsert(route)
-		req.ActionId, req.IdempotencyKey, req.LeaseEpoch = testID, "route", 3
-		req.DeadlineUnixMs = time.Now().Add(time.Minute).UnixMilli()
-		out := &recorder{}
-		d.Handle(context.Background(), req, out.send)
-		update := out.last(t)
-		if update.GetState() != agentv1.OperationState_OPERATION_STATE_FAILED || update.GetError() != errInvalid || len(router.routes) != 0 {
-			t.Errorf("%s: route accepted: %v", name, update)
+		// A maintenance page cannot cover the control plane's name either (ADR 0025).
+		for _, maintenance := range []bool{false, true} {
+			router := &fakeRouter{routes: map[string]caddy.Route{}}
+			route := validRoute("172.18.0.5:8080")
+			route.Hosts = hosts
+			if maintenance {
+				route.Upstreams, route.Maintenance = nil, true
+			}
+			d := &Dispatcher{Journal: open(t), Handlers: RouteHandlers(router, router.containers, func(context.Context, time.Duration) error { return nil }, cp), Epoch: func() uint64 { return 3 }}
+			req := upsert(route)
+			req.ActionId, req.IdempotencyKey, req.LeaseEpoch = testID, "route", 3
+			req.DeadlineUnixMs = time.Now().Add(time.Minute).UnixMilli()
+			out := &recorder{}
+			d.Handle(context.Background(), req, out.send)
+			update := out.last(t)
+			if update.GetState() != agentv1.OperationState_OPERATION_STATE_FAILED || update.GetError() != errInvalid || len(router.routes) != 0 {
+				t.Errorf("%s (maintenance %v): route accepted: %v", name, maintenance, update)
+			}
 		}
 	}
 	// Names it does not cover still route.

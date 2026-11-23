@@ -474,22 +474,24 @@ model Release {
 
 /// One active deployment per application: partial unique index deployments_one_active_key.
 model Deployment {
-  id             String      @id @db.Uuid
-  organizationId String      @map("organization_id") @db.Uuid
-  applicationId  String      @map("application_id") @db.Uuid
-  releaseId      String      @map("release_id") @db.Uuid
-  state          String      @db.VarChar(16)
-  planBuild      Boolean     @map("plan_build")
-  planRelease    Boolean     @map("plan_release")
-  planStop       Boolean     @default(false) @map("plan_stop")
-  trigger        String      @db.VarChar(16)
-  actorId        String?     @map("actor_id") @db.VarChar(128)
-  error          String?     @db.VarChar(512)
-  startedAt      DateTime    @map("started_at") @db.Timestamptz(6)
-  finishedAt     DateTime?   @map("finished_at") @db.Timestamptz(6)
-  updatedAt      DateTime    @map("updated_at") @db.Timestamptz(6)
-  application    Application @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "deployments_application_fkey")
-  release        Release     @relation(fields: [organizationId, releaseId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "deployments_release_fkey")
+  id              String      @id @db.Uuid
+  organizationId  String      @map("organization_id") @db.Uuid
+  applicationId   String      @map("application_id") @db.Uuid
+  releaseId       String      @map("release_id") @db.Uuid
+  state           String      @db.VarChar(16)
+  planBuild       Boolean     @map("plan_build")
+  planRelease     Boolean     @map("plan_release")
+  planStop        Boolean     @default(false) @map("plan_stop")
+  /// "enter" or "leave" for a maintenance change (ADR 0025), null otherwise.
+  planMaintenance String?     @map("plan_maintenance") @db.VarChar(8)
+  trigger         String      @db.VarChar(16)
+  actorId         String?     @map("actor_id") @db.VarChar(128)
+  error           String?     @db.VarChar(512)
+  startedAt       DateTime    @map("started_at") @db.Timestamptz(6)
+  finishedAt      DateTime?   @map("finished_at") @db.Timestamptz(6)
+  updatedAt       DateTime    @map("updated_at") @db.Timestamptz(6)
+  application     Application @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "deployments_application_fkey")
+  release         Release     @relation(fields: [organizationId, releaseId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "deployments_release_fkey")
 
   @@unique([organizationId, applicationId, id])
   @@index([applicationId, startedAt(sort: Desc)])

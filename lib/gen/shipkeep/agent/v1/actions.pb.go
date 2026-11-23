@@ -1343,12 +1343,16 @@ func (x *Upstream) GetPort() uint32 {
 
 // Routing entry pushed to agents and used by UpsertRoute.
 type Route struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	RouteId       string                 `protobuf:"bytes,1,opt,name=route_id,json=routeId,proto3" json:"route_id,omitempty"`
-	Hosts         []string               `protobuf:"bytes,2,rep,name=hosts,proto3" json:"hosts,omitempty"`
-	Upstreams     []*Upstream            `protobuf:"bytes,3,rep,name=upstreams,proto3" json:"upstreams,omitempty"`
-	TlsMode       TlsMode                `protobuf:"varint,4,opt,name=tls_mode,json=tlsMode,proto3,enum=shipkeep.agent.v1.TlsMode" json:"tls_mode,omitempty"`
-	DrainTimeout  *durationpb.Duration   `protobuf:"bytes,5,opt,name=drain_timeout,json=drainTimeout,proto3" json:"drain_timeout,omitempty"`
+	state        protoimpl.MessageState `protogen:"open.v1"`
+	RouteId      string                 `protobuf:"bytes,1,opt,name=route_id,json=routeId,proto3" json:"route_id,omitempty"`
+	Hosts        []string               `protobuf:"bytes,2,rep,name=hosts,proto3" json:"hosts,omitempty"`
+	Upstreams    []*Upstream            `protobuf:"bytes,3,rep,name=upstreams,proto3" json:"upstreams,omitempty"`
+	TlsMode      TlsMode                `protobuf:"varint,4,opt,name=tls_mode,json=tlsMode,proto3,enum=shipkeep.agent.v1.TlsMode" json:"tls_mode,omitempty"`
+	DrainTimeout *durationpb.Duration   `protobuf:"bytes,5,opt,name=drain_timeout,json=drainTimeout,proto3" json:"drain_timeout,omitempty"`
+	// When true, Caddy answers every request for these hosts with the agent's own maintenance page
+	// (503, `Retry-After`), and `upstreams` must be empty: the replicas keep running behind it. The
+	// page is built into the agent; no text of it comes from the control plane (ADR 0025).
+	Maintenance   bool `protobuf:"varint,6,opt,name=maintenance,proto3" json:"maintenance,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1416,6 +1420,13 @@ func (x *Route) GetDrainTimeout() *durationpb.Duration {
 		return x.DrainTimeout
 	}
 	return nil
+}
+
+func (x *Route) GetMaintenance() bool {
+	if x != nil {
+		return x.Maintenance
+	}
+	return false
 }
 
 // WireGuard peer definition.
@@ -3740,13 +3751,14 @@ const file_shipkeep_agent_v1_actions_proto_rawDesc = "" +
 	"\anode_id\x18\x02 \x01(\tR\x06nodeId\x12\x16\n" +
 	"\x06weight\x18\x03 \x01(\rR\x06weight\x12\x1c\n" +
 	"\tcontainer\x18\x04 \x01(\tR\tcontainer\x12\x12\n" +
-	"\x04port\x18\x05 \x01(\rR\x04port\"\xea\x01\n" +
+	"\x04port\x18\x05 \x01(\rR\x04port\"\x8c\x02\n" +
 	"\x05Route\x12\x19\n" +
 	"\broute_id\x18\x01 \x01(\tR\arouteId\x12\x14\n" +
 	"\x05hosts\x18\x02 \x03(\tR\x05hosts\x129\n" +
 	"\tupstreams\x18\x03 \x03(\v2\x1b.shipkeep.agent.v1.UpstreamR\tupstreams\x125\n" +
 	"\btls_mode\x18\x04 \x01(\x0e2\x1a.shipkeep.agent.v1.TlsModeR\atlsMode\x12>\n" +
-	"\rdrain_timeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\fdrainTimeout\"\xd2\x01\n" +
+	"\rdrain_timeout\x18\x05 \x01(\v2\x19.google.protobuf.DurationR\fdrainTimeout\x12 \n" +
+	"\vmaintenance\x18\x06 \x01(\bR\vmaintenance\"\xd2\x01\n" +
 	"\rWireGuardPeer\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1d\n" +
 	"\n" +

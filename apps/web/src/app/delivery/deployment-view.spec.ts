@@ -9,6 +9,7 @@ const deployment: Deployment = {
   build: false,
   release: false,
   stop: false,
+  maintenance: null,
   trigger: 'manual',
   actorId: null,
   error: 'The image could not be pulled.',

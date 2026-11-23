@@ -3,6 +3,7 @@ package actions
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"strings"
 	"sync"
@@ -205,6 +206,17 @@ func TestRoutesRejectMaliciousInput(t *testing.T) {
 		"route id injection": func(r *agentv1.Route) { r.RouteId = "../config" },
 		"uppercase route id": func(r *agentv1.Route) { r.RouteId = "API" },
 		"no upstreams":       func(r *agentv1.Route) { r.Upstreams = nil },
+		// A maintenance route answers with the agent's page, so it proxies nowhere (ADR 0025).
+		"maintenance with an upstream": func(r *agentv1.Route) { r.Maintenance = true },
+		"maintenance with a container": func(r *agentv1.Route) {
+			r.Maintenance = true
+			r.Upstreams = []*agentv1.Upstream{{Container: "sk-api-1", Port: 8080}}
+		},
+		"maintenance with an injected host": func(r *agentv1.Route) {
+			r.Maintenance, r.Upstreams = true, nil
+			r.Hosts = []string{"a.example.com\"},{\"handler\":\"reverse_proxy"}
+		},
+		"maintenance without hosts": func(r *agentv1.Route) { r.Maintenance, r.Upstreams, r.Hosts = true, nil, nil },
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
@@ -327,5 +339,45 @@ func TestAFailedRouteChangeLeavesItsHostsReachable(t *testing.T) {
 		if !reachable(router, "api.acme.example.com") {
 			t.Fatalf("%s: the failure left the host unreachable: plain %v, routes %+v", change.name, router.plain, router.routes)
 		}
+	}
+}
+
+// In maintenance, Caddy answers the route's hosts with the agent's own page while the replicas
+// keep running; leaving it proxies to them again (ADR 0025).
+func TestMaintenanceRoutesServeTheAgentsPage(t *testing.T) {
+	router := &fakeRouter{routes: map[string]caddy.Route{}}
+	var slept []time.Duration
+	if !succeeded(routeRequest(t, router, &slept, upsert(validRoute("172.18.0.5:8080")))) {
+		t.Fatal("route not applied")
+	}
+	maintenance := validRoute("")
+	maintenance.Upstreams, maintenance.Maintenance = nil, true
+	if !succeeded(routeRequest(t, router, &slept, upsert(maintenance))) {
+		t.Fatal("maintenance route refused")
+	}
+	route := router.routes[caddy.RouteID("api-prod")]
+	if len(route.Handle) != 1 || !reflect.DeepEqual(route.Handle[0], caddy.MaintenanceHandler()) {
+		t.Fatalf("maintenance does not serve the agent's page: %+v", route.Handle)
+	}
+	if handler := route.Handle[0]; handler.Handler != "static_response" || handler.StatusCode != 503 || len(handler.Upstreams) != 0 {
+		t.Fatalf("maintenance still proxies, or does not answer 503: %+v", handler)
+	}
+	// Same hosts, still HTTPS only; the requests the replicas were serving drain first.
+	if match := route.Match; len(match) != 1 || match[0].Protocol != caddy.HTTPS || !slices.Equal(match[0].Host, maintenance.Hosts) {
+		t.Fatalf("maintenance changed what the route matches: %+v", match)
+	}
+	if !slices.Equal(slept, []time.Duration{10 * time.Second}) {
+		t.Fatalf("switching to maintenance did not drain: %v", slept)
+	}
+	if !succeeded(routeRequest(t, router, &slept, upsert(validRoute("172.18.0.5:8080")))) {
+		t.Fatal("leaving maintenance refused")
+	}
+	if handler := router.routes[caddy.RouteID("api-prod")].Handle[0]; handler.Handler != "reverse_proxy" || handler.Upstreams[0].Dial != "172.18.0.5:8080" || handler.Body != "" {
+		t.Fatalf("leaving maintenance does not proxy again: %+v", handler)
+	}
+	// With TLS off, the page answers plain HTTP, as the route did.
+	maintenance.TlsMode = agentv1.TlsMode_TLS_MODE_OFF
+	if !succeeded(routeRequest(t, router, &slept, upsert(maintenance))) || !slices.Equal(router.plain, []string{"api.acme.example.com"}) {
+		t.Fatalf("maintenance with TLS off not served on plain HTTP: %v", router.plain)
 	}
 }

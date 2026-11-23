@@ -94,3 +94,73 @@ export function plannedActions(): ActionRequest['action'][] {
   ]);
   return sent.map((step) => agentAction(step, secrets));
 }
+
+/**
+ * The route actions of entering then leaving maintenance (ADR 0025), for the same compatibility
+ * test: the agent must accept the page without upstream, and the replicas back.
+ */
+export function maintenanceActions(): ActionRequest['action'][] {
+  const application = {
+    id: '0190f5a8-7b1c-7e2d-8f3a-0123456789ab',
+    name: 'billing-api',
+    environmentId: '0190f5a8-7b1c-7e2d-8f3a-0123456789ac',
+  };
+  const serving = [
+    {
+      index: 0,
+      nodeId: '0190f5a8-7b1c-7e2d-8f3a-00000000000a',
+      container: containerName(application, 2, 0),
+      port: 3000,
+    },
+  ];
+  const sent: PipelineStep[] = [];
+  for (const change of ['enter', 'leave'] as const) {
+    let deployment: DeploymentRecord = {
+      id:
+        change === 'enter'
+          ? '0190f5a8-7b1c-7e2d-8f3a-0000000000e1'
+          : '0190f5a8-7b1c-7e2d-8f3a-0000000000e2',
+      organizationId: '0190f5a8-7b1c-7e2d-8f3a-00000000000e',
+      applicationId: application.id,
+      releaseId: '0190f5a8-7b1c-7e2d-8f3a-00000000000f',
+      state: 'queued',
+      plan: { build: false, release: false, maintenance: change },
+      trigger: 'manual',
+      actorId: null,
+      startedAt: new Date(0),
+      finishedAt: null,
+      error: null,
+    };
+    const steps = new Map<string, StepOutcome>();
+    for (let round = 0; round < 10; round++) {
+      const decision = plan({
+        deployment,
+        application,
+        release: {
+          id: deployment.releaseId,
+          number: 2,
+          pinnedImage: null,
+          config: {
+            version: 1,
+            name: 'billing-api',
+            build: { type: 'image', image: 'ghcr.io/acme/billing:1.4.2' },
+            run: { port: 3000 },
+            domains: ['api.acme.example.com'],
+          },
+        },
+        allocations: [],
+        previous: serving,
+        steps,
+      });
+      if (decision.kind === 'done') break;
+      if (decision.kind === 'advance')
+        deployment = { ...deployment, ...advance(deployment, new Date(0)) };
+      if (decision.kind === 'run')
+        for (const step of decision.steps) {
+          sent.push(step);
+          steps.set(step.key, { state: 'succeeded' });
+        }
+    }
+  }
+  return sent.map((step) => agentAction(step, new Map()));
+}
