@@ -27,7 +27,7 @@ func TestRoutesCannotTakeTheControlPlanesName(t *testing.T) {
 			if maintenance {
 				route.Upstreams, route.Maintenance = nil, true
 			}
-			d := &Dispatcher{Journal: open(t), Handlers: RouteHandlers(router, router.containers, func(context.Context, time.Duration) error { return nil }, cp), Epoch: func() uint64 { return 3 }}
+			d := &Dispatcher{Journal: open(t), Handlers: RouteHandlers(router, router.containers, nil, func(context.Context, time.Duration) error { return nil }, cp), Epoch: func() uint64 { return 3 }}
 			req := upsert(route)
 			req.ActionId, req.IdempotencyKey, req.LeaseEpoch = testID, "route", 3
 			req.DeadlineUnixMs = time.Now().Add(time.Minute).UnixMilli()
@@ -44,7 +44,7 @@ func TestRoutesCannotTakeTheControlPlanesName(t *testing.T) {
 		router := &fakeRouter{routes: map[string]caddy.Route{}}
 		route := validRoute("172.18.0.5:8080")
 		route.Hosts = hosts
-		d := &Dispatcher{Journal: open(t), Handlers: RouteHandlers(router, router.containers, func(context.Context, time.Duration) error { return nil }, cp), Epoch: func() uint64 { return 3 }}
+		d := &Dispatcher{Journal: open(t), Handlers: RouteHandlers(router, router.containers, nil, func(context.Context, time.Duration) error { return nil }, cp), Epoch: func() uint64 { return 3 }}
 		req := upsert(route)
 		req.ActionId, req.IdempotencyKey, req.LeaseEpoch = testID, "route", 3
 		req.DeadlineUnixMs = time.Now().Add(time.Minute).UnixMilli()
