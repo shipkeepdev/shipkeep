@@ -1,6 +1,7 @@
 package upgrade
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -182,5 +183,102 @@ func TestARecordThatNamesAnotherFileIsRefused(t *testing.T) {
 	}
 	if err := WritePending(stateDir, Pending{Binary: "/tmp/evil", State: StatePending}); err == nil {
 		t.Fatal("a record naming another binary was written")
+	}
+}
+
+func TestTheUpgradeFilesFailWithoutLeavingAnythingBehind(t *testing.T) {
+	binary, stateDir := installed(t)
+	missing := filepath.Join(t.TempDir(), "gone", "shipkeep-agent")
+	if err := WriteNext(missing, []byte("new agent")); err == nil {
+		t.Fatal("a new binary was written into a missing directory")
+	}
+	if err := LinkPrevious(missing); err == nil {
+		t.Fatal("a missing binary was kept")
+	}
+	if err := Swap(missing, "0000"); err == nil {
+		t.Fatal("a swap without either binary reported done")
+	}
+	if _, err := FileSHA256(missing); err == nil {
+		t.Fatal("a missing file has a digest")
+	}
+	if err := ClearPending(filepath.Dir(missing)); err == nil {
+		t.Fatal("a missing state directory was cleared")
+	}
+	// No record yet: clearing it is already done.
+	if err := ClearPending(stateDir); err != nil {
+		t.Fatal(err)
+	}
+	// A stale temporary file from a crash is replaced.
+	if err := os.WriteFile(binary+nextSuffix+".writing", []byte("half written"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteNext(binary, []byte("new agent")); err != nil || content(t, binary+nextSuffix) != "new agent" {
+		t.Fatalf("next after a crash: %v", err)
+	}
+	if _, err := os.Stat(binary + nextSuffix + ".writing"); !os.IsNotExist(err) {
+		t.Fatal("the temporary file is left behind")
+	}
+}
+
+func TestAFileLargerThanABinaryHasNoDigest(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "shipkeep-agent")
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A sparse file: the bound plus one byte, read as zeros.
+	if err := file.Truncate(MaxBinaryBytes + 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := FileSHA256(path); !errors.Is(err, ErrRefused) {
+		t.Fatalf("an oversized file: %v", err)
+	}
+}
+
+func TestOnlyABinaryNamedShipkeepAgentIsUpgraded(t *testing.T) {
+	// The test binary is named upgrade.test.
+	if _, err := BinaryPath(); !errors.Is(err, ErrRefused) {
+		t.Fatalf("the test binary was taken for the agent: %v", err)
+	}
+}
+
+// A directory where the upgrade expects a file, which a crash or a hand never leaves on purpose.
+func TestADirectoryInPlaceOfAnUpgradeFileIsReported(t *testing.T) {
+	binary, stateDir := installed(t)
+	blocked := func(path string) {
+		t.Helper()
+		if err := os.MkdirAll(filepath.Join(path, "inside"), 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	blocked(binary + nextSuffix + ".writing")
+	if err := WriteNext(binary, []byte("new agent")); err == nil {
+		t.Fatal("a new binary was written over a directory")
+	}
+	blocked(binary + previousSuffix + ".new")
+	if err := LinkPrevious(binary); err == nil {
+		t.Fatal("the running binary was kept over a directory")
+	}
+	blocked(filepath.Join(stateDir, pendingFile))
+	if err := ClearPending(stateDir); err == nil {
+		t.Fatal("a directory was cleared as the record")
+	}
+	// The guard never takes a directory for the previous binary.
+	other, otherState := installed(t)
+	swapped(t, other, otherState, "new agent")
+	if err := os.Remove(other + previousSuffix); err != nil {
+		t.Fatal(err)
+	}
+	blocked(other + previousSuffix)
+	record, _, _ := ReadPending(otherState)
+	record.Attempts = MaxAttempts
+	if err := WritePending(otherState, record); err != nil {
+		t.Fatal(err)
+	}
+	if rolledBack, err := Guard(otherState); rolledBack || err == nil || content(t, other) != "new agent" {
+		t.Fatalf("the guard went back to a directory: %v %v", rolledBack, err)
 	}
 }

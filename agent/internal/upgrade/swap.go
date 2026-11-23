@@ -164,7 +164,7 @@ func Guard(stateDir string) (bool, error) {
 	return true, WritePending(stateDir, record)
 }
 
-// FileSHA256 is the hex SHA-256 of a file.
+// FileSHA256 is the hex SHA-256 of a file no larger than an agent binary may be.
 func FileSHA256(path string) (string, error) {
 	file, err := os.Open(path) //nolint:gosec // the agent's own binary
 	if err != nil {
@@ -172,8 +172,13 @@ func FileSHA256(path string) (string, error) {
 	}
 	defer file.Close() //nolint:errcheck // read-only
 	hash := sha256.New()
-	if _, err := io.Copy(hash, io.LimitReader(file, MaxBinaryBytes+1)); err != nil {
+	read, err := io.Copy(hash, io.LimitReader(file, MaxBinaryBytes+1))
+	if err != nil {
 		return "", fmt.Errorf("read %s: %w", filepath.Base(path), err)
+	}
+	// A digest of the first bytes alone would make two different files look the same.
+	if read > MaxBinaryBytes {
+		return "", fmt.Errorf("%w: %s is larger than %d bytes", ErrRefused, filepath.Base(path), MaxBinaryBytes)
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
 }
