@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"net/http"
+	"reflect"
 )
 
 // maintenanceStyle is the page's only style. The Content-Security-Policy allows it by its hash,
@@ -39,4 +40,25 @@ func MaintenanceHandler() Handler {
 		},
 		Body: maintenancePage,
 	}
+}
+
+// UnavailableHandler answers 503 while none of a route's containers runs (ADR 0017). The route
+// keeps its hosts, and no request goes to an address that Docker may have given another container.
+func UnavailableHandler() Handler {
+	return Handler{
+		Handler:    "static_response",
+		StatusCode: http.StatusServiceUnavailable,
+		Headers: map[string][]string{
+			"Content-Type":           {"text/plain; charset=utf-8"},
+			"Retry-After":            {"30"},
+			"Cache-Control":          {"no-store"},
+			"X-Content-Type-Options": {"nosniff"},
+		},
+		Body: "Service unavailable\n",
+	}
+}
+
+// IsUnavailable reports whether handler is the one UnavailableHandler returns.
+func IsUnavailable(handler Handler) bool {
+	return reflect.DeepEqual(handler, UnavailableHandler())
 }
