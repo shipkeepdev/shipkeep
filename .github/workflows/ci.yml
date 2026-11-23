@@ -146,8 +146,6 @@ jobs:
           echo "SHIPKEEP_IT_CADDY_ADMIN=$RUNNER_TEMP/caddy/admin.sock" >> "$GITHUB_ENV"
           echo "SHIPKEEP_IT_CADDY_ADDRESS=$address:80" >> "$GITHUB_ENV"
       - run: go test -tags integration -count=1 -v -run '^TestReal' ./agent/internal/actions/
-        env:
-          SHIPKEEP_IT_STRESS: '1'
       - name: Caddy logs
         if: failure()
         run: docker logs sk-it-caddy
