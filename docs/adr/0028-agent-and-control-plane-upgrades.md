@@ -55,7 +55,7 @@ On 2026-11-23 the maintainer chose, and then accepted this record:
 
 1. The agent writes the verified binary to `bin/shipkeep-agent.next`, mode 0755, and syncs it to disk.
 2. It records in its journal that an upgrade is pending, from which version to which.
-3. It gives the running binary a second name without it ever leaving its path: a hard link to `bin/shipkeep-agent.previous.new`, renamed over `bin/shipkeep-agent.previous`. A later upgrade replaces the previous one the same way.
+3. It gives the running binary a second name without it ever leaving its path. It removes a stale `bin/shipkeep-agent.previous.new` left by an interrupted attempt, hard-links the running binary there, then renames it over `bin/shipkeep-agent.previous`. A later upgrade replaces the previous one the same way, and a retry after a crash at any of these steps converges.
 4. It renames `.next` onto `shipkeep-agent`, then reports the action as succeeded and exits. systemd starts the new binary.
 
 **The rollback does not depend on the new binary.** The agent's unit is `Type=notify`, restarts always (`StartLimitIntervalSec=0`), and runs a guard before each start.
@@ -98,11 +98,11 @@ Its unit gets `/opt/shipkeep` in `ReadWritePaths`, on that machine only. `.env` 
 
 1. **Verify.** Download the control plane bundle of the version (`shipkeep-control-plane_<version>.tar.gz`) and its Sigstore bundle, with the rules of section 1. Check the image reference it names, which is pinned by digest, against the reference in the action. Check that the disk has room for a second copy of the database.
 2. **Snapshot, with nothing writing.**
-   - Stop the control plane. Nothing writes to the database from then on, so no change is lost by a rollback.
+   - Close the public entry: on a single machine, the agent serves the maintenance page (ADR 0025) on the control plane's own route, which it keeps; on a separate machine, it stops the Compose Caddy. Then stop the control plane, and end any session still open on its database, as the restore of ADR 0026 does. Nothing writes to the database from then on, and PostgreSQL can copy it.
    - Copy the database inside PostgreSQL, as `shipkeep_before_upgrade_<time>` (`CREATE DATABASE … TEMPLATE shipkeep`). The copy never leaves the database server, is never a file in clear, and needs no key to come back. Keep the key-encryption key as `kek.before-upgrade-<time>`, and the current `compose.yml`, `image.env` and `Caddyfile`, under `/var/lib/shipkeep/upgrades/<time>/`.
    - When a backup key is on the server (ADR 0026), also take an instance backup there, for the operator: it is not what the rollback uses, since its identity is kept off the server.
-3. **Upgrade.** Write the bundle's files and the new `image.env`, then run `pull` and `up -d --wait`. Migrations run in the `migrate` step, as on every start.
-4. **Check.** `/api/v1/health` must answer 200 with the new version within 5 minutes, and the control plane must accept agents again.
+3. **Upgrade.** Write the bundle's files and the new `image.env`, then run `pull` and `up -d --wait` for every service but the public entry. Migrations run in the `migrate` step, as on every start.
+4. **Check, still closed to users.** `/api/v1/health`, reached by the agent on the machine, must answer 200 with the new version within 5 minutes, and the agent gateway must accept agents again. Only then does the agent open the public entry again (the route back to the control plane, or the Compose Caddy started). Until then, no user request writes anything. Agents and the job queue may write during the check: heartbeats, facts and the progress of a deployment. A rollback undoes those writes, and the next heartbeats and the resumption of the pipeline, whose actions are idempotent, rebuild them.
 5. **Roll back on failure.** Stop the control plane, put the previous files and key back, and rename the copy over the migrated database in one transaction, as the restore of ADR 0026 does. Then start the previous image. Once an upgrade succeeds, the copy is dropped after a delay that the operator sets, by default 7 days.
 
 The action is journaled step by step, so an agent restarted in the middle resumes it or rolls it back. During the upgrade the control plane is down: agents keep their workloads and routes (CLAUDE.md rule 10) and reconnect.
