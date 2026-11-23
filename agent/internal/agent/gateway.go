@@ -28,7 +28,7 @@ import (
 	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
-func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *docker.Client, router *caddy.Client) error {
+func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *docker.Client, router *caddy.Client, routes *actions.RouteBook) error {
 	if ctx.Err() != nil {
 		return nil // Parent cancellation is a clean shutdown.
 	}
@@ -105,7 +105,11 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	}()
 	// Facts are read when the result is built, after the action's context ended.
 	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine, reservation) //nolint:contextcheck // see above
-	options := []actions.Option{actions.WithWorkloads(actions.Workloads{Slice: a.cfg.Docker.WorkloadsSlice, OOMScoreAdj: a.cfg.Docker.WorkloadsOOMScoreAdj})}
+	options := []actions.Option{
+		actions.WithWorkloads(actions.Workloads{Slice: a.cfg.Docker.WorkloadsSlice, OOMScoreAdj: a.cfg.Docker.WorkloadsOOMScoreAdj}),
+		// The reconciler follows the containers of each route (ADR 0017).
+		actions.WithRouteBook(routes),
+	}
 	if host := a.cfg.ControlPlane.Route.Host; host != "" {
 		// No application may take the control plane's name (ADR 0021).
 		options = append(options, actions.WithReservedHosts(host))
