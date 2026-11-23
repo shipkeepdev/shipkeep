@@ -105,6 +105,29 @@ func TestLoadDecodesTypedConfig(t *testing.T) {
 	}
 }
 
+// Numbers are read as the YAML 1.2 core schema writes them, as the control plane's parser reads
+// them, and a form neither reads is a validation error, never another error (#244, FuzzLoad).
+func TestLoadReadsYAMLNumbersAsTheControlPlaneDoes(t *testing.T) {
+	t.Parallel()
+	load := func(port string) (*config.ShipkeepConfig, error) {
+		return config.Load([]byte("version: 1\nname: billing\nbuild:\n  type: image\n  image: ghcr.io/acme/billing:1.4.2\nrun:\n  port: " + port + "\n"))
+	}
+	for written, want := range map[string]int{"3000": 3000, "03000": 3000, "+3000": 3000, "0xBB8": 3000, "0o5670": 3000, "3e3": 3000, "3000.0": 3000} {
+		cfg, err := load(written)
+		if err != nil || cfg.Run == nil || cfg.Run.Port != want {
+			t.Fatalf("port %s: %+v %v", written, cfg, err)
+		}
+	}
+	for _, written := range []string{"01", ".5", "+0x10", "-0o7", "0b101", "1_000", ".inf", ".nan", "0x"} {
+		if _, err := load(written); err != nil {
+			var verr *config.ValidationError
+			if !errors.As(err, &verr) {
+				t.Fatalf("port %s: not a validation error: %v", written, err)
+			}
+		}
+	}
+}
+
 func TestParseRejectsHostileYAML(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{

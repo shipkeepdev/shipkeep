@@ -10,7 +10,7 @@ Tracks: **A** agent (Go), **C** control plane (NestJS), **W** web UI (Angular), 
 
 ## Status
 
-Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/issues), each with a `priority:P0` to `priority:P3` label. The scope and order of the first stable version are [below](#first-stable-version-v010). The [README](../README.md#what-works-today) says what works today. Real-server acceptance (M1.4, M1.5, M1.6, M3.4, M8.3a, M10.1) waits for a dedicated test machine.
+Open work is tracked as [GitHub issues](https://github.com/shipkeepdev/shipkeep/issues), each with a `priority:P0` to `priority:P3` label. The scope and order of the first stable version are [below](#first-stable-version-v010). The [README](../README.md#what-works-today) says what works today. Real-server acceptance (M1.6, M3.4, M8.3a, M10.1) waits for a dedicated test machine; M1.4 and M1.5 are accepted in CI against a real Docker and Caddy.
 
 **Work that no task owned yet, now assigned:**
 
@@ -49,14 +49,14 @@ The milestones below describe the whole MVP. The first stable version ships part
 
 **Order:**
 
-| Step | Work                                                                             | Issues                                                        | Waits for                                                      |
-| ---- | -------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------- |
-| 1    | The single-machine installation (ADR 0021): code and docs merged in #378 to #382 | #377                                                          | Only its acceptance on a real machine, with step 5             |
-| 2    | Server detail, deployment detail, maintenance mode                               | #264, #265, #256                                              | Nothing; the full deployment log comes with step 4             |
-| 3    | Deployment from Git: providers, `shipkeep.yml` sync, builds (ADR 0012)           | #213, #214, #215                                              | The GitHub App on the organization                             |
-| 4    | Logs and container exec (M6.1)                                                   | #232                                                          | The maintainer's decision on the agent action for log shipping |
-| 5    | Real-server acceptance, control plane backup, upgrades                           | #200, #202, #16, #17, #18, #216, #239, #352, #377, #231, #240 | The test VM and the domain; #231 lands before #240             |
-| 6    | Hardening and documentation (M10.2, M10.4)                                       | #244, #246                                                    | Nothing                                                        |
+| Step | Work                                                                             | Issues                                              | Waits for                                                      |
+| ---- | -------------------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------- |
+| 1    | The single-machine installation (ADR 0021): code and docs merged in #378 to #382 | #377                                                | Only its acceptance on a real machine, with step 5             |
+| 2    | Server detail, deployment detail, maintenance mode                               | #264, #265, #256                                    | Nothing; the full deployment log comes with step 4             |
+| 3    | Deployment from Git: providers, `shipkeep.yml` sync, builds (ADR 0012)           | #213, #214, #215                                    | The GitHub App on the organization                             |
+| 4    | Logs and container exec (M6.1)                                                   | #232                                                | The maintainer's decision on the agent action for log shipping |
+| 5    | Real-server acceptance, control plane backup, upgrades                           | #200, #202, #18, #216, #239, #352, #377, #231, #240 | The test VM and the domain; #231 lands before #240             |
+| 6    | Hardening and documentation (M10.2, M10.4)                                       | #244, #246                                          | Nothing                                                        |
 
 **Releases:** `v0.1.0-beta.1` once steps 1 to 4 are merged, then `v0.1.0` once step 5 has passed on a real server and step 6 is merged. Each tag needs the maintainer's go-ahead.
 
@@ -114,7 +114,7 @@ The milestones below describe the whole MVP. The first stable version ships part
   - [x] **M1.3c** Resumable/compensating step executor, transition notifications, daemon ownership and interruption tests.
   - SQLite schema from SPEC 3.4 and 3.5, journal API, resume and compensation framework, idempotency keys.
   - Acceptance: tests kill the agent mid-action (simulated) and verify resume or compensation for each step type.
-- [ ] **M1.4 Container actions** (A). Depends: M1.3. Split: all handlers are done (a, b, c). Only the acceptance remains open: integration tests against a real Docker daemon, to run with CI-1 (#137).
+- [x] **M1.4 Container actions** (A). Depends: M1.3. Split: all handlers are done (a, b, c). Accepted against a real Docker daemon in CI (#16): every action through the agent's own handlers, with Docker's view of the confinement checked (`real_docker_test.go`, job "Agent against Docker and Caddy"). That test found that an HTTP probe failed whenever the image exposed another port than the application's; the agent now probes the port the spec declares.
   - [x] **M1.4a** Action dispatch over `Connect`: `ActionRequest` journaled before execution, `ActionUpdate` progress, `CancelAction`, control-plane dispatcher and audit, idempotent redelivery after reconnect.
     - [x] **M1.4a1** Agent side: validated, journaled dispatch with progress updates, idempotent redelivery and cancellation; handlers registered per kind.
     - [x] **M1.4a2** Control-plane side: durable per-node action queue, delivery over the stream, update persistence, redelivery after reconnect, audit.
@@ -127,7 +127,7 @@ The milestones below describe the whole MVP. The first stable version ships part
     - [x] **M1.4c3** `HealthCheck` and `RunReleaseTask`.
   - `EnsureNetwork`, `PullImage`, `CreateContainer`, `StartContainer`, `StopContainer`, `RemoveContainer`, `EnsureVolume`, `RemoveVolume`, `HealthCheck`, `RunReleaseTask` through the Docker Engine SDK, with all validations from SPEC 3.3.
   - Acceptance: integration tests against real Docker; malicious-input tests (privileged, host mounts, path traversal, oversized fields) all rejected; fuzz tests for validators.
-- [ ] **M1.5 Caddy route management** (A). Depends: M1.3. The handlers and the typed admin client are done (`UpsertRoute`, `RemoveRoute`). Only the acceptance remains open: a switch under constant load against a real Caddy (CI-1 or the VM suite).
+- [x] **M1.5 Caddy route management** (A). Depends: M1.3. The handlers and the typed admin client are done (`UpsertRoute`, `RemoveRoute`). Accepted against the pinned Caddy in CI (#17): v1 to v2 under constant load from eight clients, then the replaced replica stopped and removed, with no failed request (`real_caddy_test.go`). The load is generated by the test itself rather than k6 or vegeta, so no tool is added; the same test with the switch left out fails with 502s.
   - Caddy installed by the installer; agent manages routes through the admin Unix socket with typed JSON; `UpsertRoute`, `RemoveRoute` with switch-then-drain.
   - Acceptance: test deploys v1, switches to v2 under constant load (k6 or vegeta), zero failed requests.
 - [ ] **M1.6 Agent self-reconciliation** (A). Depends: M1.4, M1.5. Done: the intent journal, the 30 s reconciler restarting stopped managed containers offline, `CollectFacts`, and Caddy `--resume` in the M8.3a installer. Remaining: send `StateReport` to the control plane; the end-to-end acceptance on a VM (including routing persistence).

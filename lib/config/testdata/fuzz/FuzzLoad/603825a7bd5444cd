@@ -1,0 +1,2 @@
+go test fuzz v1
+[]byte("version: 1\nname: a00\ncompose:\n  file: A\n  expose:\n    - service: A\n      port: 01")
