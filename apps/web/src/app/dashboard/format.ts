@@ -14,19 +14,38 @@ export interface Status {
   readonly color: string;
 }
 
-/** True when this deployment left its application serving: it succeeded, and was not a stop. */
-export function leftLive(deployment: Pick<Deployment, 'state' | 'stop'> | undefined): boolean {
-  return deployment?.state === 'succeeded' && !deployment.stop;
+/**
+ * True when this deployment left its application serving: it succeeded, and was neither a stop
+ * nor the start of a maintenance, which shows visitors a page instead (ADR 0025).
+ */
+export function leftLive(
+  deployment:
+    | (Pick<Deployment, 'state' | 'stop'> & { readonly maintenance?: Deployment['maintenance'] })
+    | undefined,
+): boolean {
+  return (
+    deployment?.state === 'succeeded' && !deployment.stop && deployment.maintenance !== 'enter'
+  );
 }
 
 /**
  * The label of a deployment. A stop is a deployment too (it removes the replicas instead of
- * starting some): once it succeeded, the application is stopped, not live.
+ * starting some): once it succeeded, the application is stopped, not live. So is a maintenance
+ * change (ADR 0025): once it entered, the application is in maintenance; once it left, live.
  */
-export function deploymentStatus(state: Deployment['state'], stop = false): Status {
+export function deploymentStatus(
+  state: Deployment['state'],
+  stop = false,
+  maintenance: Deployment['maintenance'] = null,
+): Status {
+  const unfinished =
+    state !== 'succeeded' && state !== 'failed' && state !== 'cancelled' && state !== 'rolled_back';
   if (stop && state === 'succeeded') return { label: 'stopped', color: GREY };
-  if (stop && state !== 'failed' && state !== 'cancelled' && state !== 'rolled_back')
-    return { label: 'stopping', color: BLUE };
+  if (stop && unfinished) return { label: 'stopping', color: BLUE };
+  if (maintenance === 'enter' && state === 'succeeded')
+    return { label: 'in maintenance', color: AMBER };
+  if (maintenance === 'enter' && unfinished) return { label: 'entering maintenance', color: BLUE };
+  if (maintenance === 'leave' && unfinished) return { label: 'leaving maintenance', color: BLUE };
   switch (state) {
     case 'succeeded':
       return { label: 'live', color: GREEN };

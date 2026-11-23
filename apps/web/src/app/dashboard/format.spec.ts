@@ -11,9 +11,25 @@ describe('deployment status', () => {
     expect(deploymentStatus('cancelled', true).label).toBe('cancelled');
   });
 
+  it('names a maintenance change for what it does to the application (ADR 0025)', () => {
+    expect(deploymentStatus('succeeded', false, 'enter')).toMatchObject({
+      label: 'in maintenance',
+    });
+    for (const state of ['queued', 'switching'] as const) {
+      expect(deploymentStatus(state, false, 'enter').label).toBe('entering maintenance');
+      expect(deploymentStatus(state, false, 'leave').label).toBe('leaving maintenance');
+    }
+    // Once left, the application is live again; a change that did not finish reads as a failure.
+    expect(deploymentStatus('succeeded', false, 'leave').label).toBe('live');
+    expect(deploymentStatus('failed', false, 'enter').label).toBe('failed');
+  });
+
   it('counts an application as live only when its last deployment started it', () => {
     expect(leftLive({ state: 'succeeded', stop: false })).toBe(true);
     expect(leftLive({ state: 'succeeded', stop: true })).toBe(false);
+    // Visitors see the maintenance page: it is not live.
+    expect(leftLive({ state: 'succeeded', stop: false, maintenance: 'enter' })).toBe(false);
+    expect(leftLive({ state: 'succeeded', stop: false, maintenance: 'leave' })).toBe(true);
     expect(leftLive({ state: 'failed', stop: false })).toBe(false);
     expect(leftLive(undefined)).toBe(false);
   });
