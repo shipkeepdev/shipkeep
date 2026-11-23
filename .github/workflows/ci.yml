@@ -111,6 +111,45 @@ jobs:
           echo "shipkeep-agent is $size bytes"
           test "$size" -lt 31457280
 
+  agent-real:
+    # Acceptance of M1.4 and M1.5 (#16, #17): the agent's own handlers against the runner's Docker,
+    # and a route switched under constant load in the Caddy that compose.yml pins.
+    name: Agent against Docker and Caddy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: |
+            agent/go.sum
+            lib/go.sum
+      - name: Start Caddy on the test network
+        # As the runner's user, so that the test reaches the admin socket in the shared directory.
+        # The network carries the managed label: the agent's EnsureNetwork then adopts it.
+        run: |
+          mkdir -p "$RUNNER_TEMP/caddy"
+          printf '{"admin":{"listen":"unix//run/caddy/admin.sock"}}\n' > "$RUNNER_TEMP/caddy/config.json"
+          image=$(sed -n 's/^ *image: \(caddy:[^ ]*\)$/\1/p' deploy/control-plane/compose.yml)
+          test -n "$image"
+          docker network create --label sk.managed=true sk-it
+          docker run -d --name sk-it-caddy --network sk-it --user "$(id -u):$(id -g)" \
+            -e XDG_CONFIG_HOME=/run/caddy/config -e XDG_DATA_HOME=/run/caddy/data \
+            -v "$RUNNER_TEMP/caddy:/run/caddy" "$image" caddy run --config /run/caddy/config.json
+          for _ in $(seq 1 30); do
+            test -S "$RUNNER_TEMP/caddy/admin.sock" && break
+            sleep 1
+          done
+          test -S "$RUNNER_TEMP/caddy/admin.sock"
+          address=$(docker inspect --format '{{(index .NetworkSettings.Networks "sk-it").IPAddress}}' sk-it-caddy)
+          echo "SHIPKEEP_IT_CADDY_ADMIN=$RUNNER_TEMP/caddy/admin.sock" >> "$GITHUB_ENV"
+          echo "SHIPKEEP_IT_CADDY_ADDRESS=$address:80" >> "$GITHUB_ENV"
+      - run: go test -tags integration -count=1 -v -run '^TestReal' ./agent/internal/actions/
+      - name: Caddy logs
+        if: failure()
+        run: docker logs sk-it-caddy
+
   generated-code:
     name: Generated code is up to date
     runs-on: ubuntu-latest

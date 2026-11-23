@@ -91,6 +91,14 @@ func TestHealthCheckFailsWhenUnhealthyOrOnlyPublicAddresses(t *testing.T) {
 			t.Fatalf("probed non-private address %q", ip)
 		}
 	}
+	// The port the spec declared wins over the ports the image also exposes.
+	declared := healthEngine("10.0.0.2", "80/tcp", "8080/tcp")
+	declared.containers[0].Config.Labels[ProbePortLabel] = "8080"
+	chosen := &fakeProber{}
+	if !succeeded(probe(t, declared, chosen, fast(&agentv1.HealthCheckSpec{Probe: &agentv1.HealthCheckSpec_HttpPath{HttpPath: "/"}}), 30*time.Second)) ||
+		chosen.addresses[0] != netip.MustParseAddrPort("10.0.0.2:8080") {
+		t.Fatalf("did not probe the declared port: %v", chosen.addresses)
+	}
 	ambiguous := &fakeProber{}
 	if succeeded(probe(t, healthEngine("10.0.0.2", "8080/tcp", "9090/tcp"), ambiguous, fast(&agentv1.HealthCheckSpec{Probe: &agentv1.HealthCheckSpec_HttpPath{HttpPath: "/"}}), 30*time.Second)) {
 		t.Fatal("http probe guessed among several ports")
