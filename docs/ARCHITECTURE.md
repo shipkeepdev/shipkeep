@@ -60,7 +60,8 @@ flowchart TB
 ### Agent (`agent/`)
 
 - One Go binary run by systemd as a dedicated `shipkeep` user with membership in the `docker` group, plus two capabilities: `CAP_NET_ADMIN` (WireGuard) and `CAP_NET_BIND_SERVICE` (internal DNS on port 53 of the WireGuard address).
-- The binary lives in `/var/lib/shipkeep/bin/` (owned by `shipkeep`) so `UpgradeAgent` can replace it with an atomic rename; the systemd unit uses `Restart=always`, and the agent exits after a successful swap so systemd starts the new version.
+- The binary lives in `/var/lib/shipkeep/bin/` (owned by `shipkeep`) so `UpgradeAgent` can replace it with an atomic rename, keeping the running one as `shipkeep-agent.previous`. The agent exits once the result is sent, and systemd starts the new version (ADR 0028).
+- The unit is `Type=notify`, restarts always and has no start limit. A normal start tells systemd it is ready at once, without the control plane. A new binary does so only after its first `Hello`, and exits after 5 minutes without one. Before each start, the upgrade guard runs from the installer's root-owned copy of the agent, which an upgrade never replaces: it counts a new binary's starts and puts the previous binary back after 3.
 - Caddy's admin API listens on `unix//run/shipkeep/caddy-admin.sock|0660`, group `shipkeep`; Caddy's TCP admin endpoint is disabled.
 - Containers resolve `*.internal` names because the agent sets their DNS server to the node's WireGuard address, where its embedded DNS answers internal names and forwards everything else to the host's resolvers.
 - Note: membership in the `docker` group is root-equivalent. The agent is therefore treated as root in the threat model, which is why its action list is closed and every input is validated.
