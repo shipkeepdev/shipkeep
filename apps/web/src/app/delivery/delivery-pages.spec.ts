@@ -490,6 +490,48 @@ describe('delivery screens', () => {
       expect(posts().at(-1)).toBe(`${BASE}/applications/${APP}/maintenance/leave`);
     });
 
+    it('keeps the second click of maintenance and stop disabled once a deployment has started', async () => {
+      const live = { ...deployment('succeeded'), id: 'd-new', releaseId: 'r-new', stop: false };
+      let deployments: unknown[] = [live];
+      routes = {
+        [`GET ${BASE}/applications/${APP}`]: () => json(application),
+        [`GET ${BASE}/applications/${APP}/deployments`]: () => json({ items: deployments }),
+        [`GET ${BASE}/applications/${APP}/replicas`]: () => json({ items: [replica] }),
+        [`GET ${BASE}/applications/${APP}/domains`]: () =>
+          json({
+            items: [
+              {
+                hostname: 'billing.example.com',
+                status: 'public',
+                addresses: ['203.0.113.4'],
+                match: 'serving',
+              },
+            ],
+          }),
+      };
+      await harness.navigateByUrl(danger);
+      await settle();
+      await click('Enable');
+      await click('Stop');
+      const second = (label: string) =>
+        Array.from(element().querySelectorAll('button')).find(
+          (b) => b.textContent.trim() === label,
+        );
+      expect(second('Enable it now')?.disabled).toBe(false);
+      expect(second('Stop it now')?.disabled).toBe(false);
+
+      // A deployment starts while both questions are open: the server would refuse either change.
+      deployments = [
+        { ...deployment('queued'), id: 'd-next', releaseId: 'r-next', stop: false },
+        live,
+      ];
+      sources[0]?.emit({ applicationId: APP });
+      await settle();
+      expect(second('Enable it now')?.disabled).toBe(true);
+      expect(second('Stop it now')?.disabled).toBe(true);
+      expect(posts()).toEqual([]);
+    });
+
     it('deletes a stopped application once its exact name is typed, then leaves the page', async () => {
       routes = {
         [`GET ${BASE}/applications/${APP}`]: () => json(application),

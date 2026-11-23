@@ -52,7 +52,7 @@ import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-a
             <button
               class="btn btn-danger"
               type="button"
-              [disabled]="busy()"
+              [disabled]="!canEnter()"
               (click)="changeMaintenance('enter')"
             >
               {{ (runner.busy() ? 'Entering…' : 'Enable it now') | t }}
@@ -70,7 +70,7 @@ import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-a
           <button
             class="btn btn-danger"
             type="button"
-            [disabled]="busy() || !running() || deploying() || !domain()"
+            [disabled]="!canEnter()"
             (click)="ask(entering, true)"
           >
             {{ 'Enable' | t }}
@@ -106,7 +106,7 @@ import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-a
           </button>
         } @else if (stopping()) {
           <div class="flex flex-wrap gap-2.5">
-            <button class="btn btn-danger" type="button" [disabled]="busy()" (click)="stop()">
+            <button class="btn btn-danger" type="button" [disabled]="!canStop()" (click)="stop()">
               {{ (runner.busy() ? 'Stopping…' : 'Stop it now') | t }}
             </button>
             <button
@@ -122,7 +122,7 @@ import { type Application, DeliveryApi, type EnvironmentRef } from './delivery-a
           <button
             class="btn btn-danger"
             type="button"
-            [disabled]="busy() || !running() || deploying()"
+            [disabled]="!canStop()"
             (click)="ask(stopping, true)"
           >
             {{ 'Stop' | t }}
@@ -208,6 +208,19 @@ export class ApplicationDanger {
 
   protected busy(): boolean {
     return this.runner.busy() || !!this.runner.cooldown();
+  }
+
+  /**
+   * What entering maintenance needs, checked again on the second click: a deployment may have
+   * started, or the replicas or the domain gone, since the question was asked.
+   */
+  protected canEnter(): boolean {
+    return !this.busy() && this.running() && !this.deploying() && this.domain();
+  }
+
+  /** What stopping needs, on both clicks for the same reason. */
+  protected canStop(): boolean {
+    return !this.busy() && this.running() && !this.deploying();
   }
 
   /**
