@@ -1,0 +1,1160 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Shipkeep · PaaS open source auto-hébergé sur vos serveurs</title>
+    <meta
+      name="description"
+      content="PaaS open source auto-hébergé, en développement : déployez vos applications sur vos propres serveurs, sans Kubernetes ni clé root dans un panneau web."
+    />
+    <meta name="robots" content="index,follow" />
+    <link rel="canonical" href="https://shipkeep.vercel.app/fr" />
+    <link rel="alternate" hreflang="fr" href="https://shipkeep.vercel.app/fr" />
+    <link rel="alternate" hreflang="en" href="https://shipkeep.vercel.app/" />
+    <link rel="alternate" hreflang="x-default" href="https://shipkeep.vercel.app/" />
+    <link rel="icon" href="/favicon.ico" sizes="48x48" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Shipkeep" />
+    <meta property="og:locale" content="fr_FR" />
+    <meta property="og:locale:alternate" content="en_US" />
+    <meta property="og:title" content="Shipkeep · PaaS open source auto-hébergé sur vos serveurs" />
+    <meta
+      property="og:description"
+      content="PaaS open source auto-hébergé, en développement : déployez vos applications sur vos propres serveurs, sans Kubernetes ni clé root dans un panneau web."
+    />
+    <meta property="og:url" content="https://shipkeep.vercel.app/fr" />
+    <meta property="og:image" content="https://shipkeep.vercel.app/og-fr.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:image" content="https://shipkeep.vercel.app/og-fr.jpg" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "SoftwareApplication",
+            "@id": "https://shipkeep.vercel.app/#software",
+            "name": "Shipkeep",
+            "url": "https://shipkeep.vercel.app/fr",
+            "description": "PaaS open source auto-hébergé, en développement : déployez vos applications sur vos propres serveurs, sans Kubernetes ni clé root dans un panneau web.",
+            "applicationCategory": "DeveloperApplication",
+            "applicationSubCategory": "Platform as a service",
+            "operatingSystem": "Linux",
+            "inLanguage": "fr",
+            "license": "https://www.apache.org/licenses/LICENSE-2.0",
+            "isAccessibleForFree": true,
+            "creativeWorkStatus": "En développement : une préversion peut être installée pour l’essayer.",
+            "offers": {
+              "@type": "Offer",
+              "price": "0",
+              "priceCurrency": "USD"
+            },
+            "image": "https://shipkeep.vercel.app/og-fr.jpg",
+            "sameAs": ["https://github.com/shipkeepdev/shipkeep"]
+          }
+        ]
+      }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600&amp;family=Geist+Mono:wght@400;500&amp;display=swap"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css"
+    />
+    <link rel="stylesheet" href="/site.css" />
+    <script src="/theme.js"></script>
+    <script src="/site.js" defer></script>
+  </head>
+  <body>
+    <p id="sk-status" role="status">
+      Shipkeep est en développement. Une
+      <a href="https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md" rel="noopener"
+        >première préversion</a
+      >
+      peut être installée pour l’essayer, sur des serveurs que vous pouvez vous permettre de perdre.
+      Cette page décrit la version que nous construisons : tout n’y est pas encore.
+    </p>
+    <div class="root">
+      <header class="hdr">
+        <a class="brand" href="/fr" aria-label="Shipkeep"
+          ><svg viewBox="0 0 32 32" width="28" height="28" aria-hidden="true">
+            <path
+              d="M5 21 L16 10 L27 21"
+              fill="none"
+              stroke="#F2F2F3"
+              stroke-width="4.2"
+              stroke-linecap="square"
+            />
+            <path
+              d="M5 29 L16 18 L27 29"
+              fill="none"
+              stroke="#F2F2F3"
+              stroke-width="4.2"
+              stroke-linecap="square"
+              opacity="0.45"
+            /></svg
+          ><span>Shipkeep</span></a
+        >
+        <nav class="nav" aria-label="Navigation">
+          <a href="#region">Sécurité</a><a href="#opensource">Open source</a
+          ><a href="#offres">Offres</a><a href="#equipe">Équipe</a>
+        </nav>
+        <div class="hdr-r">
+          <div class="lang" role="group" aria-label="Langue">
+            <a href="/fr" hreflang="fr" lang="fr" aria-current="page" class="on">FR</a
+            ><a href="/" hreflang="en" lang="en">EN</a>
+          </div>
+          <button
+            type="button"
+            class="ib"
+            data-theme-toggle
+            aria-label="Mode clair"
+            title="Mode clair"
+            data-light="Mode clair"
+            data-dark="Mode sombre"
+          >
+            <i class="ti ti-sun" aria-hidden="true"></i>
+          </button>
+          <a
+            class="gh"
+            href="https://github.com/shipkeepdev/shipkeep"
+            rel="noopener"
+            aria-label="GitHub"
+            ><i class="ti ti-brand-github" aria-hidden="true"></i><span>GitHub</span></a
+          >
+          <button
+            type="button"
+            class="ib burger"
+            aria-label="Menu"
+            aria-controls="sk-menu"
+            aria-expanded="false"
+          >
+            <i class="ti ti-menu-2" aria-hidden="true"></i>
+          </button>
+        </div>
+      </header>
+      <div id="sk-menu" role="dialog" aria-modal="true" aria-label="Menu" hidden>
+        <div class="mh">
+          <span class="word">Shipkeep</span
+          ><button type="button" class="ib" data-close aria-label="Fermer">
+            <i class="ti ti-x" aria-hidden="true"></i>
+          </button>
+        </div>
+        <nav aria-label="Navigation">
+          <a href="#region">Sécurité<i class="ti ti-arrow-up-right" aria-hidden="true"></i></a
+          ><a href="#opensource"
+            >Open source<i class="ti ti-arrow-up-right" aria-hidden="true"></i></a
+          ><a href="#offres">Offres<i class="ti ti-arrow-up-right" aria-hidden="true"></i></a
+          ><a href="#equipe">Équipe<i class="ti ti-arrow-up-right" aria-hidden="true"></i></a>
+        </nav>
+        <div class="ma">
+          <a href="https://github.com/shipkeepdev/shipkeep" rel="noopener"
+            ><i class="ti ti-brand-github" aria-hidden="true"></i>GitHub</a
+          ><button type="button" data-theme-toggle data-light="Mode clair" data-dark="Mode sombre">
+            <i class="ti ti-sun" aria-hidden="true"></i><span>Mode clair</span></button
+          ><a
+            class="pri"
+            href="https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md"
+            rel="noopener"
+            >Essayer la préversion</a
+          >
+        </div>
+      </div>
+      <div class="rule"></div>
+      <main>
+        <section class="frame hero" aria-labelledby="hero-t">
+          <div class="card">
+            <div class="hb">
+              <a class="pill" href="https://github.com/shipkeepdev/shipkeep" rel="noopener"
+                ><i class="ti ti-brand-open-source" aria-hidden="true"></i>Open source ·
+                Apache-2.0</a
+              >
+              <h1 id="hero-t">Vos serveurs. Vos clés.</h1>
+              <p class="lead">
+                Le PaaS open source qui déploie sur vos machines, sans clé root dans un panneau.
+              </p>
+              <div class="ctas">
+                <a
+                  class="btn"
+                  href="https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md"
+                  rel="noopener"
+                  >Essayer la préversion</a
+                ><span class="mono">alpha · Ubuntu 24.04</span>
+              </div>
+            </div>
+            <div class="steps" id="sk-steps" role="img" aria-label="Exemple de déploiement">
+              <div class="step" data-v="4f2c1a9">
+                <div class="k">
+                  <i class="ti ti-git-commit" aria-hidden="true"></i><span>deploy</span>
+                </div>
+                <div class="v">4f2c1a9</div>
+              </div>
+              <div class="step" data-v="12 s">
+                <div class="k">
+                  <i class="ti ti-download" aria-hidden="true"></i><span>pull</span>
+                </div>
+                <div class="v">…</div>
+              </div>
+              <div class="step" data-v="migrate">
+                <div class="k">
+                  <i class="ti ti-database" aria-hidden="true"></i><span>release</span>
+                </div>
+                <div class="v">…</div>
+              </div>
+              <div class="step" data-v="2/2">
+                <div class="k">
+                  <i class="ti ti-heartbeat" aria-hidden="true"></i><span>health</span>
+                </div>
+                <div class="v">…</div>
+              </div>
+              <div class="step" data-v="41 s">
+                <div class="k">
+                  <i class="ti ti-circle-check" aria-hidden="true"></i><span>en ligne</span>
+                </div>
+                <div class="v">…</div>
+              </div>
+            </div>
+          </div>
+        </section>
+        <div class="rule"></div>
+        <div class="mid">
+          <div class="gut l" aria-hidden="true">
+            <canvas data-seed="7919"></canvas>
+            <div
+              class="trav mono"
+              id="sk-trav"
+              data-stages='["en file","pull","release","health","bascule","en ligne"]'
+            >
+              <span class="dot"></span><span class="sha">4f2c1a9</span
+              ><span class="lb">en file</span><span class="nn">1/6</span>
+            </div>
+          </div>
+          <div class="gut r" aria-hidden="true"><canvas data-seed="104729"></canvas></div>
+          <section class="sec" id="region" aria-labelledby="region-t">
+            <h2 id="region-t">Sens unique.</h2>
+            <p class="sub">Chaque serveur appelle le plan de contrôle. Jamais l’inverse.</p>
+            <div class="flow">
+              <div class="cp">
+                <i class="ti ti-shield-check" aria-hidden="true"></i>
+                <div>
+                  <div>Plan de contrôle</div>
+                  <div class="mono dim">cp.example.com:7443</div>
+                </div>
+              </div>
+              <div class="nodes">
+                <div class="nd">
+                  <div class="up"><i class="ti ti-arrow-up" aria-hidden="true"></i></div>
+                  <div class="node">
+                    <i class="ti ti-server-2" aria-hidden="true"></i>
+                    <div>
+                      <div class="mono">srv-par-1</div>
+                      <div class="dim">Paris</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="nd">
+                  <div class="up"><i class="ti ti-arrow-up" aria-hidden="true"></i></div>
+                  <div class="node">
+                    <i class="ti ti-server-2" aria-hidden="true"></i>
+                    <div>
+                      <div class="mono">srv-fra-2</div>
+                      <div class="dim">Francfort</div>
+                    </div>
+                  </div>
+                </div>
+                <div class="nd">
+                  <div class="up"><i class="ti ti-arrow-up" aria-hidden="true"></i></div>
+                  <div class="node">
+                    <i class="ti ti-server-2" aria-hidden="true"></i>
+                    <div>
+                      <div class="mono">srv-ams-3</div>
+                      <div class="dim">Amsterdam</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div class="callout">
+                Aucun port entrant pour l’agent, aucune clé SSH stockée. Chaque agent ouvre lui-même
+                un flux mTLS sortant.
+              </div>
+            </div>
+            <div class="feats box">
+              <span class="cn tl"></span><span class="cn tr"></span><span class="cn bl"></span
+              ><span class="cn br"></span>
+              <div class="feat">
+                <i class="ti ti-server-2" aria-hidden="true"></i>
+                <h3>Sur n’importe quel serveur</h3>
+                <p>
+                  VPS, bare metal ou Raspberry Pi. Il suffit de Linux et de systemd ; la préversion
+                  est testée sur Ubuntu 24.04.
+                </p>
+              </div>
+              <div class="feat">
+                <i class="ti ti-arrows-shuffle" aria-hidden="true"></i>
+                <h3>Vraiment multi-serveur</h3>
+                <p>
+                  Placement et health checks. Objectif : bascule en moins de 90 secondes quand un
+                  serveur tombe.
+                </p>
+              </div>
+              <div class="feat">
+                <i class="ti ti-feather" aria-hidden="true"></i>
+                <h3>Sans Kubernetes</h3>
+                <p>Docker, Caddy, WireGuard et un agent Go de moins de 50 Mo.</p>
+              </div>
+            </div>
+          </section>
+          <section class="sec" id="anatomie" aria-labelledby="anatomie-t">
+            <h2 id="anatomie-t">Anatomie d’un serveur</h2>
+            <p class="sub">
+              Cinq couches, de votre machine Linux jusqu’à l’agent. Elles s’ouvrent une à une.
+            </p>
+            <div class="anat box">
+              <span class="cn tl"></span><span class="cn tr"></span><span class="cn bl"></span
+              ><span class="cn br"></span>
+              <div class="layers">
+                <div class="layer" data-i="0" tabindex="0">
+                  <i class="ti ti-brand-ubuntu" aria-hidden="true"></i>
+                  <div>
+                    <div class="n">Serveur Linux</div>
+                    <div class="d">Votre machine, avec systemd.</div>
+                  </div>
+                </div>
+                <div class="layer" data-i="1" tabindex="0">
+                  <i class="ti ti-brand-docker" aria-hidden="true"></i>
+                  <div>
+                    <div class="n">Docker Engine</div>
+                    <div class="d">Vos apps et bases, chacune dans son conteneur.</div>
+                  </div>
+                </div>
+                <div class="layer" data-i="2" tabindex="0">
+                  <i class="ti ti-lock" aria-hidden="true"></i>
+                  <div>
+                    <div class="n">Caddy</div>
+                    <div class="d">HTTPS automatique et routage.</div>
+                  </div>
+                </div>
+                <div class="layer" data-i="3" tabindex="0">
+                  <i class="ti ti-network" aria-hidden="true"></i>
+                  <div>
+                    <div class="n">WireGuard</div>
+                    <div class="d">Prévu : réseau privé entre tous vos serveurs.</div>
+                  </div>
+                </div>
+                <div class="layer" data-i="4" tabindex="0">
+                  <i class="ti ti-plug-connected" aria-hidden="true"></i>
+                  <div>
+                    <div class="n">shipkeep-agent</div>
+                    <div class="d">Un binaire Go. Il appelle, on ne l’appelle jamais.</div>
+                  </div>
+                </div>
+              </div>
+              <div
+                class="fig"
+                role="img"
+                aria-label="Vue éclatée d’un serveur et de ses cinq couches"
+              >
+                <div class="cap mono">FIG.01 — srv-fra-2</div>
+                <div class="draw" id="sk-anatomy" data-word="couches"></div>
+                <div class="foot mono">
+                  <span class="ro">srv-fra-2 · 5 couches</span><span>↗ mTLS :7443</span>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="sec" id="opensource" aria-labelledby="opensource-t">
+            <h2 id="opensource-t">Un fichier. Toute la prod.</h2>
+            <p class="sub">
+              shipkeep.yml vit dans votre dépôt. Chaque ligne déclenche quelque chose.
+            </p>
+            <div class="yml box">
+              <span class="cn tl"></span><span class="cn tr"></span><span class="cn bl"></span
+              ><span class="cn br"></span>
+              <div class="lines">
+                <div class="file mono">shipkeep.yml</div>
+                <button
+                  type="button"
+                  class="yl mono on"
+                  data-icon="ti-package"
+                  data-title="Image"
+                  data-text="Une image de n’importe quel registre, privé compris. Prévu : construire depuis Git, avec une preview par pull request."
+                >
+                  <span class="ln">1</span
+                  ><span class="tx"
+                    >build: { type: image, image: ghcr.io/example/api:1.4 }</span
+                  ></button
+                ><button
+                  type="button"
+                  class="yl mono"
+                  data-icon="ti-database"
+                  data-title="Release"
+                  data-text="Les migrations tournent avant que la nouvelle version reçoive du trafic. Si elles échouent, l’ancienne continue de servir."
+                >
+                  <span class="ln">2</span
+                  ><span class="tx">release: { command: [./migrate, up] }</span></button
+                ><button
+                  type="button"
+                  class="yl mono"
+                  data-icon="ti-heartbeat"
+                  data-title="Health check"
+                  data-text="Une nouvelle version ne reçoit du trafic qu’après avoir répondu ici. L’ancienne sert jusqu’au bout."
+                >
+                  <span class="ln">3</span
+                  ><span class="tx"
+                    >run: { port: 3000, healthcheck: { path: /health } }</span
+                  ></button
+                ><button
+                  type="button"
+                  class="yl mono"
+                  data-icon="ti-copy"
+                  data-title="Placement"
+                  data-text="Deux répliques, placées sur vos serveurs. Objectif : si l’un tombe, elles repartent ailleurs en moins de 90 secondes."
+                >
+                  <span class="ln">4</span><span class="tx">scale: { replicas: 2 }</span></button
+                ><button
+                  type="button"
+                  class="yl mono"
+                  data-icon="ti-lock"
+                  data-title="HTTPS"
+                  data-text="Le certificat est émis et renouvelé tout seul. Vous n’y pensez plus."
+                >
+                  <span class="ln">5</span
+                  ><span class="tx">domains: [api.example.com]</span></button
+                ><button
+                  type="button"
+                  class="yl mono"
+                  data-icon="ti-gauge"
+                  data-title="Limites"
+                  data-text="Chaque conteneur a une limite de CPU et de mémoire, même sans cette ligne."
+                >
+                  <span class="ln">6</span
+                  ><span class="tx">resources: { cpu: '0.5', memory: 512Mi }</span></button
+                ><button
+                  type="button"
+                  class="yl mono"
+                  data-icon="ti-key"
+                  data-title="Secrets"
+                  data-text="Le dépôt ne contient que le nom. La valeur est chiffrée et ne va qu’à l’agent qui en a besoin."
+                >
+                  <span class="ln">7</span><span class="tx">secrets: [STRIPE_KEY]</span>
+                </button>
+              </div>
+              <div class="ysel" aria-live="polite">
+                <span class="yi"><i class="ti ti-package" aria-hidden="true"></i></span>
+                <div class="yt">Image</div>
+                <div class="yx">
+                  Une image de n’importe quel registre, privé compris. Prévu : construire depuis
+                  Git, avec une preview par pull request.
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="sec" id="pourquoi" aria-labelledby="pourquoi-t">
+            <h2 id="pourquoi-t">Ce que Shipkeep ne détient pas</h2>
+            <p class="sub">Un panneau habituel garde tout. Nous, rien.</p>
+            <div class="ledger box">
+              <span class="cn tl"></span><span class="cn tr"></span><span class="cn bl"></span
+              ><span class="cn br"></span>
+              <div class="lg">
+                <div class="old mono">
+                  <s>6</s><i class="ti ti-arrow-narrow-right" aria-hidden="true"></i>
+                </div>
+                <div class="big">0</div>
+                <div class="k">clé root stockée</div>
+                <div class="d">L’agent génère sa clé sur place.</div>
+              </div>
+              <div class="lg">
+                <div class="old mono">
+                  <s>6</s><i class="ti ti-arrow-narrow-right" aria-hidden="true"></i>
+                </div>
+                <div class="big">0</div>
+                <div class="k">port entrant pour l’agent</div>
+                <div class="d">Chaque agent appelle en sortant.</div>
+              </div>
+              <div class="lg">
+                <div class="old mono">
+                  <s>∞</s><i class="ti ti-arrow-narrow-right" aria-hidden="true"></i>
+                </div>
+                <div class="big">0</div>
+                <div class="k">commande shell libre</div>
+                <div class="d">Une liste fermée d’actions typées.</div>
+              </div>
+              <div class="lg">
+                <div class="old mono">
+                  <s>1 clic</s><i class="ti ti-arrow-narrow-right" aria-hidden="true"></i>
+                </div>
+                <div class="big">0</div>
+                <div class="k">suppression sans confirmation</div>
+                <div class="d">
+                  Un volume, une base ou un serveur ne part qu’après confirmation.
+                </div>
+              </div>
+            </div>
+            <p class="note">Exemple pour une flotte de 6 serveurs.</p>
+          </section>
+          <section class="sec" id="services" aria-labelledby="services-t">
+            <h2 id="services-t">Une base en un clic</h2>
+            <p class="sub">
+              Prévu : bases de données gérées avec sauvegardes, et un catalogue de modèles Compose.
+            </p>
+            <ul class="svc box" role="list">
+              <span class="cn tl"></span
+              ><span class="cn tr"></span
+              ><span class="cn bl"></span
+              ><span class="cn br"></span>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/postgresql/6e6e74)"
+                  data-slug="postgresql"
+                ></span
+                ><span class="nm">PostgreSQL</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/mysql/6e6e74)"
+                  data-slug="mysql"
+                ></span
+                ><span class="nm">MySQL</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/mariadb/6e6e74)"
+                  data-slug="mariadb"
+                ></span
+                ><span class="nm">MariaDB</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/mongodb/6e6e74)"
+                  data-slug="mongodb"
+                ></span
+                ><span class="nm">MongoDB</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/redis/6e6e74)"
+                  data-slug="redis"
+                ></span
+                ><span class="nm">Redis</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/clickhouse/6e6e74)"
+                  data-slug="clickhouse"
+                ></span
+                ><span class="nm">ClickHouse</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/minio/6e6e74)"
+                  data-slug="minio"
+                ></span
+                ><span class="nm">MinIO</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/grafana/6e6e74)"
+                  data-slug="grafana"
+                ></span
+                ><span class="nm">Grafana</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/n8n/6e6e74)"
+                  data-slug="n8n"
+                ></span
+                ><span class="nm">n8n</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/ghost/6e6e74)"
+                  data-slug="ghost"
+                ></span
+                ><span class="nm">Ghost</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/wordpress/6e6e74)"
+                  data-slug="wordpress"
+                ></span
+                ><span class="nm">WordPress</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/nextcloud/6e6e74)"
+                  data-slug="nextcloud"
+                ></span
+                ><span class="nm">Nextcloud</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/gitea/6e6e74)"
+                  data-slug="gitea"
+                ></span
+                ><span class="nm">Gitea</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/meilisearch/6e6e74)"
+                  data-slug="meilisearch"
+                ></span
+                ><span class="nm">Meilisearch</span
+                ><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="background-image: url(https://cdn.simpleicons.org/rabbitmq/6e6e74)"
+                  data-slug="rabbitmq"
+                ></span
+                ><span class="nm">RabbitMQ</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+              <li>
+                <span
+                  class="lg"
+                  style="
+                    background-image: url(https://cdn.simpleicons.org/plausibleanalytics/6e6e74);
+                  "
+                  data-slug="plausibleanalytics"
+                ></span
+                ><span class="nm">Plausible</span><span class="ar mono" aria-hidden="true">↗</span>
+              </li>
+            </ul>
+            <div class="prov">
+              <span class="mono">Sur n’importe quel serveur Linux</span>
+              <ul role="list">
+                <li>
+                  <span
+                    class="lg"
+                    style="background-image: url(https://cdn.simpleicons.org/hetzner/a6a6ac)"
+                  ></span
+                  >Hetzner
+                </li>
+                <li>
+                  <span
+                    class="lg"
+                    style="background-image: url(https://cdn.simpleicons.org/ovh/a6a6ac)"
+                  ></span
+                  >OVHcloud
+                </li>
+                <li>
+                  <span
+                    class="lg"
+                    style="background-image: url(https://cdn.simpleicons.org/scaleway/a6a6ac)"
+                  ></span
+                  >Scaleway
+                </li>
+                <li>
+                  <span
+                    class="lg"
+                    style="background-image: url(https://cdn.simpleicons.org/digitalocean/a6a6ac)"
+                  ></span
+                  >DigitalOcean
+                </li>
+                <li>
+                  <span
+                    class="lg"
+                    style="background-image: url(https://cdn.simpleicons.org/vultr/a6a6ac)"
+                  ></span
+                  >Vultr
+                </li>
+                <li>
+                  <span
+                    class="lg"
+                    style="background-image: url(https://cdn.simpleicons.org/raspberrypi/a6a6ac)"
+                  ></span
+                  >Raspberry Pi
+                </li>
+              </ul>
+            </div>
+          </section>
+          <section class="sec" id="comparer" aria-labelledby="comparer-t">
+            <h2 id="comparer-t">Comparez avant de choisir</h2>
+            <p class="sub">Les alternatives auto-hébergées, critère par critère.</p>
+            <div class="cmp-wrap">
+              <div class="cmp box">
+                <span class="cn tl"></span><span class="cn tr"></span><span class="cn bl"></span
+                ><span class="cn br"></span>
+                <table>
+                  <thead>
+                    <tr>
+                      <td></td>
+                      <th scope="col" class="me">Shipkeep</th>
+                      <th scope="col">Coolify</th>
+                      <th scope="col">Dokploy</th>
+                      <th scope="col">Kamal</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <th scope="row">Connexion aux serveurs</th>
+                      <td class="me">Agent mTLS sortant</td>
+                      <td>SSH root ou sudo</td>
+                      <td>SSH</td>
+                      <td>SSH</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Interface web</th>
+                      <td class="me">
+                        <i class="ti ti-check" aria-hidden="true"></i><span class="sr">oui</span>
+                      </td>
+                      <td>
+                        <i class="ti ti-check" aria-hidden="true"></i><span class="sr">oui</span>
+                      </td>
+                      <td>
+                        <i class="ti ti-check" aria-hidden="true"></i><span class="sr">oui</span>
+                      </td>
+                      <td class="no">
+                        <i class="ti ti-minus" aria-hidden="true"></i><span class="sr">non</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Config versionnée dans le dépôt</th>
+                      <td class="me">
+                        <i class="ti ti-check" aria-hidden="true"></i><span class="sr">oui</span>
+                      </td>
+                      <td>Compose seul</td>
+                      <td>Compose seul</td>
+                      <td>
+                        <i class="ti ti-check" aria-hidden="true"></i><span class="sr">oui</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Multi-serveur avec bascule</th>
+                      <td class="me">
+                        <i class="ti ti-check" aria-hidden="true"></i><span class="sr">oui</span>
+                      </td>
+                      <td>partiel</td>
+                      <td>Swarm</td>
+                      <td>partiel</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Utilisateurs et rôles</th>
+                      <td class="me">
+                        <i class="ti ti-check" aria-hidden="true"></i><span class="sr">oui</span>
+                      </td>
+                      <td>
+                        <i class="ti ti-check" aria-hidden="true"></i><span class="sr">oui</span>
+                      </td>
+                      <td>
+                        <i class="ti ti-check" aria-hidden="true"></i><span class="sr">oui</span>
+                      </td>
+                      <td class="no">
+                        <i class="ti ti-minus" aria-hidden="true"></i><span class="sr">non</span>
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Bases de données gérées</th>
+                      <td class="me">
+                        <i class="ti ti-check" aria-hidden="true"></i><span class="sr">oui</span>
+                      </td>
+                      <td>
+                        <i class="ti ti-check" aria-hidden="true"></i><span class="sr">oui</span>
+                      </td>
+                      <td>
+                        <i class="ti ti-check" aria-hidden="true"></i><span class="sr">oui</span>
+                      </td>
+                      <td>accessoires</td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Licence</th>
+                      <td class="me">Apache-2.0</td>
+                      <td>Apache-2.0</td>
+                      <td>mixte</td>
+                      <td>MIT</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+            <p class="swipe">
+              <i class="ti ti-arrows-horizontal" aria-hidden="true"></i>Glissez pour comparer
+            </p>
+            <div class="cmp-note">
+              <p>
+                Colonne Shipkeep : ce que vise la première version stable ; la préversion actuelle
+                n’en couvre qu’une partie. Autres colonnes : documentation publique et fichier de
+                licence de chaque projet, consultés le 11 novembre 2026.
+              </p>
+              <p>
+                Sources pour Coolify :
+                <a
+                  href="https://coolify.io/docs/core/infrastructure/servers/non-root-user"
+                  rel="noopener"
+                  >connexion</a
+                >
+                ·
+                <a href="https://coolify.io/docs/core/how-coolify-works" rel="noopener"
+                  >interface</a
+                >
+                ·
+                <a href="https://coolify.io/docs/applications/builds/docker-compose" rel="noopener"
+                  >config</a
+                >
+                ·
+                <a
+                  href="https://coolify.io/docs/core/infrastructure/scaling/multi-server-deployments"
+                  rel="noopener"
+                  >multi-serveur</a
+                >
+                ·
+                <a href="https://coolify.io/docs/core/team/roles-and-permissions" rel="noopener"
+                  >rôles</a
+                >
+                · <a href="https://coolify.io/docs/databases/" rel="noopener">bases de données</a> ·
+                <a href="https://github.com/coollabsio/coolify/blob/main/LICENSE" rel="noopener"
+                  >licence</a
+                >
+              </p>
+              <p>
+                Sources pour Dokploy :
+                <a href="https://docs.dokploy.com/docs/core/deployment-options" rel="noopener"
+                  >connexion</a
+                >
+                ·
+                <a href="https://docs.dokploy.com/docs/core/interface-overview" rel="noopener"
+                  >interface</a
+                >
+                · <a href="https://docs.dokploy.com/docs/core/features" rel="noopener">config</a> ·
+                <a href="https://docs.dokploy.com/docs/core/architecture" rel="noopener"
+                  >réglages</a
+                >
+                ·
+                <a href="https://docs.dokploy.com/docs/core/cluster" rel="noopener"
+                  >multi-serveur</a
+                >
+                ·
+                <a href="https://docs.dokploy.com/docs/core/enterprise/custom-roles" rel="noopener"
+                  >rôles</a
+                >
+                ·
+                <a href="https://docs.dokploy.com/docs/core/databases" rel="noopener"
+                  >bases de données</a
+                >
+                ·
+                <a href="https://github.com/Dokploy/dokploy/blob/canary/LICENSE.MD" rel="noopener"
+                  >licence</a
+                >
+              </p>
+              <p>
+                Sources pour Kamal :
+                <a href="https://kamal-deploy.org/docs/configuration/ssh/" rel="noopener"
+                  >connexion</a
+                >
+                ·
+                <a href="https://kamal-deploy.org/docs/commands/view-all-commands/" rel="noopener"
+                  >interface</a
+                >
+                ·
+                <a href="https://kamal-deploy.org/docs/configuration/overview/" rel="noopener"
+                  >config</a
+                >
+                ·
+                <a href="https://kamal-deploy.org/docs/installation/" rel="noopener"
+                  >multi-serveur</a
+                >
+                ·
+                <a href="https://kamal-deploy.org/docs/configuration/overview/" rel="noopener"
+                  >rôles</a
+                >
+                ·
+                <a href="https://kamal-deploy.org/docs/configuration/accessories/" rel="noopener"
+                  >bases de données</a
+                >
+                ·
+                <a href="https://github.com/basecamp/kamal/blob/main/MIT-LICENSE" rel="noopener"
+                  >licence</a
+                >
+              </p>
+            </div>
+          </section>
+          <section class="sec" id="offres" aria-labelledby="offres-t">
+            <h2 id="offres-t">Payez vos serveurs. <span class="dim">Pas nous.</span></h2>
+            <p class="sub">(Le code est libre, pour toujours.)</p>
+            <div class="offers box">
+              <span class="cn tl"></span><span class="cn tr"></span><span class="cn bl"></span
+              ><span class="cn br"></span>
+              <div class="incl">
+                <div>
+                  <h3>Tout est inclus, dans chaque formule</h3>
+                  <p>
+                    Le même logiciel pour tout le monde. Les formules payantes ajouteront du
+                    service, pas des fonctions.
+                  </p>
+                </div>
+                <div class="pipe box">
+                  <span class="cn tl"></span><span class="cn tr"></span><span class="cn bl"></span
+                  ><span class="cn br"></span>
+                  <div class="ph"><span>deploy</span><span class="w">en ligne</span></div>
+                  <div class="pc">
+                    <div><i class="ti ti-download" aria-hidden="true"></i>Pull</div>
+                    <div><i class="ti ti-database" aria-hidden="true"></i>Release</div>
+                    <div><i class="ti ti-heartbeat" aria-hidden="true"></i>Health</div>
+                    <div><i class="ti ti-lock" aria-hidden="true"></i>HTTPS</div>
+                    <div><i class="ti ti-arrow-back-up" aria-hidden="true"></i>Retour</div>
+                  </div>
+                </div>
+              </div>
+              <div class="plans">
+                <div class="plan">
+                  <h3>Communauté</h3>
+                  <div class="who">pour tout le monde</div>
+                  <div class="price">Gratuit<span> Apache-2.0</span></div>
+                  <ul class="chips" role="list">
+                    <li>Serveurs illimités</li>
+                    <li>Apps illimitées</li>
+                    <li>Aucune télémétrie</li>
+                  </ul>
+                  <a
+                    class="btn-o"
+                    href="https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md"
+                    rel="noopener"
+                    >Installer</a
+                  >
+                </div>
+                <div class="plan">
+                  <h3>Shipkeep Cloud</h3>
+                  <div class="who">plan de contrôle hébergé</div>
+                  <div class="price">Bientôt<span> / serveur</span></div>
+                  <ul class="chips" role="list">
+                    <li>Mises à jour gérées</li>
+                    <li>Sauvegardes du plan</li>
+                    <li>Vos serveurs</li>
+                  </ul>
+                  <a class="btn-o" href="https://github.com/shipkeepdev/shipkeep" rel="noopener"
+                    >Suivre le projet</a
+                  >
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="sec" id="equipe" aria-labelledby="equipe-t">
+            <h2 id="equipe-t">Pensé pour votre équipe</h2>
+            <p class="sub">De l’indépendant à l’agence qui gère dix clients.</p>
+            <div class="bento box">
+              <span class="cn tl"></span><span class="cn tr"></span><span class="cn bl"></span
+              ><span class="cn br"></span>
+              <div class="pv">
+                <div class="tiles" id="sk-tiles" aria-hidden="true"></div>
+                <div class="pvc">
+                  <h3>Previews</h3>
+                  <p>
+                    Prévu : une copie isolée de votre app pour chaque pull request, détruite à la
+                    fusion.
+                  </p>
+                </div>
+              </div>
+              <div class="b1">
+                <ul
+                  class="deploys"
+                  id="sk-deploys"
+                  role="list"
+                  aria-label="Exemple d’historique de déploiements"
+                  data-when='["à l’instant","il y a 1 min","il y a 12 min","hier, 23:32","il y a 3 jours"]'
+                  data-live="En ligne"
+                >
+                  <li>
+                    <span class="mono">4f2c1a9</span><span class="w">il y a 1 min</span
+                    ><span class="s"
+                      >En ligne<i class="ti ti-circle-check-filled" aria-hidden="true"></i
+                    ></span>
+                  </li>
+                  <li>
+                    <span class="mono">b81e0d3</span><span class="w">il y a 12 min</span
+                    ><span class="s"
+                      >En ligne<i class="ti ti-circle-check-filled" aria-hidden="true"></i
+                    ></span>
+                  </li>
+                  <li>
+                    <span class="mono">72dd0e4</span><span class="w">hier, 23:32</span
+                    ><span class="s"
+                      >En ligne<i class="ti ti-circle-check-filled" aria-hidden="true"></i
+                    ></span>
+                  </li>
+                  <li>
+                    <span class="mono">e13f5b2</span><span class="w">il y a 3 jours</span
+                    ><span class="s"
+                      >En ligne<i class="ti ti-circle-check-filled" aria-hidden="true"></i
+                    ></span>
+                  </li>
+                </ul>
+                <div>
+                  <h3>S’intègre à vos habitudes</h3>
+                  <p>
+                    Votre CI construit l’image, Shipkeep la déploie, depuis n’importe quel registre.
+                    Aucun outil propriétaire.
+                  </p>
+                </div>
+              </div>
+              <div class="b2">
+                <i class="ti ti-layout-dashboard" aria-hidden="true"></i>
+                <h3>Un seul plan de contrôle</h3>
+                <p>
+                  Les applications et les serveurs de tous vos clients, isolés par organisation et
+                  par environnement.
+                </p>
+              </div>
+              <div class="b3">
+                <i class="ti ti-shield-lock" aria-hidden="true"></i>
+                <h3>Sûr par défaut</h3>
+                <p>
+                  mTLS, secrets chiffrés, confirmation de toute action destructive et journal
+                  d’audit.
+                </p>
+              </div>
+              <div class="b4">
+                <div>
+                  <h3>Tout depuis le terminal</h3>
+                  <p>La CLI déploie, revient en arrière, gère les secrets et les serveurs.</p>
+                </div>
+                <div class="term mono" aria-hidden="true">
+                  <div class="hi">$ shipkeep deploy</div>
+                  <div>pull 12 s · release 4 s</div>
+                  <div>health 2/2 saines</div>
+                  <div class="hi">✓ en ligne en 41 s</div>
+                  <div class="hi">$ shipkeep rollback</div>
+                  <div class="hi">✓ revenu en 6 s</div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+        <div class="rule"></div>
+        <section class="frame cta" id="installer" aria-labelledby="installer-t">
+          <div class="card">
+            <div class="glow" aria-hidden="true"></div>
+            <div class="cb">
+              <h2 id="installer-t">Gardez les clés.</h2>
+              <p>
+                La préversion s’installe sur un serveur Ubuntu 24.04 que vous pouvez vous permettre
+                de perdre. Gratuite, sans compte à créer.
+              </p>
+              <div class="cmd">
+                <span class="mono">docs/INSTALL.md</span
+                ><a
+                  href="https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md"
+                  rel="noopener"
+                  ><i class="ti ti-book" aria-hidden="true"></i>Ouvrir le guide</a
+                >
+              </div>
+              <a class="btn-o" href="https://github.com/shipkeepdev/shipkeep" rel="noopener"
+                >Voir le code sur GitHub</a
+              >
+            </div>
+            <div class="strip mono">
+              <span>↗ mTLS :7443</span><span>0 port entrant pour l’agent</span
+              ><span>0 clé stockée</span><span>Apache-2.0</span>
+            </div>
+          </div>
+        </section>
+      </main>
+      <footer class="ft">
+        <div class="fb">
+          <span class="word">Shipkeep</span><span class="dim">© 2026 · Apache-2.0</span>
+        </div>
+        <div class="fc">
+          <div>
+            <h2>Démarrer</h2>
+            <ul role="list">
+              <li>
+                <a
+                  href="https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md"
+                  rel="noopener"
+                  >Installation</a
+                >
+              </li>
+              <li>
+                <a href="https://github.com/shipkeepdev/shipkeep/tree/main/docs" rel="noopener"
+                  >Documentation</a
+                >
+              </li>
+              <li>
+                <a href="https://github.com/shipkeepdev/shipkeep/tree/main/cli" rel="noopener"
+                  >CLI</a
+                >
+              </li>
+              <li>
+                <a href="https://github.com/shipkeepdev/shipkeep/releases" rel="noopener"
+                  >Versions</a
+                >
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Projet</h2>
+            <ul role="list">
+              <li><a href="https://github.com/shipkeepdev/shipkeep" rel="noopener">GitHub</a></li>
+              <li>
+                <a
+                  href="https://github.com/shipkeepdev/shipkeep/blob/main/docs/PLAN.md"
+                  rel="noopener"
+                  >Feuille de route</a
+                >
+              </li>
+              <li>
+                <a
+                  href="https://github.com/shipkeepdev/shipkeep/blob/main/docs/THREAT_MODEL.md"
+                  rel="noopener"
+                  >Modèle de menace</a
+                >
+              </li>
+              <li>
+                <a
+                  href="https://github.com/shipkeepdev/shipkeep/blob/main/CONTRIBUTING.md"
+                  rel="noopener"
+                  >Contribuer</a
+                >
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h2>Communauté</h2>
+            <ul role="list">
+              <li>
+                <a href="https://github.com/shipkeepdev/shipkeep/discussions" rel="noopener"
+                  >Discussions</a
+                >
+              </li>
+              <li>
+                <a
+                  href="https://github.com/shipkeepdev/shipkeep/blob/main/CODE_OF_CONDUCT.md"
+                  rel="noopener"
+                  >Code de conduite</a
+                >
+              </li>
+              <li>
+                <a
+                  href="https://github.com/shipkeepdev/shipkeep/blob/main/SECURITY.md"
+                  rel="noopener"
+                  >Sécurité</a
+                >
+              </li>
+            </ul>
+          </div>
+        </div>
+      </footer>
+    </div>
+  </body>
+</html>
