@@ -49,7 +49,16 @@ export interface DeploymentPlan {
    * goes from `queued` to `draining`, where the serving replicas are removed.
    */
   readonly stop?: boolean;
+  /**
+   * Entering or leaving maintenance (ADR 0025): nothing is built, released, placed or started.
+   * The deployment goes from `queued` to `switching`, where the routes serve the maintenance page
+   * or the replicas again.
+   */
+  readonly maintenance?: MaintenanceChange;
 }
+
+export const MAINTENANCE_CHANGES = ['enter', 'leave'] as const;
+export type MaintenanceChange = (typeof MAINTENANCE_CHANGES)[number];
 
 export interface Deployment {
   readonly id: string;
@@ -78,6 +87,7 @@ export function nextState(state: DeploymentState, plan: DeploymentPlan): Deploym
   if (index < 0 || state === 'succeeded') throw invalidTransition(state, 'advance');
   for (const candidate of PIPELINE.slice(index + 1)) {
     if (plan.stop && candidate !== 'draining' && candidate !== 'succeeded') continue;
+    if (plan.maintenance && candidate !== 'switching' && candidate !== 'succeeded') continue;
     if (!plan.build && (candidate === 'building' || candidate === 'built')) continue;
     if (!plan.release && candidate === 'releasing') continue;
     return candidate;

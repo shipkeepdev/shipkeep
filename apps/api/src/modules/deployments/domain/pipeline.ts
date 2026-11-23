@@ -66,7 +66,8 @@ export interface PipelineContext {
   readonly allocations: readonly Allocation[];
   /**
    * Replicas of the release currently serving; drained once the switch succeeded. For a stop
-   * (`deployment.plan.stop`), every placed replica of the application, and `allocations` is empty.
+   * (`deployment.plan.stop`) or a maintenance change (`deployment.plan.maintenance`), every placed
+   * replica of the application, and `allocations` is empty.
    */
   readonly previous: readonly Allocation[];
   /** Outcomes of this deployment's agent actions, by idempotency key. */
@@ -96,6 +97,8 @@ export type PipelineStep = { readonly key: string; readonly nodeId: string } & (
       readonly hosts: readonly string[];
       readonly upstreams: readonly { readonly container: string; readonly port: number }[];
       readonly drainMs: number;
+      /** Serve the agent's maintenance page instead of upstreams, which are then empty. */
+      readonly maintenance?: boolean;
     }
   | { readonly kind: 'remove_route'; readonly routeId: string; readonly drainMs: number }
   | { readonly kind: 'stop_container'; readonly container: string; readonly timeoutMs: number }
@@ -138,8 +141,9 @@ export function plan(context: PipelineContext): PipelineDecision {
   if (failure) return { kind: 'fail', reason: failure };
   switch (deployment.state) {
     case 'queued':
-      // A stop starts nothing, so it needs no image: it must work when the registry is down.
-      return deployment.plan.stop || release.pinnedImage
+      // A stop or a maintenance change starts nothing, so it needs no image: it must work when
+      // the registry is down.
+      return deployment.plan.stop || deployment.plan.maintenance || release.pinnedImage
         ? { kind: 'advance' }
         : { kind: 'resolve_image' };
     case 'building':
@@ -154,7 +158,10 @@ export function plan(context: PipelineContext): PipelineDecision {
     case 'health_checking':
       return decide(context, all(context.allocations.map((a) => health(context, a))));
     case 'switching':
-      return decide(context, switchRoutes(context));
+      return decide(
+        context,
+        deployment.plan.maintenance ? maintenanceRoutes(context) : switchRoutes(context),
+      );
     case 'draining':
       return decide(context, drain(context));
     default:
@@ -172,6 +179,8 @@ export function recovery(context: PipelineContext, routing: RoutingOutcome): Pip
   const hosts = domains(context.release.config);
   if (routing === 'restore_previous' && hosts.length) {
     const previous = byNode(context.previous);
+    // Leaving maintenance was interrupted: the page goes back on every node, as it was.
+    const page = context.deployment.plan.maintenance === 'leave';
     for (const [nodeId, replicas] of previous)
       steps.push({
         kind: 'upsert_route',
@@ -179,11 +188,11 @@ export function recovery(context: PipelineContext, routing: RoutingOutcome): Pip
         nodeId,
         routeId: context.application.id,
         hosts,
-        upstreams: replicas.map((replica) => ({
-          container: replica.container,
-          port: replica.port,
-        })),
+        upstreams: page
+          ? []
+          : replicas.map((replica) => ({ container: replica.container, port: replica.port })),
         drainMs: 0,
+        ...(page ? { maintenance: true } : {}),
       });
     // Nodes that only host new replicas lose the route the interrupted switch may have added.
     for (const nodeId of byNode(context.allocations).keys())
@@ -307,6 +316,37 @@ function switchRoutes(context: PipelineContext): Progress {
             port: replica.port,
           })),
           drainMs: drainMs(context),
+        },
+      ]),
+    ),
+  );
+}
+
+/**
+ * Entering maintenance puts the agent's page on the route of every node that hosts a replica,
+ * once the requests they serve have drained; leaving it puts the replicas back (ADR 0025). The
+ * replicas keep running either way. Keys match `switchRoutes`, so a cancellation restores the
+ * routes the same way.
+ */
+function maintenanceRoutes(context: PipelineContext): Progress {
+  const hosts = domains(context.release.config);
+  if (!hosts.length) return { status: 'done' };
+  const entering = context.deployment.plan.maintenance === 'enter';
+  return all(
+    [...byNode(context.previous)].map(([nodeId, replicas]) =>
+      chain(context, [
+        {
+          kind: 'upsert_route',
+          key: key(context, `route:${nodeId}`),
+          nodeId,
+          routeId: context.application.id,
+          hosts,
+          upstreams: entering
+            ? []
+            : replicas.map((replica) => ({ container: replica.container, port: replica.port })),
+          // The page answers at once: leaving has nothing to drain.
+          drainMs: entering ? drainMs(context) : 0,
+          ...(entering ? { maintenance: true } : {}),
         },
       ]),
     ),
