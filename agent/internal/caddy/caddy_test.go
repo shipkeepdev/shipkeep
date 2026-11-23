@@ -220,6 +220,41 @@ func TestClientBootstrapsWithoutLoadAndUpsertsById(t *testing.T) {
 	}
 }
 
+// UpdateRoute writes only what change returns, and only when it asks to (ADR 0017).
+func TestUpdateRouteRewritesARouteUnderTheLock(t *testing.T) {
+	client, _ := admin(t)
+	ctx := context.Background()
+	if err := client.EnsureServer(ctx); err != nil {
+		t.Fatal(err)
+	}
+	route := Route{ID: RouteID("api"), Match: []Match{{Host: []string{"a.example.com"}}}, Handle: []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{{Dial: "10.0.0.2:80"}}}}, Terminal: true}
+	if err := client.UpsertRoute(ctx, route); err != nil {
+		t.Fatal(err)
+	}
+	if err := client.UpdateRoute(ctx, RouteID("api"), func(r Route) (Route, bool) {
+		r.Handle[0].Upstreams[0].Dial = "10.0.0.9:80"
+		return r, false
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if stored, _, _ := client.Route(ctx, RouteID("api")); stored.Handle[0].Upstreams[0].Dial != "10.0.0.2:80" {
+		t.Fatalf("written although change said not to: %+v", stored)
+	}
+	if err := client.UpdateRoute(ctx, RouteID("api"), func(r Route) (Route, bool) {
+		r.Handle[0].Upstreams[0].Dial = "10.0.0.9:80"
+		return r, true
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if stored, _, _ := client.Route(ctx, RouteID("api")); stored.Handle[0].Upstreams[0].Dial != "10.0.0.9:80" {
+		t.Fatalf("not rewritten: %+v", stored)
+	}
+	called := false
+	if err := client.UpdateRoute(ctx, RouteID("missing"), func(r Route) (Route, bool) { called = true; return r, true }); err != nil || called {
+		t.Fatalf("an absent route was changed: %v %v", called, err)
+	}
+}
+
 func TestClientHidesCaddyErrors(t *testing.T) {
 	client, _ := admin(t)
 	err := client.do(context.Background(), http.MethodPost, "/unknown", map[string]string{}, nil)

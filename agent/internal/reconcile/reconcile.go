@@ -28,10 +28,17 @@ type State interface {
 	Observe(ctx context.Context, id string, status *agentv1.ContainerStatus, at time.Time) error
 }
 
+// Routes moves routes to the new address of a container that came back at another one.
+type Routes interface {
+	Refresh(ctx context.Context) error
+}
+
 // Reconciler runs one pass per Interval until its context ends.
 type Reconciler struct {
 	Engine Engine
 	State  State
+	// Routes, when set, runs after the containers: one the pass started may have a new address.
+	Routes Routes
 	Logger *slog.Logger
 	Now    func() time.Time
 }
@@ -84,6 +91,11 @@ func (r Reconciler) Pass(ctx context.Context) error {
 			}
 		}
 		if err := r.State.Observe(ctx, name, status(container), r.now()); err != nil {
+			failures = append(failures, err)
+		}
+	}
+	if r.Routes != nil {
+		if err := r.Routes.Refresh(ctx); err != nil {
 			failures = append(failures, err)
 		}
 	}

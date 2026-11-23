@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/shipkeepdev/shipkeep/agent/internal/actions"
 	"github.com/shipkeepdev/shipkeep/agent/internal/caddy"
 	"github.com/shipkeepdev/shipkeep/agent/internal/config"
 	"github.com/shipkeepdev/shipkeep/agent/internal/diskbudget"
@@ -75,23 +76,27 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 	if err != nil {
 		return err
 	}
+	// One Caddy client for the whole agent: its lock orders every read-then-write on routes, so the
+	// control plane's route keeper, the reconciler and the route actions must share it.
+	router, err := caddy.New(a.cfg.Caddy.AdminSocket)
+	if err != nil {
+		return err
+	}
+	// The route actions and the refresher share one book: a route and its record change together.
+	routes := &actions.RouteBook{Store: store}
 	// The reconciler keeps workloads in their recorded state even while the control plane is
-	// unreachable (CLAUDE.md rule 10). It stops before the journal closes.
+	// unreachable (CLAUDE.md rule 10), routes included: a container restarted at another address
+	// keeps receiving its own traffic (ADR 0017). It stops before the journal closes.
 	reconcileCtx, stopReconcile := context.WithCancel(ctx)
 	var reconciling sync.WaitGroup
 	reconciling.Go(func() {
-		reconcile.Reconciler{Engine: engine, State: store, Logger: a.logger}.Run(reconcileCtx)
+		refresher := actions.RouteRefresher{Router: router, Containers: engine, Book: routes}
+		reconcile.Reconciler{Engine: engine, State: store, Routes: refresher, Logger: a.logger}.Run(reconcileCtx)
 	})
 	defer func() {
 		stopReconcile()
 		reconciling.Wait()
 	}()
-	// One Caddy client for the whole agent: its lock orders every read-then-write on routes, so the
-	// control plane's route keeper and the route actions must share it.
-	router, err := caddy.New(a.cfg.Caddy.AdminSocket)
-	if err != nil {
-		return err
-	}
 	// On the machine that hosts the control plane, its route lives in the agent (ADR 0021).
 	if route := a.cfg.ControlPlane.Route; route.Host != "" {
 		reconciling.Go(func() {
@@ -115,7 +120,7 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 		a.logger.Warn("development mode: CA fingerprint pinning may be disabled, never use on a real server")
 	}
 
-	if err := a.runGateway(ctx, store, engine, router); err != nil && ctx.Err() == nil {
+	if err := a.runGateway(ctx, store, engine, router, routes); err != nil && ctx.Err() == nil {
 		return err
 	}
 
