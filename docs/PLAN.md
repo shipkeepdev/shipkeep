@@ -370,7 +370,7 @@ The milestones below describe the whole MVP. The first stable version ships part
   - Acceptance: restore to a different node in E2E.
 - [ ] **M5.4 Instance backup** (C). Depends: M5.2
   - Control plane DB, CA, KEK to a separate target; documented disaster recovery procedure tested.
-  - [x] **M5.4a** Encrypted export (ADR 0026, #231): `backup.sh keygen | create | restore`, an age archive of the database and the KEK, encrypted to the operator's public key.
+  - [x] **M5.4a** Encrypted export (ADR 0026, #231): `backup.sh keygen | create | restore`, an age archive of the database and the KEK, encrypted to the operator's public key and authenticated by the server that made it.
   - [x] **M5.4b** S3 destination for the same archive: `backup.sh create --s3 | list | check`, `restore s3:NAME`, from a separate container that never sees the key.
   - Acceptance: a fresh control plane restored from backup re-adopts existing agents.
 

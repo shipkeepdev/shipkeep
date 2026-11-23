@@ -185,13 +185,13 @@ On failure, `journalctl -u shipkeep-agent` (or `-u shipkeep-egress` for a refuse
 
 `backup.sh`, next to `compose.yml`, saves what the control plane cannot recreate: its database, which holds the certificate authority and every secret, and the key-encryption key those secrets are encrypted with (ADR 0026). The archive is encrypted to a key pair that you keep off this server. Run it with `sudo` from the installation directory. An installation made before this script existed takes it from the release bundle.
 
-Once, create the key pair and set its public key:
+Once, create the key pair:
 
 ```sh
 sudo ./backup.sh keygen backup-identity.txt
 ```
 
-It prints `Public key: age1…`. Add `SHIPKEEP_BACKUP_RECIPIENT=age1…` to `.env`. Copy `backup-identity.txt` to a password manager or another place that is not this server, then delete it here. Whoever holds it can read every backup and every secret in it.
+Copy `backup-identity.txt` to a password manager or another place that is not this server, then delete it here. Whoever holds it can read every backup and every secret in it, and a restore needs it. The server keeps only what making backups needs, in the `keys` volume: the public key they are encrypted to, and a key derived from the identity that authenticates each archive. A restore refuses an archive it does not authenticate, so someone who knows the public key and can replace an archive where you keep it still cannot have it restored. Running `keygen` again replaces that pair for the backups that follow; earlier archives open with the identity they were made for.
 
 Create a backup, then copy it off this server:
 
@@ -231,10 +231,14 @@ It asks you to type `replace`, then:
 
 1. stops the control plane;
 2. restores the database into a new one, which takes the place of the current database only once complete; the current one is kept as `shipkeep_before_restore_…`, to drop once you are satisfied (the script prints the command);
-3. replaces the key-encryption key, keeping the previous one beside it;
+3. replaces the key-encryption key, keeping the previous one beside it, and keeps backing up to the identity you restored with;
 4. starts everything again, which applies the migrations of this version.
 
 Point the domain to the new machine: the servers reconnect on their own, with the identity they already have. A backup from a newer version is refused. Sessions come back with the database. Metrics, Caddy's certificate and the `.env` settings do not: the SMTP settings are typed again.
+
+If a step fails, the script says what state it left and stops there, with the control plane stopped. Until the restored database takes the place of the current one, the current one is unchanged. If the key step fails after that, the restored database is in place, with this installation's key, which cannot read it: run the restore again before starting the control plane. The previous database is kept under the name the script prints.
+
+### Back up the key-encryption key
 
 The `kek` step prints `Back it up: it cannot be recreated.` The archive above holds the key. To keep a copy of the key alone as well:
 

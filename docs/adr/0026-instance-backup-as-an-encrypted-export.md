@@ -16,14 +16,22 @@ Losing the control plane's server loses the organizations, applications, release
 **One archive.** It holds the database and the key-encryption key:
 
 - It is an age file (age-encryption.org/v1), the format SPEC 10 names for backups.
-- Its plaintext is a manifest line (JSON: format, version, creation time, the newest database migration of the image that made it, and the key), then a `pg_dump --format=custom` stream.
+- Its plaintext is a manifest line (JSON: format, version, creation time, the newest database migration of the image that made it, the key, and a tag), then a `pg_dump --format=custom` stream.
 - age authenticates each chunk and the end of the stream, so a changed or cut archive is refused, not restored in part.
 
 **Encrypted to a public key.** `backup keygen` makes an X25519 key pair:
 
-- The public key goes in `.env` (`SHIPKEEP_BACKUP_RECIPIENT`). Creating a backup then needs no secret, which a scheduled upload to S3 will also need.
 - The identity is kept off the server. Whoever holds it reads every backup and every secret in it.
+- The server keeps a backup key in the `keys` volume, read-only: the public key, and an authentication key derived from the identity (HKDF-SHA256). Neither gives the identity back. Creating a backup needs the server's keys only, which a scheduled upload to S3 will also need.
 - X25519 rather than age's hybrid post-quantum keys: the age tool of current distributions can then read an archive too.
+
+**Authenticated by the server that made it.** age does not say who wrote an archive: anyone who knows the public key can encrypt to it. A forged archive would reach `pg_restore`, which runs its statements as the database owner, and would replace the key-encryption key. So:
+
+- The manifest's tag is an HMAC-SHA256 of its other fields under the authentication key.
+- A restore derives that key from the identity it is given, and refuses an archive whose tag does not match before a byte of it reaches `pg_restore`.
+- age encrypts the whole archive under one file key, chunk by chunk, so whoever wrote the manifest wrote the rest.
+- Whoever holds the identity can still make an archive that a restore accepts. That is the operator, who can read every backup anyway.
+- A signature was the other option. It would need a verification key kept with the identity; a key derived from the identity needs nothing more.
 
 **A program of the control plane image, apart from `main.js`** (`node backup.js keygen | create | restore-database | restore-key --replace-this-installation`):
 
@@ -40,9 +48,14 @@ Losing the control plane's server loses the organizations, applications, release
 
 1. It needs explicit confirmation (`replace`, or `--replace-this-installation`).
 2. It stops the control plane.
-3. It restores the database into a new one, `shipkeep_restore`, in one transaction. Only once it is complete does it take the name `shipkeep`; the current database is kept as `shipkeep_before_restore_<time>`. A failure leaves the current database as it was. (`pg_restore --clean` over the current database is not used: it cannot drop what the job queue's partitioned tables inherit.)
-4. Only then, it replaces the key. The key it replaces is kept beside it.
+3. It restores the database into a new one, `shipkeep_restore`, in one transaction. Only once it is complete does it take the name `shipkeep`, and the current database is kept as `shipkeep_before_restore_<time>`; both renames are one transaction. (`pg_restore --clean` over the current database is not used: it cannot drop what the job queue's partitioned tables inherit.)
+4. Only then, it writes the backup key for the identity it was given, and replaces the key-encryption key. The key it replaces is kept beside it.
 5. `docker compose up -d` runs the migrations, which bring an older backup to this version, and gives the database login its grants again.
+
+A failure stops the restore, with the control plane stopped, and the script says which state it left:
+
+- Up to and including the renames, the current database is unchanged.
+- If step 4 fails, the restored database is `shipkeep`, and the key is still the installation's, which cannot read it. The previous database is kept under the name the script prints. Running the restore again completes it.
 
 A backup from a newer version is refused: its newest migration must be one this image carries.
 
@@ -58,5 +71,6 @@ A backup from a newer version is refused: its newest migration must be one this 
 
 - The agents keep their certificates, and the restored database holds the same certificate authority and server identities. Once the domain points to the new machine, they reconnect without being enrolled again.
 - The operator copies archives off the server or sends them to S3, and keeps the identity somewhere else again.
-- Sessions, metrics (VictoriaMetrics) and Caddy's certificates are not in the archive. Sessions are in the database and come back; the rest is history or obtained again.
+- Sessions are in the database, so they are in the archive and come back with it. Metrics (VictoriaMetrics) and Caddy's certificates are not in the archive: they are history, or obtained again.
+- Running `keygen` again replaces the server's backup key for the backups that follow. Earlier archives open with the identity they were made for.
 - `.env` is not in the archive. A fresh installation has its own passwords, and the SMTP settings are typed again.

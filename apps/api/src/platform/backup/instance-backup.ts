@@ -5,7 +5,14 @@
 // The archive is an age file. Its plaintext is a manifest line (JSON), then a `pg_dump --format=
 // custom` stream. age authenticates every chunk and the end of the stream, so a changed or cut
 // archive is refused, not restored in part.
+//
+// age does not say who wrote an archive: anyone with the public key can encrypt to it. So the
+// manifest also carries a tag, an HMAC under a key derived from the identity, which `keygen` leaves
+// on the server. An archive is restored only when its tag matches the identity it is opened with,
+// before a byte of it reaches pg_restore. age binds every chunk to the same file key, so whoever
+// wrote the manifest wrote the rest.
 
+import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import { open, readdir, readFile, rename, rm } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
@@ -26,6 +33,8 @@ const MIGRATION = /^\d{14}_[a-z0-9_]{1,100}$/;
 /** An age X25519 recipient and identity (Bech32): what every age tool reads. */
 export const RECIPIENT = /^age1[02-9ac-hj-np-z]{58}$/;
 const IDENTITY = /^AGE-SECRET-KEY-1[02-9AC-HJ-NP-Z]{58}$/;
+const AUTHENTICATION_BYTES = 32;
+const AUTHENTICATION_INFO = 'shipkeep-instance-backup/1 authentication';
 
 /** A refusal, in words meant for the person who runs the command. It never holds a secret. */
 export class BackupRefusal extends Error {
@@ -42,16 +51,74 @@ const manifestSchema = z
     createdAt: z.iso.datetime(),
     migration: z.string().regex(MIGRATION),
     kek: z.base64(),
+    /** HMAC-SHA256 of the fields above under the backup key: who wrote the archive. */
+    authentication: z.base64(),
   })
   .strict();
 
 /** What the archive says about itself; the key-encryption key is in it. */
 export type BackupManifest = z.infer<typeof manifestSchema>;
 
+/**
+ * What the server keeps to make backups (`backup keygen`, in the keys volume): the public key they
+ * are encrypted to, and the key their manifest is authenticated with. Both come from the identity;
+ * neither gives it back.
+ */
+export interface BackupKey {
+  readonly recipient: string;
+  readonly authentication: Uint8Array;
+}
+
+const backupKeySchema = z
+  .object({ recipient: z.string().regex(RECIPIENT), authentication: z.base64() })
+  .strict();
+
 /** A new identity, for `backup keygen`, and the public key that backups are encrypted to. */
 export async function newIdentity(): Promise<{ identity: string; recipient: string }> {
   const identity = await generateX25519Identity();
   return { identity, recipient: await identityToRecipient(identity) };
+}
+
+/** The backup key of an identity: what `keygen` leaves on the server, and a restore checks. */
+export async function backupKeyFor(identity: string): Promise<BackupKey> {
+  if (!IDENTITY.test(identity))
+    throw new BackupRefusal('The identity is not an age secret key (AGE-SECRET-KEY-1…).');
+  return {
+    recipient: await identityToRecipient(identity),
+    authentication: new Uint8Array(
+      hkdfSync('sha256', identity, new Uint8Array(0), AUTHENTICATION_INFO, AUTHENTICATION_BYTES),
+    ),
+  };
+}
+
+/** The server's backup key, which `backup keygen` writes. */
+export async function readBackupKey(path: string): Promise<BackupKey> {
+  const text = await readFile(path, 'utf8').catch(() => {
+    throw new BackupRefusal('This server has no backup key: create one with ./backup.sh keygen.');
+  });
+  let parsed: z.infer<typeof backupKeySchema>;
+  try {
+    parsed = backupKeySchema.parse(JSON.parse(text));
+  } catch {
+    throw new BackupRefusal(
+      'The backup key of this server cannot be read: run ./backup.sh keygen.',
+    );
+  }
+  const authentication = new Uint8Array(Buffer.from(parsed.authentication, 'base64'));
+  if (authentication.length !== AUTHENTICATION_BYTES)
+    throw new BackupRefusal(
+      'The backup key of this server cannot be read: run ./backup.sh keygen.',
+    );
+  return { recipient: parsed.recipient, authentication };
+}
+
+/** Writes the server's backup key, read-only for its owner, in place of the one before. */
+export async function writeBackupKey(path: string, key: BackupKey): Promise<void> {
+  const text = `${JSON.stringify({
+    recipient: key.recipient,
+    authentication: Buffer.from(key.authentication).toString('base64'),
+  })}\n`;
+  await writeInPlace(path, new TextEncoder().encode(text));
 }
 
 /** The migrations this image carries, newest last. */
@@ -76,44 +143,51 @@ export async function readKek(path: string): Promise<Uint8Array> {
  * `pg_dump --format=custom`; anything else is refused before a byte is written.
  */
 export async function createArchive(input: {
-  readonly recipient: string;
+  readonly key: BackupKey;
   readonly kek: Uint8Array;
   readonly migration: string;
   readonly now: Date;
   readonly dump: ReadableStream<Uint8Array>;
 }): Promise<ReadableStream<Uint8Array>> {
-  if (!RECIPIENT.test(input.recipient))
+  if (
+    !RECIPIENT.test(input.key.recipient) ||
+    input.key.authentication.length !== AUTHENTICATION_BYTES
+  )
     throw new BackupRefusal(
-      'SHIPKEEP_BACKUP_RECIPIENT is not an age public key (age1…): create one with `backup keygen`.',
+      'The backup key of this server cannot be read: run ./backup.sh keygen.',
     );
   if (input.kek.length !== KEK_BYTES || !MIGRATION.test(input.migration))
     throw new BackupRefusal('The backup cannot be described: key or migration missing.');
-  const manifest: BackupManifest = {
+  const fields = {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
     createdAt: input.now.toISOString(),
     migration: input.migration,
     kek: Buffer.from(input.kek).toString('base64'),
+  } as const;
+  const manifest: BackupManifest = {
+    ...fields,
+    authentication: tag(input.key.authentication, fields),
   };
   const head = new TextEncoder().encode(`${JSON.stringify(manifest)}\n`);
   const encrypter = new Encrypter();
-  encrypter.addRecipient(input.recipient);
+  encrypter.addRecipient(input.key.recipient);
   return encrypter.encrypt(ReadableStream.from(concat(head, checkedDump(input.dump))));
 }
 
 /**
  * Opens an archive with `identity`. The manifest is checked before anything else is read: its
- * format, and a migration this image carries, since a backup is restored by the same version of
- * Shipkeep or a later one. `dump` is the rest, authenticated chunk by chunk as it is read: a
- * changed or cut archive makes it fail.
+ * format, its tag, which only the server that holds this identity's backup key can write, and a
+ * migration this image carries, since a backup is restored by the same version of Shipkeep or a
+ * later one. `dump` is the rest, authenticated chunk by chunk as it is read: a changed or cut
+ * archive makes it fail.
  */
 export async function openArchive(input: {
   readonly identity: string;
   readonly archive: ReadableStream<Uint8Array>;
   readonly migrations: readonly string[];
 }): Promise<{ manifest: BackupManifest; kek: Uint8Array; dump: ReadableStream<Uint8Array> }> {
-  if (!IDENTITY.test(input.identity))
-    throw new BackupRefusal('The identity is not an age secret key (AGE-SECRET-KEY-1…).');
+  const key = await backupKeyFor(input.identity);
   const decrypter = new Decrypter();
   decrypter.addIdentity(input.identity);
   let plaintext: ReadableStream<Uint8Array>;
@@ -134,6 +208,12 @@ export async function openArchive(input: {
   } catch {
     throw new BackupRefusal('This archive is not a Shipkeep instance backup of a known version.');
   }
+  const expected = Buffer.from(tag(key.authentication, manifest), 'base64');
+  const found = Buffer.from(manifest.authentication, 'base64');
+  if (expected.length !== found.length || !timingSafeEqual(expected, found))
+    throw new BackupRefusal(
+      'This archive was not made by a server that backs up to this identity: it is not restored.',
+    );
   if (!input.migrations.includes(manifest.migration))
     throw new BackupRefusal(
       `This backup comes from a newer version of Shipkeep (database migration ${manifest.migration}): restore it with that version or a later one.`,
@@ -214,6 +294,39 @@ export async function replaceKek(path: string, kek: Uint8Array, now: Date): Prom
     if (!(error instanceof Error && 'code' in error && error.code === 'ENOENT')) throw error;
   }
   await rename(temporary, path);
+  await syncDirectory(path);
+}
+
+/** The manifest's tag: an HMAC of its fields, one per line, in a fixed order. */
+function tag(
+  key: Uint8Array,
+  fields: Pick<BackupManifest, 'format' | 'version' | 'createdAt' | 'migration' | 'kek'>,
+): string {
+  return createHmac('sha256', key)
+    .update(
+      [fields.format, String(fields.version), fields.createdAt, fields.migration, fields.kek].join(
+        '\n',
+      ),
+    )
+    .digest('base64');
+}
+
+/** Writes `bytes` read-only for its owner under `path`, replacing it only once they are on disk. */
+async function writeInPlace(path: string, bytes: Uint8Array): Promise<void> {
+  const temporary = `${path}.writing`;
+  await rm(temporary, { force: true });
+  const file = await open(temporary, 'wx', 0o400);
+  try {
+    await file.writeFile(bytes);
+    await file.sync();
+  } finally {
+    await file.close();
+  }
+  await rename(temporary, path);
+  await syncDirectory(path);
+}
+
+async function syncDirectory(path: string): Promise<void> {
   const directory = await open(dirname(path), 'r');
   try {
     await directory.sync();
