@@ -201,6 +201,20 @@ sudo ./backup.sh create shipkeep-$(date +%Y%m%d-%H%M).age
 
 `pg_dump` runs in the PostgreSQL container and streams through the encryption. No plaintext dump is written to disk.
 
+To send backups to S3 instead, or as well, set the `SHIPKEEP_BACKUP_S3_*` settings in `.env` (`.env.example` lists them). They work with any S3-compatible storage: AWS, Backblaze B2, Cloudflare R2, Scaleway, Wasabi or MinIO. Give the access key the right to write, read, list and delete objects under the prefix, then check the settings:
+
+```sh
+sudo ./backup.sh check
+sudo ./backup.sh create --s3    # streams straight to the storage; the archive is never a file here
+sudo ./backup.sh list
+```
+
+The archive is encrypted before it leaves this server, and the container that uploads it never sees the key. An archive is never replaced. Keep backups as long as you need with the storage's lifecycle rules. For a backup every night at 03:00, add a line to root's crontab (`sudo crontab -e`):
+
+```text
+0 3 * * * cd /opt/shipkeep && ./backup.sh create --s3
+```
+
 Restore into a fresh installation of the same version or a later one, on the same domain:
 
 1. Install the control plane on the new machine with the installer.
@@ -209,6 +223,8 @@ Restore into a fresh installation of the same version or a later one, on the sam
 
 ```sh
 sudo ./backup.sh restore shipkeep-20261123-1000.age backup-identity.txt
+# or, from the S3 destination (the same settings in .env):
+sudo ./backup.sh restore s3:shipkeep-20261123-100000.age backup-identity.txt
 ```
 
 It asks you to type `replace`, then:

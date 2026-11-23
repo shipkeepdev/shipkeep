@@ -46,9 +46,17 @@ Losing the control plane's server loses the organizations, applications, release
 
 A backup from a newer version is refused: its newest migration must be one this image carries.
 
+**S3 destination (M5.4b)**: any S3-compatible storage, set in `.env` (`SHIPKEEP_BACKUP_S3_*`).
+
+- `backup.js upload | download | discard | list | check` run in a second container, `backup-transfer`. It has the network the storage needs, and no volume: it moves archives that are already encrypted, and never sees the key-encryption key nor anything in clear. The encrypting container keeps no network.
+- `./backup.sh create --s3` pipes the dump through the encryption into a multipart upload: the archive is never a file on the server. If the pipeline fails after the upload took what it was given, the script deletes that object.
+- An archive is never replaced, and `./backup.sh restore s3:NAME` fetches it into a private directory before the restore.
+- HTTPS only, unless plain HTTP is said explicitly for a storage on the same machine. The requests carry the access key id, and an attacker in the path could drop a backup unseen.
+- The client is the AWS SDK for JavaScript (Apache-2.0), which speaks to every S3-compatible storage. Retention is left to the storage's lifecycle rules, and a schedule to cron, which INSTALL.md shows.
+
 ## Consequences
 
 - The agents keep their certificates, and the restored database holds the same certificate authority and server identities. Once the domain points to the new machine, they reconnect without being enrolled again.
-- The operator copies archives off the server, and keeps the identity somewhere else again. The S3 destination that follows reuses the archive and the commands; only where the archive goes changes.
+- The operator copies archives off the server or sends them to S3, and keeps the identity somewhere else again.
 - Sessions, metrics (VictoriaMetrics) and Caddy's certificates are not in the archive. Sessions are in the database and come back; the rest is history or obtained again.
 - `.env` is not in the archive. A fresh installation has its own passwords, and the SMTP settings are typed again.

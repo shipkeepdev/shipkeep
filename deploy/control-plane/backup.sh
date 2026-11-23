@@ -4,7 +4,10 @@
 #
 #   ./backup.sh keygen IDENTITY_FILE            once: a key pair; keep IDENTITY_FILE off this server
 #   ./backup.sh create ARCHIVE                  the database and the key-encryption key, encrypted
-#   ./backup.sh restore ARCHIVE IDENTITY_FILE   into a fresh installation, same version or later
+#   ./backup.sh create --s3                     the same, straight to the S3 destination of .env
+#   ./backup.sh list | check                    the archives in that destination | test its settings
+#   ./backup.sh restore ARCHIVE IDENTITY_FILE   into a fresh installation, same version or later;
+#                                               ARCHIVE is a file, or s3:NAME from the destination
 #
 # The database never touches the disk in clear: pg_dump and pg_restore run in the postgres
 # container, and their output goes through the control plane image's `backup` commands in a pipe.
@@ -17,7 +20,7 @@ fail() {
 }
 
 usage() {
-  fail 'Usage: ./backup.sh keygen IDENTITY_FILE | create ARCHIVE | restore ARCHIVE IDENTITY_FILE [--replace-this-installation]'
+  fail 'Usage: ./backup.sh keygen IDENTITY_FILE | create ARCHIVE | create --s3 | list | check | restore ARCHIVE|s3:NAME IDENTITY_FILE [--replace-this-installation]'
 }
 
 directory=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)
@@ -65,28 +68,55 @@ case ${1:-} in
     ;;
   create)
     (($# == 2)) || usage
-    fresh "$2"
     read_compose_files
-    if ! compose exec -T postgres pg_dump --username=shipkeep_admin --dbname=shipkeep --format=custom |
-      compose run --rm -T backup create >"$2.partial"; then
-      rm -f -- "$2.partial"
-      fail 'The backup was not created; nothing was written.'
+    dump() {
+      compose exec -T postgres pg_dump --username=shipkeep_admin --dbname=shipkeep --format=custom
+    }
+    if [[ $2 == --s3 ]]; then
+      # Straight to the storage: the archive is never a file on this server.
+      name=shipkeep-$(date -u +%Y%m%d-%H%M%S).age
+      if ! dump | compose run --rm -T backup create | compose run --rm -T backup-transfer upload "$name"; then
+        # The upload may have taken all it was given of a dump that failed: never keep that.
+        compose run --rm -T backup-transfer discard "$name" >/dev/null 2>&1 ||
+          printf 'Delete %s from the storage: it is incomplete.\n' "$name" >&2
+        fail 'The backup was not stored.'
+      fi
+      printf 'Backup stored as %s.\n' "$name" >&2
+    else
+      fresh "$2"
+      if ! dump | compose run --rm -T backup create >"$2.partial"; then
+        rm -f -- "$2.partial"
+        fail 'The backup was not created; nothing was written.'
+      fi
+      mv -- "$2.partial" "$2"
+      printf 'Backup written to %s. Copy it off this server.\n' "$2" >&2
     fi
-    mv -- "$2.partial" "$2"
-    printf 'Backup written to %s. Copy it off this server.\n' "$2" >&2
+    ;;
+  list | check)
+    (($# == 1)) || usage
+    read_compose_files
+    compose run --rm -T backup-transfer "$1"
     ;;
   restore)
     (($# == 3 || $# == 4)) || usage
     archive=$2 identity=$3
-    [[ -f $archive && -r $archive ]] || fail "Cannot read the archive $archive."
     [[ -f $identity && -r $identity ]] || fail "Cannot read the identity file $identity."
+    read_compose_files
+    if [[ $archive == s3:* ]]; then
+      # Fetched into a private directory: it is encrypted, and removed when this ends.
+      work=$(mktemp -d)
+      trap 'rm -rf -- "$work"' EXIT
+      compose run --rm -T backup-transfer download "${archive#s3:}" >"$work/archive.age" ||
+        fail "Cannot fetch ${archive#s3:} from the S3 destination; nothing was changed."
+      archive=$work/archive.age
+    fi
+    [[ -f $archive && -r $archive ]] || fail "Cannot read the archive $archive."
     if [[ ${4:-} != --replace-this-installation ]]; then
       [[ -z ${4:-} ]] || usage
       printf 'This replaces the database and the key-encryption key of this installation with the backup. Type replace to continue: ' >&2
       IFS= read -r answer || answer=''
       [[ $answer == replace ]] || fail 'Nothing was changed.'
     fi
-    read_compose_files
     psql() {
       compose exec -T postgres psql --username=shipkeep_admin --dbname=postgres --no-psqlrc \
         --set=ON_ERROR_STOP=1 --quiet "$@"
