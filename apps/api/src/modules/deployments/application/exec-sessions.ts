@@ -80,6 +80,8 @@ export class ExecSessions {
           const session: ExecSession = {
             id,
             organizationId: application.organizationId,
+            projectId: application.projectId,
+            environmentId: application.environmentId,
             applicationId: application.id,
             userId: context.userId,
             nodeId: replica.nodeId,
@@ -128,7 +130,7 @@ export class ExecSessions {
           return session;
         });
         // Joinable once its action and audit event are committed.
-        this.registry.add(opened);
+        this.registry.add(opened, now);
         return opened;
       },
       { permission: 'container.exec', target: scope },

@@ -155,6 +155,10 @@ Action delivery (M1.4a2):
 - Metrics go through this stream as `MetricsReport` (ADR 0024, section 12): the control plane labels them and writes them to VictoriaMetrics. Logs do not go through it; their path is decided with M6.1 (ADR 0011).
 - Every `ActionRequest` carries `action_id` (UUIDv7), `idempotency_key`, `deadline`, `lease_epoch` and exactly one action in a `oneof`.
 - Interactive exec uses a second RPC: when the agent receives `ExecSession`, it opens `ExecStream(stream ExecStreamRequest) returns (stream ExecStreamResponse)` tagged with the `session_id`, carrying stdin, stdout, stderr, resize and exit frames. Browsers reach it through a WebSocket endpoint on the API (`/api/v1/exec/{session_id}`), authenticated and RBAC-checked; the API only relays frames.
+  - The stream's first frame is `ExecOpen`; anything else is `INVALID_ARGUMENT`. Its session must be one the API process opened for this node of this organization, not joined yet: otherwise `NOT_FOUND`, the same answer whatever the reason.
+  - The agent and the person who opened the session each join once, within a minute of its opening, or it ends as `not_joined`. Output reaches the browser once both joined; the browser's frames wait for the agent, at most 256, past which the session ends as `flooded`.
+  - It ends at the agent's exit or error frame (its fixed text gives `time_limit`, `closed` or `failed`), when either side leaves (`agent_left`, `browser_left`), or on a frame out of order (`failed`). Unless the command exited, the last frame to the agent is `ExecClose{kill: true}`.
+  - Audit: `exec.session.ended`, with the session's person as actor, the reason, the exit code (null unless it exited) and the duration.
 
 ### 3.2 Enrollment
 

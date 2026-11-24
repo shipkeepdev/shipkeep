@@ -22,10 +22,12 @@ import { EnrollNode } from '../application/enroll-node';
 import { factsFromProto } from '../application/node-facts';
 import { RenewNodeCertificate } from '../application/renew-node-certificate';
 import { parseNodeSpiffeId } from '../domain/node';
+import { ExecSessionRegistry } from '../application/exec-relay';
 import { NodeAuthenticationError, type NodeIdentity } from '../domain/node-identity';
 import { CsrError } from '../infrastructure/ca/x509';
 import { X509CertificateAuthority } from '../infrastructure/ca/x509-certificate-authority';
 import { EnrollmentAdmission, enrollmentBusy } from './enrollment-admission';
+import { relayExecStream } from './exec-stream';
 import { gatewaySecureContext } from './gateway-tls';
 
 const peer = createContextKey<TLSSocket | undefined>(undefined);
@@ -47,6 +49,7 @@ export class AgentGateway implements OnModuleDestroy {
     private readonly renew: RenewNodeCertificate,
     private readonly streams: NodeStream,
     private readonly admission: EnrollmentAdmission,
+    private readonly exec: ExecSessionRegistry,
   ) {}
 
   /** Called explicitly after Nest initialization; OpenAPI generation never opens this listener. */
@@ -112,12 +115,17 @@ export class AgentGateway implements OnModuleDestroy {
           },
           { maxTimeoutMs: 24 * 60 * 60_000 },
         );
-        // ExecStream must pass the shared authentication guard before reporting Unimplemented.
-        // eslint-disable-next-line require-yield -- the stream only rejects; it never yields a frame
-        router.rpc(AgentGatewayService.method.execStream, async function* () {
-          await Promise.resolve();
-          throw new ConnectError('exec sessions are not implemented', Code.Unimplemented);
-        });
+        // An exec session's frames (SPEC 3.1), after the shared authentication guard.
+        router.rpc(
+          AgentGatewayService.method.execStream,
+          (requests, context) => {
+            const authenticated = context.values.get(identity);
+            if (!authenticated)
+              throw new ConnectError('node authentication required', Code.Unauthenticated);
+            return relayExecStream(this.exec, requests, authenticated);
+          },
+          { maxTimeoutMs: 24 * 60 * 60_000 },
+        );
       },
     });
     const server = createSecureServer(

@@ -15,6 +15,7 @@ import type { TenantAccess } from '../../organizations/application/tenant-access
 import type { ReplicaStatus } from '../domain/observations';
 
 import { ExecSessionRegistry } from '../../fleet/application/exec-relay';
+import type { FleetTransaction } from '../../fleet/application/ports';
 
 import { ExecSessions } from './exec-sessions';
 import type { ActionQueue, DeploymentTransaction, ObservationStore } from './ports';
@@ -53,7 +54,12 @@ function world(options: { replicas?: ReplicaStatus[]; denied?: boolean; app?: bo
   const queued: Parameters<ActionQueue['enqueue']>[0][] = [];
   const published: DomainEvent[] = [];
   const order: string[] = [];
-  const registry = new ExecSessionRegistry();
+  const registry = new ExecSessionRegistry(
+    {
+      runTenant: (_org: string, work: () => Promise<unknown>) => work(),
+    } as unknown as FleetTransaction,
+    { publish: () => Promise.resolve() } as unknown as DomainEventBus,
+  );
   const service = new ExecSessions(
     {
       runTenant: (_org: string, work: () => Promise<unknown>) => work(),
@@ -147,8 +153,7 @@ describe('opening an exec session (SPEC 3.1)', () => {
     });
     // What the person typed never reaches the audit log.
     expect(JSON.stringify(event)).not.toContain('secret-pw');
-    expect(w.registry.pending(session.id, NOW)).toEqual(session);
-    expect(w.registry.pending(session.id, session.attachBy)).toBeUndefined();
+    expect(w.registry.pending(session.id)).toEqual(session);
   });
 
   it('takes the running release of the replica asked for', async () => {
@@ -211,6 +216,6 @@ describe('opening an exec session (SPEC 3.1)', () => {
       { publish: () => Promise.resolve() } as unknown as DomainEventBus,
     );
     await expect(failing.open(context, target, APP, {}, NOW)).rejects.toThrow('commit failed');
-    expect(w.registry.pending('anything', NOW)).toBeUndefined();
+    expect(w.registry.pending('anything')).toBeUndefined();
   });
 });
