@@ -101,6 +101,7 @@ services:
       SMTP_USER: ${SMTP_USER:-}
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       VICTORIAMETRICS_URL: http://victoriametrics:8428
+      VICTORIALOGS_URL: http://victorialogs:9428
     volumes:
       - keys:/var/lib/shipkeep:ro
     network_mode: service:net
@@ -160,6 +161,19 @@ services:
       - victoriametrics-data:/victoria-metrics-data
     restart: unless-stopped
 
+  # Container logs (ADR 0029): agents send them to the API, which writes them here with labels it
+  # sets itself, and reads them back for the interface. Internal network only, like metrics.
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0@sha256:251121fa882af99b95ba0c230a4a2f412ea602d2698c64a96c58dc9842bb755d
+    command:
+      - -storageDataPath=/victoria-logs-data
+      - -retentionPeriod=30d
+      - -httpListenAddr=:9428
+      - -memory.allowedBytes=256MiB
+    volumes:
+      - victorialogs-data:/victoria-logs-data
+    restart: unless-stopped
+
   caddy:
     image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     network_mode: service:net
@@ -177,6 +191,7 @@ services:
 volumes:
   postgres-data:
   victoriametrics-data:
+  victorialogs-data:
   keys:
   caddy-data:
   caddy-config:

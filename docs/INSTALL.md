@@ -256,7 +256,7 @@ Store the output in a password manager or another place that is not this server.
 
 ## Upgrade
 
-The installer does not upgrade. In the installation directory, replace `compose.yml` with the one of the new release's bundle: it pins the PostgreSQL, Caddy and VictoriaMetrics images of that release. Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest (the `image` file of the same bundle), then run `docker compose pull` and `docker compose up -d`. The `migrate` and `database-role` steps run again before the new control plane starts. Take a PostgreSQL backup first: automatic snapshots before upgrades are not built yet. VictoriaMetrics keeps 30 days of metrics in its own volume, `victoriametrics-data`; it is not in a PostgreSQL backup, and losing it loses that history only (ADR 0024).
+The installer does not upgrade. In the installation directory, replace `compose.yml` with the one of the new release's bundle: it pins the PostgreSQL, Caddy, VictoriaMetrics and VictoriaLogs images of that release. Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest (the `image` file of the same bundle), then run `docker compose pull` and `docker compose up -d`. The `migrate` and `database-role` steps run again before the new control plane starts. Take a PostgreSQL backup first: automatic snapshots before upgrades are not built yet. VictoriaMetrics keeps 30 days of metrics in its own volume, `victoriametrics-data`; it is not in a PostgreSQL backup, and losing it loses that history only (ADR 0024). VictoriaLogs keeps 30 days of application logs in `victorialogs-data`, likewise (ADR 0029).
 
 A server's agent can replace itself with a signed release, but the control plane does not ask it to yet (ADR 0028).
 
