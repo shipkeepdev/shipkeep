@@ -5255,6 +5255,79 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/exec-sessions": {
+      "post": {
+        "operationId": "open",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenExecSessionDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExecSessionDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "deployments"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/metrics": {
       "get": {
         "operationId": "applicationMetrics",
@@ -8787,6 +8860,73 @@
         "required": [
           "items",
           "truncated"
+        ]
+      },
+      "OpenExecSessionDto": {
+        "type": "object",
+        "properties": {
+          "replica": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 1
+          },
+          "argv": {
+            "maxItems": 64,
+            "default": [
+              "sh"
+            ],
+            "description": "The command and its arguments, an argument vector: never run through a shell.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "tty": {
+            "type": "boolean",
+            "default": true
+          },
+          "minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 240,
+            "default": 30,
+            "description": "How long the session may last, in minutes."
+          }
+        }
+      },
+      "ExecSessionDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attachBy": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Until when the session can be joined."
+          },
+          "endsAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the session ends at the latest."
+          },
+          "websocketPath": {
+            "type": "string",
+            "description": "The WebSocket path that joins the session."
+          }
+        },
+        "required": [
+          "id",
+          "nodeId",
+          "attachBy",
+          "endsAt",
+          "websocketPath"
         ]
       },
       "MetricPointDto": {
