@@ -22,10 +22,12 @@ type Versions interface {
 }
 
 // Reservation is the share of the machine the agent reports as kept for the control plane and the
-// system, from its local configuration (ADR 0021).
+// system, from its local configuration (ADR 0021), with the machine's role (ADR 0028).
 type Reservation struct {
 	CPUMillis   uint32
 	MemoryBytes uint64
+	// Role is what the machine is for, from the local configuration as well.
+	Role agentv1.NodeRole
 }
 
 // FactsHandler reports host facts (CollectFacts). It reads only kernel interfaces and the local
@@ -61,6 +63,7 @@ func Facts(ctx context.Context, stateDir string, versions Versions, reservation 
 
 		ReservedCpuMillis:   reservation.CPUMillis,
 		ReservedMemoryBytes: reservation.MemoryBytes,
+		Role:                reservation.Role,
 	}
 	var name unix.Utsname
 	if unix.Uname(&name) == nil {
