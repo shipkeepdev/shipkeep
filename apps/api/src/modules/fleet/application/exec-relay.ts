@@ -49,7 +49,8 @@ export type ExecEnd =
   | 'not_joined'
   | 'agent_left'
   | 'browser_left'
-  | 'flooded';
+  | 'flooded'
+  | 'signed_out';
 
 /** The agent's fixed error texts (agent/internal/actions/exec.go), and what they mean. */
 const AGENT_ERRORS: Readonly<Partial<Record<string, ExecEnd>>> = {
@@ -57,6 +58,11 @@ const AGENT_ERRORS: Readonly<Partial<Record<string, ExecEnd>>> = {
   'session closed': 'closed',
   'session failed': 'failed',
 };
+
+/** The end an agent's error frame says, from its fixed texts; any other text is a failure. */
+export function execEndOf(message: string): ExecEnd {
+  return AGENT_ERRORS[message] ?? 'failed';
+}
 
 /** Frames from the browser that may wait for the agent; past this the session is flooded. */
 export const MAX_WAITING_FRAMES = 256;
@@ -119,7 +125,7 @@ export class ExecRelay {
     if (this.ended || !this.browser) return;
     await this.browser.send(frame);
     if (frame.kind === 'exit') this.end('exited', frame.code);
-    else if (frame.kind === 'error') this.end(AGENT_ERRORS[frame.message] ?? 'failed', null);
+    else if (frame.kind === 'error') this.end(execEndOf(frame.message), null);
   }
 
   /** A frame from the browser, queued for the agent. */

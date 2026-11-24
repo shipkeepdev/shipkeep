@@ -35,6 +35,7 @@ import { PrismaPipelineStore } from './infrastructure/prisma-pipeline.store';
 import { RegistryResolver } from './infrastructure/registry/registry-resolver';
 import { DeploymentController } from './interface/deployment.controller';
 import { ExecSessionController } from './interface/exec-session.controller';
+import { ExecSocket } from './interface/exec-socket';
 import { NodeReplicasController } from './interface/node-replicas.controller';
 
 /** Releases, deployments and their pipeline (SPEC 4, 5.1; PLAN M3.4b2, M3.4c). */
@@ -53,6 +54,7 @@ import { NodeReplicasController } from './interface/node-replicas.controller';
   providers: [
     DeploymentCommands,
     ExecSessions,
+    ExecSocket,
     { provide: DEPLOYMENT_STORE, useClass: PrismaDeploymentStore },
     { provide: DEPLOYMENT_TRANSACTION, useExisting: PrismaUnitOfWork },
     { provide: IMAGE_RESOLVER, useFactory: () => new RegistryResolver() },
