@@ -45,4 +45,17 @@ describe('tabs', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance.active()).toBe('one');
   });
+
+  it('scrolls a narrow bar so that the active tab shows', async () => {
+    const { fixture, tab } = setup();
+    const list = tab('one')?.parentElement as HTMLElement;
+    const box = (left: number, right: number) => () => ({ left, right }) as DOMRect;
+    list.getBoundingClientRect = box(0, 100);
+    (tab('one') as HTMLElement).getBoundingClientRect = box(0, 80);
+    (tab('two') as HTMLElement).getBoundingClientRect = box(84, 170);
+    fixture.componentInstance.active.set('two');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(list.scrollLeft).toBe(70);
+  });
 });
