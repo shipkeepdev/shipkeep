@@ -57,15 +57,17 @@ export type ExecEnd =
   | 'access_removed';
 
 /** The agent's fixed error texts (agent/internal/actions/exec.go), and what they mean. */
-const AGENT_ERRORS: Readonly<Partial<Record<string, ExecEnd>>> = {
-  'time limit reached': 'time_limit',
-  'session closed': 'closed',
-  'session failed': 'failed',
-};
+const AGENT_ERRORS: ReadonlyMap<string, ExecEnd> = new Map([
+  ['time limit reached', 'time_limit'],
+  ['session closed', 'closed'],
+  ['session failed', 'failed'],
+]);
+/** How long past its time limit the control plane waits for the agent to end a session. */
+export const EXEC_END_GRACE_MS = 30_000;
 
 /** The end an agent's error frame says, from its fixed texts; any other text is a failure. */
 export function execEndOf(message: string): ExecEnd {
-  return AGENT_ERRORS[message] ?? 'failed';
+  return AGENT_ERRORS.get(message) ?? 'failed';
 }
 
 /** Frames from the browser that may wait for the agent; past this the session is flooded. */
@@ -87,6 +89,7 @@ export class ExecRelay {
   private settle: ((both: boolean) => void) | undefined;
   private readonly joined: Promise<boolean>;
   private readonly timer: ReturnType<typeof setTimeout>;
+  private readonly limit: ReturnType<typeof setTimeout>;
 
   constructor(
     readonly session: ExecSession,
@@ -101,6 +104,14 @@ export class ExecRelay {
       Math.max(session.attachBy.getTime() - now.getTime(), 0),
     );
     this.timer.unref();
+    // The agent ends a session at its time limit; one that does not is ended here, after a grace.
+    this.limit = setTimeout(
+      () => {
+        this.end('time_limit', null);
+      },
+      Math.max(session.endsAt.getTime() - now.getTime() + EXEC_END_GRACE_MS, 0),
+    );
+    this.limit.unref();
   }
 
   /** The agent joins once; false when it may not (already joined or ended). */
@@ -184,6 +195,7 @@ export class ExecRelay {
     if (this.ended) return;
     this.ended = reason;
     clearTimeout(this.timer);
+    clearTimeout(this.limit);
     this.settle?.(false);
     this.wake?.();
     this.browser?.close(reason);
@@ -208,6 +220,7 @@ export class ExecSessionRegistry {
   private readonly logger = new Logger(ExecSessionRegistry.name);
   private readonly relays = new Map<string, ExecRelay>();
   private readonly writes = new Set<Promise<void>>();
+  private readonly reserved: { userId: string; organizationId: string }[] = [];
 
   constructor(
     @Inject(FLEET_TRANSACTION) private readonly transaction: FleetTransaction,
@@ -225,10 +238,24 @@ export class ExecSessionRegistry {
     this.relays.set(session.id, relay);
   }
 
-  /** Sessions of this person or organization waiting to be joined or running. */
+  /**
+   * Holds a place for a session being opened, counted at once: two opens at the same time cannot
+   * both pass the caps. The release gives it back, once the session is added or failed.
+   */
+  reserve(owner: { userId: string; organizationId: string }): () => void {
+    const place = { ...owner };
+    this.reserved.push(place);
+    return () => {
+      const index = this.reserved.indexOf(place);
+      if (index >= 0) this.reserved.splice(index, 1);
+    };
+  }
+
+  /** Sessions of this person or organization being opened, waiting to be joined, or running. */
   count(owner: { userId?: string; organizationId?: string }): number {
     let count = 0;
-    for (const { session } of this.relays.values())
+    const sessions = [...this.relays.values()].map((relay) => relay.session);
+    for (const session of [...sessions, ...this.reserved])
       if (
         (owner.userId === undefined || session.userId === owner.userId) &&
         (owner.organizationId === undefined || session.organizationId === owner.organizationId)
@@ -285,8 +312,12 @@ export class ExecSessionRegistry {
     // is logged, with identifiers only.
     const write = this.transaction
       .runTenant(relay.session.organizationId, () => this.events.publish([event]))
-      .catch(() => {
-        this.logger.error(`exec session ${relay.session.id} ended without its audit event`);
+      .catch((error: unknown) => {
+        // Nothing waits on the end to fail it: the failure is logged, with its kind only.
+        const kind = error instanceof Error ? error.name : 'unknown';
+        this.logger.error(
+          `exec session ${relay.session.id} ended without its audit event (${kind})`,
+        );
       })
       .finally(() => this.writes.delete(write));
     this.writes.add(write);

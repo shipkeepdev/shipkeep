@@ -168,6 +168,10 @@ describe('the exec relay (SPEC 3.1)', () => {
       ['session closed', 'closed'],
       ['session failed', 'failed'],
       ['container /var/lib/x is not running', 'failed'],
+      // Names of Object.prototype are no texts of the agent.
+      ['constructor', 'failed'],
+      ['__proto__', 'failed'],
+      ['toString', 'failed'],
     ]) {
       const w = world();
       const s = session();
@@ -191,7 +195,7 @@ describe('the exec relay (SPEC 3.1)', () => {
     expect(w.published[0]?.payload).toMatchObject({ reason: 'flooded' });
   });
 
-  it('keeps the session when its audit write fails', async () => {
+  it('ends the session even when its audit write fails', async () => {
     const registry = new ExecSessionRegistry(
       { runTenant: () => Promise.reject(new Error('down')) } as unknown as FleetTransaction,
       { publish: () => Promise.resolve() } as unknown as DomainEventBus,
@@ -199,7 +203,37 @@ describe('the exec relay (SPEC 3.1)', () => {
     const s = session();
     registry.add(s, NOW);
     registry.joinAgent(s.id, node)?.agentLeft();
-    await Promise.resolve();
+    // The rejected write is caught: flushed here, it raises nothing.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(registry.pending(s.id)).toBeUndefined();
+  });
+});
+
+describe('the control plane side of the time limit', () => {
+  it('ends a session the agent did not end, after a grace', () => {
+    vi.useFakeTimers();
+    try {
+      const w = world();
+      const s = session();
+      w.registry.add(s, NOW);
+      w.registry.joinBrowser(s.id, USER, w.port);
+      w.registry.joinAgent(s.id, node);
+      vi.advanceTimersByTime(s.endsAt.getTime() - NOW.getTime() + 29_000);
+      expect(w.registry.pending(s.id)).toBeDefined();
+      vi.advanceTimersByTime(2_000);
+      expect(w.registry.pending(s.id)).toBeUndefined();
+      expect(w.closed()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('counts the sessions being opened, so concurrent opens cannot pass the caps', () => {
+    const w = world();
+    const release = w.registry.reserve({ userId: USER, organizationId: ORG });
+    expect(w.registry.count({ userId: USER })).toBe(1);
+    release();
+    release();
+    expect(w.registry.count({ userId: USER })).toBe(0);
   });
 });
