@@ -76,6 +76,7 @@ type handlerOptions struct {
 	workloads       Workloads
 	routeBook       *RouteBook
 	upgrader        *Upgrader
+	controlPlane    bool
 }
 
 // Workloads places application containers on the machine that hosts the control plane (ADR 0021):
@@ -109,6 +110,13 @@ func WithRouteBook(book *RouteBook) Option {
 // refused as unsupported.
 func WithUpgrader(u Upgrader) Option {
 	return func(o *handlerOptions) { o.upgrader = &u }
+}
+
+// ControlPlaneOnly keeps the actions of a machine that runs the control plane alone (ADR 0028):
+// it reports its facts and upgrades itself, and refuses every action on workloads or routes, as
+// actions this agent does not support.
+func ControlPlaneOnly() Option {
+	return func(o *handlerOptions) { o.controlPlane = true }
 }
 
 // WithoutEgressCheck lets pulls run without the daemon going through the egress proxy. Only an

@@ -193,11 +193,14 @@ valid_local_control_plane() {
 # binary. Before each start the upgrade guard, from the root-owned copy of the agent that an
 # upgrade never replaces, counts a new binary's starts and puts the previous one back after three.
 agent_unit() {
-  cat <<'UNIT'
+  local caddy=' shipkeep-caddy.service'
+  # A control plane machine runs no Caddy of its own: the control plane's Caddy serves it.
+  [[ ${1:-} != control-plane-only ]] || caddy=''
+  cat <<UNIT
 [Unit]
 Description=Shipkeep node agent
-After=network-online.target docker.service shipkeep-caddy.service systemd-tmpfiles-setup.service
-Wants=network-online.target shipkeep-caddy.service
+After=network-online.target docker.service$caddy systemd-tmpfiles-setup.service
+Wants=network-online.target$caddy
 Requires=docker.service
 StartLimitIntervalSec=0
 [Service]
@@ -223,12 +226,52 @@ UMask=0077
 WantedBy=multi-user.target
 UNIT
 }
+# Prints the unit of Caddy, the edge proxy of a server. Its admin API is a socket that only the
+# agent's group reaches.
+caddy_unit() {
+  cat <<'UNIT'
+[Unit]
+Description=Shipkeep Caddy edge proxy
+After=network-online.target systemd-tmpfiles-setup.service
+Wants=network-online.target
+[Service]
+Type=notify
+User=shipkeep-caddy
+Group=shipkeep
+# A crash can leave the socket behind.
+ExecStartPre=-/usr/bin/rm -f /run/shipkeep/caddy-admin.sock
+ExecStart=/usr/bin/caddy run --resume --config /etc/shipkeep-caddy.json
+Restart=always
+RestartSec=5
+StateDirectory=shipkeep-caddy
+StateDirectoryMode=0700
+Environment=XDG_CONFIG_HOME=/var/lib/shipkeep-caddy/config XDG_DATA_HOME=/var/lib/shipkeep-caddy/data
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/run/shipkeep
+UMask=0077
+LimitNOFILE=1048576
+[Install]
+WantedBy=multi-user.target
+UNIT
+}
 # Prints the slice of the applications on a single machine, whose memory is the machine's $1 bytes
 # minus the reservation, and whose CPU weight is below the control plane's (ADR 0021).
 workloads_slice_unit() {
   (($1 > reserved_memory_bytes)) || return 1
   printf '[Unit]\nDescription=Shipkeep: the applications of the machine that hosts the control plane\nBefore=slices.target\n'
   printf '[Slice]\nMemoryMax=%d\nCPUWeight=50\n' "$(($1 - reserved_memory_bytes))"
+}
+# A root-owned copy of the agent binary $1/agent, which runs the egress proxy and the upgrade guard
+# (ADR 0023, ADR 0028): the agent's directory is private to its account, and that account must not
+# be able to replace the binary the proxy and the guard run.
+install_guard() {
+  install -d -m 0755 /usr/local/libexec
+  install -m 0755 -o root -g root "$1/agent" /usr/local/libexec/shipkeep-egress
 }
 # Puts the Docker daemon behind the egress proxy and the loopback guard, restarts Docker and checks
 # what it applies (ADR 0023). $1 is a private work directory holding the verified agent binary
@@ -241,10 +284,7 @@ workloads_slice_unit() {
 # reload and stop, and no flush leaves Docker unguarded.
 install_egress() {
   local attempt slice
-  # A root-owned copy: the agent's directory is private to its account, and that account must not
-  # be able to replace the binary the proxy runs.
-  install -d -m 0755 /usr/local/libexec
-  install -m 0755 -o root -g root "$1/agent" /usr/local/libexec/shipkeep-egress
+  install_guard "$1"
   cat > /etc/systemd/system/shipkeep-egress.service <<'UNIT'
 [Unit]
 Description=Shipkeep egress proxy of the Docker daemon
@@ -333,11 +373,34 @@ UNIT
   nft list table inet shipkeep_egress >/dev/null || fail 'The egress guard of the Docker daemon is not loaded.'
   curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/v1.47/info | egress_proxies_applied || fail 'Docker does not report the egress proxy; check the proxy settings of its other drop-ins (systemctl cat docker).'
 }
+# Installs Caddy, the edge proxy, from upstream's signed repository: it needs security updates, and
+# Ubuntu's universe build (2.6.2) neither guarantees them nor supports the socket mode the agent
+# uses. $1 is a private work directory. Its own services stay disabled: shipkeep-caddy runs it.
+install_caddy() {
+  curl --fail --silent --show-error --proto '=https' --max-time 60 https://dl.cloudsmith.io/public/caddy/stable/gpg.key -o "$1/caddy.asc"
+  single_signing_key "$1/caddy.asc" "$1/caddy.gpg" 65760C51EDEA2017CEA2CA15155B6D79CA56EA34 || fail 'Caddy signing key mismatch.' # gitleaks:allow (public signing-key fingerprint)
+  install -d -m 0755 /etc/apt/keyrings
+  install -m 0644 "$1/caddy.gpg" /etc/apt/keyrings/shipkeep-caddy.gpg
+  cat > /etc/apt/sources.list.d/shipkeep-caddy.sources <<REPO
+Types: deb
+URIs: https://dl.cloudsmith.io/public/caddy/stable/deb/debian
+Suites: any-version
+Components: main
+Signed-By: /etc/apt/keyrings/shipkeep-caddy.gpg
+REPO
+  chmod 0644 /etc/apt/sources.list.d/shipkeep-caddy.sources
+  apt-get update -qq </dev/null
+  # Prevent the package's default HTTP listener from starting during installation.
+  systemctl mask --runtime caddy.service caddy-api.service
+  apt-get install -y --no-install-recommends caddy </dev/null
+  systemctl disable caddy.service caddy-api.service
+  systemctl unmask --runtime caddy.service caddy-api.service
+}
 # The checks source this file for the functions above, and stop here.
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
 umask 077
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-control_plane='' fingerprint='' origin='' amd64='' arm64='' local_control_plane='' agent_file=''
+control_plane='' fingerprint='' origin='' amd64='' arm64='' local_control_plane='' agent_file='' control_plane_only=''
 while (($#)); do
   (($# >= 2)) || fail 'Missing option value.'
   case "$1" in
@@ -350,6 +413,9 @@ while (($#)); do
     # address on loopback, and the agent binary it took from its own image (checked like a download).
     --local-control-plane) local_control_plane=$2 ;;
     --agent-file) agent_file=$2 ;;
+    # Set by the control plane installer on its own machine when applications run elsewhere
+    # (ADR 0028): an agent only, with no Caddy, egress proxy or application of its own.
+    --control-plane-only) control_plane_only=$2 ;;
     *) fail 'Unknown option.' ;;
   esac
   shift 2
@@ -362,6 +428,9 @@ port=${control_plane##*:}
 [[ -z $local_control_plane ]] || valid_local_control_plane "$local_control_plane" || fail 'Invalid local control plane address: 127.0.0.1 and a port are required.'
 [[ -z $agent_file || ($agent_file =~ ^/[A-Za-z0-9._/-]+$ && -f $agent_file && ! -L $agent_file) ]] || fail 'Invalid agent file: an absolute path to a regular file is required.'
 [[ -z $local_control_plane || -n $agent_file ]] || fail 'A single machine installs the agent of its control plane image: pass --agent-file.'
+[[ -z $control_plane_only || $control_plane_only == yes ]] || fail 'Invalid --control-plane-only: yes is the only value.'
+[[ -z $control_plane_only || -z $local_control_plane ]] || fail 'A control-plane-only machine runs no application: give --local-control-plane on a single machine only.'
+[[ -z $control_plane_only || -n $agent_file ]] || fail 'A control plane machine installs the agent of its control plane image: pass --agent-file.'
 # The control plane's name, the host of the gateway address, is the name its route serves.
 control_plane_host=${control_plane%:*}
 ((EUID == 0)) || fail 'Run with sudo.'
@@ -385,16 +454,20 @@ if [[ -n $local_control_plane ]]; then
   cgroup2_recursiveprot /proc/self/mounts || fail 'A single machine needs cgroup v2 mounted with memory_recursiveprot (systemd 247 or later).'
 fi
 command -v ss >/dev/null || fail 'Install iproute2 before running this installer.'
-listeners=$(ss -H -ltn '( sport = :80 or sport = :443 )') || fail 'Cannot inspect TCP ports.'
-[[ -z $listeners ]] || fail 'Ports 80/443 are occupied.'
-listeners=$(ss -H -lun 'sport = :443') || fail 'Cannot inspect UDP ports.'
-[[ -z $listeners ]] || fail 'Port 443 is occupied.'
-listeners=$(ss -H -ltn 'sport = :7480') || fail 'Cannot inspect TCP ports.'
-[[ -z $listeners ]] || fail 'Port 7480 is occupied; the egress proxy of the Docker daemon listens there.'
-[[ ! -e /usr/bin/caddy && ! -e /etc/apt/sources.list.d/shipkeep-caddy.sources && ! -e /etc/apt/keyrings/shipkeep-caddy.gpg && ! -e /etc/apt/keyrings/shipkeep-caddy.asc ]] || fail 'Caddy is already installed; reconcile it manually.'
-for service in caddy.service caddy-api.service; do
-  if systemctl is-active --quiet "$service" || systemctl is-enabled --quiet "$service"; then fail 'Existing Caddy service; reconcile it manually.'; fi
-done
+# The edge of a server: its Caddy on 80 and 443, and the egress proxy of its Docker daemon. A
+# control plane machine has neither: its ports are the control plane's Caddy's.
+if [[ -z $control_plane_only ]]; then
+  listeners=$(ss -H -ltn '( sport = :80 or sport = :443 )') || fail 'Cannot inspect TCP ports.'
+  [[ -z $listeners ]] || fail 'Ports 80/443 are occupied.'
+  listeners=$(ss -H -lun 'sport = :443') || fail 'Cannot inspect UDP ports.'
+  [[ -z $listeners ]] || fail 'Port 443 is occupied.'
+  listeners=$(ss -H -ltn 'sport = :7480') || fail 'Cannot inspect TCP ports.'
+  [[ -z $listeners ]] || fail 'Port 7480 is occupied; the egress proxy of the Docker daemon listens there.'
+  [[ ! -e /usr/bin/caddy && ! -e /etc/apt/sources.list.d/shipkeep-caddy.sources && ! -e /etc/apt/keyrings/shipkeep-caddy.gpg && ! -e /etc/apt/keyrings/shipkeep-caddy.asc ]] || fail 'Caddy is already installed; reconcile it manually.'
+  for service in caddy.service caddy-api.service; do
+    if systemctl is-active --quiet "$service" || systemctl is-enabled --quiet "$service"; then fail 'Existing Caddy service; reconcile it manually.'; fi
+  done
+fi
 work=$(mktemp -d /var/lib/shipkeep-install.XXXXXX)
 cleanup() { rm -rf -- "$work"; }
 trap cleanup EXIT
@@ -416,28 +489,11 @@ if [[ -n $local_control_plane ]]; then
   # With the cgroupfs driver, CgroupParent is a plain path and no slice would hold the containers.
   [[ $(docker info --format '{{.CgroupDriver}}') == systemd ]] || fail "A single machine needs Docker's systemd cgroup driver."
 fi
-# Every pull goes through the egress proxy, and a guard keeps the daemon off loopback (ADR 0023).
-prepare_egress "$work"
-# Upstream's signed repository: the edge proxy needs security updates, and Ubuntu's universe build
-# (2.6.2) neither guarantees them nor supports the socket mode used below.
-curl --fail --silent --show-error --proto '=https' --max-time 60 https://dl.cloudsmith.io/public/caddy/stable/gpg.key -o "$work/caddy.asc"
-single_signing_key "$work/caddy.asc" "$work/caddy.gpg" 65760C51EDEA2017CEA2CA15155B6D79CA56EA34 || fail 'Caddy signing key mismatch.' # gitleaks:allow (public signing-key fingerprint)
-install -d -m 0755 /etc/apt/keyrings
-install -m 0644 "$work/caddy.gpg" /etc/apt/keyrings/shipkeep-caddy.gpg
-cat > /etc/apt/sources.list.d/shipkeep-caddy.sources <<REPO
-Types: deb
-URIs: https://dl.cloudsmith.io/public/caddy/stable/deb/debian
-Suites: any-version
-Components: main
-Signed-By: /etc/apt/keyrings/shipkeep-caddy.gpg
-REPO
-chmod 0644 /etc/apt/sources.list.d/shipkeep-caddy.sources
-apt-get update -qq </dev/null
-# Prevent the package's default HTTP listener from starting during installation.
-systemctl mask --runtime caddy.service caddy-api.service
-apt-get install -y --no-install-recommends caddy </dev/null
-systemctl disable caddy.service caddy-api.service
-systemctl unmask --runtime caddy.service caddy-api.service
+if [[ -z $control_plane_only ]]; then
+  # Every pull goes through the egress proxy, and a guard keeps the daemon off loopback (ADR 0023).
+  prepare_egress "$work"
+  install_caddy "$work"
+fi
 if [[ -n $agent_file ]]; then
   install -m 0600 -- "$agent_file" "$work/agent"
 else
@@ -460,12 +516,21 @@ if [[ -n $local_control_plane ]]; then
     host: '$control_plane_host'
     upstream: '$local_control_plane'
 node:
+  role: control-plane
   reservation:
     cpu_millis: $reserved_cpu_millis
     memory_bytes: $reserved_memory_bytes
 docker:
   workloads_slice: shipkeep-workloads.slice
   workloads_oom_score_adj: 1000
+CONFIG
+elif [[ -n $control_plane_only ]]; then
+  # ADR 0028: the agent of the control plane's own machine connects over loopback and still
+  # verifies the public name. Its role keeps applications off this machine.
+  cat >> "$work/agent.yaml" <<CONFIG
+  connect: '127.0.0.1:${control_plane##*:}'
+node:
+  role: control-plane-only
 CONFIG
 fi
 chmod 0700 "$work/agent"
@@ -477,8 +542,10 @@ printf '\n' >&2
 [[ $token =~ ^[A-Za-z0-9_-]{43}$ ]] || fail 'Invalid join token.'
 groupadd --system shipkeep
 useradd --system --gid shipkeep --groups docker --home-dir /var/lib/shipkeep --no-create-home --shell /usr/sbin/nologin shipkeep
-useradd --system --gid shipkeep --home-dir /var/lib/shipkeep-caddy --no-create-home --shell /usr/sbin/nologin shipkeep-caddy
-useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin shipkeep-egress
+if [[ -z $control_plane_only ]]; then
+  useradd --system --gid shipkeep --home-dir /var/lib/shipkeep-caddy --no-create-home --shell /usr/sbin/nologin shipkeep-caddy
+  useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin shipkeep-egress
+fi
 install -d -m 0700 -o shipkeep -g shipkeep /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep/bin
 install -m 0755 -o shipkeep -g shipkeep "$work/agent" /var/lib/shipkeep/bin/shipkeep-agent
 install -m 0600 -o shipkeep -g shipkeep "$work/agent.yaml" /etc/shipkeep/agent.yaml
@@ -488,45 +555,30 @@ chown shipkeep:shipkeep /etc/shipkeep/join-token
 chmod 0600 /etc/shipkeep/join-token
 printf 'd /run/shipkeep 0770 shipkeep shipkeep -\n' > /etc/tmpfiles.d/shipkeep.conf
 systemd-tmpfiles --create /etc/tmpfiles.d/shipkeep.conf
-printf '{"admin":{"listen":"unix//run/shipkeep/caddy-admin.sock|0660","origins":["caddy"]}}\n' > /etc/shipkeep-caddy.json
-chmod 0644 /etc/shipkeep-caddy.json /etc/tmpfiles.d/shipkeep.conf
-cat > /etc/systemd/system/shipkeep-caddy.service <<'UNIT'
-[Unit]
-Description=Shipkeep Caddy edge proxy
-After=network-online.target systemd-tmpfiles-setup.service
-Wants=network-online.target
-[Service]
-Type=notify
-User=shipkeep-caddy
-Group=shipkeep
-# A crash can leave the socket behind.
-ExecStartPre=-/usr/bin/rm -f /run/shipkeep/caddy-admin.sock
-ExecStart=/usr/bin/caddy run --resume --config /etc/shipkeep-caddy.json
-Restart=always
-RestartSec=5
-StateDirectory=shipkeep-caddy
-StateDirectoryMode=0700
-Environment=XDG_CONFIG_HOME=/var/lib/shipkeep-caddy/config XDG_DATA_HOME=/var/lib/shipkeep-caddy/data
-AmbientCapabilities=CAP_NET_BIND_SERVICE
-CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-NoNewPrivileges=true
-ProtectSystem=strict
-ProtectHome=true
-PrivateTmp=true
-ReadWritePaths=/run/shipkeep
-UMask=0077
-LimitNOFILE=1048576
-[Install]
-WantedBy=multi-user.target
-UNIT
-agent_unit >/etc/systemd/system/shipkeep-agent.service
-chmod 0644 /etc/systemd/system/shipkeep-{agent,caddy}.service
-install_egress "$work"
+chmod 0644 /etc/tmpfiles.d/shipkeep.conf
+if [[ -n $control_plane_only ]]; then
+  agent_unit control-plane-only >/etc/systemd/system/shipkeep-agent.service
+  chmod 0644 /etc/systemd/system/shipkeep-agent.service
+  # The upgrade guard's copy only: no egress proxy, since this machine pulls no application image.
+  install_guard "$work"
+else
+  printf '{"admin":{"listen":"unix//run/shipkeep/caddy-admin.sock|0660","origins":["caddy"]}}\n' > /etc/shipkeep-caddy.json
+  chmod 0644 /etc/shipkeep-caddy.json
+  caddy_unit >/etc/systemd/system/shipkeep-caddy.service
+  agent_unit >/etc/systemd/system/shipkeep-agent.service
+  chmod 0644 /etc/systemd/system/shipkeep-{agent,caddy}.service
+  install_egress "$work"
+fi
 if [[ -n $local_control_plane ]]; then
   workloads_slice_unit "$memory" >/etc/systemd/system/shipkeep-workloads.slice || fail 'No memory is left for applications beside the reservation.'
   chmod 0644 /etc/systemd/system/shipkeep-workloads.slice
   systemctl daemon-reload
   systemctl start shipkeep-workloads.slice
 fi
-systemctl enable --now shipkeep-caddy shipkeep-agent
+if [[ -n $control_plane_only ]]; then
+  systemctl daemon-reload
+  systemctl enable --now shipkeep-agent
+else
+  systemctl enable --now shipkeep-caddy shipkeep-agent
+fi
 printf 'Services started. Refresh Servers to verify ready; inspect journalctl -u shipkeep-agent on failure.\n'

@@ -255,6 +255,64 @@ func (TlsMode) EnumDescriptor() ([]byte, []int) {
 	return file_shipkeep_agent_v1_actions_proto_rawDescGZIP(), []int{3}
 }
 
+// What a machine is for (ADR 0028). The installer sets it in the agent's local configuration;
+// the control plane never does.
+type NodeRole int32
+
+const (
+	// An agent that predates roles: a server.
+	NodeRole_NODE_ROLE_UNSPECIFIED NodeRole = 0
+	// A server: it runs applications.
+	NodeRole_NODE_ROLE_SERVER NodeRole = 1
+	// The single machine that runs the control plane and applications (ADR 0021).
+	NodeRole_NODE_ROLE_CONTROL_PLANE NodeRole = 2
+	// A machine that runs the control plane alone: no application is placed there.
+	NodeRole_NODE_ROLE_CONTROL_PLANE_ONLY NodeRole = 3
+)
+
+// Enum value maps for NodeRole.
+var (
+	NodeRole_name = map[int32]string{
+		0: "NODE_ROLE_UNSPECIFIED",
+		1: "NODE_ROLE_SERVER",
+		2: "NODE_ROLE_CONTROL_PLANE",
+		3: "NODE_ROLE_CONTROL_PLANE_ONLY",
+	}
+	NodeRole_value = map[string]int32{
+		"NODE_ROLE_UNSPECIFIED":        0,
+		"NODE_ROLE_SERVER":             1,
+		"NODE_ROLE_CONTROL_PLANE":      2,
+		"NODE_ROLE_CONTROL_PLANE_ONLY": 3,
+	}
+)
+
+func (x NodeRole) Enum() *NodeRole {
+	p := new(NodeRole)
+	*p = x
+	return p
+}
+
+func (x NodeRole) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (NodeRole) Descriptor() protoreflect.EnumDescriptor {
+	return file_shipkeep_agent_v1_actions_proto_enumTypes[4].Descriptor()
+}
+
+func (NodeRole) Type() protoreflect.EnumType {
+	return &file_shipkeep_agent_v1_actions_proto_enumTypes[4]
+}
+
+func (x NodeRole) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use NodeRole.Descriptor instead.
+func (NodeRole) EnumDescriptor() ([]byte, []int) {
+	return file_shipkeep_agent_v1_actions_proto_rawDescGZIP(), []int{4}
+}
+
 type PortMapping_Protocol int32
 
 const (
@@ -288,11 +346,11 @@ func (x PortMapping_Protocol) String() string {
 }
 
 func (PortMapping_Protocol) Descriptor() protoreflect.EnumDescriptor {
-	return file_shipkeep_agent_v1_actions_proto_enumTypes[4].Descriptor()
+	return file_shipkeep_agent_v1_actions_proto_enumTypes[5].Descriptor()
 }
 
 func (PortMapping_Protocol) Type() protoreflect.EnumType {
-	return &file_shipkeep_agent_v1_actions_proto_enumTypes[4]
+	return &file_shipkeep_agent_v1_actions_proto_enumTypes[5]
 }
 
 func (x PortMapping_Protocol) Number() protoreflect.EnumNumber {
@@ -340,11 +398,11 @@ func (x RestartPolicy_Mode) String() string {
 }
 
 func (RestartPolicy_Mode) Descriptor() protoreflect.EnumDescriptor {
-	return file_shipkeep_agent_v1_actions_proto_enumTypes[5].Descriptor()
+	return file_shipkeep_agent_v1_actions_proto_enumTypes[6].Descriptor()
 }
 
 func (RestartPolicy_Mode) Type() protoreflect.EnumType {
-	return &file_shipkeep_agent_v1_actions_proto_enumTypes[5]
+	return &file_shipkeep_agent_v1_actions_proto_enumTypes[6]
 }
 
 func (x RestartPolicy_Mode) Number() protoreflect.EnumNumber {
@@ -2982,8 +3040,11 @@ type NodeFacts struct {
 	// these. Zero on a machine that does not host the control plane.
 	ReservedCpuMillis   uint32 `protobuf:"varint,14,opt,name=reserved_cpu_millis,json=reservedCpuMillis,proto3" json:"reserved_cpu_millis,omitempty"`
 	ReservedMemoryBytes uint64 `protobuf:"varint,15,opt,name=reserved_memory_bytes,json=reservedMemoryBytes,proto3" json:"reserved_memory_bytes,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	// What the machine is for, from the agent's local configuration, which the installer writes
+	// (ADR 0028). Unspecified from an agent that predates roles: a server.
+	Role          NodeRole `protobuf:"varint,16,opt,name=role,proto3,enum=shipkeep.agent.v1.NodeRole" json:"role,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *NodeFacts) Reset() {
@@ -3119,6 +3180,13 @@ func (x *NodeFacts) GetReservedMemoryBytes() uint64 {
 		return x.ReservedMemoryBytes
 	}
 	return 0
+}
+
+func (x *NodeFacts) GetRole() NodeRole {
+	if x != nil {
+		return x.Role
+	}
+	return NodeRole_NODE_ROLE_UNSPECIFIED
 }
 
 // Result of a health probe.
@@ -3885,7 +3953,7 @@ const file_shipkeep_agent_v1_actions_proto_rawDesc = "" +
 	"\rcosign_bundle\x18\x03 \x01(\v2\x1f.shipkeep.agent.v1.CosignBundleR\fcosignBundle\x1a<\n" +
 	"\x0eImageRefsEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xaa\x04\n" +
+	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"\xdb\x04\n" +
 	"\tNodeFacts\x12\x1a\n" +
 	"\bhostname\x18\x01 \x01(\tR\bhostname\x12\x0e\n" +
 	"\x02os\x18\x02 \x01(\tR\x02os\x12\x1d\n" +
@@ -3904,7 +3972,8 @@ const file_shipkeep_agent_v1_actions_proto_rawDesc = "" +
 	"\x11wireguard_version\x18\f \x01(\tR\x10wireguardVersion\x12#\n" +
 	"\ragent_version\x18\r \x01(\tR\fagentVersion\x12.\n" +
 	"\x13reserved_cpu_millis\x18\x0e \x01(\rR\x11reservedCpuMillis\x122\n" +
-	"\x15reserved_memory_bytes\x18\x0f \x01(\x04R\x13reservedMemoryBytes\"\xb4\x01\n" +
+	"\x15reserved_memory_bytes\x18\x0f \x01(\x04R\x13reservedMemoryBytes\x12/\n" +
+	"\x04role\x18\x10 \x01(\x0e2\x1b.shipkeep.agent.v1.NodeRoleR\x04role\"\xb4\x01\n" +
 	"\x11HealthCheckResult\x12\x18\n" +
 	"\ahealthy\x18\x01 \x01(\bR\ahealthy\x123\n" +
 	"\x15consecutive_successes\x18\x02 \x01(\rR\x14consecutiveSuccesses\x121\n" +
@@ -3958,7 +4027,12 @@ const file_shipkeep_agent_v1_actions_proto_rawDesc = "" +
 	"\x14TLS_MODE_UNSPECIFIED\x10\x00\x12\x16\n" +
 	"\x12TLS_MODE_AUTO_HTTP\x10\x01\x12\x15\n" +
 	"\x11TLS_MODE_AUTO_DNS\x10\x02\x12\x10\n" +
-	"\fTLS_MODE_OFF\x10\x03B\xce\x01\n" +
+	"\fTLS_MODE_OFF\x10\x03*z\n" +
+	"\bNodeRole\x12\x19\n" +
+	"\x15NODE_ROLE_UNSPECIFIED\x10\x00\x12\x14\n" +
+	"\x10NODE_ROLE_SERVER\x10\x01\x12\x1b\n" +
+	"\x17NODE_ROLE_CONTROL_PLANE\x10\x02\x12 \n" +
+	"\x1cNODE_ROLE_CONTROL_PLANE_ONLY\x10\x03B\xce\x01\n" +
 	"\x15com.shipkeep.agent.v1B\fActionsProtoP\x01ZAgithub.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1;agentv1\xa2\x02\x03SAX\xaa\x02\x11Shipkeep.Agent.V1\xca\x02\x11Shipkeep\\Agent\\V1\xe2\x02\x1dShipkeep\\Agent\\V1\\GPBMetadata\xea\x02\x13Shipkeep::Agent::V1b\x06proto3"
 
 var (
@@ -3973,129 +4047,131 @@ func file_shipkeep_agent_v1_actions_proto_rawDescGZIP() []byte {
 	return file_shipkeep_agent_v1_actions_proto_rawDescData
 }
 
-var file_shipkeep_agent_v1_actions_proto_enumTypes = make([]protoimpl.EnumInfo, 6)
+var file_shipkeep_agent_v1_actions_proto_enumTypes = make([]protoimpl.EnumInfo, 7)
 var file_shipkeep_agent_v1_actions_proto_msgTypes = make([]protoimpl.MessageInfo, 49)
 var file_shipkeep_agent_v1_actions_proto_goTypes = []any{
 	(Capability)(0),                        // 0: shipkeep.agent.v1.Capability
 	(DatabaseEngine)(0),                    // 1: shipkeep.agent.v1.DatabaseEngine
 	(BuildType)(0),                         // 2: shipkeep.agent.v1.BuildType
 	(TlsMode)(0),                           // 3: shipkeep.agent.v1.TlsMode
-	(PortMapping_Protocol)(0),              // 4: shipkeep.agent.v1.PortMapping.Protocol
-	(RestartPolicy_Mode)(0),                // 5: shipkeep.agent.v1.RestartPolicy.Mode
-	(*EnvVar)(nil),                         // 6: shipkeep.agent.v1.EnvVar
-	(*SecretEnv)(nil),                      // 7: shipkeep.agent.v1.SecretEnv
-	(*PortMapping)(nil),                    // 8: shipkeep.agent.v1.PortMapping
-	(*Mount)(nil),                          // 9: shipkeep.agent.v1.Mount
-	(*Resources)(nil),                      // 10: shipkeep.agent.v1.Resources
-	(*HealthCheckSpec)(nil),                // 11: shipkeep.agent.v1.HealthCheckSpec
-	(*RestartPolicy)(nil),                  // 12: shipkeep.agent.v1.RestartPolicy
-	(*ContainerSpec)(nil),                  // 13: shipkeep.agent.v1.ContainerSpec
-	(*RegistryCredentials)(nil),            // 14: shipkeep.agent.v1.RegistryCredentials
-	(*S3Target)(nil),                       // 15: shipkeep.agent.v1.S3Target
-	(*Upstream)(nil),                       // 16: shipkeep.agent.v1.Upstream
-	(*Route)(nil),                          // 17: shipkeep.agent.v1.Route
-	(*WireGuardPeer)(nil),                  // 18: shipkeep.agent.v1.WireGuardPeer
-	(*CosignBundle)(nil),                   // 19: shipkeep.agent.v1.CosignBundle
-	(*EnsureNetwork)(nil),                  // 20: shipkeep.agent.v1.EnsureNetwork
-	(*PullImage)(nil),                      // 21: shipkeep.agent.v1.PullImage
-	(*BuildImage)(nil),                     // 22: shipkeep.agent.v1.BuildImage
-	(*CreateContainer)(nil),                // 23: shipkeep.agent.v1.CreateContainer
-	(*StartContainer)(nil),                 // 24: shipkeep.agent.v1.StartContainer
-	(*StopContainer)(nil),                  // 25: shipkeep.agent.v1.StopContainer
-	(*RemoveContainer)(nil),                // 26: shipkeep.agent.v1.RemoveContainer
-	(*EnsureVolume)(nil),                   // 27: shipkeep.agent.v1.EnsureVolume
-	(*RemoveVolume)(nil),                   // 28: shipkeep.agent.v1.RemoveVolume
-	(*HealthCheck)(nil),                    // 29: shipkeep.agent.v1.HealthCheck
-	(*UpsertRoute)(nil),                    // 30: shipkeep.agent.v1.UpsertRoute
-	(*RemoveRoute)(nil),                    // 31: shipkeep.agent.v1.RemoveRoute
-	(*RunReleaseTask)(nil),                 // 32: shipkeep.agent.v1.RunReleaseTask
-	(*ExecSession)(nil),                    // 33: shipkeep.agent.v1.ExecSession
-	(*BackupVolume)(nil),                   // 34: shipkeep.agent.v1.BackupVolume
-	(*RestoreVolume)(nil),                  // 35: shipkeep.agent.v1.RestoreVolume
-	(*DumpDatabase)(nil),                   // 36: shipkeep.agent.v1.DumpDatabase
-	(*RestoreDatabase)(nil),                // 37: shipkeep.agent.v1.RestoreDatabase
-	(*ConfigurePeers)(nil),                 // 38: shipkeep.agent.v1.ConfigurePeers
-	(*CollectFacts)(nil),                   // 39: shipkeep.agent.v1.CollectFacts
-	(*UpgradeAgent)(nil),                   // 40: shipkeep.agent.v1.UpgradeAgent
-	(*StopStatefulWorkloads)(nil),          // 41: shipkeep.agent.v1.StopStatefulWorkloads
-	(*UpgradeControlPlane)(nil),            // 42: shipkeep.agent.v1.UpgradeControlPlane
-	(*NodeFacts)(nil),                      // 43: shipkeep.agent.v1.NodeFacts
-	(*HealthCheckResult)(nil),              // 44: shipkeep.agent.v1.HealthCheckResult
-	(*ActionResult)(nil),                   // 45: shipkeep.agent.v1.ActionResult
-	(*Mount_Tmpfs)(nil),                    // 46: shipkeep.agent.v1.Mount.Tmpfs
-	nil,                                    // 47: shipkeep.agent.v1.ContainerSpec.LabelsEntry
-	nil,                                    // 48: shipkeep.agent.v1.BuildImage.ArgsEntry
-	(*BuildImage_Limits)(nil),              // 49: shipkeep.agent.v1.BuildImage.Limits
-	nil,                                    // 50: shipkeep.agent.v1.EnsureVolume.LabelsEntry
-	nil,                                    // 51: shipkeep.agent.v1.UpgradeControlPlane.ImageRefsEntry
-	(*ActionResult_BuildImageResult)(nil),  // 52: shipkeep.agent.v1.ActionResult.BuildImageResult
-	(*ActionResult_ReleaseTaskResult)(nil), // 53: shipkeep.agent.v1.ActionResult.ReleaseTaskResult
-	(*ActionResult_TransferResult)(nil),    // 54: shipkeep.agent.v1.ActionResult.TransferResult
-	(*durationpb.Duration)(nil),            // 55: google.protobuf.Duration
-	(*timestamppb.Timestamp)(nil),          // 56: google.protobuf.Timestamp
+	(NodeRole)(0),                          // 4: shipkeep.agent.v1.NodeRole
+	(PortMapping_Protocol)(0),              // 5: shipkeep.agent.v1.PortMapping.Protocol
+	(RestartPolicy_Mode)(0),                // 6: shipkeep.agent.v1.RestartPolicy.Mode
+	(*EnvVar)(nil),                         // 7: shipkeep.agent.v1.EnvVar
+	(*SecretEnv)(nil),                      // 8: shipkeep.agent.v1.SecretEnv
+	(*PortMapping)(nil),                    // 9: shipkeep.agent.v1.PortMapping
+	(*Mount)(nil),                          // 10: shipkeep.agent.v1.Mount
+	(*Resources)(nil),                      // 11: shipkeep.agent.v1.Resources
+	(*HealthCheckSpec)(nil),                // 12: shipkeep.agent.v1.HealthCheckSpec
+	(*RestartPolicy)(nil),                  // 13: shipkeep.agent.v1.RestartPolicy
+	(*ContainerSpec)(nil),                  // 14: shipkeep.agent.v1.ContainerSpec
+	(*RegistryCredentials)(nil),            // 15: shipkeep.agent.v1.RegistryCredentials
+	(*S3Target)(nil),                       // 16: shipkeep.agent.v1.S3Target
+	(*Upstream)(nil),                       // 17: shipkeep.agent.v1.Upstream
+	(*Route)(nil),                          // 18: shipkeep.agent.v1.Route
+	(*WireGuardPeer)(nil),                  // 19: shipkeep.agent.v1.WireGuardPeer
+	(*CosignBundle)(nil),                   // 20: shipkeep.agent.v1.CosignBundle
+	(*EnsureNetwork)(nil),                  // 21: shipkeep.agent.v1.EnsureNetwork
+	(*PullImage)(nil),                      // 22: shipkeep.agent.v1.PullImage
+	(*BuildImage)(nil),                     // 23: shipkeep.agent.v1.BuildImage
+	(*CreateContainer)(nil),                // 24: shipkeep.agent.v1.CreateContainer
+	(*StartContainer)(nil),                 // 25: shipkeep.agent.v1.StartContainer
+	(*StopContainer)(nil),                  // 26: shipkeep.agent.v1.StopContainer
+	(*RemoveContainer)(nil),                // 27: shipkeep.agent.v1.RemoveContainer
+	(*EnsureVolume)(nil),                   // 28: shipkeep.agent.v1.EnsureVolume
+	(*RemoveVolume)(nil),                   // 29: shipkeep.agent.v1.RemoveVolume
+	(*HealthCheck)(nil),                    // 30: shipkeep.agent.v1.HealthCheck
+	(*UpsertRoute)(nil),                    // 31: shipkeep.agent.v1.UpsertRoute
+	(*RemoveRoute)(nil),                    // 32: shipkeep.agent.v1.RemoveRoute
+	(*RunReleaseTask)(nil),                 // 33: shipkeep.agent.v1.RunReleaseTask
+	(*ExecSession)(nil),                    // 34: shipkeep.agent.v1.ExecSession
+	(*BackupVolume)(nil),                   // 35: shipkeep.agent.v1.BackupVolume
+	(*RestoreVolume)(nil),                  // 36: shipkeep.agent.v1.RestoreVolume
+	(*DumpDatabase)(nil),                   // 37: shipkeep.agent.v1.DumpDatabase
+	(*RestoreDatabase)(nil),                // 38: shipkeep.agent.v1.RestoreDatabase
+	(*ConfigurePeers)(nil),                 // 39: shipkeep.agent.v1.ConfigurePeers
+	(*CollectFacts)(nil),                   // 40: shipkeep.agent.v1.CollectFacts
+	(*UpgradeAgent)(nil),                   // 41: shipkeep.agent.v1.UpgradeAgent
+	(*StopStatefulWorkloads)(nil),          // 42: shipkeep.agent.v1.StopStatefulWorkloads
+	(*UpgradeControlPlane)(nil),            // 43: shipkeep.agent.v1.UpgradeControlPlane
+	(*NodeFacts)(nil),                      // 44: shipkeep.agent.v1.NodeFacts
+	(*HealthCheckResult)(nil),              // 45: shipkeep.agent.v1.HealthCheckResult
+	(*ActionResult)(nil),                   // 46: shipkeep.agent.v1.ActionResult
+	(*Mount_Tmpfs)(nil),                    // 47: shipkeep.agent.v1.Mount.Tmpfs
+	nil,                                    // 48: shipkeep.agent.v1.ContainerSpec.LabelsEntry
+	nil,                                    // 49: shipkeep.agent.v1.BuildImage.ArgsEntry
+	(*BuildImage_Limits)(nil),              // 50: shipkeep.agent.v1.BuildImage.Limits
+	nil,                                    // 51: shipkeep.agent.v1.EnsureVolume.LabelsEntry
+	nil,                                    // 52: shipkeep.agent.v1.UpgradeControlPlane.ImageRefsEntry
+	(*ActionResult_BuildImageResult)(nil),  // 53: shipkeep.agent.v1.ActionResult.BuildImageResult
+	(*ActionResult_ReleaseTaskResult)(nil), // 54: shipkeep.agent.v1.ActionResult.ReleaseTaskResult
+	(*ActionResult_TransferResult)(nil),    // 55: shipkeep.agent.v1.ActionResult.TransferResult
+	(*durationpb.Duration)(nil),            // 56: google.protobuf.Duration
+	(*timestamppb.Timestamp)(nil),          // 57: google.protobuf.Timestamp
 }
 var file_shipkeep_agent_v1_actions_proto_depIdxs = []int32{
-	4,  // 0: shipkeep.agent.v1.PortMapping.protocol:type_name -> shipkeep.agent.v1.PortMapping.Protocol
-	46, // 1: shipkeep.agent.v1.Mount.tmpfs:type_name -> shipkeep.agent.v1.Mount.Tmpfs
-	55, // 2: shipkeep.agent.v1.HealthCheckSpec.interval:type_name -> google.protobuf.Duration
-	55, // 3: shipkeep.agent.v1.HealthCheckSpec.timeout:type_name -> google.protobuf.Duration
-	55, // 4: shipkeep.agent.v1.HealthCheckSpec.start_period:type_name -> google.protobuf.Duration
-	5,  // 5: shipkeep.agent.v1.RestartPolicy.mode:type_name -> shipkeep.agent.v1.RestartPolicy.Mode
-	55, // 6: shipkeep.agent.v1.RestartPolicy.window:type_name -> google.protobuf.Duration
-	6,  // 7: shipkeep.agent.v1.ContainerSpec.env:type_name -> shipkeep.agent.v1.EnvVar
-	7,  // 8: shipkeep.agent.v1.ContainerSpec.secrets:type_name -> shipkeep.agent.v1.SecretEnv
-	8,  // 9: shipkeep.agent.v1.ContainerSpec.ports:type_name -> shipkeep.agent.v1.PortMapping
-	9,  // 10: shipkeep.agent.v1.ContainerSpec.mounts:type_name -> shipkeep.agent.v1.Mount
-	10, // 11: shipkeep.agent.v1.ContainerSpec.resources:type_name -> shipkeep.agent.v1.Resources
-	47, // 12: shipkeep.agent.v1.ContainerSpec.labels:type_name -> shipkeep.agent.v1.ContainerSpec.LabelsEntry
-	11, // 13: shipkeep.agent.v1.ContainerSpec.health_check:type_name -> shipkeep.agent.v1.HealthCheckSpec
-	12, // 14: shipkeep.agent.v1.ContainerSpec.restart_policy:type_name -> shipkeep.agent.v1.RestartPolicy
+	5,  // 0: shipkeep.agent.v1.PortMapping.protocol:type_name -> shipkeep.agent.v1.PortMapping.Protocol
+	47, // 1: shipkeep.agent.v1.Mount.tmpfs:type_name -> shipkeep.agent.v1.Mount.Tmpfs
+	56, // 2: shipkeep.agent.v1.HealthCheckSpec.interval:type_name -> google.protobuf.Duration
+	56, // 3: shipkeep.agent.v1.HealthCheckSpec.timeout:type_name -> google.protobuf.Duration
+	56, // 4: shipkeep.agent.v1.HealthCheckSpec.start_period:type_name -> google.protobuf.Duration
+	6,  // 5: shipkeep.agent.v1.RestartPolicy.mode:type_name -> shipkeep.agent.v1.RestartPolicy.Mode
+	56, // 6: shipkeep.agent.v1.RestartPolicy.window:type_name -> google.protobuf.Duration
+	7,  // 7: shipkeep.agent.v1.ContainerSpec.env:type_name -> shipkeep.agent.v1.EnvVar
+	8,  // 8: shipkeep.agent.v1.ContainerSpec.secrets:type_name -> shipkeep.agent.v1.SecretEnv
+	9,  // 9: shipkeep.agent.v1.ContainerSpec.ports:type_name -> shipkeep.agent.v1.PortMapping
+	10, // 10: shipkeep.agent.v1.ContainerSpec.mounts:type_name -> shipkeep.agent.v1.Mount
+	11, // 11: shipkeep.agent.v1.ContainerSpec.resources:type_name -> shipkeep.agent.v1.Resources
+	48, // 12: shipkeep.agent.v1.ContainerSpec.labels:type_name -> shipkeep.agent.v1.ContainerSpec.LabelsEntry
+	12, // 13: shipkeep.agent.v1.ContainerSpec.health_check:type_name -> shipkeep.agent.v1.HealthCheckSpec
+	13, // 14: shipkeep.agent.v1.ContainerSpec.restart_policy:type_name -> shipkeep.agent.v1.RestartPolicy
 	0,  // 15: shipkeep.agent.v1.ContainerSpec.cap_add:type_name -> shipkeep.agent.v1.Capability
-	55, // 16: shipkeep.agent.v1.ContainerSpec.stop_timeout:type_name -> google.protobuf.Duration
-	56, // 17: shipkeep.agent.v1.RegistryCredentials.expires_at:type_name -> google.protobuf.Timestamp
-	56, // 18: shipkeep.agent.v1.S3Target.expires_at:type_name -> google.protobuf.Timestamp
-	16, // 19: shipkeep.agent.v1.Route.upstreams:type_name -> shipkeep.agent.v1.Upstream
+	56, // 16: shipkeep.agent.v1.ContainerSpec.stop_timeout:type_name -> google.protobuf.Duration
+	57, // 17: shipkeep.agent.v1.RegistryCredentials.expires_at:type_name -> google.protobuf.Timestamp
+	57, // 18: shipkeep.agent.v1.S3Target.expires_at:type_name -> google.protobuf.Timestamp
+	17, // 19: shipkeep.agent.v1.Route.upstreams:type_name -> shipkeep.agent.v1.Upstream
 	3,  // 20: shipkeep.agent.v1.Route.tls_mode:type_name -> shipkeep.agent.v1.TlsMode
-	55, // 21: shipkeep.agent.v1.Route.drain_timeout:type_name -> google.protobuf.Duration
-	55, // 22: shipkeep.agent.v1.WireGuardPeer.persistent_keepalive:type_name -> google.protobuf.Duration
-	14, // 23: shipkeep.agent.v1.PullImage.registry_credentials:type_name -> shipkeep.agent.v1.RegistryCredentials
+	56, // 21: shipkeep.agent.v1.Route.drain_timeout:type_name -> google.protobuf.Duration
+	56, // 22: shipkeep.agent.v1.WireGuardPeer.persistent_keepalive:type_name -> google.protobuf.Duration
+	15, // 23: shipkeep.agent.v1.PullImage.registry_credentials:type_name -> shipkeep.agent.v1.RegistryCredentials
 	2,  // 24: shipkeep.agent.v1.BuildImage.build_type:type_name -> shipkeep.agent.v1.BuildType
-	48, // 25: shipkeep.agent.v1.BuildImage.args:type_name -> shipkeep.agent.v1.BuildImage.ArgsEntry
-	14, // 26: shipkeep.agent.v1.BuildImage.push_credentials:type_name -> shipkeep.agent.v1.RegistryCredentials
-	49, // 27: shipkeep.agent.v1.BuildImage.limits:type_name -> shipkeep.agent.v1.BuildImage.Limits
-	13, // 28: shipkeep.agent.v1.CreateContainer.spec:type_name -> shipkeep.agent.v1.ContainerSpec
-	55, // 29: shipkeep.agent.v1.StopContainer.stop_timeout:type_name -> google.protobuf.Duration
-	50, // 30: shipkeep.agent.v1.EnsureVolume.labels:type_name -> shipkeep.agent.v1.EnsureVolume.LabelsEntry
-	11, // 31: shipkeep.agent.v1.HealthCheck.spec:type_name -> shipkeep.agent.v1.HealthCheckSpec
-	55, // 32: shipkeep.agent.v1.HealthCheck.deadline:type_name -> google.protobuf.Duration
-	17, // 33: shipkeep.agent.v1.UpsertRoute.route:type_name -> shipkeep.agent.v1.Route
-	55, // 34: shipkeep.agent.v1.RemoveRoute.drain_timeout:type_name -> google.protobuf.Duration
-	13, // 35: shipkeep.agent.v1.RunReleaseTask.spec:type_name -> shipkeep.agent.v1.ContainerSpec
-	55, // 36: shipkeep.agent.v1.RunReleaseTask.timeout:type_name -> google.protobuf.Duration
-	55, // 37: shipkeep.agent.v1.ExecSession.time_limit:type_name -> google.protobuf.Duration
-	15, // 38: shipkeep.agent.v1.BackupVolume.s3_target:type_name -> shipkeep.agent.v1.S3Target
-	15, // 39: shipkeep.agent.v1.RestoreVolume.s3_target:type_name -> shipkeep.agent.v1.S3Target
+	49, // 25: shipkeep.agent.v1.BuildImage.args:type_name -> shipkeep.agent.v1.BuildImage.ArgsEntry
+	15, // 26: shipkeep.agent.v1.BuildImage.push_credentials:type_name -> shipkeep.agent.v1.RegistryCredentials
+	50, // 27: shipkeep.agent.v1.BuildImage.limits:type_name -> shipkeep.agent.v1.BuildImage.Limits
+	14, // 28: shipkeep.agent.v1.CreateContainer.spec:type_name -> shipkeep.agent.v1.ContainerSpec
+	56, // 29: shipkeep.agent.v1.StopContainer.stop_timeout:type_name -> google.protobuf.Duration
+	51, // 30: shipkeep.agent.v1.EnsureVolume.labels:type_name -> shipkeep.agent.v1.EnsureVolume.LabelsEntry
+	12, // 31: shipkeep.agent.v1.HealthCheck.spec:type_name -> shipkeep.agent.v1.HealthCheckSpec
+	56, // 32: shipkeep.agent.v1.HealthCheck.deadline:type_name -> google.protobuf.Duration
+	18, // 33: shipkeep.agent.v1.UpsertRoute.route:type_name -> shipkeep.agent.v1.Route
+	56, // 34: shipkeep.agent.v1.RemoveRoute.drain_timeout:type_name -> google.protobuf.Duration
+	14, // 35: shipkeep.agent.v1.RunReleaseTask.spec:type_name -> shipkeep.agent.v1.ContainerSpec
+	56, // 36: shipkeep.agent.v1.RunReleaseTask.timeout:type_name -> google.protobuf.Duration
+	56, // 37: shipkeep.agent.v1.ExecSession.time_limit:type_name -> google.protobuf.Duration
+	16, // 38: shipkeep.agent.v1.BackupVolume.s3_target:type_name -> shipkeep.agent.v1.S3Target
+	16, // 39: shipkeep.agent.v1.RestoreVolume.s3_target:type_name -> shipkeep.agent.v1.S3Target
 	1,  // 40: shipkeep.agent.v1.DumpDatabase.engine:type_name -> shipkeep.agent.v1.DatabaseEngine
-	15, // 41: shipkeep.agent.v1.DumpDatabase.s3_target:type_name -> shipkeep.agent.v1.S3Target
+	16, // 41: shipkeep.agent.v1.DumpDatabase.s3_target:type_name -> shipkeep.agent.v1.S3Target
 	1,  // 42: shipkeep.agent.v1.RestoreDatabase.engine:type_name -> shipkeep.agent.v1.DatabaseEngine
-	15, // 43: shipkeep.agent.v1.RestoreDatabase.s3_target:type_name -> shipkeep.agent.v1.S3Target
-	18, // 44: shipkeep.agent.v1.ConfigurePeers.peers:type_name -> shipkeep.agent.v1.WireGuardPeer
-	19, // 45: shipkeep.agent.v1.UpgradeAgent.cosign_bundle:type_name -> shipkeep.agent.v1.CosignBundle
-	51, // 46: shipkeep.agent.v1.UpgradeControlPlane.image_refs:type_name -> shipkeep.agent.v1.UpgradeControlPlane.ImageRefsEntry
-	19, // 47: shipkeep.agent.v1.UpgradeControlPlane.cosign_bundle:type_name -> shipkeep.agent.v1.CosignBundle
-	52, // 48: shipkeep.agent.v1.ActionResult.build_image:type_name -> shipkeep.agent.v1.ActionResult.BuildImageResult
-	44, // 49: shipkeep.agent.v1.ActionResult.health_check:type_name -> shipkeep.agent.v1.HealthCheckResult
-	53, // 50: shipkeep.agent.v1.ActionResult.release_task:type_name -> shipkeep.agent.v1.ActionResult.ReleaseTaskResult
-	54, // 51: shipkeep.agent.v1.ActionResult.transfer:type_name -> shipkeep.agent.v1.ActionResult.TransferResult
-	43, // 52: shipkeep.agent.v1.ActionResult.facts:type_name -> shipkeep.agent.v1.NodeFacts
-	55, // 53: shipkeep.agent.v1.BuildImage.Limits.timeout:type_name -> google.protobuf.Duration
-	55, // 54: shipkeep.agent.v1.ActionResult.BuildImageResult.duration:type_name -> google.protobuf.Duration
-	55, // 55: shipkeep.agent.v1.ActionResult.TransferResult.duration:type_name -> google.protobuf.Duration
-	56, // [56:56] is the sub-list for method output_type
-	56, // [56:56] is the sub-list for method input_type
-	56, // [56:56] is the sub-list for extension type_name
-	56, // [56:56] is the sub-list for extension extendee
-	0,  // [0:56] is the sub-list for field type_name
+	16, // 43: shipkeep.agent.v1.RestoreDatabase.s3_target:type_name -> shipkeep.agent.v1.S3Target
+	19, // 44: shipkeep.agent.v1.ConfigurePeers.peers:type_name -> shipkeep.agent.v1.WireGuardPeer
+	20, // 45: shipkeep.agent.v1.UpgradeAgent.cosign_bundle:type_name -> shipkeep.agent.v1.CosignBundle
+	52, // 46: shipkeep.agent.v1.UpgradeControlPlane.image_refs:type_name -> shipkeep.agent.v1.UpgradeControlPlane.ImageRefsEntry
+	20, // 47: shipkeep.agent.v1.UpgradeControlPlane.cosign_bundle:type_name -> shipkeep.agent.v1.CosignBundle
+	4,  // 48: shipkeep.agent.v1.NodeFacts.role:type_name -> shipkeep.agent.v1.NodeRole
+	53, // 49: shipkeep.agent.v1.ActionResult.build_image:type_name -> shipkeep.agent.v1.ActionResult.BuildImageResult
+	45, // 50: shipkeep.agent.v1.ActionResult.health_check:type_name -> shipkeep.agent.v1.HealthCheckResult
+	54, // 51: shipkeep.agent.v1.ActionResult.release_task:type_name -> shipkeep.agent.v1.ActionResult.ReleaseTaskResult
+	55, // 52: shipkeep.agent.v1.ActionResult.transfer:type_name -> shipkeep.agent.v1.ActionResult.TransferResult
+	44, // 53: shipkeep.agent.v1.ActionResult.facts:type_name -> shipkeep.agent.v1.NodeFacts
+	56, // 54: shipkeep.agent.v1.BuildImage.Limits.timeout:type_name -> google.protobuf.Duration
+	56, // 55: shipkeep.agent.v1.ActionResult.BuildImageResult.duration:type_name -> google.protobuf.Duration
+	56, // 56: shipkeep.agent.v1.ActionResult.TransferResult.duration:type_name -> google.protobuf.Duration
+	57, // [57:57] is the sub-list for method output_type
+	57, // [57:57] is the sub-list for method input_type
+	57, // [57:57] is the sub-list for extension type_name
+	57, // [57:57] is the sub-list for extension extendee
+	0,  // [0:57] is the sub-list for field type_name
 }
 
 func init() { file_shipkeep_agent_v1_actions_proto_init() }
@@ -4125,7 +4201,7 @@ func file_shipkeep_agent_v1_actions_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_shipkeep_agent_v1_actions_proto_rawDesc), len(file_shipkeep_agent_v1_actions_proto_rawDesc)),
-			NumEnums:      6,
+			NumEnums:      7,
 			NumMessages:   49,
 			NumExtensions: 0,
 			NumServices:   0,
