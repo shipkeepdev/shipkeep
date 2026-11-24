@@ -135,6 +135,16 @@ for line in Type=notify NotifyAccess=main StartLimitIntervalSec=0 TimeoutStartSe
 done
 [[ ${unit%%ExecStart=*} == *ExecStartPre=* ]] || die 'the upgrade guard runs after the agent'
 [[ $unit != *OnFailure=* ]] || die 'the agent unit has an OnFailure rollback'
+[[ $unit == *$'\nAfter=network-online.target docker.service shipkeep-caddy.service systemd-tmpfiles-setup.service\nWants=network-online.target shipkeep-caddy.service\n'* ]] || die 'a server agent does not wait for its Caddy'
+# On a control plane machine there is no Caddy of the agent's own to wait for, and the same guard.
+alone=$(agent_unit control-plane-only) || die 'no control-plane-only agent unit'
+[[ $alone != *shipkeep-caddy* ]] || die 'a control-plane-only agent waits for a Caddy it has not'
+[[ ${alone//$'\nAfter=network-online.target docker.service systemd-tmpfiles-setup.service\nWants=network-online.target\n'/$'\n'} == "${unit//$'\nAfter=network-online.target docker.service shipkeep-caddy.service systemd-tmpfiles-setup.service\nWants=network-online.target shipkeep-caddy.service\n'/$'\n'}" ]] ||
+  die 'the control-plane-only agent unit differs in more than Caddy'
+caddy=$(caddy_unit) || die 'no Caddy unit'
+for line in 'ExecStart=/usr/bin/caddy run --resume --config /etc/shipkeep-caddy.json' User=shipkeep-caddy CapabilityBoundingSet=CAP_NET_BIND_SERVICE ReadWritePaths=/run/shipkeep; do
+  [[ $caddy == *$'\n'"$line"$'\n'* ]] || die "Caddy unit lacks $line"
+done
 # The agent refuses an upgrade unless its unit runs the guard it looks for, as an active line.
 guard_exe=$(sed -n 's/^\tguardExecutable *= "\(.*\)"$/\1/p' agent/internal/actions/upgrade.go)
 guard_cmd=$(sed -n 's/^\tguardCommand *= "\(.*\)"$/\1/p' agent/internal/actions/upgrade.go)
@@ -150,7 +160,17 @@ for options in '--local-control-plane 0.0.0.0:3000 --agent-file /bin/true' '--lo
   if grep -q "$token" "$work/output"; then die 'the token was shown'; fi
   grep -Eq 'local control plane|agent file|--agent-file' "$work/output" || die "refused $options for another reason: $(cat "$work/output")"
 done
+# A refused control-plane-only option stops before anything else, and never shows the token.
+for options in '--control-plane-only no --agent-file /bin/true' '--control-plane-only yes' \
+  '--control-plane-only yes --agent-file /bin/true --local-control-plane 127.0.0.1:3000' "--control-plane-only \$(id) --agent-file /bin/true"; do
+  # shellcheck disable=SC2086 # the options are words on purpose
+  if printf '%s\n' "$token" | bash deploy/install.sh --control-plane example.com:7443 --ca-fingerprint "sha256:$pin" --origin https://example.com --amd64-sha256 "$pin" --arm64-sha256 "$pin" $options >"$work/output" 2>&1; then
+    die "accepted $options"
+  fi
+  if grep -q "$token" "$work/output"; then die 'the token was shown'; fi
+  grep -Eq 'control-plane-only|control plane machine' "$work/output" || die "refused $options for another reason: $(cat "$work/output")"
+done
 # shellcheck source=/dev/null
 . deploy/docker-repository-test.sh
 check_docker_repository deploy/install.sh "$work/apt"
-printf 'Installer input, redaction, signing-key, egress and single-machine checks passed.\n'
+printf 'Installer input, redaction, signing-key, egress, single-machine and control-plane-only checks passed.\n'
