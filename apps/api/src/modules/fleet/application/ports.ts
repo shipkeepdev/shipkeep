@@ -77,6 +77,11 @@ export interface NodeStore {
   ): Promise<NodeRecord | undefined>;
   /** Run under `runTenant(organizationId)`: at most 100 nodes, newest first, exclusive cursor. */
   list(organizationId: string, beforeId?: string): Promise<NodeRecord[]>;
+  /**
+   * Run under `runTenant(organizationId)`: locks the node's row until the transaction ends, so that
+   * action admissions on one node happen one at a time. False when the node does not exist.
+   */
+  lockForAdmission(organizationId: string, id: string): Promise<boolean>;
 }
 
 export interface IssuedCertificate {

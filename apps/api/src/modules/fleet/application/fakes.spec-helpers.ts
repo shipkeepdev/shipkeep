@@ -84,6 +84,14 @@ export class MemoryNodeStore implements NodeStore {
     this.nodes[index] = { ...node, status: 'removed' };
     return Promise.resolve(true);
   }
+  /** Admissions locked, in order: `organizationId/id`. */
+  readonly locked: string[] = [];
+  lockForAdmission(organizationId: string, id: string): Promise<boolean> {
+    this.locked.push(`${organizationId}/${id}`);
+    return Promise.resolve(
+      this.nodes.some((node) => node.organizationId === organizationId && node.id === id),
+    );
+  }
   list(organizationId: string, beforeId?: string): Promise<NodeRecord[]> {
     return Promise.resolve(
       this.nodes

@@ -1,4 +1,4 @@
-import type { DomainEvent } from '@shipkeep/domain';
+import { ConflictError, type DomainEvent } from '@shipkeep/domain';
 import type { ActionRequest } from '@shipkeep/proto-ts';
 
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
@@ -94,13 +94,18 @@ class Actions {
   }[] = [];
   readonly records = new Map<string, AgentActionRecord>();
   readonly busy = new Set<string>();
+  /** Servers where an action is admitted between the rollout's read and its own admission. */
+  readonly raced = new Set<string>();
   readonly queue = {
     enqueue: (input: {
       nodeId: string;
       idempotencyKey: string;
       action: ActionRequest['action'];
       deadline: Date;
+      exclusive?: boolean;
     }) => {
+      if (input.exclusive && this.raced.has(input.nodeId))
+        return Promise.reject(new ConflictError('node_busy', 'Another action is not finished.'));
       this.sent.push({
         nodeId: input.nodeId,
         key: input.idempotencyKey,
@@ -373,6 +378,20 @@ describe('AgentUpgrades', () => {
     t.actions.busy.delete(C);
     await t.service.advance(ORG, id, () => now);
     expect(t.actions.sent.map((sent) => sent.nodeId)).toEqual([C]);
+  });
+
+  it('waits when an action is admitted on the server between its read and the upgrade', async () => {
+    const t = setup();
+    t.node(A, 'edge-a', { agent_version: '0.1.0', architecture: 'amd64' });
+    const { id } = await t.service.start(context, ORG, '0.2.0', START);
+    t.actions.raced.add(A);
+    expect(await t.service.advance(ORG, id, () => START)).toBe(UPGRADE_TIMINGS.pollSeconds);
+    expect(t.actions.sent).toEqual([]);
+    expect(t.upgrades.rows[0]).toMatchObject({ state: 'running', position: 0, actionId: null });
+    t.actions.raced.delete(A);
+    await t.service.advance(ORG, id, () => START);
+    expect(t.actions.sent.map((sent) => sent.nodeId)).toEqual([A]);
+    expect(t.upgrades.rows[0]?.actionId).not.toBeNull();
   });
 
   it('stops when the release cannot be read at the turn of a server', async () => {

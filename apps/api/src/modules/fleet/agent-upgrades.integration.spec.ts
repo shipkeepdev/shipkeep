@@ -1,6 +1,6 @@
 import { create } from '@bufbuild/protobuf';
 import { Client } from 'pg';
-import { ActionUpdateSchema, OperationState } from '@shipkeep/proto-ts';
+import { ActionUpdateSchema, CollectFactsSchema, OperationState } from '@shipkeep/proto-ts';
 
 import { auditLog } from '../../testing/audit-log';
 import { enrollTestNode } from '../../testing/enroll-test-node';
@@ -47,13 +47,20 @@ describe('agent upgrades', () => {
 
   it('upgrades each agent in turn, audited, and refuses a second rollout', async () => {
     const heartbeatAt = new Date();
-    const nodeId = await enrollTestNode(fixture, {
-      facts: { hostname: 'edge-upgrade.example.com', architecture: 'amd64' },
+    const first = await enrollTestNode(fixture, {
+      name: 'edge-a',
+      facts: { hostname: 'edge-a.example.com', architecture: 'amd64' },
+      heartbeatAt,
+    });
+    const second = await enrollTestNode(fixture, {
+      name: 'edge-b',
+      facts: { hostname: 'edge-b.example.com', architecture: 'amd64' },
       heartbeatAt,
     });
     const root = `${fixture.root}/agent-upgrades`;
     const before = await fixture.get(root, 'admin').expect(200);
-    expect(before.body).toEqual({ version: '0.2.0', pending: [nodeId], rollout: null });
+    expect(before.body).toMatchObject({ version: '0.2.0', rollout: null });
+    expect((before.body as { pending: string[] }).pending.sort()).toEqual([first, second].sort());
     for (const actor of ['member', 'projectAdmin', 'outsider'] as const) {
       await fixture.get(root, actor).expect(404);
       await fixture.post(root, actor, { version: '0.2.0' }).expect(404);
@@ -63,54 +70,103 @@ describe('agent upgrades', () => {
     await fixture.post(root, 'admin', { version: '0.2.0; rm' }).expect(400);
     const started = await fixture.post(root, 'admin', { version: '0.2.0' }).expect(202);
     const rollout = started.body as { id: string; state: string; nodeIds: string[] };
+    // In name order: edge-a, then edge-b.
     expect(rollout).toMatchObject({
       version: '0.2.0',
       state: 'running',
-      nodeIds: [nodeId],
+      nodeIds: [first, second],
       position: 0,
     });
     expect(asked).toEqual(['0.2.0/amd64']);
     const again = await fixture.post(root, 'admin', { version: '0.2.0' }).expect(409);
     expect(JSON.stringify(again.body)).toContain('agent_upgrade_running');
 
-    // The queue's run sends UpgradeAgent with the release, under the rollout's key.
     const upgrades = fixture.app.get(AgentUpgrades);
+    const actions = fixture.app.get(AgentActions);
     const organizationId = fixture.organizationId;
-    expect(await upgrades.advance(organizationId, rollout.id, () => heartbeatAt)).toBe(15);
-    const action = await fixture.database.runTenant(organizationId, () =>
-      fixture.database.client.agentAction.findFirstOrThrow({
-        where: { nodeId, idempotencyKey: upgradeActionKey(rollout.id, nodeId) },
-      }),
-    );
-    expect(action).toMatchObject({ kind: 'upgradeAgent', state: 'queued' });
-
-    // The agent reports success, then comes back with the new version.
-    const identity = { organizationId, nodeId, serial: '' };
-    await fixture.app
-      .get(AgentActions)
-      .record(
-        identity,
-        create(ActionUpdateSchema, { actionId: action.id, state: OperationState.SUCCEEDED }),
+    const clock = () => heartbeatAt;
+    const upgradeActions = () =>
+      fixture.database.runTenant(organizationId, () =>
+        fixture.database.client.agentAction.findMany({
+          where: { kind: 'upgradeAgent' },
+          orderBy: { id: 'asc' },
+        }),
       );
+    const finish = async (nodeId: string, actionId: string) => {
+      await actions.record(
+        { organizationId, nodeId, serial: '' },
+        create(ActionUpdateSchema, { actionId, state: OperationState.SUCCEEDED }),
+      );
+    };
     const nodes = fixture.app.get<NodeStore>(NODE_STORE);
-    await fixture.database.runTenant(organizationId, async () => {
-      const node = await nodes.findById(organizationId, nodeId);
-      await nodes.updateFacts(organizationId, nodeId, { ...node?.facts, agent_version: '0.2.0' });
+    const report = (nodeId: string) =>
+      fixture.database.runTenant(organizationId, async () => {
+        const node = await nodes.findById(organizationId, nodeId);
+        await nodes.updateFacts(organizationId, nodeId, { ...node?.facts, agent_version: '0.2.0' });
+      });
+
+    // Another action of edge-a is unfinished, as during a deployment: its turn waits.
+    const other = await actions.enqueue({
+      organizationId,
+      nodeId: first,
+      idempotencyKey: 'facts:before-upgrade',
+      action: { case: 'collectFacts', value: create(CollectFactsSchema, {}) },
+      deadline: new Date(Date.now() + 60_000),
+      actor: { kind: 'system' },
     });
-    expect(await upgrades.advance(organizationId, rollout.id, () => heartbeatAt)).toBeNull();
+    expect(await upgrades.advance(organizationId, rollout.id, clock)).toBe(15);
+    expect(await upgradeActions()).toEqual([]);
+    // Nor can an exclusive admission go past it, whatever the rollout read before.
+    await expect(
+      actions.enqueue({
+        organizationId,
+        nodeId: first,
+        idempotencyKey: upgradeActionKey(rollout.id, first),
+        action: { case: 'collectFacts', value: create(CollectFactsSchema, {}) },
+        deadline: new Date(Date.now() + 60_000),
+        actor: { kind: 'system' },
+        exclusive: true,
+      }),
+    ).rejects.toMatchObject({ code: 'node_busy' });
+    await finish(first, other.id);
+
+    // edge-a's turn: one UpgradeAgent, under the rollout's key; nothing for edge-b yet.
+    expect(await upgrades.advance(organizationId, rollout.id, clock)).toBe(15);
+    const sent = await upgradeActions();
+    const toFirst = sent.at(0);
+    const rest = sent.slice(1);
+    expect(rest).toEqual([]);
+    expect(toFirst).toMatchObject({
+      nodeId: first,
+      idempotencyKey: upgradeActionKey(rollout.id, first),
+      state: 'queued',
+    });
+    expect(await upgrades.advance(organizationId, rollout.id, clock)).toBe(15);
+    expect(await upgradeActions()).toHaveLength(1);
+
+    // edge-a reports success, then comes back with the new version: edge-b's turn comes.
+    await finish(first, toFirst?.id ?? '');
+    await report(first);
+    expect(await upgrades.advance(organizationId, rollout.id, clock)).toBe(15);
+    const both = await upgradeActions();
+    expect(both.map((action) => action.nodeId)).toEqual([first, second]);
+    await finish(second, both.at(1)?.id ?? '');
+    await report(second);
+    expect(await upgrades.advance(organizationId, rollout.id, clock)).toBeNull();
 
     const after = await fixture.get(root, 'admin').expect(200);
     expect(after.body).toMatchObject({
       pending: [],
-      rollout: { id: rollout.id, state: 'succeeded', position: 1, failure: null },
+      rollout: { id: rollout.id, state: 'succeeded', position: 2, failure: null },
     });
     const events = await auditLog().findMany({
       where: { targetType: 'agent_upgrade', targetId: rollout.id },
       orderBy: { id: 'asc' },
     });
     expect(events.map((event) => [event.action, event.metadata])).toEqual([
-      ['fleet.agent_upgrade.started', { version: '0.2.0', nodeIds: [nodeId] }],
-      ['fleet.agent_upgrade.node_upgraded', { nodeId }],
+      ['fleet.agent_upgrade.started', { version: '0.2.0', nodeIds: [first, second] }],
+      ['fleet.agent_upgrade.node_upgraded', { nodeId: first }],
+      ['fleet.agent_upgrade.node_upgraded', { nodeId: second }],
       ['fleet.agent_upgrade.succeeded', { version: '0.2.0' }],
     ]);
     const nothing = await fixture.post(root, 'admin', { version: '0.2.0' }).expect(409);

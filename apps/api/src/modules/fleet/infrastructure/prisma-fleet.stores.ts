@@ -143,6 +143,13 @@ export class PrismaNodeStore implements NodeStore {
     return rows.map(nodeRecord);
   }
 
+  async lockForAdmission(organizationId: string, id: string): Promise<boolean> {
+    const rows = await this.database.client.$queryRaw<{ id: string }[]>`
+      SELECT id FROM nodes WHERE organization_id = ${organizationId}::uuid AND id = ${id}::uuid
+      FOR UPDATE`;
+    return rows.length === 1;
+  }
+
   async insertCertificate(certificate: NodeCertificateRecord): Promise<void> {
     await this.database.client.nodeCertificate.create({ data: certificate });
   }
