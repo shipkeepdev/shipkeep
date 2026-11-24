@@ -163,3 +163,54 @@ func TestRunEgressRefusesAnAddressOffLoopback(t *testing.T) {
 		}
 	}
 }
+
+// The guard runs before each start of the agent and never keeps it from starting (ADR 0028).
+func TestUpgradeGuardAlwaysLetsTheAgentStart(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	stateDir := filepath.Join(dir, "state")
+	binDir := filepath.Join(dir, "bin")
+	for _, path := range []string{stateDir, binDir} {
+		if err := os.MkdirAll(path, 0o700); err != nil {
+			t.Fatal(err)
+		}
+	}
+	config := filepath.Join(dir, "agent.yaml")
+	if err := os.WriteFile(config, []byte("control_plane:\n  address: cp.example.com:7443\n  ca_fingerprint: "+fingerprint+"\npaths:\n  state_dir: "+stateDir+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	binary := filepath.Join(binDir, "shipkeep-agent")
+	for name, body := range map[string]string{binary: "new", binary + ".previous": "old"} {
+		if err := os.WriteFile(name, []byte(body), 0o755); err != nil { //nolint:gosec // executable stand-ins
+			t.Fatal(err)
+		}
+	}
+	record := `{"from":"0.1.0","to":"0.2.0","binary":"` + binary + `","sha256":"aa","at":"2026-11-23T00:00:00Z","state":"pending","attempts":3}`
+	if err := os.WriteFile(filepath.Join(stateDir, "upgrade.json"), []byte(record), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stderr bytes.Buffer
+	// Over the limit: the previous binary comes back.
+	if code := run(context.Background(), []string{"upgrade-guard", "--config", config}, &bytes.Buffer{}, &stderr); code != exitOK {
+		t.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	if data, _ := os.ReadFile(binary); string(data) != "old" {
+		t.Fatalf("binary %q after the guard: %s", data, stderr.String())
+	}
+	// Nothing to do, a broken record, a missing configuration and unexpected arguments: exit 0.
+	for _, args := range [][]string{
+		{"upgrade-guard", "--config", config},
+		{"upgrade-guard", "--config", filepath.Join(dir, "absent.yaml")},
+		{"upgrade-guard", "--config", config, "extra"},
+	} {
+		if code := run(context.Background(), args, &bytes.Buffer{}, &bytes.Buffer{}); code != exitOK {
+			t.Errorf("%v: exit %d", args, code)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "upgrade.json"), []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if code := run(context.Background(), []string{"upgrade-guard", "--config", config}, &bytes.Buffer{}, &bytes.Buffer{}); code != exitOK {
+		t.Fatalf("a broken record kept the agent from starting: %d", code)
+	}
+}
