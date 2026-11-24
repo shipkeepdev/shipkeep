@@ -7,6 +7,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
@@ -34,12 +35,13 @@ func TestCreateExecSendsTheArgumentVector(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(map[string]string{"Id": fakeExec})
 	})
 	// A reference with a slash stays one path segment.
-	id, err := client.CreateExec(context.Background(), "sk-app/../x", ExecConfig{Argv: []string{"sh", "-c", "id; rm -rf /"}, TTY: true, User: "1000"})
-	if err != nil || id != fakeExec {
-		t.Fatalf("got %q, %v", id, err)
+	created, err := client.CreateExec(context.Background(), "sk-app/../x", ExecConfig{Argv: []string{"sh", "-c", "id; rm -rf /"}, TTY: true, User: "1000"})
+	if err != nil || created != (ExecInstance{ID: fakeExec, TTY: true}) {
+		t.Fatalf("got %+v, %v", created, err)
 	}
 	cmd, _ := seen["Cmd"].([]any)
-	if len(cmd) != 3 || cmd[2] != "id; rm -rf /" || seen["Tty"] != true || seen["User"] != "1000" || seen["AttachStdin"] != true {
+	// Docker's default detach sequence, ctrl-p ctrl-q, would cut a terminal session short.
+	if len(cmd) != 3 || cmd[2] != "id; rm -rf /" || seen["Tty"] != true || seen["User"] != "1000" || seen["AttachStdin"] != true || seen["DetachKeys"] != detachKeys {
 		t.Fatalf("request: %v", seen)
 	}
 	if _, err := client.CreateExec(context.Background(), "c", ExecConfig{}); err == nil {
@@ -95,7 +97,7 @@ func TestExecSeparatesStdoutFromStderrAndCarriesStdin(t *testing.T) {
 		_, _ = rw.Write(frame(Stdout, "bye"))
 		_ = rw.Flush()
 	})
-	exec, err := client.StartExec(context.Background(), fakeExec, false)
+	exec, err := client.StartExec(context.Background(), ExecInstance{ID: fakeExec})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +131,7 @@ func TestATTYExecIsOneRawStream(t *testing.T) {
 		_, _ = rw.Write([]byte{2, 0, 0, 0, 0xff, 0xff, 0xff, 0xff, '$', ' '})
 		_ = rw.Flush()
 	})
-	exec, err := client.StartExec(context.Background(), fakeExec, true)
+	exec, err := client.StartExec(context.Background(), ExecInstance{ID: fakeExec, TTY: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,12 +157,12 @@ func TestStartExecReportsTheStatusOnly(t *testing.T) {
 		}
 		http.NotFound(w, r)
 	})
-	_, err := client.StartExec(context.Background(), fakeExec, false)
+	_, err := client.StartExec(context.Background(), ExecInstance{ID: fakeExec})
 	if err == nil || strings.Contains(err.Error(), "secret-path") || !strings.Contains(err.Error(), "409") {
 		t.Fatalf("got %v", err)
 	}
 	for _, id := range []string{"", "../x", fakeExec + "/../../containers"} {
-		if _, err := client.StartExec(context.Background(), id, false); err == nil {
+		if _, err := client.StartExec(context.Background(), ExecInstance{ID: id}); err == nil {
 			t.Fatalf("started the exec id %q", id)
 		}
 	}
@@ -173,7 +175,7 @@ func TestStartExecStopsWithItsContext(t *testing.T) {
 	})
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	if _, err := client.StartExec(ctx, fakeExec, false); err == nil {
+	if _, err := client.StartExec(ctx, ExecInstance{ID: fakeExec}); err == nil {
 		t.Fatal("a start that never answered succeeded")
 	}
 }
@@ -225,5 +227,59 @@ func TestResizeAndInspectExec(t *testing.T) {
 	}
 	if _, err := client.InspectExec(context.Background(), "x"); err == nil {
 		t.Fatal("inspected an invalid exec id")
+	}
+}
+
+func TestNextSplitsAFrameIntoPiecesOfAtMostMax(t *testing.T) {
+	client := startDaemon(t, func(rw *bufio.ReadWriter) {
+		_, _ = rw.Write(frame(Stdout, "0123456789"))
+		_, _ = rw.Write(frame(Stderr, "ab"))
+		_ = rw.Flush()
+	})
+	exec, err := client.StartExec(context.Background(), ExecInstance{ID: fakeExec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer exec.Close() //nolint:errcheck // test session
+	if _, _, err := exec.Next(0); err == nil {
+		t.Fatal("no room was accepted")
+	}
+	got := make([]string, 0, 4)
+	for range 4 {
+		stream, data, err := exec.Next(4)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, fmt.Sprintf("%d:%s", stream, data))
+	}
+	if strings.Join(got, " ") != "1:0123 1:4567 1:89 2:ab" {
+		t.Fatalf("got %v", got)
+	}
+}
+
+func TestASessionEndsWithItsContext(t *testing.T) {
+	client := startDaemon(t, func(rw *bufio.ReadWriter) {
+		// The command writes nothing and never ends.
+		_, _ = rw.ReadString('\x00')
+	})
+	ctx, cancel := context.WithCancel(context.Background())
+	exec, err := client.StartExec(ctx, ExecInstance{ID: fakeExec})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer exec.Close() //nolint:errcheck // test session
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := exec.Next(64)
+		done <- err
+	}()
+	cancel()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a read went on after its session ended")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the read outlived its session")
 	}
 }

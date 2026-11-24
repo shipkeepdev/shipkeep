@@ -57,11 +57,12 @@ func TestRealExecCarriesStdinAndSeparatesStreams(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
 	// The argument is one argv entry: the shell sees it as its script, and nothing splits it.
-	id, err := client.CreateExec(ctx, container, ExecConfig{Argv: []string{"sh", "-c", "read line; echo \"out:$line\"; echo err >&2; exit 7"}})
+	created, err := client.CreateExec(ctx, container, ExecConfig{Argv: []string{"sh", "-c", "read line; echo \"out:$line\"; echo err >&2; exit 7"}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := client.StartExec(ctx, id, false)
+	id := created.ID
+	session, err := client.StartExec(ctx, created)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,11 +102,12 @@ func TestRealTTYExecResizes(t *testing.T) {
 	container := realContainer(t, client)
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 	defer cancel()
-	id, err := client.CreateExec(ctx, container, ExecConfig{Argv: []string{"sh"}, TTY: true})
+	created, err := client.CreateExec(ctx, container, ExecConfig{Argv: []string{"sh"}, TTY: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	session, err := client.StartExec(ctx, id, true)
+	id := created.ID
+	session, err := client.StartExec(ctx, created)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,5 +138,33 @@ func TestRealExecInAStoppedContainerIsRefused(t *testing.T) {
 	}
 	if _, err := client.CreateExec(ctx, container, ExecConfig{Argv: []string{"true"}}); err == nil {
 		t.Fatal("an exec was created in a stopped container")
+	}
+}
+
+// Ctrl-P then Ctrl-Q, Docker's default detach sequence, reach the command like any other keys.
+func TestRealTTYExecKeepsTheDefaultDetachKeys(t *testing.T) {
+	client := realClient(t)
+	container := realContainer(t, client)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	created, err := client.CreateExec(ctx, container, ExecConfig{Argv: []string{"sh"}, TTY: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	session, err := client.StartExec(ctx, created)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close() //nolint:errcheck // test session
+	if _, err := session.Write([]byte("\x10\x11\x15echo still-attached; exit\n")); err != nil {
+		t.Fatal(err)
+	}
+	var output bytes.Buffer
+	for !strings.Contains(output.String(), "\nstill-attached") {
+		_, data, err := session.Next(4096)
+		if err != nil {
+			t.Fatalf("output %q: %v", output.String(), err)
+		}
+		output.Write(data)
 	}
 }
