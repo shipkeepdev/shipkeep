@@ -160,9 +160,11 @@ for options in '--local-control-plane 0.0.0.0:3000 --agent-file /bin/true' '--lo
   if grep -q "$token" "$work/output"; then die 'the token was shown'; fi
   grep -Eq 'local control plane|agent file|--agent-file' "$work/output" || die "refused $options for another reason: $(cat "$work/output")"
 done
-# A refused control-plane-only option stops before anything else, and never shows the token.
-for options in '--control-plane-only no --agent-file /bin/true' '--control-plane-only yes' \
-  '--control-plane-only yes --agent-file /bin/true --local-control-plane 127.0.0.1:3000' "--control-plane-only \$(id) --agent-file /bin/true"; do
+# A refused control-plane-only option stops before anything else, and never shows the token. The
+# agent file is a regular file: /bin/true can be a link, which is refused first.
+: >"$work/agent"
+for options in "--control-plane-only no --agent-file $work/agent" '--control-plane-only yes' \
+  "--control-plane-only yes --agent-file $work/agent --local-control-plane 127.0.0.1:3000" "--control-plane-only \$(id) --agent-file $work/agent"; do
   # shellcheck disable=SC2086 # the options are words on purpose
   if printf '%s\n' "$token" | bash deploy/install.sh --control-plane example.com:7443 --ca-fingerprint "sha256:$pin" --origin https://example.com --amd64-sha256 "$pin" --arm64-sha256 "$pin" $options >"$work/output" 2>&1; then
     die "accepted $options"
