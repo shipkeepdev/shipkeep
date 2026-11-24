@@ -99,7 +99,7 @@ The milestones below describe the whole MVP. The first stable version ships part
     - Acceptance: CA issues a client certificate from a CSR with the SPIFFE identity decided by the control plane; a reused or expired token is rejected; audit events emitted.
   - [x] **M1.2b** API `AgentGatewayService` gRPC server over TLS from the installation CA (Connect-RPC): `Enroll`, `RenewCertificate`, client-certificate authentication with the revocation list, CA fingerprint in the install command, join-token REST endpoint once RBAC exists (moved to M2.7).
     - [x] **M1.2b1** Certificate identity checks and atomic certificate renewal with revocation and audit; tests cover concurrent renewals and rollback on audit failure.
-    - [x] **M1.2b2** TLS gateway and unary RPC adapters, default-deny client-certificate authentication, revocation checks and transport tests. The CA fingerprint is already returned by `IssueJoinToken`; displaying it in the install command and exposing join tokens remain gated on M2.3/M8.3. `Connect` lifecycle and revocation disconnection are implemented in M1.2c3. `ExecStream` remains authenticated and returns `Unimplemented` until authorized exec sessions exist.
+    - [x] **M1.2b2** TLS gateway and unary RPC adapters, default-deny client-certificate authentication, revocation checks and transport tests. The CA fingerprint is already returned by `IssueJoinToken`; displaying it in the install command and exposing join tokens remain gated on M2.3/M8.3. `Connect` lifecycle and revocation disconnection are implemented in M1.2c3. `ExecStream` relays the exec sessions of M6.1, behind the same authentication.
   - [x] **M1.2c** Agent: key generation, CSR, `Enroll`, cert storage (0600), CA fingerprint pinning, `Connect` stream with reconnect and exponential backoff with jitter, cert renewal.
     - [x] **M1.2c1** Ed25519 keys and CSRs, identity-bound credential validation, atomic 0600 credential generations and persistence failure tests.
     - [x] **M1.2c2** Pinned TLS enrollment and certificate renewal client, with rogue-CA and token non-disclosure tests.
@@ -378,7 +378,7 @@ The milestones below describe the whole MVP. The first stable version ships part
 
 - [ ] **M6.1 Log shipping and search** (A + C + W). Depends: M1.4
   - Agent ships logs through the control plane to VictoriaLogs (ADR 0029), which sets the labels; UI live tail and search; 30-day retention.
-  - `ExecStream`: typed, RBAC-checked and audited container exec sessions (rule 3); the gateway currently answers `Unimplemented`.
+  - `ExecStream`: typed, RBAC-checked and audited container exec sessions (rule 3), relayed by the gateway between the agent and the browser's WebSocket.
 - [x] **M6.2 Metrics** (A + C + W). Depends: M1.4
   - Container, node and Caddy metrics to VictoriaMetrics; charts in UI. Done through the control plane (ADR 0024): application, server and Overview charts.
 - [ ] **M6.3 Alerts and notifications** (C + W). Depends: M6.1, M6.2

@@ -932,6 +932,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/exec-sessions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["open"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/logs": {
         readonly parameters: {
             readonly query?: never;
@@ -1750,6 +1766,24 @@ export type components = {
             /** @default true */
             readonly protected: boolean;
         };
+        readonly ExecSessionDto: {
+            /**
+             * Format: date-time
+             * @description Until when the session can be joined.
+             */
+            readonly attachBy: string;
+            /**
+             * Format: date-time
+             * @description When the session ends at the latest.
+             */
+            readonly endsAt: string;
+            /** Format: uuid */
+            readonly id: string;
+            /** Format: uuid */
+            readonly nodeId: string;
+            /** @description The WebSocket path that joins the session. */
+            readonly websocketPath: string;
+        };
         readonly HealthDto: {
             /** @enum {string} */
             readonly status: "ok";
@@ -1977,6 +2011,24 @@ export type components = {
             readonly items: readonly components["schemas"]["NodeReplicaDto"][];
             /** @description True when the server runs more replicas than listed. */
             readonly truncated: boolean;
+        };
+        readonly OpenExecSessionDto: {
+            /**
+             * @description The command and its arguments, an argument vector: never run through a shell.
+             * @default [
+             *       "sh"
+             *     ]
+             */
+            readonly argv: readonly string[];
+            /**
+             * @description How long the session may last, in minutes.
+             * @default 30
+             */
+            readonly minutes: number;
+            /** @default 1 */
+            readonly replica: number;
+            /** @default true */
+            readonly tty: boolean;
         };
         readonly OrganizationCreatedDto: {
             readonly organization: components["schemas"]["OrganizationDto"];
@@ -4034,6 +4086,34 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["DomainListDto"];
+                };
+            };
+        };
+    };
+    readonly open: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["OpenExecSessionDto"];
+            };
+        };
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ExecSessionDto"];
                 };
             };
         };
