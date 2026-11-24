@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
+	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
 func journalOutcome() journal.Outcome { return journal.Outcome{} }
@@ -52,5 +53,17 @@ func TestFactsReportTheReservationBesideTheMachine(t *testing.T) {
 	collected := FactsHandler(t.TempDir(), nil, reserved).Result(journalOutcome()).GetFacts()
 	if collected.GetReservedCpuMillis() != 500 || collected.GetReservedMemoryBytes() != 1<<30 {
 		t.Fatal("collect_facts dropped the reservation")
+	}
+}
+
+func TestFactsReportTheRoleTheInstallerSet(t *testing.T) {
+	for _, role := range []agentv1.NodeRole{agentv1.NodeRole_NODE_ROLE_SERVER, agentv1.NodeRole_NODE_ROLE_CONTROL_PLANE, agentv1.NodeRole_NODE_ROLE_CONTROL_PLANE_ONLY} {
+		reservation := Reservation{Role: role}
+		if got := Facts(context.Background(), t.TempDir(), versions{}, reservation).GetRole(); got != role {
+			t.Errorf("hello facts: %v, want %v", got, role)
+		}
+		if got := FactsHandler(t.TempDir(), nil, reservation).Result(journalOutcome()).GetFacts().GetRole(); got != role {
+			t.Errorf("collect_facts: %v, want %v", got, role)
+		}
 	}
 }

@@ -85,28 +85,34 @@ func TestValidateReportsEveryProblem(t *testing.T) {
 		yaml string
 		want []string
 	}{
-		"missing address":       {"control_plane:\n  ca_fingerprint: " + fingerprint + "\n", []string{"control_plane.address is required"}},
-		"address without port":  {"control_plane:\n  address: cp.example.com\n  ca_fingerprint: " + fingerprint + "\n", []string{"host:port"}},
-		"address bad port":      {"control_plane:\n  address: cp.example.com:99999\n  ca_fingerprint: " + fingerprint + "\n", []string{"port must be"}},
-		"missing fingerprint":   {"control_plane:\n  address: cp.example.com:7443\n", []string{"ca_fingerprint is required"}},
-		"malformed fingerprint": {"control_plane:\n  address: cp.example.com:7443\n  ca_fingerprint: sha256:ZZ\n", []string{"ca_fingerprint must look like"}},
-		"uppercase fingerprint": {"control_plane:\n  address: cp.example.com:7443\n  ca_fingerprint: " + strings.ToUpper(fingerprint) + "\n", []string{"ca_fingerprint must look like"}},
-		"connect not loopback":  {validYAML() + "  connect: 10.0.0.5:7443\n", []string{"control_plane.connect must be a loopback address"}},
-		"connect by name":       {validYAML() + "  connect: localhost:7443\n", []string{"control_plane.connect must be a loopback address"}},
-		"connect without port":  {validYAML() + "  connect: 127.0.0.1\n", []string{"control_plane.connect must be a loopback address"}},
-		"connect injection":     {validYAML() + "  connect: \"127.0.0.1:7443;id\"\n", []string{"control_plane.connect must be a loopback address"}},
-		"bad node name":         {validYAML() + "node:\n  name: Node_1\n", []string{"node.name"}},
-		"relative state dir":    {validYAML() + "paths:\n  state_dir: var/lib/shipkeep\n", []string{"paths.state_dir: must be an absolute path"}},
-		"traversal state dir":   {validYAML() + "paths:\n  state_dir: /var/lib/../etc\n", []string{"paths.state_dir: must be a clean path"}},
-		"empty run dir":         {validYAML() + "paths:\n  run_dir: \"\"\n", []string{"paths.run_dir: is required"}},
-		"tcp docker host":       {validYAML() + "docker:\n  host: tcp://10.0.0.5:2375\n", []string{"docker.host: tcp://"}},
-		"junk docker host":      {validYAML() + "docker:\n  host: /var/run/docker.sock\n", []string{"docker.host: must start with unix://"}},
-		"relative caddy socket": {validYAML() + "caddy:\n  admin_socket: caddy.sock\n", []string{"caddy.admin_socket"}},
-		"bad log level":         {validYAML() + "log:\n  level: verbose\n", []string{"log.level"}},
-		"bad log format":        {validYAML() + "log:\n  format: xml\n", []string{"log.format"}},
-		"heartbeat too short":   {validYAML() + "intervals:\n  heartbeat: 100ms\n", []string{"intervals.heartbeat"}},
-		"reconcile too long":    {validYAML() + "intervals:\n  reconcile: 2h\n", []string{"intervals.reconcile"}},
-		"many problems at once": {"control_plane:\n  address: nope\nlog:\n  level: loud\n  format: xml\n", []string{"control_plane.address", "ca_fingerprint", "log.level", "log.format"}},
+		"missing address":               {"control_plane:\n  ca_fingerprint: " + fingerprint + "\n", []string{"control_plane.address is required"}},
+		"address without port":          {"control_plane:\n  address: cp.example.com\n  ca_fingerprint: " + fingerprint + "\n", []string{"host:port"}},
+		"address bad port":              {"control_plane:\n  address: cp.example.com:99999\n  ca_fingerprint: " + fingerprint + "\n", []string{"port must be"}},
+		"missing fingerprint":           {"control_plane:\n  address: cp.example.com:7443\n", []string{"ca_fingerprint is required"}},
+		"malformed fingerprint":         {"control_plane:\n  address: cp.example.com:7443\n  ca_fingerprint: sha256:ZZ\n", []string{"ca_fingerprint must look like"}},
+		"uppercase fingerprint":         {"control_plane:\n  address: cp.example.com:7443\n  ca_fingerprint: " + strings.ToUpper(fingerprint) + "\n", []string{"ca_fingerprint must look like"}},
+		"connect not loopback":          {validYAML() + "  connect: 10.0.0.5:7443\n", []string{"control_plane.connect must be a loopback address"}},
+		"connect by name":               {validYAML() + "  connect: localhost:7443\n", []string{"control_plane.connect must be a loopback address"}},
+		"connect without port":          {validYAML() + "  connect: 127.0.0.1\n", []string{"control_plane.connect must be a loopback address"}},
+		"connect injection":             {validYAML() + "  connect: \"127.0.0.1:7443;id\"\n", []string{"control_plane.connect must be a loopback address"}},
+		"bad node name":                 {validYAML() + "node:\n  name: Node_1\n", []string{"node.name"}},
+		"unknown role":                  {validYAML() + "node:\n  role: admin\n", []string{"node.role must be"}},
+		"role with a newline":           {validYAML() + "node:\n  role: \"control-plane\\n\"\n", []string{"node.role must be"}},
+		"role in capitals":              {validYAML() + "node:\n  role: Control-Plane\n", []string{"node.role must be"}},
+		"control plane only, reserved":  {validYAML() + "node:\n  role: control-plane-only\n  reservation:\n    cpu_millis: 1000\n", []string{"node.reservation must be empty"}},
+		"control plane only, workloads": {validYAML() + "node:\n  role: control-plane-only\ndocker:\n  workloads_slice: shipkeep-workloads.slice\n", []string{"docker.workloads_slice must be empty"}},
+		"control plane only, route":     {validYAML() + "  route:\n    host: shipkeep.example.com\n    upstream: 127.0.0.1:3000\nnode:\n  role: control-plane-only\n", []string{"control_plane.route must be empty"}},
+		"relative state dir":            {validYAML() + "paths:\n  state_dir: var/lib/shipkeep\n", []string{"paths.state_dir: must be an absolute path"}},
+		"traversal state dir":           {validYAML() + "paths:\n  state_dir: /var/lib/../etc\n", []string{"paths.state_dir: must be a clean path"}},
+		"empty run dir":                 {validYAML() + "paths:\n  run_dir: \"\"\n", []string{"paths.run_dir: is required"}},
+		"tcp docker host":               {validYAML() + "docker:\n  host: tcp://10.0.0.5:2375\n", []string{"docker.host: tcp://"}},
+		"junk docker host":              {validYAML() + "docker:\n  host: /var/run/docker.sock\n", []string{"docker.host: must start with unix://"}},
+		"relative caddy socket":         {validYAML() + "caddy:\n  admin_socket: caddy.sock\n", []string{"caddy.admin_socket"}},
+		"bad log level":                 {validYAML() + "log:\n  level: verbose\n", []string{"log.level"}},
+		"bad log format":                {validYAML() + "log:\n  format: xml\n", []string{"log.format"}},
+		"heartbeat too short":           {validYAML() + "intervals:\n  heartbeat: 100ms\n", []string{"intervals.heartbeat"}},
+		"reconcile too long":            {validYAML() + "intervals:\n  reconcile: 2h\n", []string{"intervals.reconcile"}},
+		"many problems at once":         {"control_plane:\n  address: nope\nlog:\n  level: loud\n  format: xml\n", []string{"control_plane.address", "ca_fingerprint", "log.level", "log.format"}},
 	}
 	for name, tt := range tests {
 		t.Run(name, func(t *testing.T) {
@@ -291,6 +297,24 @@ func TestControlPlaneRouteSettings(t *testing.T) {
 		}
 		if err := cfg.Validate(); err == nil {
 			t.Errorf("%s: accepted", name)
+		}
+	}
+}
+
+func TestTheRolesTheInstallerWrites(t *testing.T) {
+	t.Parallel()
+	for _, extra := range []string{
+		"",
+		"node:\n  role: server\n",
+		"  route:\n    host: shipkeep.example.com\n    upstream: 127.0.0.1:3000\nnode:\n  role: control-plane\n  reservation:\n    cpu_millis: 1000\n",
+		"node:\n  role: control-plane-only\n",
+	} {
+		cfg, err := config.Parse([]byte(validYAML()+extra), config.Default())
+		if err != nil {
+			t.Fatalf("%q: %v", extra, err)
+		}
+		if err := cfg.Validate(); err != nil {
+			t.Errorf("%q: %v", extra, err)
 		}
 	}
 }

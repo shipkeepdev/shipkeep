@@ -1,4 +1,11 @@
-import type { NodeFacts as ProtoNodeFacts } from '@shipkeep/proto-ts';
+import { NodeRole, type NodeFacts as ProtoNodeFacts } from '@shipkeep/proto-ts';
+
+/** The role facts store, from the agent's local configuration (ADR 0028); none before roles. */
+const ROLES: Readonly<Partial<Record<NodeRole, string>>> = {
+  [NodeRole.SERVER]: 'server',
+  [NodeRole.CONTROL_PLANE]: 'control-plane',
+  [NodeRole.CONTROL_PLANE_ONLY]: 'control-plane-only',
+};
 
 /**
  * Proto `NodeFacts` as stored node facts: snake_case keys, as `sanitizeFacts` expects. Spreading
@@ -22,5 +29,6 @@ export function factsFromProto(facts: ProtoNodeFacts | undefined): Record<string
     agent_version: facts.agentVersion,
     reserved_cpu_millis: facts.reservedCpuMillis,
     reserved_memory_bytes: facts.reservedMemoryBytes,
+    ...(ROLES[facts.role] ? { role: ROLES[facts.role] } : {}),
   };
 }

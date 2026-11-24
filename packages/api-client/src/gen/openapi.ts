@@ -2025,7 +2025,10 @@ export type components = {
              * @default 30
              */
             readonly minutes: number;
-            /** @default 1 */
+            /**
+             * @description The replica, numbered from 0.
+             * @default 0
+             */
             readonly replica: number;
             /** @default true */
             readonly tty: boolean;
@@ -4123,6 +4126,7 @@ export interface operations {
             readonly query?: {
                 /** @description One hour ago by default. */
                 readonly from?: string;
+                /** @description The replica, numbered from 0. */
                 readonly instance?: number;
                 readonly limit?: number;
                 readonly stream?: "stdout" | "stderr";

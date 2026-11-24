@@ -33,6 +33,9 @@ export interface NodeLoad {
  */
 const ARCHITECTURES = ['amd64', 'arm64'] as const;
 
+/** The role an agent reports on a machine that runs the control plane alone (ADR 0028). */
+export const CONTROL_PLANE_ONLY = 'control-plane-only';
+
 /**
  * Scheduler view of the organization's nodes (SPEC 6), keyed by node name. Capacity comes from the
  * agent's facts, minus the control plane reservation it reports (ADR 0021); a node without them has
@@ -46,8 +49,9 @@ export function schedulableNodes(
   load: ReadonlyMap<string, NodeLoad>,
   now: Date,
 ): SchedulableNode[] {
+  // A machine that runs the control plane alone never takes an application (ADR 0028).
   return nodes
-    .filter((node) => node.status !== 'removed')
+    .filter((node) => node.status !== 'removed' && node.facts['role'] !== CONTROL_PLANE_ONLY)
     .map((node) => {
       const used = load.get(node.id);
       const reservation = {
