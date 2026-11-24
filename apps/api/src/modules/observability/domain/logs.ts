@@ -3,8 +3,13 @@ import type { ContainerTarget } from './metrics';
 /** Bounds of a batch (ADR 0029). Entries past them, or malformed, are dropped. */
 export const MAX_LOG_ENTRIES = 256;
 export const MAX_LOG_LINE_BYTES = 16 * 1024;
-/** A line time further than this from the control plane's clock is replaced by it. */
+/** A line time further than this ahead of the control plane's clock is replaced by it. */
 export const MAX_LOG_SKEW_MS = 5 * 60_000;
+/**
+ * VictoriaLogs keeps 30 days (`-retentionPeriod=30d`) and refuses older lines. A line sent again
+ * after an outage keeps its own time; one older than this is dropped here instead.
+ */
+export const LOG_RETENTION_MS = 30 * 24 * 3_600_000;
 /** What one node may write: 512 KiB per second, with bursts up to 4 MiB. */
 export const LOG_RATE = { bytesPerSecond: 512 * 1024, burstBytes: 4 * 1024 * 1024 } as const;
 
@@ -47,7 +52,7 @@ export function validEntries(entries: readonly LogInput[]): LogInput[] {
 /**
  * The records of entries whose container is one of the node's placed allocations, labelled from
  * that allocation: an agent can write lines for its own workloads only, and none of its names
- * becomes a label. Entries of other containers are dropped.
+ * becomes a label. Entries of other containers, or past retention, are dropped.
  */
 export function logRecords(
   entries: readonly LogInput[],
@@ -60,9 +65,10 @@ export function logRecords(
   for (const entry of entries) {
     const target = byName.get(entry.container);
     if (!target) continue;
-    const skewed = Math.abs(entry.time.getTime() - now.getTime()) > MAX_LOG_SKEW_MS;
+    const age = now.getTime() - entry.time.getTime();
+    if (age > LOG_RETENTION_MS) continue;
     records.push({
-      _time: (skewed ? now : entry.time).toISOString(),
+      _time: (age < -MAX_LOG_SKEW_MS ? now : entry.time).toISOString(),
       _msg: entry.line,
       org: scope.organizationId,
       project: target.projectId,

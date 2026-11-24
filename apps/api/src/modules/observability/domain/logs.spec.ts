@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ByteRate,
+  LOG_RETENTION_MS,
   type LogInput,
   logRecords,
   MAX_LOG_ENTRIES,
@@ -83,7 +84,7 @@ describe('log batches (ADR 0029)', () => {
     expect(JSON.stringify(records)).not.toContain('sk-web');
   });
 
-  it('replaces a line time too far from the control plane clock', () => {
+  it('replaces a line time too far ahead of the control plane clock', () => {
     const [record] = logRecords(
       [entry({ time: new Date('2030-01-01T00:00:00Z') })],
       [target],
@@ -91,6 +92,22 @@ describe('log batches (ADR 0029)', () => {
       NOW,
     );
     expect(record._time).toBe(NOW.toISOString());
+  });
+
+  it('keeps the time of a line sent again after an outage, and drops one past retention', () => {
+    const hourAgo = new Date(NOW.getTime() - 3_600_000);
+    const records = logRecords(
+      [
+        entry({ time: hourAgo }),
+        entry({ time: new Date(NOW.getTime() - LOG_RETENTION_MS - 1000), line: 'too old' }),
+      ],
+      [target],
+      scope,
+      NOW,
+    );
+    expect(records.map((record) => [record._time, record._msg])).toEqual([
+      [hourAgo.toISOString(), 'GET / 200'],
+    ]);
   });
 
   it('lets a node write its burst at once, then its rate', () => {
