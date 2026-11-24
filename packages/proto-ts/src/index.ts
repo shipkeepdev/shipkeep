@@ -3,5 +3,6 @@
 export * from './gen/shipkeep/agent/v1/actions_pb.js';
 export * from './gen/shipkeep/agent/v1/exec_pb.js';
 export * from './gen/shipkeep/agent/v1/gateway_pb.js';
+export * from './gen/shipkeep/agent/v1/logs_pb.js';
 
 export * from './lib/action-kinds.js';
