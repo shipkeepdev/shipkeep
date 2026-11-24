@@ -24,14 +24,18 @@ const (
 	causeUpgradeUnitOld     = "upgrade_unit_outdated"
 	causeUpgradeUnverified  = "upgrade_unverified"
 	causeUpgradeUnavailable = "upgrade_unavailable"
+	causeUpgradeInProgress  = "upgrade_in_progress"
 )
 
 // UnitFile is the agent's systemd unit, which the installer writes.
 const UnitFile = "/etc/systemd/system/shipkeep-agent.service"
 
-// guardLine is what an installer that supports upgrades puts in the unit: the upgrade guard
-// counts the new binary's starts and puts the previous one back (ADR 0028).
-const guardLine = "ExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard"
+// What an installer that supports upgrades runs before each start of the agent: the upgrade
+// guard counts the new binary's starts and puts the previous one back (ADR 0028).
+const (
+	guardExecutable = "/usr/local/libexec/shipkeep-egress"
+	guardCommand    = "upgrade-guard"
+)
 
 var sha256Hex = regexp.MustCompile(`^[0-9a-f]{64}$`)
 
@@ -161,11 +165,16 @@ func (u Upgrader) plan(actionID string, action *agentv1.UpgradeAgent) (journal.P
 				}
 				return journal.Outcome{ResourceID: version.String()}, nil
 			},
-			// The swap is one rename: when it failed, the running binary is still in place and the
-			// record would only make the guard count starts for nothing.
+			// The swap can fail after its rename, while it syncs the directory: the new binary is then
+			// in place. It is put back before the record goes, or a later start would run the new
+			// binary without the guard counting its starts. When the rename did not happen, the record
+			// would only make the guard count starts for nothing.
 			Compensate: func(context.Context) error {
 				record, found, err := upgrade.ReadPending(u.StateDir)
 				if err != nil || !found || record.To != version.String() || u.Version == version.String() {
+					return err
+				}
+				if err := upgrade.Unswap(record); err != nil {
 					return err
 				}
 				return upgrade.ClearPending(u.StateDir)
@@ -183,8 +192,18 @@ func (u Upgrader) ready(version upgrade.Version) (string, error) {
 	if version.Compare(running) <= 0 {
 		return "", causeError{causeUpgradeNotNewer}
 	}
+	// An upgrade to another version swapped its binary in and is not confirmed yet: this one would
+	// keep that unconfirmed binary as the previous one, and lose the binary to go back to. The same
+	// upgrade, run again, goes on: its keep step refuses to keep the new binary.
+	record, found, err := upgrade.ReadPending(u.StateDir)
+	if err != nil {
+		return "", fmt.Errorf("read the upgrade record: %w", err)
+	}
+	if found && record.State == upgrade.StatePending && record.To != version.String() {
+		return "", causeError{causeUpgradeInProgress}
+	}
 	unit, err := os.ReadFile(u.UnitFile)
-	if err != nil || !strings.Contains(string(unit), guardLine) {
+	if err != nil || !hasGuard(string(unit)) {
 		return "", causeError{causeUpgradeUnitOld}
 	}
 	binary, err := u.Binary()
@@ -192,6 +211,36 @@ func (u Upgrader) ready(version upgrade.Version) (string, error) {
 		return "", fmt.Errorf("find the running binary: %w", err)
 	}
 	return binary, nil
+}
+
+// hasGuard reports whether a systemd unit runs the upgrade guard: an active `ExecStartPre` line
+// of its `[Service]` section that runs the guard's executable, with no prefix, and its command. A
+// commented line, another section, a continued line or an empty assignment after it, which
+// resets the list, do not count.
+func hasGuard(unit string) bool {
+	section, continued, guarded := "", false, false
+	for _, line := range strings.Split(unit, "\n") {
+		line = strings.TrimSpace(line)
+		wasContinued := continued
+		continued = strings.HasSuffix(line, "\\")
+		switch {
+		case wasContinued, line == "", line[0] == '#', line[0] == ';':
+		case line[0] == '[':
+			section = line
+		case section == "[Service]":
+			key, value, ok := strings.Cut(line, "=")
+			if !ok || strings.TrimSpace(key) != "ExecStartPre" {
+				continue
+			}
+			fields := strings.Fields(value)
+			if len(fields) == 0 {
+				guarded = false
+			} else if len(fields) >= 2 && fields[0] == guardExecutable && fields[1] == guardCommand && !continued {
+				guarded = true
+			}
+		}
+	}
+	return guarded
 }
 
 func (u Upgrader) now() time.Time {

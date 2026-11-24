@@ -136,6 +136,32 @@ func Swap(binary, want string) error {
 	return syncDir(filepath.Dir(binary))
 }
 
+// Unswap undoes a swap that may have happened. When the binary is the new one of record, it
+// renames `.previous`, the running binary's other name, back onto it. When the binary is another
+// one, the swap never happened and nothing is undone. It fails, and changes nothing, when the new
+// binary is in place but no previous one is there: the record must then stay, for the guard.
+func Unswap(record Pending) error {
+	if err := record.check(); err != nil {
+		return err
+	}
+	got, err := FileSHA256(record.Binary)
+	if err != nil {
+		return err
+	}
+	if got != record.SHA256 {
+		return nil
+	}
+	previous := record.Binary + previousSuffix
+	info, err := os.Lstat(previous)
+	if err != nil || !info.Mode().IsRegular() {
+		return errors.New("the new binary is in place, but no previous binary is there to go back to")
+	}
+	if err := os.Rename(previous, record.Binary); err != nil {
+		return fmt.Errorf("put the running binary back: %w", err)
+	}
+	return syncDir(filepath.Dir(record.Binary))
+}
+
 // Guard is what the upgrade guard does before each start of the agent (ADR 0028). Without a
 // pending upgrade it does nothing. With one, it counts this start; once the new binary has had
 // MaxAttempts starts without completing a Hello, it renames `.previous` back onto the binary and
