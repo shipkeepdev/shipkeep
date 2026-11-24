@@ -13,7 +13,7 @@ import {
   MinLength,
 } from 'class-validator';
 
-import type { ExecSession } from '../application/exec-sessions';
+import type { ExecSession } from '../../fleet/application/exec-relay';
 import { EXEC_ARG_BYTES, EXEC_ARGS, EXEC_MINUTES } from '../domain/exec-session';
 
 /** What to run in which replica (SPEC 3.3). The domain checks the byte bounds again. */

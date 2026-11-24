@@ -14,7 +14,9 @@ import type { ResourceSecurityContext } from '../../identity/application/resourc
 import type { TenantAccess } from '../../organizations/application/tenant-access';
 import type { ReplicaStatus } from '../domain/observations';
 
-import { ExecSessionRegistry, ExecSessions } from './exec-sessions';
+import { ExecSessionRegistry } from '../../fleet/application/exec-relay';
+
+import { ExecSessions } from './exec-sessions';
 import type { ActionQueue, DeploymentTransaction, ObservationStore } from './ports';
 
 const ORG = '019d0000-0000-7000-8000-00000000000a';

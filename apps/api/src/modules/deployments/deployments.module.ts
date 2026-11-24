@@ -14,7 +14,7 @@ import { SecretsModule } from '../secrets/secrets.module';
 import { AllocationObservations } from './application/allocation-observations';
 import { DeploymentCommands } from './application/deployment-commands';
 import { DeploymentPipeline } from './application/deployment-pipeline';
-import { ExecSessionRegistry, ExecSessions } from './application/exec-sessions';
+import { ExecSessions } from './application/exec-sessions';
 import {
   ACTION_HISTORY,
   ACTION_QUEUE,
@@ -53,7 +53,6 @@ import { NodeReplicasController } from './interface/node-replicas.controller';
   providers: [
     DeploymentCommands,
     ExecSessions,
-    ExecSessionRegistry,
     { provide: DEPLOYMENT_STORE, useClass: PrismaDeploymentStore },
     { provide: DEPLOYMENT_TRANSACTION, useExisting: PrismaUnitOfWork },
     { provide: IMAGE_RESOLVER, useFactory: () => new RegistryResolver() },
