@@ -92,7 +92,9 @@ const LIVE_MS = 3000;
           [attr.aria-label]="'Logs' | t"
         >
           @for (l of lines(); track key(l)) {
-            <div class="grid grid-cols-[70px_34px_52px_minmax(0,1fr)] gap-2.5">
+            <div
+              class="grid grid-cols-[70px_34px_52px_minmax(0,1fr)] gap-x-2.5 max-sm:grid-cols-[auto_auto_minmax(0,1fr)] max-sm:pb-1.5"
+            >
               <time class="text-dim3" [attr.datetime]="l.time">{{ clock(l.time) }}</time
               ><span class="text-dim">r{{ l.instance }}</span>
               <span
@@ -100,7 +102,7 @@ const LIVE_MS = 3000;
                 [class.text-mute]="l.stream === 'stdout'"
                 >{{ l.stream }}</span
               >
-              <span class="whitespace-pre-wrap break-all text-fg2"
+              <span class="whitespace-pre-wrap break-all text-fg2 max-sm:col-span-full"
                 >{{ l.line }}
                 @if (l.truncated) {
                   <span class="text-dim"> …</span>

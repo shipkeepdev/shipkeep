@@ -41,7 +41,7 @@ type State = 'idle' | 'connecting' | 'open' | 'ended';
         class="flex items-center gap-2.5 border-b border-line px-4 py-2.5 font-mono text-[11.5px] text-mute"
       >
         <span class="text-fg">{{ name() }}</span
-        ><span>r1 · sh</span>
+        ><span>r0 · sh</span>
         <span class="ml-auto flex items-center gap-2">
           @switch (state()) {
             @case ('open') {
