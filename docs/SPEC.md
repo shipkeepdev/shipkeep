@@ -500,7 +500,7 @@ starting -> unhealthy -> (restart within policy) -> starting | failed
 
 ## 6. Scheduling
 
-1. Filter nodes: status `ready`, required labels, architecture matches the image, free CPU and memory reservations, free disk for the disk budget, required ports free, volume affinity for stateful workloads.
+1. Filter nodes: never a machine whose agent reports the role `control-plane-only` (ADR 0028), status `ready`, required labels, architecture matches the image, free CPU and memory reservations, free disk for the disk budget, required ports free, volume affinity for stateful workloads.
 2. Rank: prefer nodes without another replica of the same app (spread), then lowest reserved memory ratio, then lowest reserved CPU ratio, then node name for determinism.
 3. Stateful workloads are pinned to the node that holds their volume.
 4. Scheduling is deterministic given the same inputs (unit-testable without a cluster).
