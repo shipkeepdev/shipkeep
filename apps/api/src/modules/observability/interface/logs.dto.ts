@@ -26,12 +26,18 @@ export class LogsQueryDto {
   @IsIn(['stdout', 'stderr'])
   stream?: 'stdout' | 'stderr';
 
-  @ApiProperty({ required: false, type: 'integer', minimum: 1, maximum: 1000 })
+  @ApiProperty({
+    required: false,
+    type: 'integer',
+    minimum: 0,
+    maximum: 999,
+    description: 'The replica, numbered from 0.',
+  })
   @IsOptional()
   @Type(() => Number)
   @IsInt()
-  @Min(1)
-  @Max(1000)
+  @Min(0)
+  @Max(999)
   instance?: number;
 
   @ApiProperty({ required: false, format: 'date-time', description: 'One hour ago by default.' })

@@ -5519,9 +5519,10 @@
             "name": "instance",
             "required": false,
             "in": "query",
+            "description": "The replica, numbered from 0.",
             "schema": {
-              "minimum": 1,
-              "maximum": 1000,
+              "minimum": 0,
+              "maximum": 999,
               "type": "integer"
             }
           },

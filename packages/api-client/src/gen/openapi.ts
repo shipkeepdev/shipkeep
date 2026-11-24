@@ -4043,6 +4043,7 @@ export interface operations {
             readonly query?: {
                 /** @description One hour ago by default. */
                 readonly from?: string;
+                /** @description The replica, numbered from 0. */
                 readonly instance?: number;
                 readonly limit?: number;
                 readonly stream?: "stdout" | "stderr";
