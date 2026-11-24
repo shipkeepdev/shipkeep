@@ -1,0 +1,167 @@
+package docker
+
+import (
+	"context"
+	"errors"
+	"net/http"
+	"strings"
+	"testing"
+	"time"
+	"unicode/utf8"
+)
+
+// logsDaemon answers a logs request with frames, as Docker does with timestamps.
+func logsDaemon(t *testing.T, contentType string, frames ...[]byte) (*Client, *string) {
+	t.Helper()
+	var query string
+	client := fakeDaemon(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/"+apiVersion+"/containers/sk-app-r1-0/logs" {
+			http.NotFound(w, r)
+			return
+		}
+		query = r.URL.RawQuery
+		w.Header().Set("Content-Type", contentType)
+		for _, data := range frames {
+			_, _ = w.Write(data)
+		}
+	})
+	return client, &query
+}
+
+const multiplexed = "application/vnd.docker.multiplexed-stream"
+
+func stamped(stream byte, at, text string) []byte {
+	return frame(stream, at+" "+text)
+}
+
+func follow(t *testing.T, client *Client) ([]LogLine, error) {
+	t.Helper()
+	var lines []LogLine
+	err := client.FollowLogs(context.Background(), "sk-app-r1-0", time.Unix(1700000000, 5), func(line LogLine) error {
+		lines = append(lines, line)
+		return nil
+	})
+	return lines, err
+}
+
+func TestFollowLogsReadsLinesWithTheirStreamAndTime(t *testing.T) {
+	client, query := logsDaemon(t, multiplexed,
+		stamped(Stdout, "2026-11-24T20:00:00.000000001Z", "hello\n"),
+		stamped(Stderr, "2026-11-24T20:00:01Z", "warn\r\n"),
+		// Docker split a long line: the second part has its own timestamp and ends it.
+		stamped(Stdout, "2026-11-24T20:00:02Z", "first half, "),
+		stamped(Stderr, "2026-11-24T20:00:02.5Z", "interleaved\n"),
+		stamped(Stdout, "2026-11-24T20:00:03Z", "second half\n"),
+		// Two lines in one message, and a last one without a newline.
+		stamped(Stdout, "2026-11-24T20:00:04Z", "a\nb\nno newline"),
+	)
+	lines, err := follow(t, client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []LogLine{
+		{Stream: Stdout, Time: time.Date(2026, 11, 24, 20, 0, 0, 1, time.UTC), Text: "hello"},
+		{Stream: Stderr, Time: time.Date(2026, 11, 24, 20, 0, 1, 0, time.UTC), Text: "warn"},
+		{Stream: Stderr, Time: time.Date(2026, 11, 24, 20, 0, 2, 5e8, time.UTC), Text: "interleaved"},
+		{Stream: Stdout, Time: time.Date(2026, 11, 24, 20, 0, 2, 0, time.UTC), Text: "first half, second half"},
+		{Stream: Stdout, Time: time.Date(2026, 11, 24, 20, 0, 4, 0, time.UTC), Text: "a"},
+		{Stream: Stdout, Time: time.Date(2026, 11, 24, 20, 0, 4, 0, time.UTC), Text: "b"},
+		{Stream: Stdout, Time: time.Date(2026, 11, 24, 20, 0, 4, 0, time.UTC), Text: "no newline"},
+	}
+	if len(lines) != len(want) {
+		t.Fatalf("got %+v", lines)
+	}
+	for i := range want {
+		if lines[i].Stream != want[i].Stream || !lines[i].Time.Equal(want[i].Time) || lines[i].Text != want[i].Text || lines[i].Truncated {
+			t.Errorf("line %d: got %+v, want %+v", i, lines[i], want[i])
+		}
+	}
+	for _, part := range []string{"follow=1", "timestamps=1", "stdout=1", "stderr=1", "since=1700000000.000000005"} {
+		if !strings.Contains(*query, part) {
+			t.Errorf("query %q lacks %s", *query, part)
+		}
+	}
+}
+
+func TestFollowLogsBoundsAndCleansLines(t *testing.T) {
+	long := strings.Repeat("x", MaxLogLine+100)
+	// Each run of invalid bytes becomes a three-byte replacement, so a line of alternating
+	// invalid and valid bytes doubles: it is cut again, on a rune.
+	invalid := strings.Repeat("\xffa", MaxLogLine/2)
+	client, _ := logsDaemon(t, multiplexed,
+		stamped(Stdout, "2026-11-24T20:00:00Z", long[:MaxLogLine/2]),
+		stamped(Stdout, "2026-11-24T20:00:01Z", long[MaxLogLine/2:]+"\n"),
+		stamped(Stdout, "2026-11-24T20:00:02Z", invalid+"\n"),
+		stamped(Stdout, "2026-11-24T20:00:03Z", "caf\xe9\n"),
+	)
+	lines, err := follow(t, client)
+	if err != nil || len(lines) != 3 {
+		t.Fatalf("got %d lines, %v", len(lines), err)
+	}
+	if len(lines[0].Text) != MaxLogLine || !lines[0].Truncated {
+		t.Fatalf("long line: %d bytes, truncated %v", len(lines[0].Text), lines[0].Truncated)
+	}
+	if len(lines[1].Text) > MaxLogLine || !utf8.ValidString(lines[1].Text) || !lines[1].Truncated {
+		t.Fatalf("invalid line: %d bytes, valid %v", len(lines[1].Text), utf8.ValidString(lines[1].Text))
+	}
+	if lines[2].Text != "caf�" || lines[2].Truncated {
+		t.Fatalf("got %q", lines[2].Text)
+	}
+}
+
+func TestFollowLogsDropsWhatIsNotALogFrame(t *testing.T) {
+	client, _ := logsDaemon(t, multiplexed,
+		frame(Stdout, "no timestamp here\n"),
+		frame(Stdout, "2026-13-45T99:00:00Z bad date\n"),
+		stamped(Stdout, "2026-11-24T20:00:00Z", "kept\n"),
+	)
+	lines, err := follow(t, client)
+	if err != nil || len(lines) != 1 || lines[0].Text != "kept" {
+		t.Fatalf("got %+v, %v", lines, err)
+	}
+}
+
+func TestFollowLogsRefusesAContainerWithATerminal(t *testing.T) {
+	client, _ := logsDaemon(t, "application/vnd.docker.raw-stream", []byte("2026-11-24T20:00:00Z raw\n"))
+	if _, err := follow(t, client); !errors.Is(err, errRawLogs) {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestFollowLogsStopsOnAMalformedStreamOrAFailedEmit(t *testing.T) {
+	client, _ := logsDaemon(t, multiplexed, []byte{1, 0, 0, 0, 0x7f, 0xff, 0xff, 0xff})
+	if _, err := follow(t, client); err == nil {
+		t.Fatal("an oversized frame was accepted")
+	}
+	client, _ = logsDaemon(t, multiplexed,
+		stamped(Stdout, "2026-11-24T20:00:00Z", "one\n"),
+		stamped(Stdout, "2026-11-24T20:00:01Z", "two\n"),
+	)
+	stop := errors.New("stop")
+	count := 0
+	err := client.FollowLogs(context.Background(), "sk-app-r1-0", time.Time{}, func(LogLine) error {
+		count++
+		return stop
+	})
+	if !errors.Is(err, stop) || count != 1 {
+		t.Fatalf("got %v after %d lines", err, count)
+	}
+}
+
+func TestFollowLogsReportsStatusesOnly(t *testing.T) {
+	client := fakeDaemon(t, func(w http.ResponseWriter, r *http.Request) {
+		if strings.Contains(r.URL.Path, "missing") {
+			http.NotFound(w, r)
+			return
+		}
+		http.Error(w, "/var/lib/docker/secret", http.StatusInternalServerError)
+	})
+	noop := func(LogLine) error { return nil }
+	if err := client.FollowLogs(context.Background(), "missing", time.Time{}, noop); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("got %v", err)
+	}
+	err := client.FollowLogs(context.Background(), "sk-app", time.Time{}, noop)
+	if err == nil || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("got %v", err)
+	}
+}
