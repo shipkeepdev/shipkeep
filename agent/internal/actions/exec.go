@@ -35,8 +35,9 @@ var execUser = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,31}(?::[A-Za-z0
 // ExecEngine is the part of the Docker client an exec session uses.
 type ExecEngine interface {
 	Container(ctx context.Context, ref string) (docker.Container, error)
-	CreateExec(ctx context.Context, ref string, config docker.ExecConfig) (string, error)
-	StartExec(ctx context.Context, id string, tty bool) (AttachedExec, error)
+	CreateExec(ctx context.Context, ref string, config docker.ExecConfig) (docker.ExecInstance, error)
+	// StartExec starts the exec; ctx bounds the whole session.
+	StartExec(ctx context.Context, instance docker.ExecInstance) (AttachedExec, error)
 	ResizeExec(ctx context.Context, id string, cols, rows uint32) error
 	InspectExec(ctx context.Context, id string) (docker.ExecState, error)
 }
@@ -55,8 +56,8 @@ func DockerExec(client *docker.Client) ExecEngine { return dockerExec{client} }
 type dockerExec struct{ *docker.Client }
 
 // StartExec starts the exec and returns its connection; a nil one never hides in the interface.
-func (d dockerExec) StartExec(ctx context.Context, id string, tty bool) (AttachedExec, error) {
-	attached, err := d.Client.StartExec(ctx, id, tty)
+func (d dockerExec) StartExec(ctx context.Context, instance docker.ExecInstance) (AttachedExec, error) {
+	attached, err := d.Client.StartExec(ctx, instance)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +140,7 @@ func runExec(ctx context.Context, settings *execSettings, ref, session string, l
 	if err != nil {
 		return journal.Outcome{}, err
 	}
-	id, err := settings.engine.CreateExec(ctx, container.ID, config)
+	instance, err := settings.engine.CreateExec(ctx, container.ID, config)
 	if err != nil {
 		return journal.Outcome{}, fmt.Errorf("create exec: %w", err)
 	}
@@ -152,7 +153,8 @@ func runExec(ctx context.Context, settings *execSettings, ref, session string, l
 	if err := stream.Send(&agentv1.ExecStreamRequest{Frame: &agentv1.ExecStreamRequest_Open{Open: &agentv1.ExecOpen{SessionId: session}}}); err != nil {
 		return journal.Outcome{}, fmt.Errorf("open exec stream: %w", err)
 	}
-	attached, err := settings.engine.StartExec(ctx, id, config.TTY)
+	id := instance.ID
+	attached, err := settings.engine.StartExec(ctx, instance)
 	if err != nil {
 		_ = stream.Send(execError(execFailed))
 		_ = stream.CloseSend()

@@ -89,14 +89,14 @@ func (f *fakeExecEngine) Container(_ context.Context, ref string) (docker.Contai
 	return container, nil
 }
 
-func (f *fakeExecEngine) CreateExec(_ context.Context, _ string, config docker.ExecConfig) (string, error) {
+func (f *fakeExecEngine) CreateExec(_ context.Context, _ string, config docker.ExecConfig) (docker.ExecInstance, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.created = append(f.created, config)
-	return strings.Repeat("e", 64), nil
+	return docker.ExecInstance{ID: strings.Repeat("e", 64), TTY: config.TTY}, nil
 }
 
-func (f *fakeExecEngine) StartExec(context.Context, string, bool) (AttachedExec, error) {
+func (f *fakeExecEngine) StartExec(context.Context, docker.ExecInstance) (AttachedExec, error) {
 	if f.startErr != nil {
 		return nil, f.startErr
 	}
