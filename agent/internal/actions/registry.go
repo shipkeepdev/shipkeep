@@ -11,8 +11,10 @@ func Registry(engine Engine, confirmations Confirmer, router Router, intents Int
 		option(&settings)
 	}
 	handlers := map[string]Handler{"collect_facts": facts}
-	maps.Copy(handlers, DockerHandlers(engine, confirmations, intents, options...))
-	maps.Copy(handlers, RouteHandlers(router, engine, settings.routeBook, nil, settings.reservedHosts...))
+	if !settings.controlPlane {
+		maps.Copy(handlers, DockerHandlers(engine, confirmations, intents, options...))
+		maps.Copy(handlers, RouteHandlers(router, engine, settings.routeBook, nil, settings.reservedHosts...))
+	}
 	if settings.upgrader != nil {
 		handlers["upgrade_agent"] = UpgradeHandler(*settings.upgrader)
 	}

@@ -108,6 +108,8 @@ type Client struct {
 	http *http.Client
 	// long has no response-header timeout, for calls that answer only when a container exits.
 	long *http.Client
+	// dial opens a connection of its own, for an exec whose connection the daemon hands over.
+	dial func(ctx context.Context) (net.Conn, error)
 }
 
 // New returns a client for a `unix:///path` host. Other schemes are refused (see config).
@@ -117,9 +119,10 @@ func New(host string) (*Client, error) {
 		return nil, errors.New("docker host must be a unix:// socket path")
 	}
 	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	dial := func(ctx context.Context) (net.Conn, error) { return dialer.DialContext(ctx, "unix", path) }
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-			return dialer.DialContext(ctx, "unix", path)
+			return dial(ctx)
 		},
 		MaxIdleConns:          4,
 		IdleConnTimeout:       30 * time.Second,
@@ -127,7 +130,7 @@ func New(host string) (*Client, error) {
 	}
 	waiting := transport.Clone()
 	waiting.ResponseHeaderTimeout = 0
-	return &Client{http: &http.Client{Transport: transport}, long: &http.Client{Transport: waiting}}, nil
+	return &Client{http: &http.Client{Transport: transport}, long: &http.Client{Transport: waiting}, dial: dial}, nil
 }
 
 // Network is the subset of a network the agent relies on.
