@@ -359,14 +359,14 @@ Agent upgrades roll out to one server at a time (ADR 0028, section 2). Both rout
     - no server to upgrade (`agent_upgrade_not_needed`);
     - more than 1,000 servers (`agent_upgrade_too_many`);
     - a release whose digest or Sigstore bundle cannot be read (`agent_release_unavailable`).
-  - Before anything starts, it reads that digest and bundle for each architecture. They come from the release's `checksums.txt` and `<archive>.sigstore.json`, over HTTPS, from GitHub's release hosts only, redirects included, at most 64 KiB each. The control plane relays them and trusts neither: the agent checks both (SPEC 3.3).
+  - Before anything starts, after the access check and outside any transaction, it reads that digest and bundle for each architecture. They come from the release's `checksums.txt` and `<archive>.sigstore.json`, over HTTPS, from GitHub's release hosts only, redirects included, at most 64 KiB each. The control plane relays them and trusts neither: the agent checks both (SPEC 3.3).
 - A pg-boss queue runs the rollout. Each server's turn:
   - **Skip.** A server that is removed, already on the version or later, `dev`, or on another architecture is skipped.
   - **Wait first.** The turn waits while the server is not connected, failing after 5 minutes (`node_unavailable`). It also waits while the server has any other unfinished action, which is how a deployment touching it shows, failing after 30 minutes (`node_busy`).
-  - **Send.** It then sends `UpgradeAgent` with the key `au:<rollout>:<node>` and a 30-minute deadline.
+  - **Send.** It then sends `UpgradeAgent` with the key `au:<rollout>:<node>` and a 30-minute deadline. Every action admission locks its node's row, and an upgrade is admitted only when no other action of the node is unfinished (`node_busy`), so a deployment action admitted meanwhile makes the turn wait instead.
   - **Stop.** An action that does not succeed stops the rollout (`action_failed`, with the action's reason). So does a server that never comes back (`not_confirmed`).
   - **After success.** The turn ends when the server reports the new version in a hello. A heartbeat recorded 150 seconds or more after the success, still on the previous version, reads as a rollback by the upgrade guard (`rolled_back`). No new version within 25 minutes reads as `not_confirmed`.
-  - **Wake-ups.** A finished action, a reported version or a server coming back wakes the rollout at once; otherwise it looks again every 15 seconds.
+  - **Wake-ups.** A finished action, a reported version or a server coming back wakes the rollout at once; otherwise it looks again every 15 seconds. A run that fails is queued again after 60 seconds rather than left to the queue's retries, and the overview queues a running rollout again, so a running rollout never stays without a run.
   - **Audit.** The rollout records `fleet.agent_upgrade.started` (with the actor), `fleet.agent_upgrade.node_upgraded` or `node_skipped` per server, then `fleet.agent_upgrade.succeeded` or `failed` (with the server, the reason and the action's reason). The actions themselves are audited as `fleet.action.*`.
 - Rollouts are kept as their history: the runtime role cannot delete them.
 

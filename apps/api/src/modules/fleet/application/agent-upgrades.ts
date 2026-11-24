@@ -31,6 +31,7 @@ import {
   AGENT_RELEASES,
   AGENT_UPGRADE_STORE,
   type AgentActionStore,
+  type AgentRelease,
   type AgentReleases,
   type AgentUpgradeStore,
   FLEET_TRANSACTION,
@@ -87,68 +88,82 @@ export class AgentUpgrades {
     private readonly events: DomainEventBus,
   ) {}
 
-  /** What the fleet page shows; needs `node.manage`. */
+  /** What the fleet page shows; needs `node.manage`. It also keeps a running rollout queued. */
   overview(context: SecurityContext, organizationId: string): Promise<AgentUpgradeOverview> {
     return this.accounts.run(context, async () => {
       await this.access.require(context.userId, 'node.manage', { organizationId });
       const target = parseReleaseVersion(this.version);
-      return this.transaction.runTenant(organizationId, async () => ({
-        version: target?.text ?? null,
-        pending: target
-          ? upgradeCandidates(target, await this.allNodes(organizationId)).map((node) => node.id)
-          : [],
-        rollout: (await this.upgrades.latest(organizationId)) ?? null,
-      }));
+      return this.transaction.runTenant(organizationId, async () => {
+        const rollout = (await this.upgrades.latest(organizationId)) ?? null;
+        // A running rollout always has a queued run; queue one again in case its last run failed
+        // for good (the queue keeps at most one, so this never runs it twice).
+        if (rollout?.state === 'running') await this.waker.wake(organizationId, rollout.id);
+        return {
+          version: target?.text ?? null,
+          pending: target
+            ? upgradeCandidates(target, await this.allNodes(organizationId)).map((node) => node.id)
+            : [],
+          rollout,
+        };
+      });
     });
   }
 
   /**
    * Starts a rollout to the control plane's version, for every server on an older release; needs
    * `node.manage`. The caller names the version it saw, which must still be the control plane's.
-   * The release is read for each architecture first: a version GitHub does not serve starts
-   * nothing.
+   * The release is read for each architecture first, outside any transaction since GitHub may
+   * take seconds: a version GitHub does not serve starts nothing. Access is checked again before
+   * the rollout is written.
    */
-  start(
+  async start(
     context: SecurityContext,
     organizationId: string,
     requested: string,
     now = new Date(),
   ): Promise<AgentUpgradeRecord> {
     const target = { organizationId };
+    const version = parseReleaseVersion(this.version);
+    const candidates = (release: ReleaseVersion): Promise<NodeRecord[]> =>
+      this.transaction.runTenant(organizationId, async () => {
+        await this.refuseRunning(organizationId);
+        const found = upgradeCandidates(release, await this.allNodes(organizationId));
+        if (found.length === 0)
+          throw new ConflictError(
+            'agent_upgrade_not_needed',
+            `Every agent already runs ${this.version} or a later version.`,
+          );
+        return found.sort((a, b) => a.name.localeCompare(b.name));
+      });
+    const listed = await this.accounts.run(context, async () => {
+      await this.access.require(context.userId, 'node.manage', target);
+      if (!version)
+        throw new ConflictError(
+          'agent_upgrade_unavailable',
+          'This control plane is a development build: it has no release to upgrade agents to.',
+        );
+      if (requested !== version.text)
+        throw new ConflictError(
+          'agent_upgrade_version_changed',
+          `The control plane runs ${version.text}, not ${requested}: reload and try again.`,
+        );
+      return { release: version, nodes: await candidates(version) };
+    });
+    const { release } = listed;
+    await this.checkReleases(release, listed.nodes);
     return this.accounts.run(
       context,
       async () => {
         await this.access.require(context.userId, 'node.manage', target);
-        const version = parseReleaseVersion(this.version);
-        if (!version)
-          throw new ConflictError(
-            'agent_upgrade_unavailable',
-            'This control plane is a development build: it has no release to upgrade agents to.',
-          );
-        if (requested !== version.text)
-          throw new ConflictError(
-            'agent_upgrade_version_changed',
-            `The control plane runs ${version.text}, not ${requested}: reload and try again.`,
-          );
-        const candidates = await this.transaction.runTenant(organizationId, async () => {
-          await this.refuseRunning(organizationId);
-          return upgradeCandidates(version, await this.allNodes(organizationId)).sort((a, b) =>
-            a.name.localeCompare(b.name),
-          );
-        });
-        if (candidates.length === 0)
-          throw new ConflictError(
-            'agent_upgrade_not_needed',
-            `Every agent already runs ${version.text} or a later version.`,
-          );
-        await this.checkReleases(version, candidates);
+        // Read again: servers may have changed while the releases were read.
+        const nodes = await candidates(release);
         return this.transaction.runTenant(organizationId, async () => {
           const record: AgentUpgradeRecord = {
             id: uuidv7(),
             organizationId,
-            version: version.text,
+            version: release.text,
             state: 'running',
-            nodeIds: candidates.map((node) => node.id),
+            nodeIds: nodes.map((node) => node.id),
             position: 0,
             actionId: null,
             turnStartedAt: now,
@@ -300,6 +315,21 @@ export class AgentUpgrades {
     const nodeId = upgrade.nodeIds[upgrade.position] ?? '';
     const version = parseReleaseVersion(upgrade.version);
     const release = version ? await this.releases.find(version, architecture) : null;
+    try {
+      return await this.admit(upgrade, nodeId, release, now);
+    } catch (error: unknown) {
+      // An action was admitted on the server meanwhile: the turn waits for it, as before sending.
+      if (error instanceof ConflictError && error.code === 'node_busy') return true;
+      throw error;
+    }
+  }
+
+  private admit(
+    upgrade: AgentUpgradeRecord,
+    nodeId: string,
+    release: AgentRelease | null,
+    now: Date,
+  ): Promise<boolean> {
     return this.transaction.runTenant(upgrade.organizationId, async () => {
       if (!release) {
         await this.apply(
@@ -325,6 +355,8 @@ export class AgentUpgrades {
           },
           deadline: new Date(now.getTime() + UPGRADE_TIMINGS.actionMs),
           actor: SYSTEM_ACTOR,
+          // Never beside an unfinished action of the server: a deployment touching it.
+          exclusive: true,
         },
         now,
       );
