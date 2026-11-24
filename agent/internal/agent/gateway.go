@@ -17,6 +17,7 @@ import (
 	"github.com/shipkeepdev/shipkeep/agent/internal/actions"
 	"github.com/shipkeepdev/shipkeep/agent/internal/caddy"
 	"github.com/shipkeepdev/shipkeep/agent/internal/certwatch"
+	"github.com/shipkeepdev/shipkeep/agent/internal/config"
 	"github.com/shipkeepdev/shipkeep/agent/internal/confirm"
 	"github.com/shipkeepdev/shipkeep/agent/internal/credentials"
 	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
@@ -43,7 +44,7 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		name = hostname
 	}
 	// Capacity facts (CPU, memory, disk) feed scheduling (SPEC 6); the configured name wins.
-	reservation := actions.Reservation{CPUMillis: a.cfg.Node.Reservation.CPUMillis, MemoryBytes: a.cfg.Node.Reservation.MemoryBytes}
+	reservation := actions.Reservation{CPUMillis: a.cfg.Node.Reservation.CPUMillis, MemoryBytes: a.cfg.Node.Reservation.MemoryBytes, Role: nodeRole(a.cfg.Node.Role)}
 	facts := actions.Facts(ctx, a.cfg.Paths.StateDir, engine, reservation)
 	facts.Hostname = name
 	bundle, err := credentials.Load(a.cfg.Paths.StateDir, a.cfg.ControlPlane.CAFingerprint)
@@ -127,9 +128,16 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		a.logger.Warn("development mode: image pulls do not require the egress proxy")
 		options = append(options, actions.WithoutEgressCheck())
 	}
-	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts, options...), Epoch: func() uint64 { return epoch }}
 	// Node, container and route metrics, sent on the stream when the control plane accepts them.
-	sampler := &metrics.Sampler{Containers: engine, Requests: router, Proc: "/proc", Sys: "/sys", Logger: a.logger}
+	sampler := &metrics.Sampler{Containers: engine, Proc: "/proc", Sys: "/sys", Logger: a.logger}
+	if a.cfg.Node.Role == config.RoleControlPlaneOnly {
+		// No application and no Caddy of the agent's own on this machine: the control plane's
+		// Caddy serves it (ADR 0028).
+		options = append(options, actions.ControlPlaneOnly())
+	} else {
+		sampler.Requests = router
+	}
+	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts, options...), Epoch: func() uint64 { return epoch }}
 	runner := gateway.Runner{
 		Endpoint: a.endpoint(), StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher,
 		Metrics:   sampler.Sample,
@@ -208,4 +216,16 @@ func secureRoutesUntilDone(ctx context.Context, router interface{ SecureRoutes(c
 // address to connect to on the machine that hosts the control plane (ADR 0021).
 func (a *Agent) endpoint() gateway.Endpoint {
 	return gateway.Endpoint{Address: a.cfg.ControlPlane.Address, Connect: a.cfg.ControlPlane.Connect}
+}
+
+// nodeRole is the role the agent reports, from its local configuration (ADR 0028).
+func nodeRole(role string) agentv1.NodeRole {
+	switch role {
+	case config.RoleControlPlane:
+		return agentv1.NodeRole_NODE_ROLE_CONTROL_PLANE
+	case config.RoleControlPlaneOnly:
+		return agentv1.NodeRole_NODE_ROLE_CONTROL_PLANE_ONLY
+	default:
+		return agentv1.NodeRole_NODE_ROLE_SERVER
+	}
 }
