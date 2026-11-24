@@ -17,7 +17,9 @@ func TestRealExecSessionRunsInAManagedContainer(t *testing.T) {
 	_, streams := execFixture()
 	stream := streams.stream
 	probe := newRealAgent(t, nil)
-	exec := DockerHandlers(probe.engine, acceptAll{}, probe.store, WithoutEgressCheck(), WithExec(DockerExec(probe.engine), streams))["exec_session"]
+	sessions := NewExecSessions()
+	t.Cleanup(sessions.Close)
+	exec := DockerHandlers(probe.engine, acceptAll{}, probe.store, WithoutEgressCheck(), WithExec(DockerExec(probe.engine), streams, sessions))["exec_session"]
 	agent := newRealAgent(t, map[string]Handler{"exec_session": exec})
 	const name = "sk-it-exec-r1-0"
 	agent.forget([]string{name}, nil)
@@ -32,6 +34,8 @@ func TestRealExecSessionRunsInAManagedContainer(t *testing.T) {
 		ContainerId: name, Argv: []string{"sh"}, SessionId: "019d0000-0000-7000-8000-0000000000aa", TimeLimit: durationpb.New(time.Minute),
 	}}}
 	agent.must("exec", session, 2*time.Minute)
+	// The action ends once the session started; the session ends at the command's exit.
+	sessions.running.Wait()
 	var stdout, stderr string
 	var exit *agentv1.ExecExit
 	for _, frame := range stream.frames() {

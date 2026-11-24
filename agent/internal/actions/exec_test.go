@@ -12,6 +12,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
 	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
@@ -31,6 +32,7 @@ type fakeAttached struct {
 	mu          sync.Mutex
 	stdin       strings.Builder
 	stdinClosed bool
+	failWrites  bool
 	closed      chan struct{}
 	once        sync.Once
 }
@@ -42,6 +44,9 @@ func newAttached() *fakeAttached {
 func (f *fakeAttached) Write(p []byte) (int, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.failWrites && f.stdinClosed {
+		return 0, errors.New("write on a half-closed connection")
+	}
 	return f.stdin.Write(p)
 }
 
@@ -182,7 +187,7 @@ func validExec() *agentv1.ExecSession {
 
 func TestExecSessionRefusesMaliciousInput(t *testing.T) {
 	engine, streams := execFixture()
-	settings := &execSettings{engine: engine, streams: streams}
+	settings := &execSettings{engine: engine, streams: streams, sessions: NewExecSessions()}
 	for name, change := range map[string]func(*agentv1.ExecSession){
 		"path traversal":        func(a *agentv1.ExecSession) { a.ContainerId = "../../etc" },
 		"injection in the name": func(a *agentv1.ExecSession) { a.ContainerId = "sk-app;rm -rf /" },
@@ -244,8 +249,8 @@ func TestExecSessionCarriesOutputAndTheExitCode(t *testing.T) {
 	engine.attached.out <- output{docker.Stderr, "warn"}
 	close(engine.attached.out)
 	config := docker.ExecConfig{Argv: []string{"sh", "-c", "exit 3"}}
-	outcome, err := runExec(context.Background(), &execSettings{engine, streams}, execContainer, execSessionID, time.Minute, config)
-	if err != nil || outcome.ExitCode != 3 || outcome.ResourceID != execContainer {
+	outcome, err := runSession(engine, streams, time.Minute, config)
+	if err != nil || outcome.ResourceID != execContainer {
 		t.Fatalf("got %+v, %v", outcome, err)
 	}
 	frames := streams.stream.frames()
@@ -268,7 +273,7 @@ func TestExecSessionForwardsStdinResizeAndClose(t *testing.T) {
 	in <- &agentv1.ExecStreamResponse{Frame: &agentv1.ExecStreamResponse_Close{Close: &agentv1.ExecClose{}}}
 	done := make(chan error, 1)
 	go func() {
-		_, err := runExec(context.Background(), &execSettings{engine, streams}, execContainer, execSessionID, time.Minute, docker.ExecConfig{Argv: []string{"sh"}, TTY: true})
+		_, err := runSession(engine, streams, time.Minute, docker.ExecConfig{Argv: []string{"sh"}, TTY: true})
 		done <- err
 	}()
 	deadline := time.Now().Add(5 * time.Second)
@@ -308,7 +313,7 @@ func TestExecSessionEndsWhenTheControlPlaneKillsIt(t *testing.T) {
 	engine, streams := execFixture()
 	engine.state = docker.ExecState{Running: true}
 	streams.stream.in <- &agentv1.ExecStreamResponse{Frame: &agentv1.ExecStreamResponse_Close{Close: &agentv1.ExecClose{Kill: true}}}
-	outcome, err := runExec(context.Background(), &execSettings{engine, streams}, execContainer, execSessionID, time.Minute, docker.ExecConfig{Argv: []string{"sleep", "1000"}})
+	outcome, err := runSession(engine, streams, time.Minute, docker.ExecConfig{Argv: []string{"sleep", "1000"}})
 	if err != nil || outcome.ResourceID != execContainer {
 		t.Fatalf("got %+v, %v", outcome, err)
 	}
@@ -324,7 +329,7 @@ func TestExecSessionEndsWithItsStream(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		_, _ = runExec(context.Background(), &execSettings{engine, streams}, execContainer, execSessionID, time.Minute, docker.ExecConfig{Argv: []string{"sh"}})
+		_, _ = runSession(engine, streams, time.Minute, docker.ExecConfig{Argv: []string{"sh"}})
 	}()
 	select {
 	case <-done:
@@ -336,7 +341,7 @@ func TestExecSessionEndsWithItsStream(t *testing.T) {
 func TestExecSessionStopsAtItsTimeLimit(t *testing.T) {
 	engine, streams := execFixture()
 	start := time.Now()
-	outcome, err := runExec(context.Background(), &execSettings{engine, streams}, execContainer, execSessionID, 50*time.Millisecond, docker.ExecConfig{Argv: []string{"sh"}})
+	outcome, err := runSession(engine, streams, 50*time.Millisecond, docker.ExecConfig{Argv: []string{"sh"}})
 	if err != nil || time.Since(start) > 5*time.Second {
 		t.Fatalf("got %+v, %v after %v", outcome, err, time.Since(start))
 	}
@@ -355,7 +360,7 @@ func TestExecSessionSplitsLargeOutput(t *testing.T) {
 	engine, streams := execFixture()
 	engine.attached.out <- output{docker.Stdout, strings.Repeat("x", 3*execChunk+1)}
 	close(engine.attached.out)
-	if _, err := runExec(context.Background(), &execSettings{engine, streams}, execContainer, execSessionID, time.Minute, docker.ExecConfig{Argv: []string{"cat"}}); err != nil {
+	if _, err := runSession(engine, streams, time.Minute, docker.ExecConfig{Argv: []string{"cat"}}); err != nil {
 		t.Fatal(err)
 	}
 	total := 0
@@ -375,7 +380,7 @@ func TestExecSessionSplitsLargeOutput(t *testing.T) {
 func TestExecSessionRefusesAForeignContainer(t *testing.T) {
 	engine, streams := execFixture()
 	engine.labels = map[string]string{}
-	if _, err := runExec(context.Background(), &execSettings{engine, streams}, execContainer, execSessionID, time.Minute, docker.ExecConfig{Argv: []string{"sh"}}); !errors.Is(err, errForeign) {
+	if _, err := runSession(engine, streams, time.Minute, docker.ExecConfig{Argv: []string{"sh"}}); !errors.Is(err, errForeign) {
 		t.Fatalf("got %v", err)
 	}
 	if len(engine.created) != 0 || streams.stream.ctx != nil {
@@ -387,7 +392,7 @@ func TestExecSessionWithoutAStreamStartsNothing(t *testing.T) {
 	engine, streams := execFixture()
 	streams.err = errors.New("no gateway session")
 	engine.startErr = errors.New("must not start")
-	if _, err := runExec(context.Background(), &execSettings{engine, streams}, execContainer, execSessionID, time.Minute, docker.ExecConfig{Argv: []string{"sh"}}); err == nil {
+	if _, err := runSession(engine, streams, time.Minute, docker.ExecConfig{Argv: []string{"sh"}}); err == nil {
 		t.Fatal("a session without a stream succeeded")
 	}
 }
@@ -395,7 +400,7 @@ func TestExecSessionWithoutAStreamStartsNothing(t *testing.T) {
 func TestAFailedStartSaysSoWithAFixedText(t *testing.T) {
 	engine, streams := execFixture()
 	engine.startErr = errors.New("docker exec start: status 409 /var/lib/secret")
-	if _, err := runExec(context.Background(), &execSettings{engine, streams}, execContainer, execSessionID, time.Minute, docker.ExecConfig{Argv: []string{"sh"}}); err == nil {
+	if _, err := runSession(engine, streams, time.Minute, docker.ExecConfig{Argv: []string{"sh"}}); err == nil {
 		t.Fatal("a failed start succeeded")
 	}
 	frames := streams.stream.frames()
@@ -409,7 +414,102 @@ func TestExecIsRegisteredOnlyWhenConfigured(t *testing.T) {
 		t.Fatal("exec without its streams")
 	}
 	engine, streams := execFixture()
-	if _, ok := DockerHandlers(newFakeEngine(), nil, nil, WithExec(engine, streams))["exec_session"]; !ok {
+	if _, ok := DockerHandlers(newFakeEngine(), nil, nil, WithExec(engine, streams, NewExecSessions()))["exec_session"]; !ok {
 		t.Fatal("exec not registered")
+	}
+}
+
+// runSession starts a session and waits for it to end, as its owner does when it closes.
+func runSession(engine *fakeExecEngine, streams *fakeExecStreams, limit time.Duration, config docker.ExecConfig) (journal.Outcome, error) {
+	sessions := NewExecSessions()
+	outcome, err := startSession(context.Background(), &execSettings{engine, streams, sessions}, execContainer, execSessionID, limit, config)
+	sessions.running.Wait()
+	return outcome, err
+}
+
+func TestTheActionEndsOnceTheSessionStarted(t *testing.T) {
+	engine, streams := execFixture()
+	sessions := NewExecSessions()
+	started := make(chan error, 1)
+	go func() {
+		_, err := startSession(context.Background(), &execSettings{engine, streams, sessions}, execContainer, execSessionID, time.Minute, docker.ExecConfig{Argv: []string{"sh"}})
+		started <- err
+	}()
+	// The journal runs one step at a time: the step must not last as long as the session.
+	select {
+	case err := <-started:
+		if err != nil {
+			t.Fatal(err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the action lasted as long as its session")
+	}
+	// Closing the owner ends the running session, which says so.
+	sessions.Close()
+	frames := streams.stream.frames()
+	if frames[len(frames)-1].GetError().GetMessage() != execClosed {
+		t.Fatalf("frames: %v", frames)
+	}
+	if _, err := startSession(context.Background(), &execSettings{engine, streams, sessions}, execContainer, execSessionID, time.Minute, docker.ExecConfig{Argv: []string{"sh"}}); err == nil {
+		t.Fatal("a session started after its owner closed")
+	}
+}
+
+// stalledStream blocks every send after the open until its context ends, as gRPC flow control
+// does when the control plane stops reading.
+type stalledStream struct{ fakeExecStream }
+
+func (s *stalledStream) Send(frame *agentv1.ExecStreamRequest) error {
+	if frame.GetOpen() != nil {
+		return s.fakeExecStream.Send(frame)
+	}
+	<-s.ctx.Done()
+	return s.ctx.Err()
+}
+
+type stalledStreams struct{ stream *stalledStream }
+
+func (f *stalledStreams) OpenExec(ctx context.Context) (ExecStream, error) {
+	f.stream.ctx = ctx
+	return f.stream, nil
+}
+
+func TestAStalledStreamStillEndsAtTheTimeLimit(t *testing.T) {
+	previous := execFinalTimeout
+	execFinalTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { execFinalTimeout = previous })
+	engine, _ := execFixture()
+	engine.attached.out <- output{docker.Stdout, "a lot of output"}
+	stream := &stalledStream{fakeExecStream{in: make(chan *agentv1.ExecStreamResponse)}}
+	sessions := NewExecSessions()
+	start := time.Now()
+	if _, err := startSession(context.Background(), &execSettings{engine, &stalledStreams{stream}, sessions}, execContainer, execSessionID, 50*time.Millisecond, docker.ExecConfig{Argv: []string{"yes"}}); err != nil {
+		t.Fatal(err)
+	}
+	sessions.running.Wait()
+	if elapsed := time.Since(start); elapsed > 3*time.Second {
+		t.Fatalf("the session outlived its limit by %v", elapsed)
+	}
+}
+
+func TestStdinAfterItClosedIsDropped(t *testing.T) {
+	engine, streams := execFixture()
+	in := streams.stream.in
+	in <- &agentv1.ExecStreamResponse{Frame: &agentv1.ExecStreamResponse_Close{Close: &agentv1.ExecClose{}}}
+	in <- &agentv1.ExecStreamResponse{Frame: &agentv1.ExecStreamResponse_Stdin{Stdin: []byte("late")}}
+	engine.attached.failWrites = true
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = runSession(engine, streams, time.Minute, docker.ExecConfig{Argv: []string{"sh"}})
+	}()
+	// The late input changes nothing: the output still arrives, then the exit.
+	time.Sleep(100 * time.Millisecond)
+	engine.attached.out <- output{docker.Stdout, "rest"}
+	close(engine.attached.out)
+	<-done
+	frames := streams.stream.frames()
+	if string(frames[1].GetStdout()) != "rest" || frames[len(frames)-1].GetExit() == nil {
+		t.Fatalf("frames: %v", frames)
 	}
 }

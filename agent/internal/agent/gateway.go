@@ -129,7 +129,10 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	}
 	// Exec sessions in managed containers, with their frames on an ExecStream (SPEC 3.1).
 	streams := &gateway.Streams{}
-	options = append(options, actions.WithExec(actions.DockerExec(engine), execStreams{streams}))
+	sessions := actions.NewExecSessions()
+	// Sessions end with this gateway run, each saying so, before the journal closes.
+	defer sessions.Close()
+	options = append(options, actions.WithExec(actions.DockerExec(engine), execStreams{streams}, sessions))
 	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts, options...), Epoch: func() uint64 { return epoch }}
 	// Node, container and route metrics, sent on the stream when the control plane accepts them.
 	sampler := &metrics.Sampler{Containers: engine, Requests: router, Proc: "/proc", Sys: "/sys", Logger: a.logger}
