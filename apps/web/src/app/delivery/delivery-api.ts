@@ -13,6 +13,9 @@ export type DeploymentTimeline = Schema<'DeploymentTimelineDto'>;
 export type DeploymentStep = Schema<'DeploymentStepDto'>;
 export type ApplicationMetrics = Schema<'ApplicationMetricsDto'>;
 export type MetricsRange = '1h' | '24h' | '7d';
+export type ApplicationLogs = Schema<'LogsDto'>;
+export type LogLine = Schema<'LogLineDto'>;
+export type ExecSession = Schema<'ExecSessionDto'>;
 
 /** Agent actions per page on the application screen. */
 export const AGENT_ACTION_PAGE = 20;
@@ -132,6 +135,32 @@ export class DeliveryApi extends WorkspaceApi {
       this.client.GET(
         '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/metrics',
         { params: { path: { ...environment, applicationId }, query: { range } } },
+      ),
+    );
+  }
+  /** The application's log lines, newest first (ADR 0029). */
+  async logs(
+    environment: EnvironmentRef,
+    applicationId: string,
+    query: { text?: string; stream?: 'stdout' | 'stderr'; from?: string; limit?: number },
+  ): Promise<ApplicationLogs> {
+    return this.required(() =>
+      this.client.GET(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/logs',
+        { params: { path: { ...environment, applicationId }, query } },
+      ),
+    );
+  }
+  /** Opens an exec session in a running replica; the browser then joins it over a WebSocket. */
+  openExecSession(
+    environment: EnvironmentRef,
+    applicationId: string,
+    body: { replica: number; argv: readonly string[]; tty: boolean; minutes: number },
+  ): Promise<ExecSession> {
+    return this.required(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/exec-sessions',
+        { params: { path: { ...environment, applicationId } }, body },
       ),
     );
   }

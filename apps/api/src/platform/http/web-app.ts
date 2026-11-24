@@ -6,6 +6,8 @@ import { extname, join } from 'node:path';
 import type { INestApplication } from '@nestjs/common';
 import type { NextFunction, Request, Response } from 'express';
 
+import { AppConfig } from '../config/app-config';
+
 export const WEB_NONCE_PLACEHOLDER = '__SHIPKEEP_CSP_NONCE__';
 const MAX_FILE = 8 * 1024 * 1024;
 const MAX_TOTAL = 32 * 1024 * 1024;
@@ -30,7 +32,24 @@ const MAX_INSTALL_TOTAL = 100 * 1024 * 1024;
 type Asset = { body: Buffer; type: string; etag: string; immutable: boolean };
 
 /** Snapshot the trusted build before listening: requests never resolve user paths on disk. */
+/**
+ * The WebSocket origin of the public URL. Not every browser lets 'self' cover ws: and wss:, and
+ * the exec sessions' WebSocket needs it (SPEC 3.1).
+ */
+export function socketOrigin(publicUrl: string): string {
+  const url = new URL(publicUrl);
+  url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
+  return url.origin;
+}
+
 export async function installWebApp(app: INestApplication, directory: string): Promise<void> {
+  // A module without configuration, as in some tests, names no socket origin beyond 'self'.
+  let socket = '';
+  try {
+    socket = ` ${socketOrigin(app.get(AppConfig, { strict: false }).get('API_PUBLIC_URL'))}`;
+  } catch {
+    socket = '';
+  }
   let assets: Map<string, Asset>;
   let index: string;
   try {
@@ -156,7 +175,7 @@ export async function installWebApp(app: INestApplication, directory: string): P
         "style-src-attr 'none'",
         "img-src 'self' data:",
         "font-src 'self'",
-        "connect-src 'self'",
+        `connect-src 'self'${socket}`,
         "base-uri 'self'",
         "object-src 'none'",
         "frame-ancestors 'none'",
