@@ -61,7 +61,8 @@ type Shipper struct {
 type line struct {
 	container string
 	entry     *agentv1.LogEntry
-	at        time.Time
+	// at is where to read the container again from once the line is kept (LogLine.Resume).
+	at time.Time
 }
 
 type batch struct {
@@ -232,7 +233,7 @@ func (s *Shipper) followOne(ctx context.Context, id string, lines chan<- line) e
 		text := redactor.Redact(output.Text)
 		entry := &agentv1.LogEntry{Container: name, Stream: stream, Time: timestamppb.New(output.Time), Line: cut(text), Truncated: output.Truncated || len(text) > docker.MaxLogLine}
 		select {
-		case lines <- line{container: name, entry: entry, at: output.Time}:
+		case lines <- line{container: name, entry: entry, at: output.Resume}:
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()

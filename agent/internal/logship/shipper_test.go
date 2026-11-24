@@ -113,7 +113,9 @@ var base = time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
 func world(lines int) (*Shipper, *fakeEngine, *fakeCursors, *fakeStream, context.Context, context.CancelFunc) {
 	engine := &fakeEngine{}
 	for i := range lines {
-		engine.lines = append(engine.lines, docker.LogLine{Stream: docker.Stdout, Time: base.Add(time.Duration(i) * time.Millisecond), Text: fmt.Sprintf("line %d token=sk_fake_abcdefgh", i)})
+		at := base.Add(time.Duration(i) * time.Millisecond)
+		// Resume trails Time, as when a line of the other stream is still open.
+		engine.lines = append(engine.lines, docker.LogLine{Stream: docker.Stdout, Time: at, Resume: at.Add(-time.Millisecond), Text: fmt.Sprintf("line %d token=sk_fake_abcdefgh", i)})
 	}
 	cursors := &fakeCursors{at: map[string]time.Time{"sk-web-r1-0": base.Add(-time.Hour)}}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -153,7 +155,8 @@ func TestShipperSendsRedactedLinesFromTheCursorAndMovesItOnAck(t *testing.T) {
 			t.Fatalf("entry: %v", entry)
 		}
 	}
-	// Followed from the cursor; the cursor moves only once the control plane kept the batch.
+	// Followed from the cursor; the cursor moves only once the control plane kept the batch, to
+	// where the last line says reading again loses nothing.
 	if !engine.since[0].Equal(base.Add(-time.Hour)) {
 		t.Fatalf("followed from %v", engine.since[0])
 	}
@@ -164,7 +167,7 @@ func TestShipperSendsRedactedLinesFromTheCursorAndMovesItOnAck(t *testing.T) {
 	eventually(t, func() bool {
 		cursors.mu.Lock()
 		defer cursors.mu.Unlock()
-		return cursors.at["sk-web-r1-0"].Equal(base.Add(2 * time.Millisecond))
+		return cursors.at["sk-web-r1-0"].Equal(base.Add(time.Millisecond))
 	})
 	cancel()
 	if err := <-done; err != nil {

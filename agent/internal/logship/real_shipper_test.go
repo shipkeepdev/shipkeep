@@ -85,10 +85,21 @@ func TestRealShipperSendsAContainersRedactedLinesAndKeepsItsCursor(t *testing.T)
 	done := make(chan error, 1)
 	go func() { done <- shipper.Run(runCtx, stream, 1) }()
 	deadline := time.Now().Add(20 * time.Second)
-	for {
+	// The engine may run other managed containers, whose lines are shipped too: only this
+	// test's container is checked.
+	mine := func() []*agentv1.LogEntry {
 		stream.mu.Lock()
-		count := len(stream.entries)
-		stream.mu.Unlock()
+		defer stream.mu.Unlock()
+		var own []*agentv1.LogEntry
+		for _, entry := range stream.entries {
+			if entry.GetContainer() == "sk-logs-r1-0" {
+				own = append(own, entry)
+			}
+		}
+		return own
+	}
+	for {
+		count := len(mine())
 		if count >= 2 {
 			break
 		}
@@ -102,10 +113,15 @@ func TestRealShipperSendsAContainersRedactedLinesAndKeepsItsCursor(t *testing.T)
 		t.Fatal(err)
 	}
 	stream.mu.Lock()
-	defer stream.mu.Unlock()
-	var stderr *agentv1.LogEntry
 	for _, entry := range stream.entries {
-		if entry.GetContainer() != "sk-logs-r1-0" || strings.Contains(entry.GetLine(), "sk_fake_redactme") {
+		if strings.Contains(entry.GetLine(), "sk_fake_redactme") {
+			t.Fatalf("entry %v", entry)
+		}
+	}
+	stream.mu.Unlock()
+	var stderr *agentv1.LogEntry
+	for _, entry := range mine() {
+		if entry.GetContainer() != "sk-logs-r1-0" {
 			t.Fatalf("entry %v", entry)
 		}
 		if entry.GetStream() == agentv1.LogStream_LOG_STREAM_STDERR {
