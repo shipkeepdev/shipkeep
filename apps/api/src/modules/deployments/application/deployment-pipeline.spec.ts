@@ -410,11 +410,33 @@ describe('DeploymentPipeline', () => {
     expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
     expect(w.deployment).toMatchObject({
       state: 'failed',
-      error: 'No node can run replica 1 of 1 (no nodes).',
+      error:
+        'No node can run replica 1 of 1 (no server runs applications; add one on the Servers page).',
     });
     expect(w.events.at(-1)).toMatchObject({
       type: 'deployment.failed',
       payload: { routing: 'untouched' },
+    });
+  });
+
+  it('says the same when the only node is a control plane machine (ADR 0028)', async () => {
+    const w = world({
+      nodes: [
+        {
+          id: NODE,
+          name: 'cp',
+          status: 'ready',
+          lastHeartbeatAt: NOW,
+          labels: {},
+          facts: { ...READY_FACTS, role: 'control-plane-only' },
+        },
+      ],
+    });
+    expect(await w.subject.run(ORG, w.deployment.id, () => NOW)).toBe('done');
+    expect(w.deployment).toMatchObject({
+      state: 'failed',
+      error:
+        'No node can run replica 1 of 1 (no server runs applications; add one on the Servers page).',
     });
   });
 
