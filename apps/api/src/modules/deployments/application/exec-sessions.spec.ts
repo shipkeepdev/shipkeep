@@ -116,7 +116,8 @@ describe('opening an exec session (SPEC 3.1)', () => {
       organizationId: ORG,
       nodeId: NODE,
       idempotencyKey: `exec:${session.id}`,
-      deadline: session.endsAt,
+      // The action expires with the join window, never hours later.
+      deadline: session.attachBy,
     });
     expect(action?.origin).toBeUndefined();
     expect(action?.action.case).toBe('execSession');
@@ -166,6 +167,30 @@ describe('opening an exec session (SPEC 3.1)', () => {
     const session = await w.service.open(context, target, APP, { replica: 2 }, NOW);
     expect(session.container).toBe('sk-web-new-r2');
     expect(session.nodeId).toBe(NODE);
+  });
+
+  it('refuses a replica last seen too long ago: its server may be down', async () => {
+    const w = world({ replicas: [replica({ observedAt: new Date(NOW.getTime() - 3 * 60_000) })] });
+    await expect(w.service.open(context, target, APP, {}, NOW)).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+    const unseen = world({ replicas: [replica({ observedAt: null })] });
+    await expect(unseen.service.open(context, target, APP, {}, NOW)).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+    expect([...w.queued, ...unseen.queued]).toEqual([]);
+  });
+
+  it('caps the sessions waiting for one person', async () => {
+    const w = world();
+    for (let i = 0; i < 4; i++) await w.service.open(context, target, APP, {}, NOW);
+    await expect(w.service.open(context, target, APP, {}, NOW)).rejects.toMatchObject({
+      code: 'exec_sessions_limit',
+    });
+    expect(w.queued).toHaveLength(4);
+    // Once their join window passed, they no longer count.
+    await w.service.open(context, target, APP, {}, new Date(NOW.getTime() + 61_000));
+    expect(w.queued).toHaveLength(5);
   });
 
   it('refuses a replica that does not run, before queueing or auditing anything', async () => {

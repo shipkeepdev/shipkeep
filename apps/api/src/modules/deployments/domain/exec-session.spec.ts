@@ -28,7 +28,7 @@ describe('exec session requests (SPEC 3.3)', () => {
     ['argv', { argv: Array.from({ length: EXEC_ARGS + 1 }, () => 'x') }],
     ['argv', { argv: ['a'.repeat(EXEC_ARG_BYTES + 1)] }],
     ['argv', { argv: ['é'.repeat(EXEC_ARG_BYTES / 2 + 1)] }],
-    ['argv', { argv: Array.from({ length: 5 }, () => 'a'.repeat(EXEC_ARG_BYTES)) }],
+    ['argv', { argv: Array.from({ length: 3 }, () => 'a'.repeat(EXEC_ARG_BYTES)) }],
   ])('refuses an invalid %s', (field, input) => {
     expect(() => execRequest(input)).toThrow(InvalidInputError);
     try {
@@ -42,6 +42,13 @@ describe('exec session requests (SPEC 3.3)', () => {
     expect(validArgv(['echo', '🙂'])).toBe(true);
     expect(validArgv(['a'.repeat(EXEC_ARG_BYTES)])).toBe(true);
     expect(validArgv(['$(id)', '; rm -rf /'])).toBe(true);
+  });
+
+  it('cuts a long program by code points, never inside a surrogate pair', () => {
+    const { program } = auditedCommand(['a'.repeat(255) + '🙂🙂']);
+    expect(Array.from(program)).toHaveLength(256);
+    expect(program.endsWith('🙂')).toBe(true);
+    expect(/[\uD800-\uDFFF]/u.test(program)).toBe(false);
   });
 
   it('records the program and the number of arguments, never the arguments', () => {

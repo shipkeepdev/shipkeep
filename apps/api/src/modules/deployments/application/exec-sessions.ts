@@ -15,7 +15,14 @@ import {
 } from '../../identity/application/resource-security-context';
 import { TenantAccess } from '../../organizations/application/tenant-access';
 import { type ExecSession, ExecSessionRegistry } from '../../fleet/application/exec-relay';
-import { auditedCommand, EXEC_ATTACH_MS, execRequest } from '../domain/exec-session';
+import {
+  auditedCommand,
+  EXEC_ATTACH_MS,
+  EXEC_FRESH_MS,
+  EXEC_SESSIONS_PER_ORGANIZATION,
+  EXEC_SESSIONS_PER_USER,
+  execRequest,
+} from '../domain/exec-session';
 
 import {
   ACTION_QUEUE,
@@ -62,13 +69,26 @@ export class ExecSessions {
       context,
       async () => {
         await this.access.require(context.userId, 'container.exec', scope);
+        if (
+          this.registry.count({ userId: context.userId }, now) >= EXEC_SESSIONS_PER_USER ||
+          this.registry.count({ organizationId: target.organizationId }, now) >=
+            EXEC_SESSIONS_PER_ORGANIZATION
+        )
+          throw new ConflictError('exec_sessions_limit', 'Too many exec sessions are open.');
         const opened = await this.transaction.runTenant(target.organizationId, async () => {
           const application = await this.applications.find(target, applicationId);
           if (!application) throw new NotFoundError('application');
           const replicas = await this.observations.forApplication(application.id);
           // During a rollout two releases share a replica number: the running one, newest first.
           const replica = replicas
-            .filter((found) => found.replica === request.replica && found.state === 'running')
+            .filter(
+              (found) =>
+                found.replica === request.replica &&
+                found.state === 'running' &&
+                // An old observation may describe a server that is down.
+                found.observedAt !== null &&
+                now.getTime() - found.observedAt.getTime() <= EXEC_FRESH_MS,
+            )
             .sort((a, b) => b.releaseId.localeCompare(a.releaseId))
             .at(0);
           if (!replica)
@@ -102,8 +122,9 @@ export class ExecSessions {
                 timeLimit: create(DurationSchema, { seconds: BigInt(limitMs / 1000) }),
               }),
             },
-            // Delivered within the attach window; the agent then ends it at its time limit.
-            deadline: session.endsAt,
+            // Expires with the join window: an agent that reconnects later never runs it with
+            // nobody there. Once started, the agent ends it at its own time limit.
+            deadline: session.attachBy,
             actor: resourceActor(context),
           });
           await this.events.publish([
@@ -128,7 +149,7 @@ export class ExecSessions {
           return session;
         });
         // Joinable once its action and audit event are committed.
-        this.registry.add(opened);
+        this.registry.add(opened, now);
         return opened;
       },
       { permission: 'container.exec', target: scope },

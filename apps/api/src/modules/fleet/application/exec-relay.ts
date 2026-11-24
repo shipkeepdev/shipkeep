@@ -24,8 +24,22 @@ export interface ExecSession {
 export class ExecSessionRegistry {
   private readonly sessions = new Map<string, ExecSession>();
 
-  add(session: ExecSession): void {
+  add(session: ExecSession, now = new Date()): void {
+    this.prune(now);
     this.sessions.set(session.id, session);
+  }
+
+  /** Sessions of this person or organization still waiting to be joined. */
+  count(owner: { userId?: string; organizationId?: string }, now = new Date()): number {
+    this.prune(now);
+    let count = 0;
+    for (const session of this.sessions.values())
+      if (
+        (owner.userId === undefined || session.userId === owner.userId) &&
+        (owner.organizationId === undefined || session.organizationId === owner.organizationId)
+      )
+        count++;
+    return count;
   }
 
   /** The session, while it may still be joined. */
