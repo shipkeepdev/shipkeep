@@ -51,6 +51,34 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 	if err := a.prepareDirectories(); err != nil {
 		return err
 	}
+	// An upgrade (ADR 0028) can end this run: a new binary that never reaches the control plane,
+	// or the swap to a newer one. Both cancel ctx with their cause, read once everything stopped.
+	ctx, stopRun := context.WithCancelCause(ctx)
+	defer stopRun(nil)
+	boot := newStartup(a.cfg.Paths.StateDir, buildinfo.Version, a.logger, nil)
+	restart := newRestarter()
+	watchCtx, stopWatching := context.WithCancel(ctx)
+	var watching sync.WaitGroup
+	watching.Go(func() {
+		if err := boot.deadline(watchCtx, confirmWithin); err != nil {
+			stopRun(err)
+		}
+	})
+	watching.Go(func() {
+		if err := restart.wait(watchCtx, restartWithin); err != nil {
+			stopRun(err)
+		}
+	})
+	defer func() {
+		stopWatching()
+		watching.Wait()
+		switch cause := context.Cause(ctx); {
+		case errors.Is(cause, ErrUpgradeUnconfirmed):
+			runErr = ErrUpgradeUnconfirmed
+		case errors.Is(cause, errRestart) && runErr == nil:
+			a.logger.Info("restarting into the upgraded binary")
+		}
+	}()
 
 	if ctx.Err() != nil {
 		return nil
@@ -119,8 +147,10 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 	if a.cfg.Dev {
 		a.logger.Warn("development mode: CA fingerprint pinning may be disabled, never use on a real server")
 	}
+	// systemd learns the agent runs; an upgraded binary waits for the control plane's welcome.
+	boot.started(ctx)
 
-	if err := a.runGateway(ctx, store, engine, router, routes); err != nil && ctx.Err() == nil {
+	if err := a.runGateway(ctx, store, engine, router, routes, boot, restart); err != nil && ctx.Err() == nil {
 		return err
 	}
 

@@ -101,3 +101,22 @@ export function nodeReady(input: {
     payload: { from: input.from },
   });
 }
+
+/**
+ * A connected agent reported another version than the one stored: an upgrade, its rollback, or a
+ * reinstall (ADR 0028). Recorded on changes only.
+ */
+export function agentVersionChanged(input: {
+  organizationId: string;
+  nodeId: string;
+  from: string | null;
+  to: string;
+}): DomainEvent {
+  return createEvent({
+    type: 'fleet.node.agent_version_changed',
+    organizationId: input.organizationId,
+    actor: { kind: 'node', id: input.nodeId },
+    target: { type: 'node', id: input.nodeId },
+    payload: { from: input.from, to: input.to },
+  });
+}

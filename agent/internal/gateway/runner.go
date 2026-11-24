@@ -50,6 +50,10 @@ type Runner struct {
 	// Welcome says the control plane accepts them; nil sends none.
 	Metrics         func(context.Context) (*agentv1.MetricsReport, error)
 	MetricsInterval time.Duration
+	// Connected, if set, is called each time the control plane welcomed this agent's Hello.
+	Connected func(context.Context)
+	// Sent, if set, is called once an action update was written to the stream.
+	Sent func(*agentv1.ActionUpdate)
 
 	// inflight tracks running actions so Run returns only after they stopped.
 	inflight sync.WaitGroup
@@ -225,6 +229,9 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 		acceptsMetrics = welcome.GetMetrics()
 	}
 	r.Logger.Info("agent connected", "node_id", bundle.NodeID)
+	if r.Connected != nil {
+		r.Connected(ctx)
+	}
 	samples := make(chan *agentv1.MetricsReport)
 	if r.Metrics != nil && acceptsMetrics {
 		every := r.MetricsInterval
@@ -279,6 +286,9 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 		case update := <-updates:
 			if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_ActionUpdate{ActionUpdate: update}}); err != nil {
 				return sendFailure(streamCtx, "send action update", err, incoming)
+			}
+			if r.Sent != nil {
+				r.Sent(update)
 			}
 		case report := <-reports:
 			if err := stream.Send(&agentv1.ConnectRequest{Msg: &agentv1.ConnectRequest_StateReport{StateReport: report}}); err != nil {

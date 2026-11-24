@@ -75,6 +75,7 @@ type handlerOptions struct {
 	reservedHosts   []string
 	workloads       Workloads
 	routeBook       *RouteBook
+	upgrader        *Upgrader
 }
 
 // Workloads places application containers on the machine that hosts the control plane (ADR 0021):
@@ -102,6 +103,12 @@ func WithReservedHosts(hosts ...string) Option {
 // refresher shares (ADR 0017).
 func WithRouteBook(book *RouteBook) Option {
 	return func(o *handlerOptions) { o.routeBook = book }
+}
+
+// WithUpgrader lets the agent replace its own binary (ADR 0028). Without it, UpgradeAgent is
+// refused as unsupported.
+func WithUpgrader(u Upgrader) Option {
+	return func(o *handlerOptions) { o.upgrader = &u }
 }
 
 // WithoutEgressCheck lets pulls run without the daemon going through the egress proxy. Only an
