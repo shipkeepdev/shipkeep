@@ -18,6 +18,7 @@ import { PrismaNodeCredentialStore } from './infrastructure/prisma-node-credenti
 import { AppConfig } from '../../platform/config/app-config';
 import { AgentGateway } from './interface/agent-gateway';
 import { EnrollmentAdmission } from './interface/enrollment-admission';
+import { LogStreams } from './interface/log-stream';
 import { NodeStream } from './interface/node-stream';
 
 import { EnrollNode } from './application/enroll-node';
@@ -71,6 +72,7 @@ import { StateReports } from './application/state-reports';
       inject: [AppConfig],
     },
     NodeStream,
+    LogStreams,
     AuthenticateNode,
     RenewNodeCertificate,
     { provide: FLEET_TRANSACTION, useExisting: PrismaUnitOfWork },
