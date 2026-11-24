@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   ByteRate,
+  distinctLines,
   LOG_RETENTION_MS,
   type LogInput,
   logLineOf,
@@ -179,5 +180,18 @@ describe('log searches (ADR 0029)', () => {
       { _time: 't', _msg: 'm', stream: 'stdout', instance: 'x' },
     ])
       expect(logLineOf(record)).toBeUndefined();
+  });
+
+  it('shows once a line the agent sent again after an outage', () => {
+    const line = {
+      time: '2026-11-24T22:20:28.073Z',
+      stream: 'stdout' as const,
+      instance: 0,
+      line: 'GET / 200',
+      truncated: false,
+    };
+    const other = { ...line, stream: 'stderr' as const };
+    const later = { ...line, time: '2026-11-24T22:20:29.000Z' };
+    expect(distinctLines([later, line, line, other, line])).toEqual([later, line, other]);
   });
 });

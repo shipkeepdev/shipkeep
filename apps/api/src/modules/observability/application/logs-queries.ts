@@ -6,7 +6,7 @@ import type { ApplicationTarget } from '../../apps/domain/application';
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
 import { type ResourceSecurityContext as SecurityContext } from '../../identity/application/resource-security-context';
 import { TenantAccess } from '../../organizations/application/tenant-access';
-import { type LogLine, logLineOf, logsQuery } from '../domain/logs';
+import { distinctLines, type LogLine, logLineOf, logsQuery } from '../domain/logs';
 
 import { LOGS_STORE, type LogsStore, METRICS_TRANSACTION, type MetricsTransaction } from './ports';
 
@@ -61,7 +61,7 @@ export class LogsQueries {
           logsQuery({ organizationId: target.organizationId, applicationId: found.id, ...search }),
           search.limit,
         );
-        const lines = records.map(logLineOf).filter((line) => line !== undefined);
+        const lines = distinctLines(records.map(logLineOf).filter((line) => line !== undefined));
         return { kept: true, lines };
       },
       { permission: 'environment.read', target: scope },

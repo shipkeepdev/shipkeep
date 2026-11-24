@@ -175,3 +175,17 @@ export function logLineOf(record: unknown): LogLine | undefined {
     return undefined;
   return { time, stream, instance, line, truncated: value['truncated'] === 'true' };
 }
+
+/**
+ * The lines without repeats, in their order. An agent sends a line again after an outage (at least
+ * once, ADR 0029); the copy has the same time, replica, stream and text, so it shows once.
+ */
+export function distinctLines(lines: readonly LogLine[]): LogLine[] {
+  const seen = new Set<string>();
+  return lines.filter((line) => {
+    const key = JSON.stringify([line.time, line.instance, line.stream, line.line]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
