@@ -311,6 +311,15 @@ compose_reads_override() { version_at_least "$1" 2 24 4; }
 # 127.0.0.1, where the control plane's plain HTTP listens on one machine. $1 is the server version.
 engine_keeps_loopback() { version_at_least "$1" 28 0 0; }
 
+# The agent pins Docker API 1.47 (agent/internal/docker). $1 is the API version the daemon serves.
+docker_api_for_agent() {
+  [[ $1 =~ ^1\.([0-9]{1,3})$ ]] && ((10#${BASH_REMATCH[1]} >= 47))
+}
+# The check of a separate machine's agent that needs Docker, before anything is written.
+assert_agent_docker() {
+  docker_api_for_agent "$(docker version --format '{{.Server.APIVersion}}' 2>/dev/null)" || fail 'The agent of this machine needs a Docker Engine that serves API 1.47 or later. Upgrade Docker, then run this installer again: nothing was changed.'
+}
+
 # The checks of one machine that need Docker, before anything is written.
 assert_single_machine_docker() {
   compose_reads_override "$(docker compose version --short 2>/dev/null)" || fail 'Applications on this machine need Docker Compose 2.24.4 or later. Upgrade the Compose plugin, then run this installer again: nothing was changed.'
@@ -488,21 +497,25 @@ new_uuid7() {
   printf '%s-%s-7%s-%x%s-%s\n' "${hex:0:8}" "${hex:8:4}" "${random:0:3}" $(((16#${random:3:1} & 3) | 8)) "${random:4:3}" "${random:7:12}"
 }
 
-# 0 when an earlier run installed this machine as a server of this control plane to the end (its
+# 0 when an earlier run installed this machine's agent for this control plane to the end (its
 # services enabled, the installer's last step, and running), and the agent, once enrolled, belongs
 # to organization_id; 1 when nothing is installed; 2 for an installation that is unfinished or not
-# this one's, whose server part the operator removes.
+# this one's, whose server part the operator removes. On a single machine it is a server, with its
+# Caddy and egress proxy, that keeps the control plane's route; on a separate one, an agent only,
+# with the control-plane-only role (ADR 0028).
 # $1, empty on a server, roots the paths for the checks.
 this_server_installed() {
-  local root=${1:-} config credentials enrolled unit
+  local root=${1:-} config credentials enrolled unit mark="    upstream: '127.0.0.1:3000'"
+  local -a units=(shipkeep-agent shipkeep-caddy shipkeep-egress)
+  ((single)) || units=(shipkeep-agent) mark='  role: control-plane-only'
   config=$root/etc/shipkeep/agent.yaml credentials=$root/var/lib/shipkeep/credentials.json
   [[ -e $config || -L $config || -e $root/etc/systemd/system/shipkeep-agent.service ]] || return 1
   [[ -f $config && ! -L $config ]] || return 2
-  for unit in shipkeep-agent shipkeep-caddy shipkeep-egress; do
+  for unit in "${units[@]}"; do
     [[ -L $root/etc/systemd/system/multi-user.target.wants/$unit.service ]] || return 2
     [[ -n $root ]] || systemctl is-active --quiet "$unit" || return 2
   done
-  grep -Fxq "  address: '$domain:7443'" "$config" && grep -Fxq "    upstream: '127.0.0.1:3000'" "$config" || return 2
+  grep -Fxq "  address: '$domain:7443'" "$config" && grep -Fxq "$mark" "$config" || return 2
   if [[ -f $credentials && ! -L $credentials ]]; then
     enrolled=$(grep -Eo '"organization_id": *"[0-9a-f-]{36}"' "$credentials" | grep -Eo '[0-9a-f-]{36}') || return 2
     [[ $enrolled == "$organization_id" ]] || return 2
@@ -512,11 +525,14 @@ this_server_installed() {
   fi
 }
 
-# ADR 0021: this machine enrolled in organization_id as a server, with the agent and the installer
-# of the control plane's own image. The join token goes from the control plane to the server
-# installer through a pipe, never on a terminal or in a file of this script.
+# ADR 0021, ADR 0028: this machine enrolled in organization_id, with the agent and the installer
+# of the control plane's own image: as a server on a single machine, and as an agent alone, which
+# runs no application, on a separate one. The join token goes from the control plane to the
+# server installer through a pipe, never on a terminal or in a file of this script.
 add_this_server() {
   local fingerprint manifest installer amd64 arm64 digest work status
+  local -a role=(--local-control-plane 127.0.0.1:3000)
+  ((single)) || role=(--control-plane-only yes)
   fingerprint=$(compose run --rm --no-deps -T control-plane node main.js server ca-fingerprint) || return 1
   [[ $fingerprint =~ ^sha256:[a-f0-9]{64}$ ]] || return 1
   manifest=$(compose run --rm --no-deps -T --entrypoint cat control-plane /app/web/browser/install/manifest.json) || return 1
@@ -532,13 +548,17 @@ add_this_server() {
     printf 'shipkeep-install: the agent of the control plane image does not match its checksum.\n' >&2
     return 1
   fi
-  printf 'Installing the agent and the edge proxy of this server...\n'
+  if ((single)); then
+    printf 'Installing the agent and the edge proxy of this server...\n'
+  else
+    printf 'Installing the agent of this machine, which upgrades the control plane...\n'
+  fi
   status=0
   compose run --rm --no-deps -T control-plane node main.js server join-token --organization "$organization_id" |
     bash "$work/install.sh" --control-plane "$domain:7443" --ca-fingerprint "$fingerprint" --origin "https://$domain" \
-      --amd64-sha256 "$amd64" --arm64-sha256 "$arm64" --local-control-plane 127.0.0.1:3000 --agent-file "$work/agent" || status=$?
+      --amd64-sha256 "$amd64" --arm64-sha256 "$arm64" "${role[@]}" --agent-file "$work/agent" || status=$?
   rm -rf -- "$work"
-  ((status == 0)) || printf 'shipkeep-install: the control plane is running, but this machine was not added as a server.\n' >&2
+  ((status == 0)) || printf 'shipkeep-install: the control plane is running, but the agent of this machine was not installed.\n' >&2
   return "$status"
 }
 
@@ -583,7 +603,9 @@ finish() {
     record account
   fi
   unset owner_password
-  if ((single)); then
+  # The first organization and this machine's agent: on a single machine, and on a separate one
+  # that can run the agent (ADR 0028), whose run recorded the organization's name.
+  if ((single)) || [[ -n $organization ]]; then
     if ((!organization_done)); then
       if [[ -z $organization_id ]]; then
         organization_id=$(new_uuid7) || fail 'Cannot choose an organization id.'
@@ -634,6 +656,7 @@ finish() {
     printf 'The compose files and their settings are in %s; give both files to Docker Compose: cd %s && sudo docker compose %s ...\n' "$directory" "$directory" "$compose_files"
     printf 'Keep .env private: it holds the database passwords.\n'
   else
+    [[ -z $organization ]] || printf 'This machine runs an agent of the organization %s, which runs no application: add servers from the Servers page.\n' "$organization"
     printf 'The compose file and its settings are in %s. Keep .env private: it holds the database passwords.\n' "$directory"
   fi
   printf 'Back up the key-encryption key now: https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md#back-up-the-key-encryption-key\n'
@@ -648,7 +671,7 @@ main() {
   directory=/opt/shipkeep writing=0
   domain='' owner_email='' owner_password=''
   smtp_host='' smtp_port='' smtp_from='' smtp_user='' smtp_password=''
-  single_answer='' single=0 organization='' compose_files='-f compose.yml'
+  single_answer='' single=0 agent=0 organization='' compose_files='-f compose.yml'
   resume='' started=0 account_done=0 organization_done=0 server_done=0 organization_id='' sends_email=0
   while (($#)); do
     (($# >= 2)) || fail 'Missing option value.'
@@ -739,6 +762,15 @@ main() {
     for file in /etc/systemd/system/shipkeep-controlplane.slice /etc/shipkeep; do
       [[ ! -e $file && ! -L $file ]] || fail "$file already exists: this machine already runs Shipkeep."
     done
+    agent=1
+  elif ubuntu_noble /etc/os-release && [[ -d /run/systemd/system ]]; then
+    # ADR 0028: on the system every server runs, the control plane's own machine gets an agent
+    # too, which runs no application. Elsewhere the control plane is upgraded by hand.
+    [[ ! -e /etc/shipkeep && ! -L /etc/shipkeep ]] || fail '/etc/shipkeep already exists: this machine already runs Shipkeep.'
+    if command -v docker >/dev/null; then assert_agent_docker; fi
+    agent=1
+  else
+    printf 'This system is not Ubuntu 24.04 with systemd: the control plane is installed without an agent of its own, and is upgraded by hand (docs/INSTALL.md).\n' >&2
   fi
 
   ask domain 'DNS name of the control plane, for example shipkeep.example.com' valid_domain 'A lowercase DNS name is required, for example shipkeep.example.com.'
@@ -749,7 +781,7 @@ main() {
   # The first account is created here, on the server: no email is needed to start (ADR 0020).
   ask owner_email 'Email address of the first account (it is the sign-in name; nothing is sent to it)' valid_address 'An email address is required, for example you@example.com.'
   ask_owner_password
-  if ((single)); then
+  if ((agent)); then
     ask organization 'Name of the first organization, for example your company or team' valid_organization 'An organization name of 1 to 80 printable characters is required.'
   fi
   # Email is only asked for when --smtp-host says the installation sends some.
@@ -782,6 +814,8 @@ main() {
     # With the cgroupfs driver, cgroup_parent is a plain path and no slice would hold the containers.
     [[ $(docker info --format '{{.CgroupDriver}}') == systemd ]] || fail "Applications on this machine need Docker's systemd cgroup driver."
     assert_single_machine_docker
+  elif ((agent)); then
+    assert_agent_docker
   fi
   admin_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
   app_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
@@ -803,7 +837,7 @@ main() {
   {
     printf 'mode=%s\n' "$( ((single)) && printf single || printf separate)"
     printf 'domain=%s\nemail=%s\nemail_mode=%s\n' "$domain" "$owner_email" "$( ((sends_email)) && printf smtp || printf none)"
-    ((!single)) || printf 'organization=%s\n' "$organization"
+    ((!agent)) || printf 'organization=%s\n' "$organization"
   } >"$directory/install-state.new" || fail "Cannot create $directory/install-state.new."
   set +o noclobber
   mv -- "$directory/install-state.new" "$directory/install-state"
