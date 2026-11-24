@@ -1654,7 +1654,9 @@ type Welcome struct {
 	ServerTime        *timestamppb.Timestamp `protobuf:"bytes,5,opt,name=server_time,json=serverTime,proto3" json:"server_time,omitempty"`
 	// The control plane accepts MetricsReport on this stream (ADR 0024). An older one does not, and
 	// the agent sends none.
-	Metrics       bool `protobuf:"varint,6,opt,name=metrics,proto3" json:"metrics,omitempty"`
+	Metrics bool `protobuf:"varint,6,opt,name=metrics,proto3" json:"metrics,omitempty"`
+	// The control plane keeps logs (ADR 0029): the agent opens ShipLogs. Otherwise it ships none.
+	Logs          bool `protobuf:"varint,7,opt,name=logs,proto3" json:"logs,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1727,6 +1729,13 @@ func (x *Welcome) GetServerTime() *timestamppb.Timestamp {
 func (x *Welcome) GetMetrics() bool {
 	if x != nil {
 		return x.Metrics
+	}
+	return false
+}
+
+func (x *Welcome) GetLogs() bool {
+	if x != nil {
+		return x.Logs
 	}
 	return false
 }
@@ -2410,7 +2419,9 @@ type ConfigUpdate struct {
 	LogLevel          string               `protobuf:"bytes,1,opt,name=log_level,json=logLevel,proto3" json:"log_level,omitempty"`
 	HeartbeatInterval *durationpb.Duration `protobuf:"bytes,2,opt,name=heartbeat_interval,json=heartbeatInterval,proto3" json:"heartbeat_interval,omitempty"`
 	ReconcileInterval *durationpb.Duration `protobuf:"bytes,3,opt,name=reconcile_interval,json=reconcileInterval,proto3" json:"reconcile_interval,omitempty"`
-	// Base URL of VictoriaLogs for log shipping (ADR 0011).
+	// Deprecated: logs go through ShipLogs (ADR 0029). Never set.
+	//
+	// Deprecated: Marked as deprecated in shipkeep/agent/v1/gateway.proto.
 	LogsEndpoint string `protobuf:"bytes,4,opt,name=logs_endpoint,json=logsEndpoint,proto3" json:"logs_endpoint,omitempty"`
 	// Base URL of VictoriaMetrics for metric shipping.
 	MetricsEndpoint string `protobuf:"bytes,5,opt,name=metrics_endpoint,json=metricsEndpoint,proto3" json:"metrics_endpoint,omitempty"`
@@ -2469,6 +2480,7 @@ func (x *ConfigUpdate) GetReconcileInterval() *durationpb.Duration {
 	return nil
 }
 
+// Deprecated: Marked as deprecated in shipkeep/agent/v1/gateway.proto.
 func (x *ConfigUpdate) GetLogsEndpoint() string {
 	if x != nil {
 		return x.LogsEndpoint
@@ -2487,7 +2499,7 @@ var File_shipkeep_agent_v1_gateway_proto protoreflect.FileDescriptor
 
 const file_shipkeep_agent_v1_gateway_proto_rawDesc = "" +
 	"\n" +
-	"\x1fshipkeep/agent/v1/gateway.proto\x12\x11shipkeep.agent.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fshipkeep/agent/v1/actions.proto\x1a\x1cshipkeep/agent/v1/exec.proto\"\xa5\x01\n" +
+	"\x1fshipkeep/agent/v1/gateway.proto\x12\x11shipkeep.agent.v1\x1a\x1egoogle/protobuf/duration.proto\x1a\x1fgoogle/protobuf/timestamp.proto\x1a\x1fshipkeep/agent/v1/actions.proto\x1a\x1cshipkeep/agent/v1/exec.proto\x1a\x1cshipkeep/agent/v1/logs.proto\"\xa5\x01\n" +
 	"\rEnrollRequest\x12\"\n" +
 	"\n" +
 	"join_token\x18\x01 \x01(\tB\x03\x80\x01\x01R\tjoinToken\x12\x17\n" +
@@ -2626,7 +2638,7 @@ const file_shipkeep_agent_v1_gateway_proto_rawDesc = "" +
 	"\rresponses_4xx\x18\x04 \x01(\x04R\fresponses4xx\x12#\n" +
 	"\rresponses_5xx\x18\x05 \x01(\x04R\fresponses5xx\x12'\n" +
 	"\x0fresponses_other\x18\x06 \x01(\x04R\x0eresponsesOther\x12)\n" +
-	"\x10duration_seconds\x18\a \x01(\x01R\x0fdurationSeconds\"\xaa\x02\n" +
+	"\x10duration_seconds\x18\a \x01(\x01R\x0fdurationSeconds\"\xbe\x02\n" +
 	"\aWelcome\x12\x17\n" +
 	"\anode_id\x18\x01 \x01(\tR\x06nodeId\x12\x1f\n" +
 	"\vlease_epoch\x18\x02 \x01(\x04R\n" +
@@ -2635,7 +2647,8 @@ const file_shipkeep_agent_v1_gateway_proto_rawDesc = "" +
 	"\x12heartbeat_interval\x18\x04 \x01(\v2\x19.google.protobuf.DurationR\x11heartbeatInterval\x12;\n" +
 	"\vserver_time\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\n" +
 	"serverTime\x12\x18\n" +
-	"\ametrics\x18\x06 \x01(\bR\ametrics\"\xf0\x0e\n" +
+	"\ametrics\x18\x06 \x01(\bR\ametrics\x12\x12\n" +
+	"\x04logs\x18\a \x01(\bR\x04logs\"\xf0\x0e\n" +
 	"\rActionRequest\x12\x1b\n" +
 	"\taction_id\x18\x01 \x01(\tR\bactionId\x12'\n" +
 	"\x0fidempotency_key\x18\x02 \x01(\tR\x0eidempotencyKey\x12(\n" +
@@ -2682,12 +2695,12 @@ const file_shipkeep_agent_v1_gateway_proto_rawDesc = "" +
 	"\fLeaseRenewal\x12\x14\n" +
 	"\x05epoch\x18\x01 \x01(\x04R\x05epoch\x129\n" +
 	"\n" +
-	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\x8f\x02\n" +
+	"expires_at\x18\x02 \x01(\v2\x1a.google.protobuf.TimestampR\texpiresAt\"\x93\x02\n" +
 	"\fConfigUpdate\x12\x1b\n" +
 	"\tlog_level\x18\x01 \x01(\tR\blogLevel\x12H\n" +
 	"\x12heartbeat_interval\x18\x02 \x01(\v2\x19.google.protobuf.DurationR\x11heartbeatInterval\x12H\n" +
-	"\x12reconcile_interval\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x11reconcileInterval\x12#\n" +
-	"\rlogs_endpoint\x18\x04 \x01(\tR\flogsEndpoint\x12)\n" +
+	"\x12reconcile_interval\x18\x03 \x01(\v2\x19.google.protobuf.DurationR\x11reconcileInterval\x12'\n" +
+	"\rlogs_endpoint\x18\x04 \x01(\tB\x02\x18\x01R\flogsEndpoint\x12)\n" +
 	"\x10metrics_endpoint\x18\x05 \x01(\tR\x0fmetricsEndpoint*\x88\x02\n" +
 	"\x0eOperationState\x12\x1f\n" +
 	"\x1bOPERATION_STATE_UNSPECIFIED\x10\x00\x12\x1b\n" +
@@ -2697,13 +2710,14 @@ const file_shipkeep_agent_v1_gateway_proto_rawDesc = "" +
 	"\x16OPERATION_STATE_FAILED\x10\x04\x12\x1d\n" +
 	"\x19OPERATION_STATE_CANCELLED\x10\x05\x12 \n" +
 	"\x1cOPERATION_STATE_COMPENSATING\x10\x06\x12\x1f\n" +
-	"\x1bOPERATION_STATE_COMPENSATED\x10\a2\x86\x03\n" +
+	"\x1bOPERATION_STATE_COMPENSATED\x10\a2\xdf\x03\n" +
 	"\x13AgentGatewayService\x12M\n" +
 	"\x06Enroll\x12 .shipkeep.agent.v1.EnrollRequest\x1a!.shipkeep.agent.v1.EnrollResponse\x12k\n" +
 	"\x10RenewCertificate\x12*.shipkeep.agent.v1.RenewCertificateRequest\x1a+.shipkeep.agent.v1.RenewCertificateResponse\x12T\n" +
 	"\aConnect\x12!.shipkeep.agent.v1.ConnectRequest\x1a\".shipkeep.agent.v1.ConnectResponse(\x010\x01\x12]\n" +
 	"\n" +
-	"ExecStream\x12$.shipkeep.agent.v1.ExecStreamRequest\x1a%.shipkeep.agent.v1.ExecStreamResponse(\x010\x01B\xce\x01\n" +
+	"ExecStream\x12$.shipkeep.agent.v1.ExecStreamRequest\x1a%.shipkeep.agent.v1.ExecStreamResponse(\x010\x01\x12W\n" +
+	"\bShipLogs\x12\".shipkeep.agent.v1.ShipLogsRequest\x1a#.shipkeep.agent.v1.ShipLogsResponse(\x010\x01B\xce\x01\n" +
 	"\x15com.shipkeep.agent.v1B\fGatewayProtoP\x01ZAgithub.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1;agentv1\xa2\x02\x03SAX\xaa\x02\x11Shipkeep.Agent.V1\xca\x02\x11Shipkeep\\Agent\\V1\xe2\x02\x1dShipkeep\\Agent\\V1\\GPBMetadata\xea\x02\x13Shipkeep::Agent::V1b\x06proto3"
 
 var (
@@ -2778,7 +2792,9 @@ var file_shipkeep_agent_v1_gateway_proto_goTypes = []any{
 	(*Route)(nil),                    // 54: shipkeep.agent.v1.Route
 	(*WireGuardPeer)(nil),            // 55: shipkeep.agent.v1.WireGuardPeer
 	(*ExecStreamRequest)(nil),        // 56: shipkeep.agent.v1.ExecStreamRequest
-	(*ExecStreamResponse)(nil),       // 57: shipkeep.agent.v1.ExecStreamResponse
+	(*ShipLogsRequest)(nil),          // 57: shipkeep.agent.v1.ShipLogsRequest
+	(*ExecStreamResponse)(nil),       // 58: shipkeep.agent.v1.ExecStreamResponse
+	(*ShipLogsResponse)(nil),         // 59: shipkeep.agent.v1.ShipLogsResponse
 }
 var file_shipkeep_agent_v1_gateway_proto_depIdxs = []int32{
 	27, // 0: shipkeep.agent.v1.EnrollRequest.facts:type_name -> shipkeep.agent.v1.NodeFacts
@@ -2849,12 +2865,14 @@ var file_shipkeep_agent_v1_gateway_proto_depIdxs = []int32{
 	4,  // 65: shipkeep.agent.v1.AgentGatewayService.RenewCertificate:input_type -> shipkeep.agent.v1.RenewCertificateRequest
 	6,  // 66: shipkeep.agent.v1.AgentGatewayService.Connect:input_type -> shipkeep.agent.v1.ConnectRequest
 	56, // 67: shipkeep.agent.v1.AgentGatewayService.ExecStream:input_type -> shipkeep.agent.v1.ExecStreamRequest
-	3,  // 68: shipkeep.agent.v1.AgentGatewayService.Enroll:output_type -> shipkeep.agent.v1.EnrollResponse
-	5,  // 69: shipkeep.agent.v1.AgentGatewayService.RenewCertificate:output_type -> shipkeep.agent.v1.RenewCertificateResponse
-	7,  // 70: shipkeep.agent.v1.AgentGatewayService.Connect:output_type -> shipkeep.agent.v1.ConnectResponse
-	57, // 71: shipkeep.agent.v1.AgentGatewayService.ExecStream:output_type -> shipkeep.agent.v1.ExecStreamResponse
-	68, // [68:72] is the sub-list for method output_type
-	64, // [64:68] is the sub-list for method input_type
+	57, // 68: shipkeep.agent.v1.AgentGatewayService.ShipLogs:input_type -> shipkeep.agent.v1.ShipLogsRequest
+	3,  // 69: shipkeep.agent.v1.AgentGatewayService.Enroll:output_type -> shipkeep.agent.v1.EnrollResponse
+	5,  // 70: shipkeep.agent.v1.AgentGatewayService.RenewCertificate:output_type -> shipkeep.agent.v1.RenewCertificateResponse
+	7,  // 71: shipkeep.agent.v1.AgentGatewayService.Connect:output_type -> shipkeep.agent.v1.ConnectResponse
+	58, // 72: shipkeep.agent.v1.AgentGatewayService.ExecStream:output_type -> shipkeep.agent.v1.ExecStreamResponse
+	59, // 73: shipkeep.agent.v1.AgentGatewayService.ShipLogs:output_type -> shipkeep.agent.v1.ShipLogsResponse
+	69, // [69:74] is the sub-list for method output_type
+	64, // [64:69] is the sub-list for method input_type
 	64, // [64:64] is the sub-list for extension type_name
 	64, // [64:64] is the sub-list for extension extendee
 	0,  // [0:64] is the sub-list for field type_name
@@ -2867,6 +2885,7 @@ func file_shipkeep_agent_v1_gateway_proto_init() {
 	}
 	file_shipkeep_agent_v1_actions_proto_init()
 	file_shipkeep_agent_v1_exec_proto_init()
+	file_shipkeep_agent_v1_logs_proto_init()
 	file_shipkeep_agent_v1_gateway_proto_msgTypes[4].OneofWrappers = []any{
 		(*ConnectRequest_Hello)(nil),
 		(*ConnectRequest_Heartbeat)(nil),

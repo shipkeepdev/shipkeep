@@ -49,14 +49,14 @@ The milestones below describe the whole MVP. The first stable version ships part
 
 **Order:**
 
-| Step | Work                                                                             | Issues                                              | Waits for                                                      |
-| ---- | -------------------------------------------------------------------------------- | --------------------------------------------------- | -------------------------------------------------------------- |
-| 1    | The single-machine installation (ADR 0021): code and docs merged in #378 to #382 | #377                                                | Only its acceptance on a real machine, with step 5             |
-| 2    | Server detail, deployment detail, maintenance mode                               | #264, #265, #256                                    | Nothing; the full deployment log comes with step 4             |
-| 3    | Deployment from Git: providers, `shipkeep.yml` sync, builds (ADR 0030, 0031)     | #213, #214, #215                                    | Nothing: each organization creates its GitHub App (ADR 0031)   |
-| 4    | Logs and container exec (M6.1)                                                   | #232                                                | The maintainer's decision on the agent action for log shipping |
-| 5    | Real-server acceptance, control plane backup, upgrades                           | #200, #202, #18, #216, #239, #352, #377, #231, #240 | The test VM and the domain; #231 lands before #240             |
-| 6    | Hardening and documentation (M10.2, M10.4)                                       | #244, #246                                          | Nothing                                                        |
+| Step | Work                                                                             | Issues                                              | Waits for                                                    |
+| ---- | -------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
+| 1    | The single-machine installation (ADR 0021): code and docs merged in #378 to #382 | #377                                                | Only its acceptance on a real machine, with step 5           |
+| 2    | Server detail, deployment detail, maintenance mode                               | #264, #265, #256                                    | Nothing; the full deployment log comes with step 4           |
+| 3    | Deployment from Git: providers, `shipkeep.yml` sync, builds (ADR 0030, 0031)     | #213, #214, #215                                    | Nothing: each organization creates its GitHub App (ADR 0031) |
+| 4    | Logs and container exec (M6.1)                                                   | #232                                                | Nothing: logs go through the control plane (ADR 0029)        |
+| 5    | Real-server acceptance, control plane backup, upgrades                           | #200, #202, #18, #216, #239, #352, #377, #231, #240 | The test VM and the domain; #231 lands before #240           |
+| 6    | Hardening and documentation (M10.2, M10.4)                                       | #244, #246                                          | Nothing                                                      |
 
 **Releases:** `v0.1.0-beta.1` once steps 1 to 4 are merged, then `v0.1.0` once step 5 has passed on a real server and step 6 is merged. Each tag needs the maintainer's go-ahead.
 
@@ -377,7 +377,7 @@ The milestones below describe the whole MVP. The first stable version ships part
 ## M6. Observability
 
 - [ ] **M6.1 Log shipping and search** (A + C + W). Depends: M1.4
-  - Agent ships logs to VictoriaLogs with labels; UI live tail and search; 30-day retention.
+  - Agent ships logs through the control plane to VictoriaLogs (ADR 0029), which sets the labels; UI live tail and search; 30-day retention.
   - `ExecStream`: typed, RBAC-checked and audited container exec sessions (rule 3); the gateway currently answers `Unimplemented`.
 - [x] **M6.2 Metrics** (A + C + W). Depends: M1.4
   - Container, node and Caddy metrics to VictoriaMetrics; charts in UI. Done through the control plane (ADR 0024): application, server and Overview charts.
