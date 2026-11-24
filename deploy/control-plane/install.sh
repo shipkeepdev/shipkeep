@@ -315,9 +315,15 @@ engine_keeps_loopback() { version_at_least "$1" 28 0 0; }
 docker_api_for_agent() {
   [[ $1 =~ ^1\.([0-9]{1,3})$ ]] && ((10#${BASH_REMATCH[1]} >= 47))
 }
-# The check of a separate machine's agent that needs Docker, before anything is written.
-assert_agent_docker() {
-  docker_api_for_agent "$(docker version --format '{{.Server.APIVersion}}' 2>/dev/null)" || fail 'The agent of this machine needs a Docker Engine that serves API 1.47 or later. Upgrade Docker, then run this installer again: nothing was changed.'
+# Whether this machine's Docker serves what the agent needs.
+agent_docker() {
+  docker_api_for_agent "$(docker version --format '{{.Server.APIVersion}}' 2>/dev/null)"
+}
+# A separate machine installed without an agent of its own, for the reason $1: the control plane
+# alone, upgraded by hand, as before ADR 0028. No organization is created, even with --organization.
+without_agent() {
+  agent=0 organization=''
+  printf '%s: the control plane is installed without an agent of its own, and is upgraded by hand (docs/INSTALL.md).\n' "$1" >&2
 }
 
 # The checks of one machine that need Docker, before anything is written.
@@ -551,7 +557,7 @@ add_this_server() {
   if ((single)); then
     printf 'Installing the agent and the edge proxy of this server...\n'
   else
-    printf 'Installing the agent of this machine, which upgrades the control plane...\n'
+    printf 'Installing the agent of this machine, which runs no application...\n'
   fi
   status=0
   compose run --rm --no-deps -T control-plane node main.js server join-token --organization "$organization_id" |
@@ -618,7 +624,11 @@ finish() {
       status=0
       this_server_installed || status=$?
       if ((status == 2)); then
-        printf 'shipkeep-install: this machine has a Shipkeep server installation that is unfinished, or not the one of this control plane and organization. Remove its server part (see Starting over in docs/INSTALL.md), then resume.\n' >&2
+        if ((single)); then
+          printf 'shipkeep-install: this machine has a Shipkeep server installation that is unfinished, or not the one of this control plane and organization. Remove its server part (see Starting over in docs/INSTALL.md), then resume.\n' >&2
+        else
+          printf 'shipkeep-install: this machine has a Shipkeep agent installation that is unfinished, or not the one of this control plane and organization. Remove its agent part (see Starting over in docs/INSTALL.md), then resume.\n' >&2
+        fi
         exit 1
       elif ((status == 1)); then
         add_this_server || exit 1
@@ -767,10 +777,10 @@ main() {
     # ADR 0028: on the system every server runs, the control plane's own machine gets an agent
     # too, which runs no application. Elsewhere the control plane is upgraded by hand.
     [[ ! -e /etc/shipkeep && ! -L /etc/shipkeep ]] || fail '/etc/shipkeep already exists: this machine already runs Shipkeep.'
-    if command -v docker >/dev/null; then assert_agent_docker; fi
     agent=1
+    if command -v docker >/dev/null && ! agent_docker; then without_agent 'Docker on this machine serves an API older than 1.47, which the agent needs'; fi
   else
-    printf 'This system is not Ubuntu 24.04 with systemd: the control plane is installed without an agent of its own, and is upgraded by hand (docs/INSTALL.md).\n' >&2
+    without_agent 'This system is not Ubuntu 24.04 with systemd'
   fi
 
   ask domain 'DNS name of the control plane, for example shipkeep.example.com' valid_domain 'A lowercase DNS name is required, for example shipkeep.example.com.'
@@ -814,8 +824,8 @@ main() {
     # With the cgroupfs driver, cgroup_parent is a plain path and no slice would hold the containers.
     [[ $(docker info --format '{{.CgroupDriver}}') == systemd ]] || fail "Applications on this machine need Docker's systemd cgroup driver."
     assert_single_machine_docker
-  elif ((agent)); then
-    assert_agent_docker
+  elif ((agent)) && ! agent_docker; then
+    without_agent 'Docker on this machine serves an API older than 1.47, which the agent needs'
   fi
   admin_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
   app_password=$(od -An -N32 -tx1 /dev/urandom | tr -d ' \n')

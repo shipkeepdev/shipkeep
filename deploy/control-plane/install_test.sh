@@ -400,6 +400,9 @@ resume_with "${separate_state}organization=Acme Corp\nstarted\naccount\n" 0 1 0 
 chosen=$(sed -n 's/^organization_id=//p' "$state/install-state")
 [[ $(<"$work/resume-calls") == "compose up -d"$'\n'"organization $chosen"$'\n'"server $chosen" ]] || die "unexpected separate steps: $(<"$work/resume-calls")"
 grep -q 'This machine runs an agent of the organization Acme Corp' "$work/resume-output" || die 'the agent of a separate machine was not said'
+# Its unfinished agent is removed as the agent part, not as a server's.
+resume_with "${separate_state}organization=Acme Corp\nstarted\naccount\norganization_id=$uuid\norganization_created\n" 0 2 0 >"$work/resume-output" 2>&1 && die 'an unfinished agent of a separate machine was accepted'
+grep -q 'Remove its agent part' "$work/resume-output" || die "the separate machine was told to remove a server part: $(<"$work/resume-output")"
 # Without an agent (another system than Ubuntu 24.04), neither.
 resume_with "${separate_state}started\naccount\n" 0 1 0 >"$work/resume-output" 2>&1 || die "a separate resume without an agent failed: $(<"$work/resume-output")"
 [[ $(<"$work/resume-calls") == "compose up -d" ]] || die "a machine without an agent got one: $(<"$work/resume-calls")"
@@ -456,6 +459,15 @@ sed -i 's/role: control-plane-only/role: server/' "$server/etc/shipkeep/agent.ya
 [[ $(separate_installed) == 2 ]] || die 'a server installation was taken for the agent of a separate machine'
 sed -i 's/role: server/role: control-plane-only/' "$server/etc/shipkeep/agent.yaml"
 [[ $(installed 1) == 2 ]] || die 'an agent without Caddy or route was taken for a single machine'
+# Without an agent (another system, or an older Docker), the separate form is the control plane
+# alone, and --organization creates nothing.
+(
+  # shellcheck disable=SC2034
+  agent=1 organization='Acme Corp'
+  without_agent 'This system is not Ubuntu 24.04 with systemd' 2>"$work/without"
+  [[ $agent == 0 && -z $organization ]] || die 'a machine without an agent kept its organization'
+  grep -q 'installed without an agent of its own' "$work/without" || die 'the missing agent was not said'
+) || exit 1
 # The agent pins Docker API 1.47.
 for version in 1.47 1.48 1.100; do docker_api_for_agent "$version" || die "refused the Docker API $version"; done
 for version in '' 1.46 1.9 2 v1.47 '1.47 ' $'1.47\n' 1.47.0; do
