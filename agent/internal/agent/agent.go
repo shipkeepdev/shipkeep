@@ -148,7 +148,7 @@ func (a *Agent) Run(ctx context.Context) (runErr error) {
 		a.logger.Warn("development mode: CA fingerprint pinning may be disabled, never use on a real server")
 	}
 	// systemd learns the agent runs; an upgraded binary waits for the control plane's welcome.
-	boot.started()
+	boot.started(ctx)
 
 	if err := a.runGateway(ctx, store, engine, router, routes, boot, restart); err != nil && ctx.Err() == nil {
 		return err

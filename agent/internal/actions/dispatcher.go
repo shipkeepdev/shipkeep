@@ -48,6 +48,7 @@ var failureTexts = map[string]string{
 	causeUpgradeUnitOld:             "the agent's service predates upgrades: run the installer again",
 	causeUpgradeUnverified:          "the release archive did not verify",
 	causeUpgradeUnavailable:         "the release archive could not be downloaded",
+	causeUpgradeInProgress:          "another upgrade of the agent is not confirmed yet",
 }
 
 // failureText is the fixed text for a failed operation: its cause when the agent lists it.

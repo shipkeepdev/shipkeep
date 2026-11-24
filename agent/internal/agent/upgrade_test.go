@@ -20,7 +20,7 @@ type notifications struct {
 	sent []string
 }
 
-func (n *notifications) notify(state string) error {
+func (n *notifications) notify(_ context.Context, state string) error {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 	n.sent = append(n.sent, state)
@@ -55,11 +55,11 @@ func pending(t *testing.T, stateDir string) bool {
 func TestANormalStartIsReadyWithoutTheControlPlane(t *testing.T) {
 	sent := &notifications{}
 	boot := newStartup(t.TempDir(), "0.2.0", quiet(), sent.notify)
-	boot.started()
+	boot.started(context.Background())
 	if sent.count() != 1 || sent.sent[0] != "READY=1" {
 		t.Fatalf("notified %v", sent.sent)
 	}
-	boot.connected()
+	boot.connected(context.Background())
 	if sent.count() != 1 {
 		t.Fatal("notified again when connected")
 	}
@@ -73,14 +73,14 @@ func TestAnUpgradedBinaryIsReadyOnlyOnceTheControlPlaneWelcomedIt(t *testing.T) 
 	record(t, stateDir, "0.1.0", "0.2.0", upgrade.StatePending)
 	sent := &notifications{}
 	boot := newStartup(stateDir, "0.2.0", quiet(), sent.notify)
-	boot.started()
+	boot.started(context.Background())
 	if sent.count() != 0 {
 		t.Fatal("ready before the control plane welcomed the upgraded binary")
 	}
 	done := make(chan error, 1)
 	go func() { done <- boot.deadline(context.Background(), time.Minute) }()
-	boot.connected()
-	boot.connected()
+	boot.connected(context.Background())
+	boot.connected(context.Background())
 	if err := <-done; err != nil {
 		t.Fatalf("confirmed upgrade still timed out: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestAnUpgradedBinaryThatNeverConnectsGivesUp(t *testing.T) {
 	record(t, stateDir, "0.1.0", "0.2.0", upgrade.StatePending)
 	sent := &notifications{}
 	boot := newStartup(stateDir, "0.2.0", quiet(), sent.notify)
-	boot.started()
+	boot.started(context.Background())
 	if err := boot.deadline(context.Background(), 10*time.Millisecond); !errors.Is(err, ErrUpgradeUnconfirmed) {
 		t.Fatalf("deadline: %v", err)
 	}
@@ -109,7 +109,7 @@ func TestThePreviousBinaryReportsARollbackAndForgetsIt(t *testing.T) {
 		record(t, stateDir, "0.1.0", "0.2.0", state)
 		sent := &notifications{}
 		boot := newStartup(stateDir, "0.1.0", quiet(), sent.notify)
-		boot.started()
+		boot.started(context.Background())
 		if sent.count() != 1 || pending(t, stateDir) {
 			t.Fatalf("%s: notified %v, record kept: %v", state, sent.sent, pending(t, stateDir))
 		}

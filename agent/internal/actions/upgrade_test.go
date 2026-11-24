@@ -281,6 +281,12 @@ func TestUpgradeAgentRefusesWhatItCannotTrustOrDoSafely(t *testing.T) {
 			}
 		}, "the agent's service predates upgrades: run the installer again"},
 		"no unit": {func(_ *testing.T, n *upgradeNode) { n.upgrader.UnitFile = filepath.Join(t.TempDir(), "absent") }, "the agent's service predates upgrades: run the installer again"},
+		"a commented guard": {func(t *testing.T, n *upgradeNode) {
+			unit := "[Service]\n#ExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config /etc/shipkeep/agent.yaml\n"
+			if err := os.WriteFile(n.upgrader.UnitFile, []byte(unit), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}, "the agent's service predates upgrades: run the installer again"},
 		"another archive than the digest": {func(t *testing.T, n *upgradeNode) {
 			n.github.archive = releaseArchive(t, "agent from elsewhere")
 		}, "the release archive did not verify"},
@@ -336,4 +342,157 @@ func TestUpgradeAgentIsOnlyHandledWhenTheAgentWiresIt(t *testing.T) {
 	if _, ok := with["upgrade_agent"]; !ok {
 		t.Fatal("upgrade_agent not handled with an upgrader")
 	}
+}
+
+func TestTheGuardMustBeAnActiveLineOfTheService(t *testing.T) {
+	const guard = "ExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config /etc/shipkeep/agent.yaml"
+	cases := map[string]bool{
+		"[Service]\nType=notify\n" + guard + "\nExecStart=/var/lib/shipkeep/bin/shipkeep-agent\n": true,
+		"[Unit]\nDescription=agent\n\n[Service]\n  " + guard + "  \n":                             true,
+		"[Service]\nExecStartPre = /usr/local/libexec/shipkeep-egress upgrade-guard\n":            true,
+		"[Service]\n#" + guard + "\n":  false,
+		"[Service]\n; " + guard + "\n": false,
+		"[Install]\n" + guard + "\n":   false,
+		guard + "\n":                   false,
+		"[Service]\nExecStartPre=-/usr/local/libexec/shipkeep-egress upgrade-guard\n": false,
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress\n":                false,
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress run\n":            false,
+		"[Service]\nExecStartPre=/tmp/shipkeep-egress upgrade-guard\n":                false,
+		"[Service]\nExecStart=/usr/local/libexec/shipkeep-egress upgrade-guard\n":     false,
+		// An empty assignment empties the list of commands.
+		"[Service]\n" + guard + "\nExecStartPre=\n": false,
+		// A continued line is part of the line before it.
+		"[Service]\nEnvironment=A=1 \\\n" + guard + "\n":     false,
+		"[Service]\n" + guard + " \\\n--verbose\n":           false,
+		"[Service]\nExecStartPre=/usr/bin/true \\\n" + guard: false,
+	}
+	for unit, want := range cases {
+		if got := hasGuard(unit); got != want {
+			t.Errorf("%q: %v", unit, got)
+		}
+	}
+}
+
+// A second upgrade while the first is not confirmed would keep the unconfirmed binary as the one
+// to go back to: it is refused, before anything is downloaded, until the record is gone.
+func TestASecondUpgradeWaitsForThePendingOne(t *testing.T) {
+	node := newUpgradeNode(t)
+	store := open(t)
+	if !succeeded(node.run(t, store, node.action())) {
+		t.Fatal("first upgrade failed")
+	}
+	third := releaseArchive(t, "agent 0.3.0")
+	digest := sha256.Sum256(third)
+	second := &agentv1.UpgradeAgent{
+		Version: "0.3.0", Url: "https://github.com/shipkeepdev/shipkeep/releases/download/v0.3.0/shipkeep-agent_0.3.0_linux_amd64.tar.gz",
+		Sha256: hex.EncodeToString(digest[:]), CosignBundle: node.action().CosignBundle,
+	}
+	node.github.archive = third
+	run := func(id, key string) *agentv1.ActionUpdate {
+		d := &Dispatcher{Journal: store, Handlers: map[string]Handler{"upgrade_agent": UpgradeHandler(node.upgrader)}, Epoch: func() uint64 { return 3 }}
+		out := &recorder{}
+		d.Handle(context.Background(), &agentv1.ActionRequest{
+			ActionId: id, IdempotencyKey: key, LeaseEpoch: 3, DeadlineUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+			Action: &agentv1.ActionRequest_UpgradeAgent{UpgradeAgent: second},
+		}, out.send)
+		return out.last(t)
+	}
+	// Before the restart, then from the new binary before the control plane welcomed it.
+	for index, running := range []string{"0.1.0", upgradeTo} {
+		node.upgrader.Version = running
+		id := "019d0000-0000-7000-8000-00000000001" + string(rune('b'+index))
+		if update := run(id, "upgrade:0.3.0:"+running); succeeded(update) || update.GetError() != "another upgrade of the agent is not confirmed yet" {
+			t.Fatalf("running %s: %v", running, update)
+		}
+		if node.file(t, "") != "agent 0.2.0" || node.file(t, ".previous") != "agent 0.1.0" {
+			t.Fatalf("running %s: binary %q, previous %q", running, node.file(t, ""), node.file(t, ".previous"))
+		}
+		if _, err := os.Stat(node.binary + ".next"); !os.IsNotExist(err) {
+			t.Fatalf("running %s: .next written", running)
+		}
+	}
+	if len(node.github.asked) != 1 {
+		t.Fatalf("a refused upgrade downloaded: %v", node.github.asked)
+	}
+	// Once the new binary confirmed the first upgrade, the second one keeps it as the previous.
+	if err := upgrade.ClearPending(node.upgrader.StateDir); err != nil {
+		t.Fatal(err)
+	}
+	if update := run("019d0000-0000-7000-8000-00000000001f", "upgrade:0.3.0"); !succeeded(update) {
+		t.Fatalf("second upgrade after the confirmation: %v", update)
+	}
+	if node.file(t, "") != "agent 0.3.0" || node.file(t, ".previous") != "agent 0.2.0" {
+		t.Fatalf("binary %q, previous %q", node.file(t, ""), node.file(t, ".previous"))
+	}
+}
+
+// The swap step can fail after its rename, when the directory does not sync: undoing it puts the
+// running binary back before the record goes. Without the rename, only the record goes.
+func TestAFailedSwapIsUndoneBeforeItsRecordGoes(t *testing.T) {
+	prepare := func(t *testing.T) (*upgradeNode, journal.Plan) {
+		t.Helper()
+		node := newUpgradeNode(t)
+		plan, err := node.upgrader.plan(testID, node.action())
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, step := range plan.Steps[:2] {
+			if _, err := step.Apply(context.Background()); err != nil {
+				t.Fatalf("step %s: %v", step.Name, err)
+			}
+		}
+		next, err := upgrade.FileSHA256(node.binary + ".next")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := upgrade.WritePending(node.upgrader.StateDir, upgrade.Pending{From: "0.1.0", To: upgradeTo, Binary: node.binary, SHA256: next, At: time.Unix(1, 0).UTC(), State: upgrade.StatePending}); err != nil {
+			t.Fatal(err)
+		}
+		return node, plan
+	}
+	swap := func(t *testing.T, node *upgradeNode) {
+		t.Helper()
+		if err := os.Rename(node.binary+".next", node.binary); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	node, plan := prepare(t)
+	swap(t, node)
+	if err := plan.Steps[2].Compensate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if node.file(t, "") != "agent 0.1.0" || pendingFound(t, node) {
+		t.Fatalf("after a swap: binary %q, record kept %v", node.file(t, ""), pendingFound(t, node))
+	}
+
+	node, plan = prepare(t)
+	if err := plan.Steps[2].Compensate(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if node.file(t, "") != "agent 0.1.0" || node.file(t, ".previous") != "agent 0.1.0" || pendingFound(t, node) {
+		t.Fatal("without a swap, the binaries changed or the record stayed")
+	}
+
+	// The new binary is in place, and nothing to go back to: the record stays for the guard.
+	node, plan = prepare(t)
+	swap(t, node)
+	if err := os.Remove(node.binary + ".previous"); err != nil {
+		t.Fatal(err)
+	}
+	if err := plan.Steps[2].Compensate(context.Background()); err == nil {
+		t.Fatal("undone without a previous binary")
+	}
+	if node.file(t, "") != "agent 0.2.0" || !pendingFound(t, node) {
+		t.Fatal("the record went while the new binary is in place")
+	}
+}
+
+func pendingFound(t *testing.T, node *upgradeNode) bool {
+	t.Helper()
+	_, found, err := upgrade.ReadPending(node.upgrader.StateDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return found
 }
