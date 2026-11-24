@@ -19,6 +19,7 @@ import { NodeStream } from './node-stream';
 import { AppConfig } from '../../../platform/config/app-config';
 import { AuthenticateNode } from '../application/authenticate-node';
 import { EnrollNode } from '../application/enroll-node';
+import { LogBatches } from '../application/log-batches';
 import { factsFromProto } from '../application/node-facts';
 import { RenewNodeCertificate } from '../application/renew-node-certificate';
 import { parseNodeSpiffeId } from '../domain/node';
@@ -27,6 +28,7 @@ import { CsrError } from '../infrastructure/ca/x509';
 import { X509CertificateAuthority } from '../infrastructure/ca/x509-certificate-authority';
 import { EnrollmentAdmission, enrollmentBusy } from './enrollment-admission';
 import { gatewaySecureContext } from './gateway-tls';
+import { relayShipLogs } from './log-stream';
 
 const peer = createContextKey<TLSSocket | undefined>(undefined);
 const identity = createContextKey<NodeIdentity | undefined>(undefined);
@@ -47,6 +49,7 @@ export class AgentGateway implements OnModuleDestroy {
     private readonly renew: RenewNodeCertificate,
     private readonly streams: NodeStream,
     private readonly admission: EnrollmentAdmission,
+    private readonly logs: LogBatches,
   ) {}
 
   /** Called explicitly after Nest initialization; OpenAPI generation never opens this listener. */
@@ -109,6 +112,19 @@ export class AgentGateway implements OnModuleDestroy {
             if (!authenticated)
               throw new ConnectError('node authentication required', Code.Unauthenticated);
             return this.streams.connect(request, context, authenticated);
+          },
+          { maxTimeoutMs: 24 * 60 * 60_000 },
+        );
+        // Container logs (ADR 0029), after the shared authentication guard.
+        router.rpc(
+          AgentGatewayService.method.shipLogs,
+          (requests, context) => {
+            const authenticated = context.values.get(identity);
+            if (!authenticated)
+              throw new ConnectError('node authentication required', Code.Unauthenticated);
+            return relayShipLogs(this.logs, requests, authenticated, async () =>
+              BigInt((await this.authenticate.execute(authenticated)).leaseEpoch),
+            );
           },
           { maxTimeoutMs: 24 * 60 * 60_000 },
         );

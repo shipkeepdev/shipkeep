@@ -44,6 +44,7 @@ import { PrismaAgentActionStore } from './infrastructure/prisma-agent-action.sto
 import { PrismaAgentUpgradeStore } from './infrastructure/prisma-agent-upgrade.store';
 import { AgentActions } from './application/agent-actions';
 import { NodeLiveness } from './application/node-liveness';
+import { LogBatches } from './application/log-batches';
 import { MetricsReports } from './application/metrics-reports';
 import { StateReports } from './application/state-reports';
 
@@ -88,6 +89,7 @@ import { StateReports } from './application/state-reports';
     NodeLiveness,
     StateReports,
     MetricsReports,
+    LogBatches,
     IssueJoinToken,
     EnrollNode,
   ],
@@ -103,6 +105,7 @@ import { StateReports } from './application/state-reports';
     AgentUpgradeWorker,
     StateReports,
     MetricsReports,
+    LogBatches,
   ],
 })
 export class FleetModule {}

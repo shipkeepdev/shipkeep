@@ -11,6 +11,7 @@ import {
 import { AgentActions } from '../application/agent-actions';
 import { AuthenticateNode } from '../application/authenticate-node';
 import { NodeLiveness } from '../application/node-liveness';
+import { LogBatches } from '../application/log-batches';
 import { MetricsReports } from '../application/metrics-reports';
 import { StateReports } from '../application/state-reports';
 import { NodeAuthenticationError, type NodeIdentity } from '../domain/node-identity';
@@ -35,6 +36,7 @@ export class NodeStream {
     private readonly liveness: NodeLiveness,
     private readonly reports: StateReports,
     private readonly metrics: MetricsReports,
+    private readonly logs: LogBatches,
   ) {}
 
   async *connect(
@@ -93,6 +95,7 @@ export class NodeStream {
                 heartbeatInterval: { seconds: 5n },
                 serverTime: timestampFromDate(new Date()),
                 metrics: this.metrics.accepting,
+                logs: this.logs.accepting,
               },
             },
           });

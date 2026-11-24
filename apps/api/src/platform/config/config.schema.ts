@@ -67,7 +67,10 @@ export const configSchema = z
     AGENT_GATEWAY_SERVER_NAME: z.union([z.hostname(), z.ipv4(), z.ipv6()]).default('localhost'),
     /** Enrollment attempts one client network may make per minute (#346). */
     AGENT_ENROLLMENTS_PER_MINUTE: z.coerce.number().int().min(1).max(10_000).default(20),
-    VICTORIALOGS_URL: httpUrl.default('http://localhost:9428'),
+    /**
+     * Where logs are written and read (ADR 0029). Unset, Welcome tells agents not to ship any.
+     */
+    VICTORIALOGS_URL: z.preprocess(emptyAsUnset, httpUrl.optional()),
     /**
      * Where metrics are written and read (ADR 0024). Unset, the stream tells agents not to send
      * any, and the metric routes answer that none are kept.
