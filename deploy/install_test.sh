@@ -127,6 +127,19 @@ done
 unit=$(workloads_slice_unit 4294967296) || die 'no workloads slice'
 [[ $unit == *$'\n[Slice]\nMemoryMax=3221225472\nCPUWeight=50' ]] || die "workloads slice: $unit"
 refused workloads_slice_unit 1073741824 || die 'a slice without room was written'
+# The agent's unit runs the upgrade guard first, and waits for the agent's READY (ADR 0028).
+unit=$(agent_unit) || die 'no agent unit'
+for line in Type=notify NotifyAccess=main StartLimitIntervalSec=0 TimeoutStartSec=360 Restart=always \
+  'ExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config /etc/shipkeep/agent.yaml'; do
+  [[ $unit == *$'\n'"$line"$'\n'* ]] || die "agent unit lacks $line"
+done
+[[ ${unit%%ExecStart=*} == *ExecStartPre=* ]] || die 'the upgrade guard runs after the agent'
+[[ $unit != *OnFailure=* ]] || die 'the agent unit has an OnFailure rollback'
+# The agent refuses an upgrade unless its unit runs the guard it looks for, as an active line.
+guard_exe=$(sed -n 's/^\tguardExecutable *= "\(.*\)"$/\1/p' agent/internal/actions/upgrade.go)
+guard_cmd=$(sed -n 's/^\tguardCommand *= "\(.*\)"$/\1/p' agent/internal/actions/upgrade.go)
+[[ -n $guard_exe && -n $guard_cmd && $unit == *$'\n'"ExecStartPre=$guard_exe $guard_cmd "* ]] ||
+  die "the agent looks for another guard: $guard_exe $guard_cmd"
 # A refused single-machine option stops before anything else, and never shows the token.
 for options in '--local-control-plane 0.0.0.0:3000 --agent-file /bin/true' '--local-control-plane 127.0.0.1:3000' \
   '--local-control-plane 127.0.0.1:3000 --agent-file relative/agent' '--local-control-plane 127.0.0.1:3000 --agent-file /missing/agent'; do

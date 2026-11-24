@@ -258,6 +258,11 @@ Store the output in a password manager or another place that is not this server.
 
 The installer does not upgrade. In the installation directory, replace `compose.yml` with the one of the new release's bundle: it pins the PostgreSQL, Caddy and VictoriaMetrics images of that release. Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest (the `image` file of the same bundle), then run `docker compose pull` and `docker compose up -d`. The `migrate` and `database-role` steps run again before the new control plane starts. Take a PostgreSQL backup first: automatic snapshots before upgrades are not built yet. VictoriaMetrics keeps 30 days of metrics in its own volume, `victoriametrics-data`; it is not in a PostgreSQL backup, and losing it loses that history only (ADR 0024).
 
+A server's agent can replace itself with a signed release, but the control plane does not ask it to yet (ADR 0028).
+
+- **How it goes.** The agent checks the release's signature and keeps its running binary as `/var/lib/shipkeep/bin/shipkeep-agent.previous`. It restarts on the new one, which has 5 minutes to reach the control plane. A new binary that fails 3 starts is replaced by the previous one, and `journalctl -u shipkeep-agent` says that the upgrade was rolled back.
+- **Servers installed before this release.** Their agent refuses the upgrade, saying that its service predates upgrades: its unit lacks the step that puts the previous binary back. Install the server again to get it; [`deploy/README.md`](../deploy/README.md) lists what to remove first.
+
 ## Troubleshooting
 
 - **The installer refuses to start:** it names the reason (a busy port, a name that does not resolve, a directory that is not root's alone or lies below one, an earlier installation or its Docker volumes) and has changed nothing. Fix it and run the installer again. One refusal comes later: when Docker was removed and the volumes of an earlier installation remain, they only show once the installer has put Docker back.

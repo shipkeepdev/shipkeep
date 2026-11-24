@@ -10,6 +10,8 @@ import {
   signIn,
   submit,
 } from './browser-identity';
+import { CONTROL_PLANE_VERSION } from '../modules/fleet/application/agent-upgrades';
+import { AGENT_RELEASES, type AgentReleases } from '../modules/fleet/application/ports';
 import { enrollTestNode } from './enroll-test-node';
 
 const API = '/api/v1/organizations';
@@ -85,7 +87,21 @@ describe('organizations and roles in Chromium', () => {
   const outsiderEmail = 'tenant-outsider@example.com';
 
   beforeAll(async () => {
-    fixture = await browserApp();
+    // A released control plane, and a GitHub that serves its release, for the agent upgrades card.
+    const releases: AgentReleases = {
+      find: (version, architecture) =>
+        Promise.resolve({
+          url: `https://github.com/shipkeepdev/shipkeep/releases/download/v${version.text}/shipkeep-agent_${version.text}_linux_${architecture}.tar.gz`,
+          sha256: 'a'.repeat(64),
+          bundleJson: new TextEncoder().encode(
+            '{"mediaType":"application/vnd.dev.sigstore.bundle.v0.3+json"}',
+          ),
+        }),
+    };
+    fixture = await browserApp([
+      { token: CONTROL_PLANE_VERSION, value: '0.2.0' },
+      { token: AGENT_RELEASES, value: releases },
+    ]);
     close = fixture.close;
   });
   afterAll(async () => {
@@ -132,6 +148,7 @@ describe('organizations and roles in Chromium', () => {
           disk_bytes: 40 * 2 ** 30,
           disk_free_bytes: 30 * 2 ** 30,
           agent_version: '0.1.0',
+          architecture: 'amd64',
         },
       },
     );
@@ -451,6 +468,26 @@ describe('organizations and roles in Chromium', () => {
       expect(await owner.evaluate('document.documentElement.scrollWidth <= innerWidth')).toBe(true);
     }
     await accessible(owner);
+  });
+
+  it('offers to upgrade an older agent and follows the rollout, under the production CSP (ADR 0028)', async () => {
+    await owner.goto(`/orgs/${organizationId}/servers`);
+    const card = owner.locator('section[aria-labelledby="agent-upgrades-title"]');
+    await card.getByText('1 server runs an older agent than the control plane, 0.2.0.').waitFor();
+    await accessible(owner);
+    const [response] = await Promise.all([
+      owner.waitForResponse(
+        (candidate) =>
+          new URL(candidate.url()).pathname === `${API}/${organizationId}/agent-upgrades` &&
+          candidate.request().method() === 'POST',
+      ),
+      card.getByRole('button', { name: 'Upgrade agents', exact: true }).click(),
+    ]);
+    expect(response.status()).toBe(202);
+    expect(response.request().postDataJSON()).toEqual({ version: '0.2.0' });
+    await card.getByText('Upgrading agents to 0.2.0: server 1 of 1, edge-browser.').waitFor();
+    await accessible(owner);
+    expect(problems).toEqual([]);
   });
 
   // Last, so the pages above leave the account's API budget (300 requests a minute) to the others.

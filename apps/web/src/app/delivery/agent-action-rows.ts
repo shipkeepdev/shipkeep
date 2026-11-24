@@ -92,3 +92,8 @@ function outcome(action: AgentAction): { result: Status; values: Record<string, 
       return plain(action.state === 'queued' ? 'queued' : 'running', BLUE);
   }
 }
+
+/** The label of why an agent refused or failed an action; null when there is nothing to add. */
+export function actionReasonLabel(reason: NonNullable<AgentAction['reason']>): string | null {
+  return REASONS[reason];
+}
