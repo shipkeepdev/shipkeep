@@ -78,6 +78,12 @@ export function sanitizeFacts(input: Readonly<Record<string, unknown>>): NodeFac
   return out;
 }
 
+/**
+ * An agent version as an agent reports it in Hello: a release (`0.1.0-alpha.3`) or `dev`. Anything
+ * else is not stored, so a node keeps the last version it reported correctly.
+ */
+export const AGENT_VERSION = /^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$/;
+
 /** SPEC 5.2: a node is suspect 15 s after its last heartbeat and down at lease expiry (60 s). */
 export const SUSPECT_AFTER_MS = 15_000;
 export const DOWN_AFTER_MS = 60_000;

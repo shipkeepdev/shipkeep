@@ -32,6 +32,12 @@ const REASONS: Readonly<Record<NonNullable<AgentAction['reason']>, string | null
   disk_full: 'disk full',
   image_volume_undeclared: 'image volume not declared',
   egress_unguarded: 'egress proxy missing',
+  upgrade_dev_build: 'development build, not upgraded',
+  upgrade_not_newer: 'already on this version or a later one',
+  upgrade_unit_outdated: 'service predates upgrades',
+  upgrade_unverified: 'release did not verify',
+  upgrade_unavailable: 'release download failed',
+  upgrade_in_progress: 'another upgrade not confirmed yet',
   unknown: 'unknown error',
 };
 
@@ -85,4 +91,9 @@ function outcome(action: AgentAction): { result: Status; values: Record<string, 
     default:
       return plain(action.state === 'queued' ? 'queued' : 'running', BLUE);
   }
+}
+
+/** The label of why an agent refused or failed an action; null when there is nothing to add. */
+export function actionReasonLabel(reason: NonNullable<AgentAction['reason']>): string | null {
+  return REASONS[reason];
 }

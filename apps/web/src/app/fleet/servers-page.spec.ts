@@ -54,15 +54,33 @@ describe('servers page', () => {
   let harness: RouterTestingHarness;
   let requests: { method: string; path: string; body: unknown }[];
   let nodes: unknown[];
+  let upgrades: unknown;
   /** While set, address saves wait for it, as a slow network would. */
   let held: Promise<void> | undefined;
 
   beforeEach(async () => {
     requests = [];
     nodes = [node, other];
+    upgrades = { version: '0.2.0', pending: [], rollout: null };
     held = undefined;
     const routes: Partial<Record<string, () => Response | Promise<Response>>> = {
       [`GET ${BASE}/nodes`]: () => json({ items: nodes, nextCursor: null }),
+      [`GET ${BASE}/agent-upgrades`]: () => json(upgrades),
+      [`POST ${BASE}/agent-upgrades`]: () => {
+        const rollout = {
+          id: '0190f5a8-7b1c-7e2d-8f3a-0000000000f1',
+          version: '0.2.0',
+          state: 'running',
+          nodeIds: [NODE, other.id],
+          position: 0,
+          failure: null,
+          createdAt: '2026-11-06T09:00:00Z',
+          updatedAt: '2026-11-06T09:00:00Z',
+          completedAt: null,
+        };
+        upgrades = { version: '0.2.0', pending: [NODE, other.id], rollout };
+        return json(rollout, 202);
+      },
       [`POST ${BASE}/join-tokens`]: () =>
         json(
           {
@@ -181,6 +199,32 @@ describe('servers page', () => {
     expect(table).toContain('edge-1');
     expect(table).toContain('ready');
     expect(table).toContain('4 CPU · 8 GiB');
+  });
+
+  it('upgrades the agents on an older release, naming the servers in turn (ADR 0028)', async () => {
+    // Every agent is on the control plane's version: the page says nothing about upgrades.
+    expect(element().querySelector('#agent-upgrades-title')).toBeNull();
+    upgrades = { version: '0.2.0', pending: [NODE, other.id], rollout: null };
+    // Shown again, through another organization: the card reads the new state.
+    await harness.navigateByUrl('/orgs/0190f5a8-7b1c-7e2d-8f3a-0000000000dd/servers');
+    await settle();
+    await harness.navigateByUrl(`/orgs/${ORG}/servers`);
+    await settle();
+    const card = () => element().querySelector('section[aria-labelledby="agent-upgrades-title"]');
+    expect(card()?.textContent).toContain(
+      '2 servers run an older agent than the control plane, 0.2.0.',
+    );
+    const start = [...(card()?.querySelectorAll('button') ?? [])].find(
+      (button) => button.textContent.trim() === 'Upgrade agents',
+    );
+    start?.click();
+    await settle();
+    expect(requests.find((r) => r.method === 'POST')).toEqual({
+      method: 'POST',
+      path: `${BASE}/agent-upgrades`,
+      body: { version: '0.2.0' },
+    });
+    expect(card()?.textContent).toContain('Upgrading agents to 0.2.0: server 1 of 2, edge-1.');
   });
 
   it('issues a join token after re-authentication and shows a verified install command', async () => {

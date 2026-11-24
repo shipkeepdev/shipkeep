@@ -3,6 +3,11 @@ import type {
   AgentActionEntry,
   AgentActionRecord,
 } from '../domain/agent-action';
+import type {
+  AgentArchitecture,
+  AgentUpgradeRecord,
+  ReleaseVersion,
+} from '../domain/agent-upgrade';
 import type { JoinTokenRecord } from '../domain/join-token';
 import type { NodeCertificateRecord, NodeFacts, NodeRecord, NodeStatus } from '../domain/node';
 import type { NodeCredential, NodeIdentity } from '../domain/node-identity';
@@ -72,6 +77,11 @@ export interface NodeStore {
   ): Promise<NodeRecord | undefined>;
   /** Run under `runTenant(organizationId)`: at most 100 nodes, newest first, exclusive cursor. */
   list(organizationId: string, beforeId?: string): Promise<NodeRecord[]>;
+  /**
+   * Run under `runTenant(organizationId)`: locks the node's row until the transaction ends, so that
+   * action admissions on one node happen one at a time. False when the node does not exist.
+   */
+  lockForAdmission(organizationId: string, id: string): Promise<boolean>;
 }
 
 export interface IssuedCertificate {
@@ -117,6 +127,13 @@ export interface AgentActionStore {
   ): Promise<AgentActionRecord | undefined>;
   /** Non-terminal actions whose deadline is still ahead, oldest first, at most 100. */
   deliverable(organizationId: string, nodeId: string, now: Date): Promise<AgentActionRecord[]>;
+  /** Whether the node has an unfinished action, other than `exceptId`, whose deadline is ahead. */
+  hasUnfinished(
+    organizationId: string,
+    nodeId: string,
+    exceptId: string | null,
+    now: Date,
+  ): Promise<boolean>;
   /** Marks overdue non-terminal actions `expired` and returns them. */
   expire(organizationId: string, nodeId: string, now: Date): Promise<AgentActionRecord[]>;
   /** Applies a change unless the action is terminal; returns the updated action, if any. */
@@ -146,3 +163,50 @@ export const JOIN_TOKEN_STORE = Symbol('JoinTokenStore');
 export const NODE_STORE = Symbol('NodeStore');
 export const CERTIFICATE_AUTHORITY = Symbol('CertificateAuthority');
 export const CONFIRMATION_KEY_PROVIDER = Symbol('ConfirmationKeyProvider');
+
+/**
+ * What the control plane relays in an UpgradeAgent: the archive's address, its SHA-256 and its
+ * Sigstore bundle, as the release publishes them (ADR 0028). The agent checks all of it itself.
+ */
+export interface AgentRelease {
+  readonly url: string;
+  /** Lowercase hex. */
+  readonly sha256: string;
+  readonly bundleJson: Uint8Array;
+}
+/** Reads agent releases from where `release.yml` publishes them. */
+export interface AgentReleases {
+  /** The release of `version` for `architecture`; null when it cannot be read, for any reason. */
+  find(version: ReleaseVersion, architecture: AgentArchitecture): Promise<AgentRelease | null>;
+}
+export const AGENT_RELEASES = Symbol('AgentReleases');
+
+/** The changes a rollout's turn makes; every method runs inside `runTenant`. */
+export interface AgentUpgradeChange {
+  readonly state: AgentUpgradeRecord['state'];
+  readonly position: number;
+  readonly actionId: string | null;
+  readonly turnStartedAt: Date;
+  readonly failure: AgentUpgradeRecord['failure'];
+  readonly updatedAt: Date;
+  readonly completedAt: Date | null;
+}
+export interface AgentUpgradeStore {
+  /** False when another rollout of the organization is running. */
+  insert(record: AgentUpgradeRecord): Promise<boolean>;
+  findById(organizationId: string, id: string): Promise<AgentUpgradeRecord | undefined>;
+  /** The organization's newest rollout, running or not. */
+  latest(organizationId: string): Promise<AgentUpgradeRecord | undefined>;
+  findRunning(organizationId: string): Promise<AgentUpgradeRecord | undefined>;
+  /**
+   * Compare-and-swap of a running rollout, on the position and action just read: undefined when
+   * another run changed it first.
+   */
+  update(
+    organizationId: string,
+    id: string,
+    expected: Pick<AgentUpgradeRecord, 'position' | 'actionId'>,
+    change: AgentUpgradeChange,
+  ): Promise<AgentUpgradeRecord | undefined>;
+}
+export const AGENT_UPGRADE_STORE = Symbol('AgentUpgradeStore');

@@ -82,7 +82,7 @@ export class NodeStream {
           )
             throw new ConnectError('invalid agent hello or stale epoch', Code.FailedPrecondition);
           hello = true;
-          await this.liveness.heartbeat(identity);
+          await this.liveness.hello(identity, message.value.agentVersion);
           recordedAt = Date.now();
           yield create(ConnectResponseSchema, {
             msg: {

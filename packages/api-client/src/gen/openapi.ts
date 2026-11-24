@@ -372,6 +372,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/agent-upgrades": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["agentUpgrades"];
+        readonly put?: never;
+        readonly post: operations["startAgentUpgrade"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/audit-events": {
         readonly parameters: {
             readonly query?: never;
@@ -1268,7 +1284,7 @@ export type components = {
              */
             readonly outcome: "in_progress" | "succeeded" | "refused" | "failed" | "expired" | "cancelled" | "compensated";
             /** @enum {string|null} */
-            readonly reason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "registry_denied" | "image_not_found" | "registry_unreachable" | "registry_untrusted" | "disk_full" | "image_volume_undeclared" | "egress_unguarded" | "unknown" | null;
+            readonly reason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "registry_denied" | "image_not_found" | "registry_unreachable" | "registry_untrusted" | "disk_full" | "image_volume_undeclared" | "egress_unguarded" | "upgrade_dev_build" | "upgrade_not_newer" | "upgrade_unit_outdated" | "upgrade_unverified" | "upgrade_unavailable" | "upgrade_in_progress" | "unknown" | null;
             readonly result: components["schemas"]["AgentActionResultDto"] | null;
             /** @enum {string} */
             readonly state: "queued" | "pending" | "running" | "succeeded" | "failed" | "cancelled" | "compensating" | "compensated" | "expired";
@@ -1295,6 +1311,47 @@ export type components = {
             readonly imageDigest: string | null;
             /** @enum {string} */
             readonly type: "container" | "image" | "health_check" | "release_task" | "transfer" | "facts";
+        };
+        readonly AgentUpgradeDto: {
+            /** Format: date-time */
+            readonly completedAt: string | null;
+            /** Format: date-time */
+            readonly createdAt: string;
+            readonly failure: components["schemas"]["AgentUpgradeFailureDto"] | null;
+            /** Format: uuid */
+            readonly id: string;
+            /** @description The servers, in the order of their turns. */
+            readonly nodeIds: readonly string[];
+            /** @description Index of the server whose turn it is; the number of servers once all are done. */
+            readonly position: number;
+            /** @enum {string} */
+            readonly state: "running" | "succeeded" | "failed";
+            /** Format: date-time */
+            readonly updatedAt: string;
+            /** @description The version every listed server goes to. */
+            readonly version: string;
+        };
+        readonly AgentUpgradeFailureDto: {
+            /**
+             * @description Why the agent refused or failed the upgrade, when `reason` is `action_failed`.
+             * @enum {string|null}
+             */
+            readonly actionReason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "registry_denied" | "image_not_found" | "registry_unreachable" | "registry_untrusted" | "disk_full" | "image_volume_undeclared" | "egress_unguarded" | "upgrade_dev_build" | "upgrade_not_newer" | "upgrade_unit_outdated" | "upgrade_unverified" | "upgrade_unavailable" | "upgrade_in_progress" | "unknown" | null;
+            /**
+             * Format: uuid
+             * @description The server whose turn it was.
+             */
+            readonly nodeId: string;
+            /** @enum {string} */
+            readonly reason: "node_unavailable" | "node_busy" | "release_unavailable" | "action_failed" | "rolled_back" | "not_confirmed";
+        };
+        readonly AgentUpgradeOverviewDto: {
+            /** @description The servers whose agent runs an older release: a rollout started now lists them. */
+            readonly pending: readonly string[];
+            /** @description The newest rollout. */
+            readonly rollout: components["schemas"]["AgentUpgradeDto"] | null;
+            /** @description The control plane's version, which agents are upgraded to; null on a development build. */
+            readonly version: string | null;
         };
         readonly ApiScopeDto: {
             /** Format: uuid */
@@ -2156,6 +2213,13 @@ export type components = {
             /** @description Never returned. */
             readonly value: string;
         };
+        readonly StartAgentUpgradeDto: {
+            /**
+             * @description The version to upgrade agents to, as the overview gave it: the control plane's own. A control plane that runs another version by now refuses the rollout.
+             * @example 0.2.0
+             */
+            readonly version: string;
+        };
         readonly TransferOwnershipDto: {
             /** Format: password */
             readonly password: string;
@@ -2802,6 +2866,57 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["OrganizationDto"];
+                };
+            };
+        };
+    };
+    readonly agentUpgrades: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AgentUpgradeOverviewDto"];
+                };
+            };
+        };
+    };
+    readonly startAgentUpgrade: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Required for session requests. */
+                readonly Origin?: string;
+                /** @description Required for session requests. */
+                readonly "X-Shipkeep-CSRF"?: string;
+            };
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["StartAgentUpgradeDto"];
+            };
+        };
+        readonly responses: {
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["AgentUpgradeDto"];
                 };
             };
         };

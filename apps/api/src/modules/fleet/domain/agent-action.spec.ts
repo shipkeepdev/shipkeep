@@ -54,6 +54,13 @@ describe('summarizeAction', () => {
       'registry certificate not trusted by the server': 'registry_untrusted',
       'no space left on the server': 'disk_full',
       "the server's Docker does not go through its egress proxy": 'egress_unguarded',
+      // UpgradeAgent (ADR 0028)
+      'a development build of the agent is not upgraded': 'upgrade_dev_build',
+      'the agent already runs this version or a later one': 'upgrade_not_newer',
+      "the agent's service predates upgrades: run the installer again": 'upgrade_unit_outdated',
+      'the release archive did not verify': 'upgrade_unverified',
+      'the release archive could not be downloaded': 'upgrade_unavailable',
+      'another upgrade of the agent is not confirmed yet': 'upgrade_in_progress',
     } as const;
     for (const [error, reason] of Object.entries(causes)) {
       // A failed step is usually undone, so its action ends compensated.

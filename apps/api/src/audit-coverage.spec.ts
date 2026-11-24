@@ -38,6 +38,7 @@ const AUDITED: Readonly<Record<string, readonly string[]>> = {
     'membership.role_changed',
   ],
   'POST /organizations/:organizationId/nodes/:nodeId/remove': ['fleet.node.removed'],
+  'POST /organizations/:organizationId/agent-upgrades': ['fleet.agent_upgrade.started'],
   'POST /organizations/:organizationId/nodes/:nodeId/public-addresses': [
     'fleet.node.public_addresses_changed',
   ],

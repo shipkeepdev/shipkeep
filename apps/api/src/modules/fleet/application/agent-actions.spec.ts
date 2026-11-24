@@ -38,11 +38,13 @@ function setup() {
   const record = { id: ACTION, organizationId: ORG, nodeId: NODE, kind: 'collect_facts' };
   const inserted: AgentActionRecord[] = [];
   const history: AgentActionEntry[] = [];
+  const busy = { value: false };
   const pages: unknown[][] = [];
   const store = {
     apply: (_org: string, _node: string, _id: string, change: AgentActionChange) =>
       Promise.resolve({ ...record, ...change } as unknown as AgentActionRecord),
     findByKey: () => Promise.resolve(undefined),
+    hasUnfinished: () => Promise.resolve(busy.value),
     insert: (row: AgentActionRecord) => {
       inserted.push(row);
       return Promise.resolve(true);
@@ -63,6 +65,7 @@ function setup() {
     inserted,
     history,
     pages,
+    busy,
     actions: new AgentActions(store, nodes, transaction, events),
   };
 }
@@ -132,6 +135,23 @@ describe('AgentActions.enqueue', () => {
       NOW,
     );
     expect(inserted[0]).toMatchObject({ applicationId: APP, deploymentId: DEPLOYMENT });
+  });
+
+  it('locks the node for every admission, and admits an exclusive action only on an idle node', async () => {
+    const { inserted, actions, nodes, busy } = setup();
+    await actions.enqueue(input, NOW);
+    expect(nodes.locked).toHaveLength(1);
+    busy.value = true;
+    // Another action is unfinished: an ordinary one is still admitted, an exclusive one is not.
+    await actions.enqueue({ ...input, idempotencyKey: 'second' }, NOW);
+    await expect(
+      actions.enqueue({ ...input, idempotencyKey: 'upgrade', exclusive: true }, NOW),
+    ).rejects.toMatchObject({ code: 'node_busy' });
+    expect(inserted.map((row) => row.idempotencyKey)).toEqual([input.idempotencyKey, 'second']);
+    busy.value = false;
+    await actions.enqueue({ ...input, idempotencyKey: 'upgrade', exclusive: true }, NOW);
+    expect(inserted).toHaveLength(3);
+    expect(nodes.locked).toHaveLength(4);
   });
 
   it('leaves the origin empty for actions outside a deployment', async () => {

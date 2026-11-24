@@ -16,6 +16,7 @@
   <img alt="Status: in development" src="https://img.shields.io/badge/status-in%20development-F5A524">
   <a href="https://github.com/shipkeepdev/shipkeep/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/shipkeepdev/shipkeep/actions/workflows/ci.yml/badge.svg"></a>
   <img alt="Written in TypeScript and Go" src="https://img.shields.io/badge/built%20with-TypeScript%20%2B%20Go-2A2A2E">
+  <a href="https://github.com/sponsors/samuelmbabhazi"><img alt="Sponsor" src="https://img.shields.io/badge/sponsor-%E2%99%A5-E0282E?logo=githubsponsors&logoColor=white"></a>
 </p>
 
 # Shipkeep
