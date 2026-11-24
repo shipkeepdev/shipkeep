@@ -477,6 +477,22 @@ message NodeFacts {
   // these. Zero on a machine that does not host the control plane.
   uint32 reserved_cpu_millis = 14;
   uint64 reserved_memory_bytes = 15;
+  // What the machine is for, from the agent's local configuration, which the installer writes
+  // (ADR 0028). Unspecified from an agent that predates roles: a server.
+  NodeRole role = 16;
+}
+
+// What a machine is for (ADR 0028). The installer sets it in the agent's local configuration;
+// the control plane never does.
+enum NodeRole {
+  // An agent that predates roles: a server.
+  NODE_ROLE_UNSPECIFIED = 0;
+  // A server: it runs applications.
+  NODE_ROLE_SERVER = 1;
+  // The single machine that runs the control plane and applications (ADR 0021).
+  NODE_ROLE_CONTROL_PLANE = 2;
+  // A machine that runs the control plane alone: no application is placed there.
+  NODE_ROLE_CONTROL_PLANE_ONLY = 3;
 }
 
 // Result of a health probe.

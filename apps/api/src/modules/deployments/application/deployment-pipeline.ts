@@ -540,15 +540,20 @@ function schedule(
 ): { readonly nodes: readonly string[] } | { readonly failure: string } {
   const placed = placeReplicas(request, replicas, nodes);
   if (placed.unplaced === 0) return { nodes: placed.nodes };
-  // Why the failing replica was refused, beside the replicas placed before it.
+  // Why the failing replica was refused, beside the replicas placed before it. Without a node to
+  // refuse it, the organization has no server that runs applications: none, or only control
+  // plane machines (ADR 0028).
   const reasons =
     Object.entries(placed.rejections ?? {})
       .map(([node, why]) => `${node}: ${REJECTIONS[why] ?? why}`)
-      .join(', ') || 'no nodes';
+      .join(', ') || NO_SERVER;
   return {
     failure: `No node can run replica ${String(replicas - placed.unplaced + 1)} of ${String(replicas)} (${reasons}).`,
   };
 }
+
+/** The reason when no node can take an application at all. */
+export const NO_SERVER = 'no server runs applications; add one on the Servers page';
 
 /**
  * Rejections that need more words than their name. On the machine that hosts the control plane, a
