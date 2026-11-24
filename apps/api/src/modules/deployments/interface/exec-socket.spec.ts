@@ -1,5 +1,5 @@
 import { createServer, type Server } from 'node:http';
-import type { AddressInfo } from 'node:net';
+import { type AddressInfo, createConnection, type Socket } from 'node:net';
 
 import type { HttpAdapterHost } from '@nestjs/core';
 import type { DomainEvent } from '@shipkeep/domain';
@@ -21,6 +21,8 @@ const OTHER = '019d0000-0000-7000-8000-0000000000f2';
 const NODE = '019d0000-0000-7000-8000-0000000000e1';
 const SESSION = '019d0000-0000-7000-8000-0000000000d1';
 const PUBLIC = 'https://shipkeep.example.com';
+// The sample nonce of RFC 6455, section 1.3: a handshake value, not a credential.
+const SAMPLE_KEY = 'dGhlIHNhbXBsZSBub25jZQ=='; // gitleaks:allow (RFC 6455 sample nonce)
 const COOKIE = `__Host-shipkeep_session=${'a'.repeat(43)}`;
 
 const servers: Server[] = [];
@@ -39,7 +41,9 @@ afterEach(async () => {
   );
 });
 
-async function world(options: { user?: string; denied?: boolean; signedOut?: boolean } = {}) {
+async function world(
+  options: { user?: string; denied?: boolean; signedOut?: boolean; slow?: Promise<void> } = {},
+) {
   const published: DomainEvent[] = [];
   const registry = new ExecSessionRegistry(
     {
@@ -70,10 +74,12 @@ async function world(options: { user?: string; denied?: boolean; signedOut?: boo
     {} as HttpAdapterHost,
     { get: () => PUBLIC } as unknown as AppConfig,
     {
-      authenticate: () =>
-        options.signedOut
+      authenticate: async () => {
+        await options.slow;
+        return options.signedOut
           ? Promise.reject(new Error('signed out'))
-          : Promise.resolve({ user: { id: options.user ?? USER } }),
+          : { user: { id: options.user ?? USER } };
+      },
       assertLive: () => Promise.resolve(),
     } as unknown as SessionCommands,
     {
@@ -168,10 +174,8 @@ describe('the browser side of an exec session', () => {
     const w = await world();
     const first = await connect(w.url, allowed);
     if (typeof first === 'number') throw new Error('refused');
-    const second = await connect(w.url, allowed);
-    // The second connection is upgraded, then closed: the session was taken.
-    if (typeof second !== 'number')
-      expect(await new Promise((resolve) => second.once('close', resolve))).toBe(4404);
+    // The second connection is refused like an unknown session: it was taken.
+    expect(await connect(w.url, allowed)).toBe(404);
     const relay = w.registry.joinAgent(SESSION, { organizationId: ORG, nodeId: NODE });
     first.close();
     const frames = [];
@@ -223,3 +227,50 @@ describe('the browser messages', () => {
     );
   });
 });
+
+describe('the WebSocket handshake', () => {
+  it('survives a client that resets its connection while its sign-in is checked', async () => {
+    let release = (): void => undefined;
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    const w = await world({ slow });
+    const raw = connectRaw(w.port);
+    raw.write(
+      `GET /api/v1/exec/${SESSION} HTTP/1.1\r\nHost: x\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n` +
+        `Sec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${SAMPLE_KEY}\r\nOrigin: ${PUBLIC}\r\nCookie: ${COOKIE}\r\n\r\n`,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    raw.resetAndDestroy();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    release();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Still serving: the process did not crash, and the session still waits for its person.
+    expect(w.registry.pending(SESSION)).toBeDefined();
+    const ws = await connect(w.url, allowed);
+    if (typeof ws === 'number') throw new Error(`refused: ${String(ws)}`);
+    ws.terminate();
+  });
+
+  it('limits failed joins from one network', async () => {
+    const w = await world({ signedOut: true });
+    for (let i = 0; i < 20; i++) expect(await connect(w.url, allowed)).toBe(401);
+    expect(await connect(w.url, allowed)).toBe(429);
+  });
+
+  it('tells the browser why its session ended', async () => {
+    const w = await world();
+    const ws = await connect(w.url, allowed);
+    if (typeof ws === 'number') throw new Error('refused');
+    const messages: string[] = [];
+    ws.on('message', (data: Buffer, binary) => {
+      if (!binary) messages.push(data.toString());
+    });
+    const closed = new Promise<number>((resolve) => ws.once('close', resolve));
+    w.registry.joinAgent(SESSION, { organizationId: ORG, nodeId: NODE })?.agentLeft();
+    expect(await closed).toBe(1000);
+    expect(messages).toEqual(['{"type":"end","reason":"agent_left"}']);
+  });
+});
+
+function connectRaw(port: number): Socket {
+  return createConnection({ host: '127.0.0.1', port });
+}

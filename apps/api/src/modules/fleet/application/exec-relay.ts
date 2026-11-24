@@ -34,10 +34,13 @@ export type BrowserFrame =
   | { readonly kind: 'resize'; readonly cols: number; readonly rows: number }
   | { readonly kind: 'close'; readonly kill: boolean };
 
-/** The browser's connection, as the relay sees it. `send` resolves once the frame is written. */
+/**
+ * The browser's connection, as the relay sees it. `send` resolves once the frame is written;
+ * `close` tells why the session ended, then closes.
+ */
 export interface BrowserPort {
   send(frame: AgentFrame): Promise<void>;
-  close(): void;
+  close(reason: ExecEnd): void;
 }
 
 /** Why a session ended, as the audit log records it. */
@@ -50,7 +53,8 @@ export type ExecEnd =
   | 'agent_left'
   | 'browser_left'
   | 'flooded'
-  | 'signed_out';
+  | 'signed_out'
+  | 'access_removed';
 
 /** The agent's fixed error texts (agent/internal/actions/exec.go), and what they mean. */
 const AGENT_ERRORS: Readonly<Partial<Record<string, ExecEnd>>> = {
@@ -165,6 +169,11 @@ export class ExecRelay {
     this.end('browser_left', null);
   }
 
+  /** Whether the browser joined. */
+  get browserJoined(): boolean {
+    return this.browser !== undefined;
+  }
+
   /** Whether the session ended. */
   get over(): boolean {
     return this.ended !== undefined;
@@ -177,7 +186,7 @@ export class ExecRelay {
     clearTimeout(this.timer);
     this.settle?.(false);
     this.wake?.();
-    this.browser?.close();
+    this.browser?.close(reason);
     const started = this.startedAt;
     this.onEnd(this, reason, exitCode, started === undefined ? 0 : Date.now() - started);
   }
@@ -198,6 +207,7 @@ export class ExecRelay {
 export class ExecSessionRegistry {
   private readonly logger = new Logger(ExecSessionRegistry.name);
   private readonly relays = new Map<string, ExecRelay>();
+  private readonly writes = new Set<Promise<void>>();
 
   constructor(
     @Inject(FLEET_TRANSACTION) private readonly transaction: FleetTransaction,
@@ -245,6 +255,22 @@ export class ExecSessionRegistry {
     return relay;
   }
 
+  /** Whether this person may still join the session: it is theirs, and no browser joined it. */
+  joinable(id: string, userId: string): boolean {
+    const relay = this.relays.get(id);
+    return (
+      relay !== undefined && relay.session.userId === userId && !relay.browserJoined && !relay.over
+    );
+  }
+
+  /** Waits for the audit writes of the sessions that ended, at most `ms`. */
+  async settle(ms: number): Promise<void> {
+    await Promise.race([
+      Promise.allSettled([...this.writes]),
+      new Promise((resolve) => setTimeout(resolve, ms).unref()),
+    ]);
+  }
+
   /** The relay for the person who opened this session, once; undefined otherwise. */
   joinBrowser(id: string, userId: string, port: BrowserPort): ExecRelay | undefined {
     const relay = this.relays.get(id);
@@ -257,11 +283,13 @@ export class ExecSessionRegistry {
     const event = execSessionEnded(relay.session, reason, exitCode, ms);
     // The end comes from a connection, not a request: nothing waits to fail, so a failed write
     // is logged, with identifiers only.
-    this.transaction
+    const write = this.transaction
       .runTenant(relay.session.organizationId, () => this.events.publish([event]))
       .catch(() => {
         this.logger.error(`exec session ${relay.session.id} ended without its audit event`);
-      });
+      })
+      .finally(() => this.writes.delete(write));
+    this.writes.add(write);
   }
 }
 

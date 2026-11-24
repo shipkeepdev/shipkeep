@@ -8,7 +8,7 @@ import {
   type OnModuleDestroy,
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
-import type { Secret } from '@shipkeep/domain';
+import { isDomainError, type Secret } from '@shipkeep/domain';
 import { type RawData, WebSocket, WebSocketServer } from 'ws';
 
 import { AppConfig } from '../../../platform/config/app-config';
@@ -20,6 +20,7 @@ import {
   execEndOf,
 } from '../../fleet/application/exec-relay';
 import { SessionCommands } from '../../identity/application/session-commands';
+import { AuthenticationError } from '../../identity/domain/identity-policy';
 import { assertOrigin, cookiePolicy, readCredential } from '../../identity/interface/session-http';
 import { TenantAccess } from '../../organizations/application/tenant-access';
 
@@ -28,9 +29,15 @@ const EXEC_PATH =
   /^\/api\/v1\/exec\/([0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12})$/;
 /** The largest message a browser may send: one stdin frame or one control message. */
 export const MAX_BROWSER_MESSAGE = 64 * 1024;
-/** How often an open session checks that the person is still signed in. */
-const SIGN_IN_CHECK_MS = 60_000;
+/** How often an open session checks that the person is still signed in and allowed. */
+const ACCESS_CHECK_MS = 60_000;
+/** How often the browser is pinged; one that misses a pong in that time is gone. */
+const KEEPALIVE_MS = 30_000;
+/** Failed joins one network may make per minute, each of which costs a database lookup. */
+const FAILED_JOINS_PER_MINUTE = 20;
 const TERMINAL_SIDE = 1000;
+
+type Scope = { organizationId: string; projectId: string; environmentId: string };
 
 /**
  * The browser's side of an exec session: a WebSocket on `/api/v1/exec/{id}`, joined once by the
@@ -49,6 +56,18 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
     noServer: true,
     maxPayload: MAX_BROWSER_MESSAGE,
   });
+  private readonly failures = new Map<string, { count: number; since: number }>();
+  private server: Server | undefined;
+  private readonly onUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer): void => {
+    // Until ws takes the socket, a reset from the client must find a listener, or Node throws.
+    const drop = (): void => {
+      socket.destroy();
+    };
+    socket.on('error', drop);
+    this.upgrade(request, socket, head, drop).catch(() => {
+      refuse(socket, 500);
+    });
+  };
 
   constructor(
     private readonly http: HttpAdapterHost,
@@ -65,24 +84,36 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
     if (server) this.listen(server);
   }
 
-  onModuleDestroy(): void {
+  /** Ends the open sessions, and waits for their audit events, before the database closes. */
+  async onModuleDestroy(): Promise<void> {
+    this.server?.off('upgrade', this.onUpgrade);
     for (const client of this.sockets.clients) client.terminate();
     this.sockets.close();
+    await this.registry.settle(5000);
   }
 
-  /** Takes the server's WebSocket upgrades. */
+  /** Takes the server's WebSocket upgrades on the exec path. */
   listen(server: Server): void {
-    server.on('upgrade', (request: IncomingMessage, socket: Duplex, head: Buffer) => {
-      this.upgrade(request, socket, head).catch(() => {
-        refuse(socket, 500);
-      });
-    });
+    this.server = server;
+    server.on('upgrade', this.onUpgrade);
   }
 
-  private async upgrade(request: IncomingMessage, socket: Duplex, head: Buffer): Promise<void> {
+  private async upgrade(
+    request: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+    drop: () => void,
+  ): Promise<void> {
     const id = EXEC_PATH.exec(request.url ?? '')?.at(1);
     if (!id) {
-      refuse(socket, 404);
+      // Another path belongs to another listener, if there is one.
+      socket.off('error', drop);
+      if (this.server?.listenerCount('upgrade') === 1) refuse(socket, 404);
+      return;
+    }
+    const ip = request.socket.remoteAddress ?? '';
+    if (this.throttled(ip)) {
+      refuse(socket, 429);
       return;
     }
     const publicUrl = this.config.get('API_PUBLIC_URL');
@@ -94,33 +125,45 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
       token = readCredential(request.headers.cookie, cookiePolicy(publicUrl).name);
       userId = (await this.sessions.authenticate(token)).user.id;
     } catch {
+      this.failed(ip);
       refuse(socket, 401);
       return;
     }
     const session = this.registry.pending(id);
-    if (!session || session.userId !== userId) {
+    // A session already joined is refused like an unknown one.
+    if (!session || !this.registry.joinable(id, userId)) {
       refuse(socket, 404);
       return;
     }
+    const scope: Scope = {
+      organizationId: session.organizationId,
+      projectId: session.projectId,
+      environmentId: session.environmentId,
+    };
     try {
-      await this.tenants.require(userId, 'container.exec', {
-        organizationId: session.organizationId,
-        projectId: session.projectId,
-        environmentId: session.environmentId,
-      });
+      await this.tenants.require(userId, 'container.exec', scope);
     } catch {
       refuse(socket, 404);
       return;
     }
+    socket.off('error', drop);
     this.sockets.handleUpgrade(request, socket, head, (ws) => {
-      this.attach(ws, id, userId, token);
+      this.attach(ws, id, userId, token, scope);
     });
   }
 
-  private attach(ws: WebSocket, id: string, userId: string, token: Secret): void {
+  private attach(ws: WebSocket, id: string, userId: string, token: Secret, scope: Scope): void {
+    let told = false;
     const port: BrowserPort = {
-      send: (frame) => send(ws, frame),
-      close: () => {
+      send: (frame) => {
+        if (frame.kind === 'exit' || frame.kind === 'error') told = true;
+        return send(ws, frame);
+      },
+      close: (reason) => {
+        // The browser learns why, unless the agent's exit or error said it already.
+        if (!told && ws.readyState === WebSocket.OPEN)
+          ws.send(JSON.stringify({ type: 'end', reason }));
+        told = true;
         ws.close(1000);
       },
     };
@@ -133,25 +176,80 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
       const frame = browserFrame(data, binary);
       if (frame) relay.fromBrowser(frame);
     });
-    // Signing out, or a password change, ends the session too.
-    const check = setInterval(() => {
-      this.sessions.assertLive(userId, token).catch(() => {
-        relay.end('signed_out', null);
+    // Signing out, a password change, or losing container.exec ends the session too. A failure
+    // of the store is no refusal: the next check decides.
+    const access = setInterval(() => {
+      void this.stillAllowed(userId, token, scope).then((answer) => {
+        if (answer === 'signed_out' || answer === 'access_removed') relay.end(answer, null);
       });
-    }, SIGN_IN_CHECK_MS);
-    check.unref();
+    }, ACCESS_CHECK_MS);
+    access.unref();
+    // A browser gone without closing, a laptop asleep, misses its pong: the session ends.
+    let alive = true;
+    ws.on('pong', () => {
+      alive = true;
+    });
+    const keepalive = setInterval(() => {
+      if (!alive) {
+        ws.terminate();
+        return;
+      }
+      alive = false;
+      ws.ping();
+    }, KEEPALIVE_MS);
+    keepalive.unref();
     ws.on('close', () => {
-      clearInterval(check);
+      clearInterval(access);
+      clearInterval(keepalive);
       relay.browserLeft();
     });
     ws.on('error', () => {
       this.logger.warn(`exec session ${id}: browser connection failed`);
     });
   }
+
+  private async stillAllowed(
+    userId: string,
+    token: Secret,
+    scope: Scope,
+  ): Promise<'yes' | 'signed_out' | 'access_removed' | 'unknown'> {
+    try {
+      await this.sessions.assertLive(userId, token);
+    } catch (error) {
+      return error instanceof AuthenticationError ? 'signed_out' : 'unknown';
+    }
+    try {
+      await this.tenants.require(userId, 'container.exec', scope);
+    } catch (error) {
+      return isDomainError(error) ? 'access_removed' : 'unknown';
+    }
+    return 'yes';
+  }
+
+  private throttled(ip: string, now = Date.now()): boolean {
+    const entry = this.failures.get(ip);
+    return (
+      entry !== undefined && now - entry.since <= 60_000 && entry.count >= FAILED_JOINS_PER_MINUTE
+    );
+  }
+
+  private failed(ip: string, now = Date.now()): void {
+    const entry = this.failures.get(ip);
+    if (!entry || now - entry.since > 60_000) this.failures.set(ip, { count: 1, since: now });
+    else entry.count++;
+    if (this.failures.size > 10_000)
+      for (const [key, value] of this.failures)
+        if (now - value.since > 60_000) this.failures.delete(key);
+  }
 }
 
-function refuse(socket: Duplex, status: 401 | 404 | 500): void {
-  const text = { 401: 'Unauthorized', 404: 'Not Found', 500: 'Internal Server Error' }[status];
+function refuse(socket: Duplex, status: 401 | 404 | 429 | 500): void {
+  const text = {
+    401: 'Unauthorized',
+    404: 'Not Found',
+    429: 'Too Many Requests',
+    500: 'Internal Server Error',
+  }[status];
   socket.end(
     `HTTP/1.1 ${String(status)} ${text}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`,
   );
