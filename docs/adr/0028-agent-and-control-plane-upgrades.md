@@ -81,6 +81,7 @@ On 2026-11-23 the maintainer chose, and then accepted this record:
 
 - The control plane installer installs and enrolls one in the separate form too. Its node carries the `control-plane` role and is not schedulable: placement never puts an application there.
 - On the single-machine form, the agent that is already there gets the role.
+- The agent needs what every server needs, Ubuntu 24.04 with systemd and Docker API 1.47, while the control plane alone runs on any Linux with Docker. Elsewhere, the installer installs the control plane without an agent and says so; that control plane is upgraded by hand (SPEC, "Open questions").
 - An agent accepts `UpgradeControlPlane` only with that role, which is set in its local configuration by the installer, not by the control plane.
 
 **The agent drives Docker Compose with fixed arguments.** It runs `docker compose` with an argv the agent builds, never a shell (CLAUDE.md rule 1).
