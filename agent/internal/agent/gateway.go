@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -23,12 +24,13 @@ import (
 	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
 	"github.com/shipkeepdev/shipkeep/agent/internal/metrics"
 	"github.com/shipkeepdev/shipkeep/agent/internal/reporting"
+	"github.com/shipkeepdev/shipkeep/agent/internal/upgrade"
 	"github.com/shipkeepdev/shipkeep/lib/buildinfo"
 	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
-func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *docker.Client, router *caddy.Client, routes *actions.RouteBook) error {
+func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *docker.Client, router *caddy.Client, routes *actions.RouteBook, boot *startup, restart *restarter) error {
 	if ctx.Err() != nil {
 		return nil // Parent cancellation is a clean shutdown.
 	}
@@ -109,6 +111,12 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		actions.WithWorkloads(actions.Workloads{Slice: a.cfg.Docker.WorkloadsSlice, OOMScoreAdj: a.cfg.Docker.WorkloadsOOMScoreAdj}),
 		// The reconciler follows the containers of each route (ADR 0017).
 		actions.WithRouteBook(routes),
+		// The agent replaces its own binary with a verified release (ADR 0028).
+		actions.WithUpgrader(actions.Upgrader{
+			Version: buildinfo.Version, Arch: runtime.GOARCH, Binary: upgrade.BinaryPath,
+			StateDir: a.cfg.Paths.StateDir, UnitFile: actions.UnitFile,
+			Client: upgrade.Client(), Verify: upgrade.Verify, Restart: restart.request,
+		}),
 	}
 	if host := a.cfg.ControlPlane.Route.Host; host != "" {
 		// No application may take the control plane's name (ADR 0021).
@@ -124,7 +132,9 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	sampler := &metrics.Sampler{Containers: engine, Requests: router, Proc: "/proc", Sys: "/sys", Logger: a.logger}
 	runner := gateway.Runner{
 		Endpoint: a.endpoint(), StateDir: a.cfg.Paths.StateDir, Version: buildinfo.Version, Facts: facts, Logger: a.logger, Actions: dispatcher,
-		Metrics: sampler.Sample,
+		Metrics:   sampler.Sample,
+		Connected: boot.connected,
+		Sent:      restart.delivered,
 		Report: func(ctx context.Context) (*agentv1.StateReport, error) {
 			reasons, err := store.StopReasons(ctx)
 			if err != nil {
