@@ -32,6 +32,12 @@ const REASONS: Readonly<Record<NonNullable<AgentAction['reason']>, string | null
   disk_full: 'disk full',
   image_volume_undeclared: 'image volume not declared',
   egress_unguarded: 'egress proxy missing',
+  upgrade_dev_build: 'development build, not upgraded',
+  upgrade_not_newer: 'already on this version or a later one',
+  upgrade_unit_outdated: 'service predates upgrades',
+  upgrade_unverified: 'release did not verify',
+  upgrade_unavailable: 'release download failed',
+  upgrade_in_progress: 'another upgrade not confirmed yet',
   unknown: 'unknown error',
 };
 

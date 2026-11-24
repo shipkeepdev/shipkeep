@@ -6441,6 +6441,12 @@
               "disk_full",
               "image_volume_undeclared",
               "egress_unguarded",
+              "upgrade_dev_build",
+              "upgrade_not_newer",
+              "upgrade_unit_outdated",
+              "upgrade_unverified",
+              "upgrade_unavailable",
+              "upgrade_in_progress",
               "unknown",
               null
             ],
@@ -8431,6 +8437,12 @@
               "disk_full",
               "image_volume_undeclared",
               "egress_unguarded",
+              "upgrade_dev_build",
+              "upgrade_not_newer",
+              "upgrade_unit_outdated",
+              "upgrade_unverified",
+              "upgrade_unavailable",
+              "upgrade_in_progress",
               "unknown",
               null
             ]
