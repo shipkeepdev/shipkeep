@@ -456,7 +456,7 @@ ready -> draining -> ready | removed
 ```
 
 - `suspect` after 15 s without heartbeat, `down` at lease expiry (60 s default).
-- Until leases persist these transitions (M4.5), the control plane records a connected agent's hello and then its heartbeats at most every 10 s. That makes an `enrolling`, `suspect` or `down` node `ready`, audited once per transition as `fleet.node.ready`; `draining` and `removed` nodes keep their status. The API and the scheduler read a stored `ready` node as `suspect` 15 s and `down` 60 s after its last recorded heartbeat.
+- Until leases persist these transitions (M4.5), the control plane records a connected agent's hello and then its heartbeats at most every 10 s. That makes an `enrolling`, `suspect` or `down` node `ready`, audited once per transition as `fleet.node.ready`; `draining` and `removed` nodes keep their status. The hello also names the agent's version. When it differs from the node's stored `agent_version` fact, the control plane stores it and audits `fleet.node.agent_version_changed` with the previous and the new version: this is how it sees an upgrade, or its rollback (ADR 0028). A version that is not a release version or `dev` (`^[0-9A-Za-z][0-9A-Za-z.+-]{0,63}$`) is not stored. The API and the scheduler read a stored `ready` node as `suspect` 15 s and `down` 60 s after its last recorded heartbeat.
 - `draining`: no new allocations; stateless allocations moved; requires Admin.
 - `removed`: certificate revoked, allocations must be zero or confirmed for deletion.
 

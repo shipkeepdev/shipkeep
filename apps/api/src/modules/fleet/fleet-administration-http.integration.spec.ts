@@ -113,6 +113,22 @@ describe('fleet administration over HTTP', () => {
       where: { action: 'fleet.node.ready', targetId: enrolled.nodeId },
     });
     expect(events.map((event) => event.metadata)).toEqual([{ from: 'enrolling' }]);
+
+    // A hello records the agent's version when it changed, audited once (ADR 0028).
+    await fixture.app.get(NodeLiveness).hello(identity, '0.1.0');
+    await fixture.app.get(NodeLiveness).hello(identity, '0.2.0-alpha.1');
+    await fixture.app.get(NodeLiveness).hello(identity, '0.2.0-alpha.1');
+    const upgraded = await fixture.get(`${fixture.root}/nodes`, 'admin').expect(200);
+    expect((upgraded.body as { items: { facts: object }[] }).items[0]?.facts).toEqual({
+      hostname: 'edge-http.example.com',
+      agent_version: '0.2.0-alpha.1',
+    });
+    const versions = await auditLog().findMany({
+      where: { action: 'fleet.node.agent_version_changed', targetId: enrolled.nodeId },
+    });
+    expect(versions.map((event) => event.metadata)).toEqual([
+      { from: '0.1.0', to: '0.2.0-alpha.1' },
+    ]);
   });
 
   it('removes a node only with a confirmation for that node, revoking its certificates', async () => {
