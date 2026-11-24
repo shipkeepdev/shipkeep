@@ -29,6 +29,8 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON applications TO shipkeep_runtime;
 GRANT SELECT,INSERT,UPDATE ON deployments,allocations,allocation_observations TO shipkeep_runtime;
 -- Certificate readings are replaced in place and go with their domain or node by cascade.
 GRANT SELECT,INSERT,UPDATE ON domain_certificates TO shipkeep_runtime;
+-- Agent rollouts only move forward and are kept as their history: never deleted by the API.
+GRANT SELECT,INSERT,UPDATE ON agent_upgrades TO shipkeep_runtime;
 -- Releases are immutable: the image digest is the only column ever written after insert (once).
 GRANT SELECT,INSERT ON releases TO shipkeep_runtime;
 GRANT UPDATE (image_digest) ON releases TO shipkeep_runtime;

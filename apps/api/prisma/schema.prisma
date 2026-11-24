@@ -32,11 +32,11 @@ model User {
 }
 
 model Organization {
-  id            String              @id @db.Uuid
-  name          String              @db.VarChar(80)
-  slug          String              @unique @db.VarChar(40)
-  createdAt     DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id            String               @id @db.Uuid
+  name          String               @db.VarChar(80)
+  slug          String               @unique @db.VarChar(40)
+  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
   memberships   Membership[]
   projects      Project[]
   environments  Environment[]
@@ -45,6 +45,7 @@ model Organization {
   joinTokens    JoinToken[]
   confirmations ConfirmationToken[]
   registries    RegistryCredential[]
+  agentUpgrades AgentUpgrade[]
 
   @@map("organizations")
 }
@@ -305,22 +306,22 @@ model JoinToken {
 
 /// A server running shipkeep-agent (SPEC 4, 5.2).
 model Node {
-  id              String            @id @db.Uuid
-  organizationId  String            @map("organization_id") @db.Uuid
-  name            String            @db.VarChar(40)
-  status          String            @db.VarChar(16)
-  labels          Json
-  facts           Json
+  id                 String              @id @db.Uuid
+  organizationId     String              @map("organization_id") @db.Uuid
+  name               String              @db.VarChar(40)
+  status             String              @db.VarChar(16)
+  labels             Json
+  facts              Json
   /// Canonical public IP addresses declared by an administrator (PLAN M3.6b1), at most 8.
-  publicAddresses String[]          @default([]) @map("public_addresses") @db.VarChar(45)
-  leaseEpoch      Int               @map("lease_epoch")
-  createdAt       DateTime          @map("created_at") @db.Timestamptz(6)
-  lastHeartbeatAt DateTime?         @map("last_heartbeat_at") @db.Timestamptz(6)
-  certificates    NodeCertificate[]
+  publicAddresses    String[]            @default([]) @map("public_addresses") @db.VarChar(45)
+  leaseEpoch         Int                 @map("lease_epoch")
+  createdAt          DateTime            @map("created_at") @db.Timestamptz(6)
+  lastHeartbeatAt    DateTime?           @map("last_heartbeat_at") @db.Timestamptz(6)
+  certificates       NodeCertificate[]
   domainCertificates DomainCertificate[]
-  actions         AgentAction[]
-  allocations     Allocation[]
-  organization    Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  actions            AgentAction[]
+  allocations        Allocation[]
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([organizationId, name])
   @@unique([organizationId, id])
@@ -406,6 +407,30 @@ model AgentAction {
   @@index([applicationId, id(sort: Desc)])
   @@index([deploymentId])
   @@map("agent_actions")
+}
+
+/// An agent rollout across an organization's servers, one at a time (ADR 0028). At most one runs
+/// per organization: a partial unique index in the migration SQL.
+model AgentUpgrade {
+  id                  String       @id @db.Uuid
+  organizationId      String       @map("organization_id") @db.Uuid
+  version             String       @db.VarChar(64)
+  state               String       @db.VarChar(16)
+  nodeIds             String[]     @map("node_ids") @db.Uuid
+  position            Int
+  actionId            String?      @map("action_id") @db.Uuid
+  turnStartedAt       DateTime     @map("turn_started_at") @db.Timestamptz(6)
+  failureNodeId       String?      @map("failure_node_id") @db.Uuid
+  failureReason       String?      @map("failure_reason") @db.VarChar(32)
+  failureActionReason String?      @map("failure_action_reason") @db.VarChar(64)
+  requestedBy         String?      @map("requested_by") @db.VarChar(128)
+  createdAt           DateTime     @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime     @map("updated_at") @db.Timestamptz(6)
+  completedAt         DateTime?    @map("completed_at") @db.Timestamptz(6)
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([organizationId, createdAt(sort: Desc)])
+  @@map("agent_upgrades")
 }
 
 /// Environment secret (SPEC 9): the value is encrypted and never returned by the API.
@@ -544,14 +569,14 @@ model AllocationObservation {
 
 /// A hostname claimed by an application, unique per organization; synced from its configuration.
 model Domain {
-  id             String      @id @db.Uuid
-  organizationId String      @map("organization_id") @db.Uuid
-  applicationId  String      @map("application_id") @db.Uuid
-  hostname       String      @db.VarChar(253)
-  createdAt      DateTime    @map("created_at") @db.Timestamptz(6)
+  id             String              @id @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  applicationId  String              @map("application_id") @db.Uuid
+  hostname       String              @db.VarChar(253)
+  createdAt      DateTime            @map("created_at") @db.Timestamptz(6)
   /// Set when the configuration no longer lists the domain while a placed release still does.
-  releasingAt    DateTime?   @map("releasing_at") @db.Timestamptz(6)
-  application    Application @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "domains_application_fkey")
+  releasingAt    DateTime?           @map("releasing_at") @db.Timestamptz(6)
+  application    Application         @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "domains_application_fkey")
   certificates   DomainCertificate[]
 
   @@unique([organizationId, hostname])
