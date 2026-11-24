@@ -1268,7 +1268,7 @@ export type components = {
              */
             readonly outcome: "in_progress" | "succeeded" | "refused" | "failed" | "expired" | "cancelled" | "compensated";
             /** @enum {string|null} */
-            readonly reason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "registry_denied" | "image_not_found" | "registry_unreachable" | "registry_untrusted" | "disk_full" | "image_volume_undeclared" | "egress_unguarded" | "unknown" | null;
+            readonly reason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "registry_denied" | "image_not_found" | "registry_unreachable" | "registry_untrusted" | "disk_full" | "image_volume_undeclared" | "egress_unguarded" | "upgrade_dev_build" | "upgrade_not_newer" | "upgrade_unit_outdated" | "upgrade_unverified" | "upgrade_unavailable" | "upgrade_in_progress" | "unknown" | null;
             readonly result: components["schemas"]["AgentActionResultDto"] | null;
             /** @enum {string} */
             readonly state: "queued" | "pending" | "running" | "succeeded" | "failed" | "cancelled" | "compensating" | "compensated" | "expired";

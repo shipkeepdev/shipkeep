@@ -27,9 +27,14 @@ const reports = {
   },
 } as unknown as StateReports;
 const heartbeats: string[] = [];
+const hellos: [string, string][] = [];
 const liveness = {
   heartbeat: (node: { nodeId: string }) => {
     heartbeats.push(node.nodeId);
+    return Promise.resolve();
+  },
+  hello: (node: { nodeId: string }, agentVersion: string) => {
+    hellos.push([node.nodeId, agentVersion]);
     return Promise.resolve();
   },
 } as unknown as NodeLiveness;
@@ -148,8 +153,8 @@ describe('stream timeouts and failure boundaries', () => {
     expect(responses).toEqual(['welcome', 'actionRequest']);
     expect(recorded.map((update) => update.state)).toEqual([OperationState.SUCCEEDED]);
     expect(delivered.map((report) => report.leaseEpoch)).toEqual([1n]);
-    // The hello counts as a heartbeat: the node becomes ready as soon as its agent connects.
-    expect(heartbeats).toContain('node');
+    // The hello counts as a heartbeat, and carries the agent's version (ADR 0028).
+    expect(hellos).toContainEqual(['node', 'test']);
   });
 
   /** A stream of the frames given, after a valid hello, for a ready node of epoch 1. */
