@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { API_VERSION } from '../../platform/health/health.controller';
+import { JobsModule } from '../../platform/jobs/jobs.module';
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { IdentityModule } from '../identity/identity.module';
 import { TenantAccessModule } from '../organizations/tenant-access.module';
@@ -21,14 +23,25 @@ import { NodeStream } from './interface/node-stream';
 import { EnrollNode } from './application/enroll-node';
 import { IssueJoinToken } from './application/issue-join-token';
 import {
+  AGENT_UPGRADE_WAKER,
+  AgentUpgrades,
+  CONTROL_PLANE_VERSION,
+} from './application/agent-upgrades';
+import {
   AGENT_ACTION_STORE,
+  AGENT_RELEASES,
+  AGENT_UPGRADE_STORE,
   JOIN_TOKEN_STORE,
   NODE_STORE,
   NODE_CREDENTIAL_STORE,
   FLEET_TRANSACTION,
 } from './application/ports';
 import { PrismaJoinTokenStore, PrismaNodeStore } from './infrastructure/prisma-fleet.stores';
+import { AgentUpgradeQueue } from './infrastructure/agent-upgrade-queue';
+import { AgentUpgradeWorker } from './infrastructure/agent-upgrade-worker';
+import { GithubAgentReleases } from './infrastructure/github-agent-releases';
 import { PrismaAgentActionStore } from './infrastructure/prisma-agent-action.store';
+import { PrismaAgentUpgradeStore } from './infrastructure/prisma-agent-upgrade.store';
 import { AgentActions } from './application/agent-actions';
 import { NodeLiveness } from './application/node-liveness';
 import { MetricsReports } from './application/metrics-reports';
@@ -39,7 +52,13 @@ import { StateReports } from './application/state-reports';
  * organization administrators use the session-only REST routes of M2.7.
  */
 @Module({
-  imports: [IdentityModule, TenantAccessModule, InstallationKeysModule, ConfirmationsModule],
+  imports: [
+    IdentityModule,
+    TenantAccessModule,
+    InstallationKeysModule,
+    ConfirmationsModule,
+    JobsModule,
+  ],
   controllers: [FleetAdministrationController],
   providers: [
     FleetAdministration,
@@ -59,6 +78,13 @@ import { StateReports } from './application/state-reports';
     { provide: NODE_STORE, useClass: PrismaNodeStore },
     { provide: AGENT_ACTION_STORE, useClass: PrismaAgentActionStore },
     AgentActions,
+    { provide: AGENT_UPGRADE_STORE, useClass: PrismaAgentUpgradeStore },
+    { provide: AGENT_RELEASES, useFactory: () => new GithubAgentReleases() },
+    { provide: CONTROL_PLANE_VERSION, useValue: API_VERSION },
+    AgentUpgradeQueue,
+    { provide: AGENT_UPGRADE_WAKER, useExisting: AgentUpgradeQueue },
+    AgentUpgrades,
+    AgentUpgradeWorker,
     NodeLiveness,
     StateReports,
     MetricsReports,
@@ -74,6 +100,7 @@ import { StateReports } from './application/state-reports';
     AuthenticateNode,
     RenewNodeCertificate,
     AgentActions,
+    AgentUpgradeWorker,
     StateReports,
     MetricsReports,
   ],

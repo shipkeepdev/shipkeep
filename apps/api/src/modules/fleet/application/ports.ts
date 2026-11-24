@@ -3,7 +3,11 @@ import type {
   AgentActionEntry,
   AgentActionRecord,
 } from '../domain/agent-action';
-import type { AgentArchitecture, ReleaseVersion } from '../domain/agent-upgrade';
+import type {
+  AgentArchitecture,
+  AgentUpgradeRecord,
+  ReleaseVersion,
+} from '../domain/agent-upgrade';
 import type { JoinTokenRecord } from '../domain/join-token';
 import type { NodeCertificateRecord, NodeFacts, NodeRecord, NodeStatus } from '../domain/node';
 import type { NodeCredential, NodeIdentity } from '../domain/node-identity';
@@ -118,6 +122,13 @@ export interface AgentActionStore {
   ): Promise<AgentActionRecord | undefined>;
   /** Non-terminal actions whose deadline is still ahead, oldest first, at most 100. */
   deliverable(organizationId: string, nodeId: string, now: Date): Promise<AgentActionRecord[]>;
+  /** Whether the node has an unfinished action, other than `exceptId`, whose deadline is ahead. */
+  hasUnfinished(
+    organizationId: string,
+    nodeId: string,
+    exceptId: string | null,
+    now: Date,
+  ): Promise<boolean>;
   /** Marks overdue non-terminal actions `expired` and returns them. */
   expire(organizationId: string, nodeId: string, now: Date): Promise<AgentActionRecord[]>;
   /** Applies a change unless the action is terminal; returns the updated action, if any. */
@@ -164,3 +175,33 @@ export interface AgentReleases {
   find(version: ReleaseVersion, architecture: AgentArchitecture): Promise<AgentRelease | null>;
 }
 export const AGENT_RELEASES = Symbol('AgentReleases');
+
+/** The changes a rollout's turn makes; every method runs inside `runTenant`. */
+export interface AgentUpgradeChange {
+  readonly state: AgentUpgradeRecord['state'];
+  readonly position: number;
+  readonly actionId: string | null;
+  readonly turnStartedAt: Date;
+  readonly failure: AgentUpgradeRecord['failure'];
+  readonly updatedAt: Date;
+  readonly completedAt: Date | null;
+}
+export interface AgentUpgradeStore {
+  /** False when another rollout of the organization is running. */
+  insert(record: AgentUpgradeRecord): Promise<boolean>;
+  findById(organizationId: string, id: string): Promise<AgentUpgradeRecord | undefined>;
+  /** The organization's newest rollout, running or not. */
+  latest(organizationId: string): Promise<AgentUpgradeRecord | undefined>;
+  findRunning(organizationId: string): Promise<AgentUpgradeRecord | undefined>;
+  /**
+   * Compare-and-swap of a running rollout, on the position and action just read: undefined when
+   * another run changed it first.
+   */
+  update(
+    organizationId: string,
+    id: string,
+    expected: Pick<AgentUpgradeRecord, 'position' | 'actionId'>,
+    change: AgentUpgradeChange,
+  ): Promise<AgentUpgradeRecord | undefined>;
+}
+export const AGENT_UPGRADE_STORE = Symbol('AgentUpgradeStore');

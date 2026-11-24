@@ -101,3 +101,59 @@ export function nodeReady(input: {
     payload: { from: input.from },
   });
 }
+
+/** An agent rollout started (ADR 0028): the version and the servers, in their order. */
+export function agentUpgradeStarted(input: {
+  organizationId: string;
+  upgradeId: string;
+  version: string;
+  nodeIds: readonly string[];
+  actor: Actor;
+}): DomainEvent {
+  return createEvent({
+    type: 'fleet.agent_upgrade.started',
+    organizationId: input.organizationId,
+    actor: input.actor,
+    target: { type: 'agent_upgrade', id: input.upgradeId },
+    payload: { version: input.version, nodeIds: [...input.nodeIds] },
+  });
+}
+
+/** A server's turn in a rollout ended: it runs the new version, or it needed nothing. */
+export function agentUpgradeTurnEnded(input: {
+  organizationId: string;
+  upgradeId: string;
+  nodeId: string;
+  outcome: 'upgraded' | 'skipped';
+}): DomainEvent {
+  return createEvent({
+    type: `fleet.agent_upgrade.node_${input.outcome}`,
+    organizationId: input.organizationId,
+    actor: SYSTEM_ACTOR,
+    target: { type: 'agent_upgrade', id: input.upgradeId },
+    payload: { nodeId: input.nodeId },
+  });
+}
+
+/** A rollout ended: every server had its turn, or one stopped it, with the reason. */
+export function agentUpgradeEnded(input: {
+  organizationId: string;
+  upgradeId: string;
+  version: string;
+  failure: { nodeId: string; reason: string; actionReason: string | null } | null;
+}): DomainEvent {
+  return createEvent({
+    type: input.failure ? 'fleet.agent_upgrade.failed' : 'fleet.agent_upgrade.succeeded',
+    organizationId: input.organizationId,
+    actor: SYSTEM_ACTOR,
+    target: { type: 'agent_upgrade', id: input.upgradeId },
+    payload: input.failure
+      ? {
+          version: input.version,
+          nodeId: input.failure.nodeId,
+          reason: input.failure.reason,
+          ...(input.failure.actionReason ? { actionReason: input.failure.actionReason } : {}),
+        }
+      : { version: input.version },
+  });
+}
