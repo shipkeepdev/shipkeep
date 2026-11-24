@@ -31,7 +31,7 @@
       if (light) document.documentElement.setAttribute('data-theme', 'light');
       else document.documentElement.removeAttribute('data-theme');
       try {
-        localStorage.setItem('shipkeep-theme', light ? 'light' : 'dark');
+        localStorage.setItem('shipkeep-theme-v2', light ? 'light' : 'dark');
       } catch {
         // Storage can be blocked: the choice lasts for this page only.
       }
