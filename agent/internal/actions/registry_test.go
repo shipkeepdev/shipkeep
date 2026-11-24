@@ -12,8 +12,12 @@ import (
 // else: any action on workloads or routes is refused as unsupported, before it is journaled.
 func TestAControlPlaneOnlyAgentHandlesNoWorkload(t *testing.T) {
 	upgrader := newUpgradeNode(t).upgrader
-	full := Registry(nil, nil, nil, nil, Handler{}, WithUpgrader(upgrader))
-	only := Registry(nil, nil, nil, nil, Handler{}, WithUpgrader(upgrader), ControlPlaneOnly())
+	// Exec sessions are configured as on every agent: a control-plane-only machine still refuses them.
+	sessions := NewExecSessions()
+	t.Cleanup(sessions.Close)
+	exec := WithExec(nil, nil, sessions)
+	full := Registry(nil, nil, nil, nil, Handler{}, WithUpgrader(upgrader), exec)
+	only := Registry(nil, nil, nil, nil, Handler{}, WithUpgrader(upgrader), exec, ControlPlaneOnly())
 	kinds := func(handlers map[string]Handler) []string {
 		names := make([]string, 0, len(handlers))
 		for name := range handlers {
@@ -25,7 +29,7 @@ func TestAControlPlaneOnlyAgentHandlesNoWorkload(t *testing.T) {
 	if got := kinds(only); !slices.Equal(got, []string{"collect_facts", "upgrade_agent"}) {
 		t.Fatalf("control-plane-only handles %v", got)
 	}
-	if len(full) <= 2 {
+	if len(full) <= 2 || !slices.Contains(kinds(full), "exec_session") {
 		t.Fatalf("a server handles only %v", kinds(full))
 	}
 	d := &Dispatcher{Journal: open(t), Handlers: only, Epoch: func() uint64 { return 3 }}
@@ -33,6 +37,7 @@ func TestAControlPlaneOnlyAgentHandlesNoWorkload(t *testing.T) {
 		{Action: &agentv1.ActionRequest_CreateContainer{CreateContainer: &agentv1.CreateContainer{}}},
 		{Action: &agentv1.ActionRequest_PullImage{PullImage: &agentv1.PullImage{}}},
 		{Action: &agentv1.ActionRequest_UpsertRoute{UpsertRoute: &agentv1.UpsertRoute{}}},
+		{Action: &agentv1.ActionRequest_ExecSession{ExecSession: &agentv1.ExecSession{}}},
 	} {
 		action.ActionId, action.IdempotencyKey, action.LeaseEpoch = testID, "refused", 3
 		out := &recorder{}
