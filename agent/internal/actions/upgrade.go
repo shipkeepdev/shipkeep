@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"regexp"
@@ -235,12 +236,24 @@ func hasGuard(unit string) bool {
 			fields := strings.Fields(value)
 			if len(fields) == 0 {
 				guarded = false
-			} else if len(fields) >= 2 && fields[0] == guardExecutable && fields[1] == guardCommand && !continued {
+			} else if len(fields) >= 2 && fields[0] == guardExecutable && fields[1] == guardCommand && !continued && guardArgs(fields[2:]) {
 				guarded = true
 			}
 		}
 	}
 	return guarded
+}
+
+// guardArgs reports whether the guard runs with these arguments, as systemd passes them: no
+// quoting, escapes or specifiers, which would change the words, and arguments the guard parses.
+func guardArgs(args []string) bool {
+	for _, arg := range args {
+		if strings.ContainsAny(arg, "\"'\\%$") {
+			return false
+		}
+	}
+	_, err := upgrade.ParseGuardArgs(args, "/etc/shipkeep/agent.yaml", io.Discard)
+	return err == nil
 }
 
 func (u Upgrader) now() time.Time {

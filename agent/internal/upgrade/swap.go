@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"io"
 	"os"
@@ -160,6 +161,26 @@ func Unswap(record Pending) error {
 		return fmt.Errorf("put the running binary back: %w", err)
 	}
 	return syncDir(filepath.Dir(record.Binary))
+}
+
+// ParseGuardArgs reads the arguments of `shipkeep-agent upgrade-guard`: nothing, or the agent's
+// configuration file with `--config`. It returns the configuration path, or defaultConfig. The
+// guard and the check of the agent's unit both use it, so a unit passes the check only with
+// arguments the guard runs with.
+func ParseGuardArgs(args []string, defaultConfig string, output io.Writer) (string, error) {
+	fs := flag.NewFlagSet("shipkeep-agent upgrade-guard", flag.ContinueOnError)
+	fs.SetOutput(output)
+	path := fs.String("config", defaultConfig, "path to agent.yaml")
+	if err := fs.Parse(args); err != nil {
+		return "", fmt.Errorf("upgrade guard arguments: %w", err)
+	}
+	if fs.NArg() > 0 {
+		return "", errors.New("upgrade guard arguments: unexpected arguments")
+	}
+	if *path == "" {
+		return "", errors.New("upgrade guard arguments: an empty configuration path")
+	}
+	return *path, nil
 }
 
 // Guard is what the upgrade guard does before each start of the agent (ADR 0028). Without a
