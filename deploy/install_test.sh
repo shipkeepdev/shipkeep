@@ -135,9 +135,11 @@ for line in Type=notify NotifyAccess=main StartLimitIntervalSec=0 TimeoutStartSe
 done
 [[ ${unit%%ExecStart=*} == *ExecStartPre=* ]] || die 'the upgrade guard runs after the agent'
 [[ $unit != *OnFailure=* ]] || die 'the agent unit has an OnFailure rollback'
-# The agent refuses an upgrade unless its unit holds the line it looks for.
-guard=$(sed -n 's/^const guardLine = "\(.*\)"$/\1/p' agent/internal/actions/upgrade.go)
-[[ -n $guard && $unit == *$'\n'"$guard "* ]] || die "the agent looks for another guard line: $guard"
+# The agent refuses an upgrade unless its unit runs the guard it looks for, as an active line.
+guard_exe=$(sed -n 's/^\tguardExecutable *= "\(.*\)"$/\1/p' agent/internal/actions/upgrade.go)
+guard_cmd=$(sed -n 's/^\tguardCommand *= "\(.*\)"$/\1/p' agent/internal/actions/upgrade.go)
+[[ -n $guard_exe && -n $guard_cmd && $unit == *$'\n'"ExecStartPre=$guard_exe $guard_cmd "* ]] ||
+  die "the agent looks for another guard: $guard_exe $guard_cmd"
 # A refused single-machine option stops before anything else, and never shows the token.
 for options in '--local-control-plane 0.0.0.0:3000 --agent-file /bin/true' '--local-control-plane 127.0.0.1:3000' \
   '--local-control-plane 127.0.0.1:3000 --agent-file relative/agent' '--local-control-plane 127.0.0.1:3000 --agent-file /missing/agent'; do
