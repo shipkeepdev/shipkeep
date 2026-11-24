@@ -116,15 +116,23 @@ func (s *ExecSessions) Close() {
 	s.running.Wait()
 }
 
-// start runs session on its own goroutine, unless the owner is closed.
-func (s *ExecSessions) start(session func()) bool {
+// admit counts a session from before its command starts, so that Close waits for a start under
+// way; false once the owner is closed, and then nothing runs. run hands the session to its own
+// goroutine; abort gives the place back when the start failed. One of them is called once.
+func (s *ExecSessions) admit() (run func(session func()), abort func(), ok bool) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.closed {
-		return false
+		return nil, nil, false
 	}
-	s.running.Go(session)
-	return true
+	s.running.Add(1)
+	run = func(session func()) {
+		go func() {
+			defer s.running.Done()
+			session()
+		}()
+	}
+	return run, s.running.Done, true
 }
 
 // Fixed texts of an ExecError frame: never Docker's message, which can name paths.
@@ -175,6 +183,17 @@ func validArgv(argv []string) bool {
 // startSession starts a session: the command in the container, and the stream that carries its
 // frames. The action ends there, and the session runs on under its owner for at most limit.
 func startSession(ctx context.Context, settings *execSettings, ref, session string, limit time.Duration, config docker.ExecConfig) (journal.Outcome, error) {
+	// A closed owner refuses the session before anything runs in the container.
+	run, abort, ok := settings.sessions.admit()
+	if !ok {
+		return journal.Outcome{}, errors.New("the agent is stopping")
+	}
+	handed := false
+	defer func() {
+		if !handed {
+			abort()
+		}
+	}()
 	container, err := managedExecTarget(ctx, settings.engine, ref)
 	if err != nil {
 		return journal.Outcome{}, err
@@ -184,45 +203,54 @@ func startSession(ctx context.Context, settings *execSettings, ref, session stri
 		return journal.Outcome{}, fmt.Errorf("create exec: %w", err)
 	}
 	// The stream and the connection to the command outlive the action. The session ends them
-	// itself, once it said why to the control plane, even when its owner closes.
+	// itself, once it said why to the control plane, even when its owner closes. Until the
+	// session is handed to its owner, the action's end (its deadline, a cancel) ends them too:
+	// a start that never answers cannot hold the journal.
 	streamCtx, end := context.WithCancel(context.WithoutCancel(ctx))
+	unlink := context.AfterFunc(ctx, end)
+	defer func() {
+		if !handed {
+			unlink()
+			end()
+		}
+	}()
 	stream, err := settings.streams.OpenExec(streamCtx)
 	if err != nil {
-		end()
 		return journal.Outcome{}, fmt.Errorf("open exec stream: %w", err)
 	}
 	if err := stream.Send(&agentv1.ExecStreamRequest{Frame: &agentv1.ExecStreamRequest_Open{Open: &agentv1.ExecOpen{SessionId: session}}}); err != nil {
-		end()
 		return journal.Outcome{}, fmt.Errorf("open exec stream: %w", err)
 	}
 	attached, err := settings.engine.StartExec(streamCtx, instance)
 	if err != nil {
 		_ = stream.Send(execError(execFailed))
 		_ = stream.CloseSend()
-		end()
 		return journal.Outcome{}, fmt.Errorf("start exec: %w", err)
 	}
-	if !settings.sessions.start(func() {
-		defer end()
-		relayExec(settings.sessions.ctx, end, settings.engine, instance, attached, stream, limit)
-	}) {
+	// Handed to the owner: from now on only the session ends itself.
+	if !unlink() {
 		_ = attached.Close()
-		end()
-		return journal.Outcome{}, errors.New("the agent is stopping")
+		return journal.Outcome{}, fmt.Errorf("start exec: %w", ctx.Err())
 	}
+	handed = true
+	run(func() {
+		defer end()
+		relayExec(settings.sessions.ctx, streamCtx, end, settings.engine, instance, attached, stream, limit)
+	})
 	return journal.Outcome{ResourceID: container.ID}, nil
 }
 
 // relayExec carries one session's frames until the command's output ends, the control plane
 // kills it or ends its stream, the time limit passes, or the owner closes (owner ends). end ends
 // the stream and the connection to the command.
-func relayExec(owner context.Context, end context.CancelFunc, engine ExecEngine, instance docker.ExecInstance, attached AttachedExec, stream ExecStream, limit time.Duration) {
+func relayExec(owner, streamCtx context.Context, end context.CancelFunc, engine ExecEngine, instance docker.ExecInstance, attached AttachedExec, stream ExecStream, limit time.Duration) {
 	defer attached.Close() //nolint:errcheck // the session's end closes it
 	// The control plane's frames to the command, until it kills the session or the stream ends.
 	inputDone := make(chan struct{})
 	go func() {
 		defer close(inputDone)
-		forwardInput(context.WithoutCancel(owner), engine, instance.ID, attached, stream)
+		// Its Docker calls (resizes) end with the stream, which every end of the session ends.
+		forwardInput(streamCtx, engine, instance.ID, attached, stream)
 	}()
 	// The command's output to the stream, on one goroutine alone: a stream's sends are not safe
 	// from two goroutines at once, and the last frame waits for it.

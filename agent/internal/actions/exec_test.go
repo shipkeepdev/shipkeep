@@ -82,6 +82,10 @@ type fakeExecEngine struct {
 	created  []docker.ExecConfig
 	resized  [][2]uint32
 	startErr error
+	// hangStart and hangResize block their call until its context ends, as a Docker that does
+	// not answer; starts counts the starts.
+	hangStart, hangResize bool
+	starts                int
 }
 
 func (f *fakeExecEngine) Container(_ context.Context, ref string) (docker.Container, error) {
@@ -101,17 +105,29 @@ func (f *fakeExecEngine) CreateExec(_ context.Context, _ string, config docker.E
 	return docker.ExecInstance{ID: strings.Repeat("e", 64), TTY: config.TTY}, nil
 }
 
-func (f *fakeExecEngine) StartExec(context.Context, docker.ExecInstance) (AttachedExec, error) {
+func (f *fakeExecEngine) StartExec(ctx context.Context, _ docker.ExecInstance) (AttachedExec, error) {
+	f.mu.Lock()
+	f.starts++
+	f.mu.Unlock()
+	if f.hangStart {
+		<-ctx.Done()
+		return nil, ctx.Err()
+	}
 	if f.startErr != nil {
 		return nil, f.startErr
 	}
 	return f.attached, nil
 }
 
-func (f *fakeExecEngine) ResizeExec(_ context.Context, _ string, cols, rows uint32) error {
+func (f *fakeExecEngine) ResizeExec(ctx context.Context, _ string, cols, rows uint32) error {
 	f.mu.Lock()
-	defer f.mu.Unlock()
 	f.resized = append(f.resized, [2]uint32{cols, rows})
+	hang := f.hangResize
+	f.mu.Unlock()
+	if hang {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	return nil
 }
 
@@ -452,6 +468,60 @@ func TestTheActionEndsOnceTheSessionStarted(t *testing.T) {
 	}
 	if _, err := startSession(context.Background(), &execSettings{engine, streams, sessions}, execContainer, execSessionID, time.Minute, docker.ExecConfig{Argv: []string{"sh"}}); err == nil {
 		t.Fatal("a session started after its owner closed")
+	}
+	// Refused before anything ran in the container.
+	engine.mu.Lock()
+	defer engine.mu.Unlock()
+	if engine.starts != 1 || len(engine.created) != 1 {
+		t.Fatalf("after the owner closed: %d starts, %d execs", engine.starts, len(engine.created))
+	}
+}
+
+func TestAStartThatNeverAnswersEndsWithTheAction(t *testing.T) {
+	engine, streams := execFixture()
+	engine.hangStart = true
+	sessions := NewExecSessions()
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+	done := make(chan error, 1)
+	go func() {
+		_, err := startSession(ctx, &execSettings{engine, streams, sessions}, execContainer, execSessionID, time.Minute, docker.ExecConfig{Argv: []string{"sh"}})
+		done <- err
+	}()
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("a start that never answered succeeded")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("the start held the journal past the action's deadline")
+	}
+	// Nothing is left running: closing the owner returns at once.
+	closed := make(chan struct{})
+	go func() { sessions.Close(); close(closed) }()
+	select {
+	case <-closed:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a failed start kept its place")
+	}
+}
+
+func TestAStalledResizeDoesNotHoldTheSession(t *testing.T) {
+	previous := execFinalTimeout
+	execFinalTimeout = 100 * time.Millisecond
+	t.Cleanup(func() { execFinalTimeout = previous })
+	engine, streams := execFixture()
+	engine.hangResize = true
+	streams.stream.in <- &agentv1.ExecStreamResponse{Frame: &agentv1.ExecStreamResponse_Resize{Resize: &agentv1.ExecResize{Cols: 80, Rows: 24}}}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = runSession(engine, streams, 50*time.Millisecond, docker.ExecConfig{Argv: []string{"sh"}, TTY: true})
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("a resize Docker never answered held the session past its limit")
 	}
 }
 
