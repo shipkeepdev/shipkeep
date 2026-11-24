@@ -27,6 +27,7 @@ const (
 	AgentGatewayService_RenewCertificate_FullMethodName = "/shipkeep.agent.v1.AgentGatewayService/RenewCertificate"
 	AgentGatewayService_Connect_FullMethodName          = "/shipkeep.agent.v1.AgentGatewayService/Connect"
 	AgentGatewayService_ExecStream_FullMethodName       = "/shipkeep.agent.v1.AgentGatewayService/ExecStream"
+	AgentGatewayService_ShipLogs_FullMethodName         = "/shipkeep.agent.v1.AgentGatewayService/ShipLogs"
 )
 
 // AgentGatewayServiceClient is the client API for AgentGatewayService service.
@@ -41,6 +42,8 @@ type AgentGatewayServiceClient interface {
 	Connect(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ConnectRequest, ConnectResponse], error)
 	// Interactive exec frames for one ExecSession.
 	ExecStream(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ExecStreamRequest, ExecStreamResponse], error)
+	// Container logs, in acknowledged batches (ADR 0029). Opened after Welcome says they are kept.
+	ShipLogs(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ShipLogsRequest, ShipLogsResponse], error)
 }
 
 type agentGatewayServiceClient struct {
@@ -97,6 +100,19 @@ func (c *agentGatewayServiceClient) ExecStream(ctx context.Context, opts ...grpc
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentGatewayService_ExecStreamClient = grpc.BidiStreamingClient[ExecStreamRequest, ExecStreamResponse]
 
+func (c *agentGatewayServiceClient) ShipLogs(ctx context.Context, opts ...grpc.CallOption) (grpc.BidiStreamingClient[ShipLogsRequest, ShipLogsResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &AgentGatewayService_ServiceDesc.Streams[2], AgentGatewayService_ShipLogs_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[ShipLogsRequest, ShipLogsResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentGatewayService_ShipLogsClient = grpc.BidiStreamingClient[ShipLogsRequest, ShipLogsResponse]
+
 // AgentGatewayServiceServer is the server API for AgentGatewayService service.
 // All implementations must embed UnimplementedAgentGatewayServiceServer
 // for forward compatibility.
@@ -109,6 +125,8 @@ type AgentGatewayServiceServer interface {
 	Connect(grpc.BidiStreamingServer[ConnectRequest, ConnectResponse]) error
 	// Interactive exec frames for one ExecSession.
 	ExecStream(grpc.BidiStreamingServer[ExecStreamRequest, ExecStreamResponse]) error
+	// Container logs, in acknowledged batches (ADR 0029). Opened after Welcome says they are kept.
+	ShipLogs(grpc.BidiStreamingServer[ShipLogsRequest, ShipLogsResponse]) error
 	mustEmbedUnimplementedAgentGatewayServiceServer()
 }
 
@@ -130,6 +148,9 @@ func (UnimplementedAgentGatewayServiceServer) Connect(grpc.BidiStreamingServer[C
 }
 func (UnimplementedAgentGatewayServiceServer) ExecStream(grpc.BidiStreamingServer[ExecStreamRequest, ExecStreamResponse]) error {
 	return status.Errorf(codes.Unimplemented, "method ExecStream not implemented")
+}
+func (UnimplementedAgentGatewayServiceServer) ShipLogs(grpc.BidiStreamingServer[ShipLogsRequest, ShipLogsResponse]) error {
+	return status.Errorf(codes.Unimplemented, "method ShipLogs not implemented")
 }
 func (UnimplementedAgentGatewayServiceServer) mustEmbedUnimplementedAgentGatewayServiceServer() {}
 func (UnimplementedAgentGatewayServiceServer) testEmbeddedByValue()                             {}
@@ -202,6 +223,13 @@ func _AgentGatewayService_ExecStream_Handler(srv interface{}, stream grpc.Server
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type AgentGatewayService_ExecStreamServer = grpc.BidiStreamingServer[ExecStreamRequest, ExecStreamResponse]
 
+func _AgentGatewayService_ShipLogs_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(AgentGatewayServiceServer).ShipLogs(&grpc.GenericServerStream[ShipLogsRequest, ShipLogsResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type AgentGatewayService_ShipLogsServer = grpc.BidiStreamingServer[ShipLogsRequest, ShipLogsResponse]
+
 // AgentGatewayService_ServiceDesc is the grpc.ServiceDesc for AgentGatewayService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -228,6 +256,12 @@ var AgentGatewayService_ServiceDesc = grpc.ServiceDesc{
 		{
 			StreamName:    "ExecStream",
 			Handler:       _AgentGatewayService_ExecStream_Handler,
+			ServerStreams: true,
+			ClientStreams: true,
+		},
+		{
+			StreamName:    "ShipLogs",
+			Handler:       _AgentGatewayService_ShipLogs_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
