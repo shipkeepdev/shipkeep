@@ -25,7 +25,8 @@ const localSchema = `CREATE TABLE IF NOT EXISTS desired(resource_id TEXT PRIMARY
  CREATE TABLE IF NOT EXISTS used_confirmations(jti TEXT PRIMARY KEY,expires_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS intent(container TEXT PRIMARY KEY,running INTEGER NOT NULL CHECK(running IN (0,1)),updated_at INTEGER NOT NULL);
  CREATE TABLE IF NOT EXISTS stop_reason(container TEXT PRIMARY KEY,reason TEXT NOT NULL,stopped_at INTEGER NOT NULL);
- CREATE TABLE IF NOT EXISTS route_records(route_id TEXT PRIMARY KEY,record_json TEXT NOT NULL,updated_at INTEGER NOT NULL);`
+ CREATE TABLE IF NOT EXISTS route_records(route_id TEXT PRIMARY KEY,record_json TEXT NOT NULL,updated_at INTEGER NOT NULL);
+ CREATE TABLE IF NOT EXISTS log_cursors(container TEXT PRIMARY KEY,time_ns INTEGER NOT NULL);`
 
 // RouteUpstream is one upstream of a route as the action asked for it (ADR 0017): a managed
 // container with its port, or a fixed address, and its weight.
@@ -442,4 +443,60 @@ func (s *Store) Intents(ctx context.Context) (map[string]bool, error) {
 		return nil, fmt.Errorf("read intents: %w", err)
 	}
 	return intents, nil
+}
+
+// LogCursor is the time of the container's last log line the control plane kept (ADR 0029), or
+// false when none was.
+func (s *Store) LogCursor(ctx context.Context, container string) (time.Time, bool, error) {
+	if !identifier.MatchString(container) {
+		return time.Time{}, false, errors.New("invalid container name")
+	}
+	var at int64
+	err := s.db.QueryRowContext(ctx, "SELECT time_ns FROM log_cursors WHERE container=?", container).Scan(&at)
+	if errors.Is(err, sql.ErrNoRows) {
+		return time.Time{}, false, nil
+	}
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("read log cursor: %w", err)
+	}
+	return time.Unix(0, at).UTC(), true, nil
+}
+
+// SetLogCursor moves the container's cursor to at, never back.
+func (s *Store) SetLogCursor(ctx context.Context, container string, at time.Time) error {
+	if !identifier.MatchString(container) {
+		return errors.New("invalid container name")
+	}
+	if _, err := s.db.ExecContext(ctx, "INSERT INTO log_cursors(container,time_ns) VALUES(?,?) ON CONFLICT(container) DO UPDATE SET time_ns=max(time_ns,excluded.time_ns)", container, at.UnixNano()); err != nil {
+		return fmt.Errorf("record log cursor: %w", err)
+	}
+	return nil
+}
+
+// ForgetLogCursors drops the cursors of containers that are gone.
+func (s *Store) ForgetLogCursors(ctx context.Context, keep map[string]bool) error {
+	rows, err := s.db.QueryContext(ctx, "SELECT container FROM log_cursors")
+	if err != nil {
+		return fmt.Errorf("read log cursors: %w", err)
+	}
+	var gone []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			rows.Close() //nolint:errcheck,gosec // already failing
+			return fmt.Errorf("scan log cursor: %w", err)
+		}
+		if !keep[name] {
+			gone = append(gone, name)
+		}
+	}
+	if err := errors.Join(rows.Err(), rows.Close()); err != nil {
+		return fmt.Errorf("read log cursors: %w", err)
+	}
+	for _, name := range gone {
+		if _, err := s.db.ExecContext(ctx, "DELETE FROM log_cursors WHERE container=?", name); err != nil {
+			return fmt.Errorf("forget log cursor: %w", err)
+		}
+	}
+	return nil
 }
