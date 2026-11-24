@@ -51,7 +51,7 @@ type Runner struct {
 	Metrics         func(context.Context) (*agentv1.MetricsReport, error)
 	MetricsInterval time.Duration
 	// Connected, if set, is called each time the control plane welcomed this agent's Hello.
-	Connected func()
+	Connected func(context.Context)
 	// Sent, if set, is called once an action update was written to the stream.
 	Sent func(*agentv1.ActionUpdate)
 
@@ -230,7 +230,7 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 	}
 	r.Logger.Info("agent connected", "node_id", bundle.NodeID)
 	if r.Connected != nil {
-		r.Connected()
+		r.Connected(ctx)
 	}
 	samples := make(chan *agentv1.MetricsReport)
 	if r.Metrics != nil && acceptsMetrics {

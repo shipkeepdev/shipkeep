@@ -34,7 +34,7 @@ type startup struct {
 	stateDir string
 	version  string
 	logger   *slog.Logger
-	notify   func(string) error
+	notify   func(context.Context, string) error
 
 	// pending is set when this binary is the new one of an upgrade not yet confirmed.
 	pending bool
@@ -43,7 +43,7 @@ type startup struct {
 	confirmed chan struct{}
 }
 
-func newStartup(stateDir, version string, logger *slog.Logger, notify func(string) error) *startup {
+func newStartup(stateDir, version string, logger *slog.Logger, notify func(context.Context, string) error) *startup {
 	if notify == nil {
 		notify = sdnotify.Notify
 	}
@@ -70,21 +70,21 @@ func newStartup(stateDir, version string, logger *slog.Logger, notify func(strin
 // started tells systemd the agent runs, unless a new binary must first reach the control plane:
 // an agent keeps its workloads during an outage (CLAUDE.md rule 10), so a normal start never
 // waits for the control plane.
-func (s *startup) started() {
+func (s *startup) started(ctx context.Context) {
 	if !s.pending {
-		s.ready()
+		s.ready(ctx)
 	}
 }
 
 // connected confirms a pending upgrade the first time the control plane welcomes the agent.
-func (s *startup) connected() {
+func (s *startup) connected(ctx context.Context) {
 	if !s.pending {
 		return
 	}
 	s.once.Do(func() {
 		s.clear()
 		s.logger.Info("upgrade confirmed", "version", s.version)
-		s.ready()
+		s.ready(ctx)
 	})
 }
 
@@ -105,13 +105,13 @@ func (s *startup) deadline(ctx context.Context, within time.Duration) error {
 	}
 }
 
-func (s *startup) ready() {
+func (s *startup) ready(ctx context.Context) {
 	select {
 	case <-s.confirmed:
 	default:
 		close(s.confirmed)
 	}
-	if err := s.notify(sdnotify.Ready); err != nil {
+	if err := s.notify(ctx, sdnotify.Ready); err != nil {
 		s.logger.Warn("systemd not notified", "error", err)
 	}
 }
