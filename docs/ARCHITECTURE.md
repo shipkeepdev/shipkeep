@@ -34,7 +34,7 @@ flowchart TB
 
   a1 -- "outbound gRPC stream, mTLS" --> api
   a2 -- "outbound gRPC stream, mTLS" --> api
-  n1 <-. "WireGuard mesh: app traffic, registry, logs" .-> n2
+  n1 <-. "WireGuard mesh: app traffic, registry" .-> n2
 ```
 
 ## Components

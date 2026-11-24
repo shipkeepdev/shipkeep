@@ -152,8 +152,9 @@ Action delivery (M1.4a2):
 - The agent calls `Connect(stream ConnectRequest) returns (stream ConnectResponse)` and keeps it open. It waits at most 10 seconds for Welcome and uses the advertised heartbeat interval (1–10 seconds supported). Outage retries use exponential backoff with jitter (0.5 seconds initially, capped at 30 seconds); a minute-long healthy session resets the backoff. TLS keepalive detects dead connections. A rejected identity or epoch stops connection attempts and requires operator recovery; it never triggers automatic re-enrollment. Renewal persists the new credential generation before reconnecting.
 - `ConnectRequest` (agent to control plane) carries one of: `Hello`, `Heartbeat`, `ActionUpdate`, `StateReport`, `MetricsReport`.
 - `ConnectResponse` (control plane to agent) carries one of: `Welcome`, `ActionRequest`, `CancelAction`, `RoutingTable`, `PeerList`, `LeaseRenewal`, `ConfigUpdate`.
-- Metrics go through this stream as `MetricsReport` (ADR 0024, section 12): the control plane labels them and writes them to VictoriaMetrics. Logs do not go through it; their path is decided with M6.1 (ADR 0011).
+- Metrics go through this stream as `MetricsReport` (ADR 0024, section 12): the control plane labels them and writes them to VictoriaMetrics. Logs do not: they use a third RPC, below.
 - Every `ActionRequest` carries `action_id` (UUIDv7), `idempotency_key`, `deadline`, `lease_epoch` and exactly one action in a `oneof`.
+- Logs use `ShipLogs(stream ShipLogsRequest) returns (stream ShipLogsResponse)` (ADR 0029, section 12), opened after Welcome when it says logs are kept. Its first frame carries the lease epoch; then come batches of at most 256 entries and 60 KiB, each acknowledged by its sequence number once VictoriaLogs accepted it, at most four unacknowledged. It is authenticated like `Connect`, and one stream per node replaces its predecessor.
 - Interactive exec uses a second RPC: when the agent receives `ExecSession`, it opens `ExecStream(stream ExecStreamRequest) returns (stream ExecStreamResponse)` tagged with the `session_id`, carrying stdin, stdout, stderr, resize and exit frames. Browsers reach it through a WebSocket endpoint on the API (`/api/v1/exec/{session_id}`), authenticated and RBAC-checked; the API only relays frames.
 
 ### 3.2 Enrollment
@@ -787,7 +788,11 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 
 ## 12. Observability and alerts
 
-- Logs: labels `org`, `project`, `env`, `app`, `service`, `instance`, `node`, `stream`. Search by label and full text. Retention 30 days default.
+- Logs (ADR 0029): labels `org`, `project`, `env`, `app`, `instance` (the replica), `node`, `stream`. Search by label and full text. Retention 30 days.
+  - The agent follows each managed container's output through Docker's logs API from a cursor per container, the timestamp of its last acknowledged line, kept in its local state. After an outage or a restart it reads again from the cursor: a line may arrive twice, and none is lost while Docker's `json-file` files still hold it.
+  - An entry is a container name, `stdout` or `stderr`, Docker's timestamp and the line, cut at 16 KiB (and marked so), with bytes that are not UTF-8 replaced by U+FFFD. The values of the container's secret environment variables of 8 bytes or more are replaced by `[redacted]` before sending; secrets mounted as files are not.
+  - The control plane maps each container name to the node's placed allocation, drops what maps to nothing, sets the labels itself, and accepts 512 KiB per second per node with bursts of 4 MiB, past which acknowledgements wait. VictoriaLogs is a service of the control plane's Compose project, on its internal network only, pinned by digest.
+  - The API answers a search and a live tail for one application with `environment.read`. User text is a quoted phrase in the LogsQL query, whose filters come from identifiers validated for the caller's organization.
 - Metrics (ADR 0024): CPU, memory and network per container and per node, disk per node; HTTP request rate, mean latency and responses by status class (2xx, 3xx, 4xx, 5xx, other) per route from Caddy. Retention 30 days. Disk per container, the size of its writable layer, is what the disk budget measures (ADR 0022); it is not in the metrics report yet.
   - Every 30 seconds the agent samples:
     - the node: CPU in use, memory in use and in total, disk in use and in total under Docker's data root, and network bytes received and sent;
@@ -863,6 +868,7 @@ service AgentGatewayService {
   rpc RenewCertificate(RenewCertificateRequest) returns (RenewCertificateResponse);
   rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
   rpc ExecStream(stream ExecStreamRequest) returns (stream ExecStreamResponse);
+  rpc ShipLogs(stream ShipLogsRequest) returns (stream ShipLogsResponse);
 }
 
 // Agent to control plane
