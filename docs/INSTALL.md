@@ -62,14 +62,15 @@ Each release since `v0.1.0-alpha.2` carries a bundle, `shipkeep-control-plane_<v
 
 What the installer does, in order:
 
-| Step     | What it does                                                                                                                                                                                                                                |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Checks   | Ports 80, 443 and 7443 are free, the DNS name resolves, no earlier installation or its Docker volumes exist, and the installation directory and every directory above it belong to root alone. A refusal here leaves the machine as it was. |
-| Docker   | On Ubuntu 24.04, installs Docker from Docker's own repository when it is absent, and gives apt the pinned signing key only. Volumes of an earlier installation that show again with Docker stop the run before anything is written.         |
-| Settings | Writes `compose.yml`, `Caddyfile` and `.env` in `/opt/shipkeep` (`--dir` changes it), with two generated database passwords. `.env` is readable by root only.                                                                               |
-| Start    | Downloads the images and starts the stack (see the steps under [Install by hand](#install-by-hand)).                                                                                                                                        |
-| Account  | Creates the first account with the command line of the control plane. The password goes to it on standard input, never as an argument or a variable.                                                                                        |
-| HTTPS    | Waits until `https://<name>` answers with a valid certificate.                                                                                                                                                                              |
+| Step     | What it does                                                                                                                                                                                                                                                                                                          |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Checks   | Ports 80, 443 and 7443 are free, the DNS name resolves, no earlier installation or its Docker volumes exist, and the installation directory and every directory above it belong to root alone. A refusal here leaves the machine as it was.                                                                           |
+| Docker   | On Ubuntu 24.04, installs Docker from Docker's own repository when it is absent, and gives apt the pinned signing key only. Volumes of an earlier installation that show again with Docker stop the run before anything is written.                                                                                   |
+| Settings | Writes `compose.yml`, `Caddyfile` and `.env` in `/opt/shipkeep` (`--dir` changes it), with two generated database passwords. `.env` is readable by root only.                                                                                                                                                         |
+| Start    | Downloads the images and starts the stack (see the steps under [Install by hand](#install-by-hand)).                                                                                                                                                                                                                  |
+| Account  | Creates the first account with the command line of the control plane. The password goes to it on standard input, never as an argument or a variable.                                                                                                                                                                  |
+| Agent    | On Ubuntu 24.04 with systemd, creates the first organization (asked, or `--organization`) and installs this machine's agent from the control plane image, enrolled over loopback (ADR 0028). It runs no application: no Caddy, no egress proxy, and placement never picks it. On another system this step is skipped. |
+| HTTPS    | Waits until `https://<name>` answers with a valid certificate.                                                                                                                                                                                                                                                        |
 
 It never overwrites an installation: run again, it refuses. If the certificate has not arrived after two minutes, it says so and exits with an error while the control plane keeps running; see [Troubleshooting](#troubleshooting). The first account exists by then: do not create it again.
 
@@ -287,7 +288,7 @@ A server's agent can replace itself with a signed release, but the control plane
   sudo bash install.sh --dir /opt/shipkeep --resume yes
   ```
 
-  It reads the settings of the interrupted run from `install-state` in that directory, starts the stack and runs only the steps not done yet. It asks for the password again only when the account was not created, and keeps an account, an organization or a server installation that the interrupted run had finished without recording it. On one machine, when adding the server stopped after the server installer had begun writing, that installer refuses to run again: remove [the server part](#starting-over), then resume. A run stopped before writing `.env` started nothing: run the installer again, as at first.
+  It reads the settings of the interrupted run from `install-state` in that directory, starts the stack and runs only the steps not done yet. It asks for the password again only when the account was not created, and keeps an account, an organization or a server installation that the interrupted run had finished without recording it. When installing this machine's agent stopped after the server installer had begun writing, that installer refuses to run again: remove [the server part, or on a separate machine the agent part](#starting-over), then resume. A run stopped before writing `.env` started nothing: run the installer again, as at first.
 
 - **`migrate` or `database-role` exited with an error:** `docker compose logs migrate database-role`. A changed `POSTGRES_APP_PASSWORD` is the usual cause: an existing login keeps its password, so put the original value back.
 - **`control-plane` keeps restarting:** `docker compose logs control-plane`. The first line names every invalid or missing setting.
@@ -296,7 +297,17 @@ A server's agent can replace itself with a signed release, but the control plane
 
 ### Starting over
 
-On [one machine for everything](#one-machine-for-everything), the machine is also a server: the agent, its Caddy, the egress guard and the applications' containers live on the host, outside Compose, and the installers refuse to run while any of it remains.
+On [one machine for everything](#one-machine-for-everything), the machine is also a server: the agent, its Caddy, the egress guard and the applications' containers live on the host, outside Compose, and the installers refuse to run while any of it remains. A separate control plane machine on Ubuntu 24.04 has its agent there too, alone.
+
+**The agent part, on a separate machine.** To resume after installing its agent failed halfway, remove it, as root, then run the installer with `--resume yes`. Its node stays on the Servers page until you remove it there:
+
+```sh
+systemctl disable --now shipkeep-agent
+rm -rf /etc/shipkeep /var/lib/shipkeep /run/shipkeep /usr/local/libexec/shipkeep-egress /etc/tmpfiles.d/shipkeep.conf \
+  /etc/systemd/system/shipkeep-agent.service
+userdel shipkeep
+systemctl daemon-reload
+```
 
 **The server part.** To resume after adding this machine as a server failed halfway, remove only this part, as root, then run the installer with `--resume yes`. It stops and deletes every application on the machine, and keeps the control plane, its slice and its directory:
 
@@ -325,7 +336,7 @@ if systemctl is-active --quiet nftables; then systemctl restart nftables; fi
 ```sh
 dir=/opt/shipkeep
 (cd "$dir" && docker compose -f compose.yml -f compose.single-machine.yml down --volumes)
-# ... the server part above ...
+# ... the server part above (on a separate machine: -f compose.yml only, then the agent part) ...
 rm -f /etc/systemd/system/shipkeep-controlplane.slice
 systemctl daemon-reload
 rm -rf -- "$dir"
