@@ -84,28 +84,30 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	}
 	// The certificates Caddy serves, read on loopback and reported with the state (PLAN M3.6b2).
 	certificates := &certwatch.Watcher{Hosts: router, Logger: a.logger, Address: "127.0.0.1:443", Interval: time.Minute, Refresh: 10 * time.Minute}
-	watchCtx, stopWatching := context.WithCancel(ctx)
-	watched := make(chan struct{})
-	go func() {
-		defer close(watched)
-		certificates.Run(watchCtx)
-	}()
-	defer func() {
-		stopWatching()
-		<-watched
-	}()
-	// Secures the routes an older agent wrote, without waiting for the next deployment. Caddy may
-	// still be starting, so it is retried until it succeeds; it stops with this gateway run.
-	secureCtx, stopSecuring := context.WithCancel(ctx)
-	secured := make(chan struct{})
-	go func() {
-		defer close(secured)
-		secureRoutesUntilDone(secureCtx, router, a.logger, time.Second, time.Minute)
-	}()
-	defer func() {
-		stopSecuring()
-		<-secured
-	}()
+	if ownsCaddy(a.cfg.Node.Role) {
+		watchCtx, stopWatching := context.WithCancel(ctx)
+		watched := make(chan struct{})
+		go func() {
+			defer close(watched)
+			certificates.Run(watchCtx)
+		}()
+		defer func() {
+			stopWatching()
+			<-watched
+		}()
+		// Secures the routes an older agent wrote, without waiting for the next deployment. Caddy
+		// may still be starting, so it is retried until it succeeds; it stops with this gateway run.
+		secureCtx, stopSecuring := context.WithCancel(ctx)
+		secured := make(chan struct{})
+		go func() {
+			defer close(secured)
+			secureRoutesUntilDone(secureCtx, router, a.logger, time.Second, time.Minute)
+		}()
+		defer func() {
+			stopSecuring()
+			<-secured
+		}()
+	}
 	// Facts are read when the result is built, after the action's context ended.
 	collectFacts := actions.FactsHandler(a.cfg.Paths.StateDir, engine, reservation) //nolint:contextcheck // see above
 	options := []actions.Option{
@@ -130,12 +132,10 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	}
 	// Node, container and route metrics, sent on the stream when the control plane accepts them.
 	sampler := &metrics.Sampler{Containers: engine, Proc: "/proc", Sys: "/sys", Logger: a.logger}
-	if a.cfg.Node.Role == config.RoleControlPlaneOnly {
-		// No application and no Caddy of the agent's own on this machine: the control plane's
-		// Caddy serves it (ADR 0028).
-		options = append(options, actions.ControlPlaneOnly())
-	} else {
+	if ownsCaddy(a.cfg.Node.Role) {
 		sampler.Requests = router
+	} else {
+		options = append(options, actions.ControlPlaneOnly())
 	}
 	dispatcher := &actions.Dispatcher{Journal: store, Handlers: actions.Registry(engine, confirmations, router, store, collectFacts, options...), Epoch: func() uint64 { return epoch }}
 	runner := gateway.Runner{
@@ -216,6 +216,13 @@ func secureRoutesUntilDone(ctx context.Context, router interface{ SecureRoutes(c
 // address to connect to on the machine that hosts the control plane (ADR 0021).
 func (a *Agent) endpoint() gateway.Endpoint {
 	return gateway.Endpoint{Address: a.cfg.ControlPlane.Address, Connect: a.cfg.ControlPlane.Connect}
+}
+
+// ownsCaddy is false on a control-plane-only machine: it runs no application and no Caddy of the
+// agent's own, since the control plane's Caddy serves it (ADR 0028). The agent then neither routes
+// nor deploys, and leaves Caddy alone: no certificate to watch, no route to secure.
+func ownsCaddy(role string) bool {
+	return role != config.RoleControlPlaneOnly
 }
 
 // nodeRole is the role the agent reports, from its local configuration (ADR 0028).

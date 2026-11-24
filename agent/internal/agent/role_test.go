@@ -19,3 +19,16 @@ func TestTheReportedRoleComesFromTheConfiguration(t *testing.T) {
 		}
 	}
 }
+
+func TestOnlyAControlPlaneOnlyAgentLeavesCaddyAlone(t *testing.T) {
+	for role, want := range map[string]bool{
+		"":                          true,
+		config.RoleServer:           true,
+		config.RoleControlPlane:     true,
+		config.RoleControlPlaneOnly: false,
+	} {
+		if got := ownsCaddy(role); got != want {
+			t.Errorf("%q: %v, want %v", role, got, want)
+		}
+	}
+}
