@@ -850,6 +850,7 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 - Private registries: an organization can store credentials (ADR 0019). Still open: an explicit allow-list for registries on private networks (the resolver and the node's egress proxy refuse non-public addresses, SSRF, ADR 0023), and credentials scoped to a project.
 - Corrosion adoption for peer-to-peer routing replication (target v0.5).
 - Wildcard certificates: which DNS providers to support first for DNS-01 (proposal: Cloudflare, Route 53, Hetzner DNS, OVH).
+- The agent of a separate control plane machine (ADR 0028) needs Ubuntu 24.04 with systemd and Docker API 1.47, like every server, while the control plane alone runs on any Linux with Docker. The installer keeps both: elsewhere, or with an older Docker, it installs no agent and creates no organization, even with `--organization`, and that control plane is upgraded by hand. Requiring Ubuntu 24.04 for every control plane machine would give every installation the upgrade from the web interface.
 - Node public addresses (PLAN M3.6b1) are declared by an administrator only. The gateway sees the source address of each agent connection, but behind NAT, a proxy or a private link that is not the address visitors reach, so it is not used. A later step could show the observed address as a suggestion that an administrator confirms, never as a stored value.
 
 ## Appendix A: proto skeleton
