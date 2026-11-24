@@ -215,6 +215,18 @@ export class ExecSessionRegistry {
     this.relays.set(session.id, relay);
   }
 
+  /** Sessions of this person or organization waiting to be joined or running. */
+  count(owner: { userId?: string; organizationId?: string }): number {
+    let count = 0;
+    for (const { session } of this.relays.values())
+      if (
+        (owner.userId === undefined || session.userId === owner.userId) &&
+        (owner.organizationId === undefined || session.organizationId === owner.organizationId)
+      )
+        count++;
+    return count;
+  }
+
   /** The session, while it waits for a side to join or runs. */
   pending(id: string): ExecSession | undefined {
     return this.relays.get(id)?.session;

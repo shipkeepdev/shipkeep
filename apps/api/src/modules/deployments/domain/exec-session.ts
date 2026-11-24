@@ -6,10 +6,16 @@ import { InvalidInputError } from '@shipkeep/domain';
  */
 export const EXEC_ARGS = 64;
 export const EXEC_ARG_BYTES = 4096;
-export const EXEC_ARGV_BYTES = 16384;
+/** The API's own bound: the agent accepts 16 KiB in all, and a request body is at most 16 KiB. */
+export const EXEC_ARGV_BYTES = 8192;
 export const EXEC_MINUTES = { min: 1, max: 240, default: 30 } as const;
 /** How long the browser and the agent have to join an opened session. */
 export const EXEC_ATTACH_MS = 60_000;
+/** A replica last seen longer ago than this may be gone: no session opens in it. */
+export const EXEC_FRESH_MS = 2 * 60_000;
+/** Sessions one person, and one organization, may have waiting or open at once. */
+export const EXEC_SESSIONS_PER_USER = 4;
+export const EXEC_SESSIONS_PER_ORGANIZATION = 32;
 /** What a session runs when the caller names nothing. */
 export const DEFAULT_ARGV: readonly string[] = ['sh'];
 
@@ -65,8 +71,11 @@ function wellFormed(value: string): boolean {
  * can carry what the person typed, a password included, so they are never recorded.
  */
 export function auditedCommand(argv: readonly string[]): { program: string; arguments: number } {
-  const program = argv[0] ?? '';
-  return { program: program.slice(0, 256), arguments: Math.max(argv.length - 1, 0) };
+  // Cut by code points: half of a surrogate pair is not valid in the audit log's JSON.
+  const program = Array.from(argv[0] ?? '')
+    .slice(0, 256)
+    .join('');
+  return { program, arguments: Math.max(argv.length - 1, 0) };
 }
 
 function invalid(field: string): never {
