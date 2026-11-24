@@ -84,6 +84,29 @@ describe('agent action rows', () => {
       expect(failed(reason).reason).toMatch(/^[a-z ]+$/);
   });
 
+  it('says why an agent upgrade was refused, in French too (ADR 0028)', () => {
+    const labels = {
+      upgrade_dev_build: 'development build, not upgraded',
+      upgrade_not_newer: 'already on this version or a later one',
+      upgrade_unit_outdated: 'service predates upgrades',
+      upgrade_unverified: 'release did not verify',
+      upgrade_unavailable: 'release download failed',
+      upgrade_in_progress: 'another upgrade not confirmed yet',
+    } as const;
+    for (const [reason, label] of Object.entries(labels)) {
+      const row = agentActionRow({
+        ...base,
+        kind: 'upgradeAgent',
+        state: 'compensated',
+        outcome: 'compensated',
+        reason: reason as keyof typeof labels,
+      });
+      expect(row.action).toBe('UpgradeAgent');
+      expect(row.reason).toBe(label);
+      expect(FR[label], label).toBeTruthy();
+    }
+  });
+
   it('says why a pull was undone, in French too, and why a deployment failed', () => {
     const undone = (reason: AgentAction['reason']) =>
       agentActionRow({
