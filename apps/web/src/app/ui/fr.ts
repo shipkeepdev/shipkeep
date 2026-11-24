@@ -1911,4 +1911,45 @@ export const FR: Readonly<Record<string, string>> = {
   'leaving maintenance': 'sortie de maintenance',
   'In maintenance: visitors see the maintenance page, and the replicas keep running. Leave maintenance to deploy again.':
     'En maintenance : les visiteurs voient la page de maintenance et les répliques continuent de tourner. Sortez de la maintenance pour déployer à nouveau.',
+  'Agent upgrades': 'Mises à jour des agents',
+  '1 server runs an older agent than the control plane, {version}.':
+    '1 serveur exécute un agent plus ancien que le plan de contrôle, {version}.',
+  '{n} servers run an older agent than the control plane, {version}.':
+    '{n} serveurs exécutent un agent plus ancien que le plan de contrôle, {version}.',
+  'Upgrading agents to {version}: server {n} of {total}, {name}.':
+    'Mise à jour des agents vers {version} : serveur {n} sur {total}, {name}.',
+  '1 server still runs an older agent than {version}.':
+    '1 serveur exécute encore un agent plus ancien que {version}.',
+  '{n} servers still run an older agent than {version}.':
+    '{n} serveurs exécutent encore un agent plus ancien que {version}.',
+  'Upgrade agents': 'Mettre à jour les agents',
+  'The upgrade stopped at {name}.': "La mise à jour s'est arrêtée sur {name}.",
+  'Reason: {reason}.': 'Raison : {reason}.',
+  'Servers, in the order of their turns': "Serveurs, dans l'ordre de leur tour",
+  upgraded: 'à jour',
+  upgrading: 'en cours',
+  waiting: 'en attente',
+  'upgrade stopped': 'mise à jour arrêtée',
+  'One server at a time. Each agent checks the release signature, restarts, and comes back; applications keep running.':
+    'Un serveur à la fois. Chaque agent vérifie la signature de la version, redémarre et revient ; les applications continuent de tourner.',
+  '{name} was not connected when its turn came.':
+    "{name} n'était pas connecté quand son tour est venu.",
+  'Another action, such as a deployment, kept running on {name}.':
+    'Une autre action, comme un déploiement, est restée en cours sur {name}.',
+  'The release could not be read from GitHub. Check that the control plane reaches github.com.':
+    "La version n'a pas pu être lue sur GitHub. Vérifiez que le plan de contrôle joint github.com.",
+  'The agent of {name} refused or failed the upgrade.':
+    "L'agent de {name} a refusé ou raté la mise à jour.",
+  'The new agent did not start on {name}: the previous version is back.':
+    "Le nouvel agent n'a pas démarré sur {name} : la version précédente est revenue.",
+  'The new agent of {name} did not come back in time.':
+    "Le nouvel agent de {name} n'est pas revenu à temps.",
+  'An agent upgrade is already running.': 'Une mise à jour des agents est déjà en cours.',
+  'Every agent already runs this version or a later one.':
+    'Chaque agent exécute déjà cette version ou une plus récente.',
+  'The control plane was upgraded meanwhile. Reload the page and try again.':
+    'Le plan de contrôle a été mis à jour entre-temps. Rechargez la page et réessayez.',
+  'This control plane is a development build: it has no release to upgrade agents to.':
+    "Ce plan de contrôle est une version de développement : il n'a pas de version vers laquelle mettre à jour les agents.",
+  'A rollout upgrades at most 1,000 servers.': 'Une mise à jour porte sur 1 000 serveurs au plus.',
 };

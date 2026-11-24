@@ -20,6 +20,7 @@ import { ConfirmByName } from '../workspace/confirm-by-name';
 import { recoverOnEdit } from '../workspace/form-recovery';
 import { required } from '../workspace/validators';
 
+import { AgentUpgrades } from './agent-upgrades';
 import { FleetApi, type FleetNode, type JoinToken } from './fleet-api';
 import { InstallCommand } from './install-command';
 import { NodeMetricsPanel } from './node-metrics';
@@ -46,6 +47,7 @@ const COLUMNS =
 @Component({
   selector: 'sk-servers-page',
   imports: [
+    AgentUpgrades,
     ConfirmByName,
     NodeMetricsPanel,
     PublicAddressesEditor,
@@ -72,6 +74,12 @@ const COLUMNS =
       @if (runner.problem(); as problem) {
         <div class="alert" role="alert">{{ problem | t }}</div>
       }
+
+      <sk-agent-upgrades
+        [organizationId]="organizationId()"
+        [nodes]="nodes.items()"
+        (rolloutEnded)="nodes.refresh()"
+      />
 
       <div
         class="card overflow-x-auto"
