@@ -1,3 +1,4 @@
-# The Sponsor button of the repository (GitHub reads this file). Open Collective joins once the
-# project's collective exists: a slug listed before it is created could be taken by someone else.
+# The Sponsor button of the repository (GitHub reads this file): the maintainer's GitHub Sponsors
+# profile, and the project's collective on Open Collective, hosted by Open Source Collective.
 github: [samuelmbabhazi]
+open_collective: shipkeep
