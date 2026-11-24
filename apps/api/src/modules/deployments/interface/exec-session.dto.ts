@@ -18,11 +18,17 @@ import { EXEC_ARG_BYTES, EXEC_ARGS, EXEC_MINUTES } from '../domain/exec-session'
 
 /** What to run in which replica (SPEC 3.3). The domain checks the byte bounds again. */
 export class OpenExecSessionDto {
-  @ApiPropertyOptional({ type: 'integer', minimum: 1, maximum: 1000, default: 1 })
+  @ApiPropertyOptional({
+    type: 'integer',
+    minimum: 0,
+    maximum: 999,
+    default: 0,
+    description: 'The replica, numbered from 0.',
+  })
   @IsOptional()
   @IsInt()
-  @Min(1)
-  @Max(1000)
+  @Min(0)
+  @Max(999)
   replica?: number;
 
   @ApiPropertyOptional({
