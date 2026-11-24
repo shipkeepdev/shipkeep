@@ -345,6 +345,31 @@ Organization administrators (`node.manage`) manage the fleet over session-only r
 - A change is audited as `fleet.node.public_addresses_changed` with the new and previous lists; saving the same list records nothing. The write is a compare-and-swap on the list just read: a concurrent change answers 409 `node_public_addresses_changed`. A removed node answers 404.
 - Addresses are declared, not observed: the gateway's view of an agent connection can be a NAT, proxy or private address (see section 16).
 
+Agent upgrades roll out to one server at a time (ADR 0028, section 2). Both routes need `node.manage`.
+
+- `GET /organizations/{organizationId}/agent-upgrades` (200) gives:
+  - `version`, the control plane's own (`SHIPKEEP_VERSION`), which agents are upgraded to; null on a development build;
+  - `pending`, the servers whose agent runs an older release on `amd64` or `arm64`. A `dev` agent is never listed;
+  - `rollout`, the newest rollout, running or ended, with its servers in turn order, its `position` and its `failure`.
+- `POST /organizations/{organizationId}/agent-upgrades` (202, a session or a scoped token) starts a rollout. The body is `{version}`, the version the overview gave.
+  - It answers 409 for:
+    - a development build (`agent_upgrade_unavailable`);
+    - a control plane that runs another version by now (`agent_upgrade_version_changed`);
+    - a rollout already running (`agent_upgrade_running`, also kept by a partial unique index);
+    - no server to upgrade (`agent_upgrade_not_needed`);
+    - more than 1,000 servers (`agent_upgrade_too_many`);
+    - a release whose digest or Sigstore bundle cannot be read (`agent_release_unavailable`).
+  - Before anything starts, it reads that digest and bundle for each architecture. They come from the release's `checksums.txt` and `<archive>.sigstore.json`, over HTTPS, from GitHub's release hosts only, redirects included, at most 64 KiB each. The control plane relays them and trusts neither: the agent checks both (SPEC 3.3).
+- A pg-boss queue runs the rollout. Each server's turn:
+  - **Skip.** A server that is removed, already on the version or later, `dev`, or on another architecture is skipped.
+  - **Wait first.** The turn waits while the server is not connected, failing after 5 minutes (`node_unavailable`). It also waits while the server has any other unfinished action, which is how a deployment touching it shows, failing after 30 minutes (`node_busy`).
+  - **Send.** It then sends `UpgradeAgent` with the key `au:<rollout>:<node>` and a 30-minute deadline.
+  - **Stop.** An action that does not succeed stops the rollout (`action_failed`, with the action's reason). So does a server that never comes back (`not_confirmed`).
+  - **After success.** The turn ends when the server reports the new version in a hello. A heartbeat recorded 150 seconds or more after the success, still on the previous version, reads as a rollback by the upgrade guard (`rolled_back`). No new version within 25 minutes reads as `not_confirmed`.
+  - **Wake-ups.** A finished action, a reported version or a server coming back wakes the rollout at once; otherwise it looks again every 15 seconds.
+  - **Audit.** The rollout records `fleet.agent_upgrade.started` (with the actor), `fleet.agent_upgrade.node_upgraded` or `node_skipped` per server, then `fleet.agent_upgrade.succeeded` or `failed` (with the server, the reason and the action's reason). The actions themselves are audited as `fleet.action.*`.
+- Rollouts are kept as their history: the runtime role cannot delete them.
+
 Audit events are under forced row security too. In a tenant transaction the runtime role reads only that organization's events. It never reads account or system events (`organization_id` null). Appends stay allowed from every command transaction, but a tenant context can only append events of its own organization or of none. No UPDATE or DELETE policy exists. Audit inserts do not read the row back. Reading system events requires an installation-administrator capability that does not exist yet (see section 16).
 
 Organization owners and admins (`audit.read`) read their audit log with `GET /organizations/{organizationId}/audit-events`. It is newest first, with a `cursor` and `limit` (1–100), and optional exact `action`, `targetType`, `targetId` and `actorId` filters plus a `from` (inclusive) and `to` (exclusive) period. `GET .../audit-events/export` returns the same filters as JSON Lines, at most 10,000 events, with `X-Shipkeep-Truncated: true` when older matches remain. Both routes accept a session or a scoped API token with `audit.read`. Reads run in the organization's row security context and are not themselves audited.
