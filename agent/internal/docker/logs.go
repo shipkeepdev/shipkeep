@@ -21,6 +21,10 @@ type LogLine struct {
 	Stream int
 	// Time is Docker's timestamp of the line, or of its first part.
 	Time time.Time
+	// Resume is where to read again from once this line is kept: its own time, or an earlier
+	// one when a line of the other stream, still being joined, started before it. Reading
+	// from Time instead could lose that line's first part.
+	Resume time.Time
 	// Text is the line without its newline: at most MaxLogLine bytes, valid UTF-8.
 	Text string
 	// Truncated says the line was longer and was cut.
@@ -32,8 +36,10 @@ type LogLine struct {
 var errRawLogs = errors.New("docker logs: container output is not multiplexed")
 
 // FollowLogs reads the output of the container ref from since on, and calls emit with every
-// line, in order, until ctx ends, emit fails, or the output ends because the container stopped
-// (nil). Lines Docker split, longer than its own buffer, are joined again up to MaxLogLine.
+// line, in order, until ctx ends, emit fails, or the output ends (nil): the container stopped,
+// or the daemon closed the stream, as when it restarts with live-restore, so the caller follows
+// again a container still running. Lines Docker split, longer than its own buffer, are joined
+// again up to MaxLogLine; a longer one is sent as soon as it is full, and the rest of it dropped.
 func (c *Client) FollowLogs(ctx context.Context, ref string, since time.Time, emit func(LogLine) error) error {
 	query := url.Values{
 		"follow": {"1"}, "stdout": {"1"}, "stderr": {"1"}, "timestamps": {"1"},
@@ -67,7 +73,7 @@ func (c *Client) FollowLogs(ctx context.Context, ref string, since time.Time, em
 			if ctx.Err() != nil {
 				return ctx.Err() //nolint:wrapcheck // the caller's own cancellation
 			}
-			return err
+			return fmt.Errorf("docker logs: %w", err)
 		}
 		if err := lines.frame(stream, data); err != nil {
 			return err
@@ -82,6 +88,9 @@ type lineReader struct {
 	emit    func(LogLine) error
 	pending [Stderr + 1]*LogLine
 	size    [Stderr + 1]int
+	// dropping says the stream's current line was sent once full: its rest, up to its
+	// newline, is dropped.
+	dropping [Stderr + 1]bool
 }
 
 func (r *lineReader) frame(stream int, data []byte) error {
@@ -92,7 +101,9 @@ func (r *lineReader) frame(stream int, data []byte) error {
 	}
 	for {
 		part, rest, complete := strings.Cut(message, "\n")
-		r.add(stream, at, part)
+		if err := r.add(stream, at, part); err != nil {
+			return err
+		}
 		if !complete {
 			return nil
 		}
@@ -113,7 +124,12 @@ func stampedMessage(data []byte) (time.Time, string, bool) {
 	return at, message, ok && err == nil
 }
 
-func (r *lineReader) add(stream int, at time.Time, part string) {
+// add appends a part to the stream's open line. A part that does not fit is cut on a
+// character, and the line is sent at once, marked truncated.
+func (r *lineReader) add(stream int, at time.Time, part string) error {
+	if r.dropping[stream] {
+		return nil
+	}
 	line := r.pending[stream]
 	if line == nil {
 		line = &LogLine{Stream: stream, Time: at}
@@ -121,21 +137,39 @@ func (r *lineReader) add(stream int, at time.Time, part string) {
 		r.size[stream] = 0
 	}
 	room := MaxLogLine - r.size[stream]
-	if len(part) > room {
-		part = part[:max(room, 0)]
-		line.Truncated = true
+	if len(part) <= room {
+		line.Text += part
+		r.size[stream] += len(part)
+		return nil
 	}
-	line.Text += part
-	r.size[stream] += len(part)
+	cut := room
+	for cut > 0 && !utf8.RuneStart(part[cut]) {
+		cut--
+	}
+	line.Text += part[:cut]
+	line.Truncated = true
+	r.dropping[stream] = true
+	return r.send(stream)
 }
 
+// end closes the stream's line at its newline.
 func (r *lineReader) end(stream int) error {
+	if r.dropping[stream] {
+		r.dropping[stream] = false
+		return nil
+	}
+	return r.send(stream)
+}
+
+// send emits the stream's open line, cleaned: without a final carriage return, in valid UTF-8
+// and within MaxLogLine.
+func (r *lineReader) send(stream int) error {
 	line := r.pending[stream]
 	r.pending[stream] = nil
 	if line == nil {
 		return nil
 	}
-	text := strings.ToValidUTF8(strings.TrimSuffix(line.Text, "\r"), "\uFFFD")
+	text := validText(strings.TrimSuffix(line.Text, "\r"))
 	// A replacement takes three bytes where an invalid one took one: cut again, on a rune.
 	if len(text) > MaxLogLine {
 		cut := MaxLogLine
@@ -145,13 +179,43 @@ func (r *lineReader) end(stream int) error {
 		text, line.Truncated = text[:cut], true
 	}
 	line.Text = text
+	line.Resume = line.Time
+	// A line of the other stream still open started earlier: reading again from this line's
+	// time would lose that line's first part. One being dropped holds nothing back, since its
+	// start was sent already.
+	other := Stdout
+	if stream == Stdout {
+		other = Stderr
+	}
+	if open := r.pending[other]; open != nil && open.Time.Before(line.Resume) {
+		line.Resume = open.Time
+	}
 	return r.emit(*line)
+}
+
+// validText replaces each byte that is not part of valid UTF-8 with U+FFFD (ADR 0029).
+func validText(text string) string {
+	if utf8.ValidString(text) {
+		return text
+	}
+	var out strings.Builder
+	out.Grow(len(text) + 16)
+	for i := 0; i < len(text); {
+		r, size := utf8.DecodeRuneInString(text[i:])
+		if r == utf8.RuneError && size == 1 {
+			out.WriteRune(utf8.RuneError)
+		} else {
+			out.WriteString(text[i : i+size])
+		}
+		i += size
+	}
+	return out.String()
 }
 
 // flush emits the last part of a line the container wrote without a newline before it stopped.
 func (r *lineReader) flush() error {
 	for _, stream := range []int{Stdout, Stderr} {
-		if err := r.end(stream); err != nil {
+		if err := r.send(stream); err != nil {
 			return err
 		}
 	}

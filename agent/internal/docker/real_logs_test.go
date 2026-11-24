@@ -18,7 +18,9 @@ func TestRealFollowLogsResumesFromACursor(t *testing.T) {
 	if err := client.PullImage(ctx, repository, digest, nil); err != nil {
 		t.Fatal(err)
 	}
-	script := `echo one; echo two >&2; head -c 20000 /dev/zero | tr '\0' x; echo; echo three`
+	// A pause between writes: Docker orders the two streams by timestamp, which two writes in the
+	// same instant can share.
+	script := `echo one; sleep 0.2; echo two >&2; sleep 0.2; head -c 20000 /dev/zero | tr '\0' x; echo; sleep 0.2; echo three`
 	id, err := client.CreateContainer(ctx, "", ContainerConfig{
 		Image: realBusybox, Cmd: []string{"sh", "-c", script}, Labels: map[string]string{"sk.test": "logs"},
 		HostConfig: HostConfig{NetworkMode: "none", SecurityOpt: []string{"no-new-privileges"}, PidsLimit: 64},

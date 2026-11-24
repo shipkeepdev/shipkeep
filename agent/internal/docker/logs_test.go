@@ -59,21 +59,24 @@ func TestFollowLogsReadsLinesWithTheirStreamAndTime(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	at := func(sec, nsec int) time.Time { return time.Date(2026, 11, 24, 20, 0, sec, nsec, time.UTC) }
 	want := []LogLine{
-		{Stream: Stdout, Time: time.Date(2026, 11, 24, 20, 0, 0, 1, time.UTC), Text: "hello"},
-		{Stream: Stderr, Time: time.Date(2026, 11, 24, 20, 0, 1, 0, time.UTC), Text: "warn"},
-		{Stream: Stderr, Time: time.Date(2026, 11, 24, 20, 0, 2, 5e8, time.UTC), Text: "interleaved"},
-		{Stream: Stdout, Time: time.Date(2026, 11, 24, 20, 0, 2, 0, time.UTC), Text: "first half, second half"},
-		{Stream: Stdout, Time: time.Date(2026, 11, 24, 20, 0, 4, 0, time.UTC), Text: "a"},
-		{Stream: Stdout, Time: time.Date(2026, 11, 24, 20, 0, 4, 0, time.UTC), Text: "b"},
-		{Stream: Stdout, Time: time.Date(2026, 11, 24, 20, 0, 4, 0, time.UTC), Text: "no newline"},
+		{Stream: Stdout, Time: at(0, 1), Resume: at(0, 1), Text: "hello"},
+		{Stream: Stderr, Time: at(1, 0), Resume: at(1, 0), Text: "warn"},
+		// Reading again from 20:00:02.5 would lose the first half of the stdout line still open.
+		{Stream: Stderr, Time: at(2, 5e8), Resume: at(2, 0), Text: "interleaved"},
+		{Stream: Stdout, Time: at(2, 0), Resume: at(2, 0), Text: "first half, second half"},
+		{Stream: Stdout, Time: at(4, 0), Resume: at(4, 0), Text: "a"},
+		{Stream: Stdout, Time: at(4, 0), Resume: at(4, 0), Text: "b"},
+		{Stream: Stdout, Time: at(4, 0), Resume: at(4, 0), Text: "no newline"},
 	}
 	if len(lines) != len(want) {
 		t.Fatalf("got %+v", lines)
 	}
 	for i := range want {
-		if lines[i].Stream != want[i].Stream || !lines[i].Time.Equal(want[i].Time) || lines[i].Text != want[i].Text || lines[i].Truncated {
-			t.Errorf("line %d: got %+v, want %+v", i, lines[i], want[i])
+		got := lines[i]
+		if got.Stream != want[i].Stream || !got.Time.Equal(want[i].Time) || !got.Resume.Equal(want[i].Resume) || got.Text != want[i].Text || got.Truncated {
+			t.Errorf("line %d: got %+v, want %+v", i, got, want[i])
 		}
 	}
 	for _, part := range []string{"follow=1", "timestamps=1", "stdout=1", "stderr=1", "since=1700000000.000000005"} {
@@ -85,17 +88,20 @@ func TestFollowLogsReadsLinesWithTheirStreamAndTime(t *testing.T) {
 
 func TestFollowLogsBoundsAndCleansLines(t *testing.T) {
 	long := strings.Repeat("x", MaxLogLine+100)
-	// Each run of invalid bytes becomes a three-byte replacement, so a line of alternating
-	// invalid and valid bytes doubles: it is cut again, on a rune.
+	// Each invalid byte becomes a three-byte replacement, so a line of alternating invalid and
+	// valid bytes doubles: it is cut again, on a rune.
 	invalid := strings.Repeat("\xffa", MaxLogLine/2)
+	// A cut that would fall inside a character keeps the line before it.
+	emoji := strings.Repeat("x", MaxLogLine-3) + "\U0001F680"
 	client, _ := logsDaemon(t, multiplexed,
 		stamped(Stdout, "2026-11-24T20:00:00Z", long[:MaxLogLine/2]),
 		stamped(Stdout, "2026-11-24T20:00:01Z", long[MaxLogLine/2:]+"\n"),
 		stamped(Stdout, "2026-11-24T20:00:02Z", invalid+"\n"),
-		stamped(Stdout, "2026-11-24T20:00:03Z", "caf\xe9\n"),
+		stamped(Stdout, "2026-11-24T20:00:03Z", "caf\xe9 \xff\xfe\n"),
+		stamped(Stdout, "2026-11-24T20:00:04Z", emoji+"\n"),
 	)
 	lines, err := follow(t, client)
-	if err != nil || len(lines) != 3 {
+	if err != nil || len(lines) != 4 {
 		t.Fatalf("got %d lines, %v", len(lines), err)
 	}
 	if len(lines[0].Text) != MaxLogLine || !lines[0].Truncated {
@@ -104,8 +110,37 @@ func TestFollowLogsBoundsAndCleansLines(t *testing.T) {
 	if len(lines[1].Text) > MaxLogLine || !utf8.ValidString(lines[1].Text) || !lines[1].Truncated {
 		t.Fatalf("invalid line: %d bytes, valid %v", len(lines[1].Text), utf8.ValidString(lines[1].Text))
 	}
-	if lines[2].Text != "caf�" || lines[2].Truncated {
+	if lines[2].Text != "caf� ��" || lines[2].Truncated {
 		t.Fatalf("got %q", lines[2].Text)
+	}
+	if lines[3].Text != emoji[:MaxLogLine-3] || !lines[3].Truncated {
+		t.Fatalf("emoji line ends with %q", lines[3].Text[len(lines[3].Text)-4:])
+	}
+}
+
+func TestFollowLogsSendsARunawayLineOnceItIsFull(t *testing.T) {
+	full := strings.Repeat("x", MaxLogLine)
+	client, _ := logsDaemon(t, multiplexed,
+		// A progress bar that never writes a newline: Docker splits it at its buffer size.
+		stamped(Stdout, "2026-11-24T20:00:00Z", full),
+		stamped(Stdout, "2026-11-24T20:00:01Z", "\rmore"),
+		stamped(Stderr, "2026-11-24T20:00:02Z", "err\n"),
+		stamped(Stdout, "2026-11-24T20:00:03Z", "\rstill more\nnext\n"),
+	)
+	lines, err := follow(t, client)
+	if err != nil || len(lines) != 3 {
+		t.Fatalf("got %+v, %v", lines, err)
+	}
+	first := lines[0]
+	if first.Stream != Stdout || first.Text != full || !first.Truncated || first.Time.Second() != 0 {
+		t.Fatalf("the full line did not come first: %d bytes, truncated %v, at %v", len(first.Text), first.Truncated, first.Time)
+	}
+	// The rest of the runaway line is dropped and holds no cursor back.
+	if lines[1].Text != "err" || lines[1].Resume.Second() != 2 {
+		t.Fatalf("got %+v", lines[1])
+	}
+	if lines[2].Text != "next" || lines[2].Truncated {
+		t.Fatalf("got %+v", lines[2])
 	}
 }
 
