@@ -1,7 +1,7 @@
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
 import { type ExecStreamRequest, ExecStreamRequestSchema } from '@shipkeep/proto-ts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { type AgentFrame, ExecSessionRegistry } from '../application/exec-relay';
@@ -15,6 +15,7 @@ const USER = '019d0000-0000-7000-8000-0000000000f1';
 const SESSION = '019d0000-0000-7000-8000-0000000000d1';
 const NOW = new Date();
 const node = { organizationId: ORG, nodeId: NODE, serial: '01' };
+const valid = () => Promise.resolve();
 
 function registry(): ExecSessionRegistry {
   const value = new ExecSessionRegistry(
@@ -71,19 +72,23 @@ async function codeOf(stream: AsyncGenerator): Promise<Code | undefined> {
 describe('the gateway side of an exec session', () => {
   it('refuses a stream that does not open a session first, or opens an unknown one', async () => {
     const r = registry();
-    expect(await codeOf(relayExecStream(r, frames(stdout('x')), node))).toBe(Code.InvalidArgument);
-    expect(await codeOf(relayExecStream(r, frames(), node))).toBe(Code.InvalidArgument);
+    expect(await codeOf(relayExecStream(r, frames(stdout('x')), node, valid))).toBe(
+      Code.InvalidArgument,
+    );
+    expect(await codeOf(relayExecStream(r, frames(), node, valid))).toBe(Code.InvalidArgument);
     const unknown = create(ExecStreamRequestSchema, {
       frame: { case: 'open', value: { sessionId: '019d0000-0000-7000-8000-000000000000' } },
     });
-    expect(await codeOf(relayExecStream(r, frames(unknown), node))).toBe(Code.NotFound);
+    expect(await codeOf(relayExecStream(r, frames(unknown), node, valid))).toBe(Code.NotFound);
     // Another node of the organization cannot take the session.
     expect(
       await codeOf(
-        relayExecStream(r, frames(open), {
-          ...node,
-          nodeId: '019d0000-0000-7000-8000-0000000000e9',
-        }),
+        relayExecStream(
+          r,
+          frames(open),
+          { ...node, nodeId: '019d0000-0000-7000-8000-0000000000e9' },
+          valid,
+        ),
       ),
     ).toBe(Code.NotFound);
   });
@@ -96,7 +101,7 @@ describe('the gateway side of an exec session', () => {
       close: () => undefined,
     });
     relay?.fromBrowser({ kind: 'stdin', data: new TextEncoder().encode('id\n') });
-    const responses = relayExecStream(r, frames(open, stdout('uid=0\n'), exit(0)), node);
+    const responses = relayExecStream(r, frames(open, stdout('uid=0\n'), exit(0)), node, valid);
     const first = await responses.next();
     if (first.done) throw new Error('the stream ended first');
     expect(first.value.frame).toEqual({
@@ -115,7 +120,7 @@ describe('the gateway side of an exec session', () => {
   it('ends the session, and stops the command, on a second open', async () => {
     const r = registry();
     r.joinBrowser(SESSION, USER, { send: () => Promise.resolve(), close: () => undefined });
-    const responses = relayExecStream(r, frames(open, open), node);
+    const responses = relayExecStream(r, frames(open, open), node, valid);
     const out: { case: string | undefined; kill: boolean | undefined }[] = [];
     for await (const response of responses)
       out.push({
@@ -123,5 +128,32 @@ describe('the gateway side of an exec session', () => {
         kill: response.frame.case === 'close' ? response.frame.value.kill : undefined,
       });
     expect(out).toEqual([{ case: 'close', kill: true }]);
+  });
+});
+
+describe('a session whose node loses its credential', () => {
+  it('ends, and stops the command', async () => {
+    vi.useFakeTimers();
+    try {
+      const r = registry();
+      r.joinBrowser(SESSION, USER, { send: () => Promise.resolve(), close: () => undefined });
+      let revoked = false;
+      async function* silent(): AsyncGenerator<ExecStreamRequest> {
+        yield open;
+        // The agent stays silent: only the check ends the session.
+        await new Promise(() => undefined);
+      }
+      const responses = relayExecStream(r, silent(), node, () =>
+        revoked ? Promise.reject(new Error('revoked')) : Promise.resolve(),
+      );
+      const first = responses.next();
+      revoked = true;
+      await vi.advanceTimersByTimeAsync(10_000);
+      const frame = await first;
+      expect(frame.done ? undefined : frame.value.frame.case).toBe('close');
+      expect(r.pending(SESSION)).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
