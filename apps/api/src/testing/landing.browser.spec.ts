@@ -33,8 +33,8 @@ const TYPES: Readonly<Record<string, string>> = {
 };
 const WIDTHS = [320, 375, 768, 1024, 1440];
 const PAGES = [
-  { path: '/', lang: 'fr', menu: 'Menu', close: 'Fermer' },
-  { path: '/en', lang: 'en', menu: 'Menu', close: 'Close' },
+  { path: '/', lang: 'en', menu: 'Menu', close: 'Close' },
+  { path: '/fr', lang: 'fr', menu: 'Menu', close: 'Fermer' },
 ] as const;
 
 /** Runs in the page: keeps every CSP violation in `window.__csp`. */
