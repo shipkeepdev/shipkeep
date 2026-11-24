@@ -1,0 +1,54 @@
+import { BadRequestException, Controller, Get, Param, Query, Req } from '@nestjs/common';
+import { ApiBearerAuth, ApiCookieAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+
+import { ApplicationPathDto } from '../../apps/interface/application.dto';
+import { AllowApiToken } from '../../identity/interface/api-token-access';
+import { IdentityAttemptLimit } from '../../identity/interface/identity-rate.guard';
+import { RequireTenant } from '../../identity/interface/route-access';
+import { type IdentityRequest, resourceContext } from '../../identity/interface/session-http';
+import { LogsQueries } from '../application/logs-queries';
+
+import { LogsDto, logsDto, LogsQueryDto } from './logs.dto';
+
+/** The longest period one search covers: the retention. */
+const MAX_PERIOD_MS = 30 * 86_400_000;
+
+/** An application's logs (ADR 0029). The live view searches again from its last line's time. */
+@ApiTags('observability')
+@ApiCookieAuth('session')
+@ApiBearerAuth('apiToken')
+@IdentityAttemptLimit('api')
+@Controller('organizations')
+export class LogsController {
+  constructor(private readonly logs: LogsQueries) {}
+
+  @Get(
+    ':organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/logs',
+  )
+  @RequireTenant('environment.read', 'environment')
+  @AllowApiToken('environment.read')
+  @ApiOkResponse({ type: LogsDto })
+  async applicationLogs(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+    @Query() query: LogsQueryDto,
+  ): Promise<LogsDto> {
+    const { applicationId, ...target } = path;
+    const to = query.to ? new Date(query.to) : new Date();
+    const from = query.from ? new Date(query.from) : new Date(to.getTime() - 3_600_000);
+    if (!(from.getTime() < to.getTime()) || to.getTime() - from.getTime() > MAX_PERIOD_MS)
+      throw new BadRequestException(
+        'The period must start before it ends, and last 30 days at most.',
+      );
+    return logsDto(
+      await this.logs.search(resourceContext(request), target, applicationId, {
+        text: query.text ?? '',
+        stream: query.stream,
+        instance: query.instance,
+        from,
+        to,
+        limit: query.limit ?? 200,
+      }),
+    );
+  }
+}

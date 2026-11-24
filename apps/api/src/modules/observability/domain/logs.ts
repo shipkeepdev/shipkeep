@@ -99,3 +99,73 @@ export class ByteRate {
     return this.tokens >= 0 ? 0 : Math.ceil((-this.tokens / this.rate) * 1000);
   }
 }
+
+/** At most this many lines answer one search. */
+export const MAX_LOG_RESULTS = 500;
+/** The longest search text. */
+export const MAX_LOG_TEXT = 256;
+
+export interface LogSearch {
+  readonly organizationId: string;
+  readonly applicationId: string;
+  /** Text the lines contain, as a phrase; empty for every line. */
+  readonly text: string;
+  readonly stream?: 'stdout' | 'stderr' | undefined;
+  readonly instance?: number | undefined;
+  readonly from: Date;
+  readonly to: Date;
+  readonly limit: number;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/**
+ * The LogsQL query of a search: filters on labels the control plane wrote, from identifiers it
+ * validated, and the person's text as one quoted phrase, which cannot add a filter or a pipe.
+ */
+export function logsQuery(search: LogSearch): string {
+  if (!UUID.test(search.organizationId) || !UUID.test(search.applicationId))
+    throw new Error('invalid log search scope');
+  const parts = [
+    `{org="${search.organizationId}",app="${search.applicationId}"}`,
+    `_time:[${search.from.toISOString()}, ${search.to.toISOString()}]`,
+  ];
+  if (search.stream) parts.push(`stream:=${search.stream}`);
+  if (search.instance !== undefined) parts.push(`instance:="${String(search.instance)}"`);
+  if (search.text) parts.push(quoted(search.text));
+  return `${parts.join(' ')} | sort by (_time desc) | limit ${String(search.limit)}`;
+}
+
+/** A LogsQL phrase: backslashes and quotes escaped, control characters removed. */
+export function quoted(text: string): string {
+  // eslint-disable-next-line no-control-regex -- control characters are what is removed
+  const clean = text.replace(/[\u0000-\u001f\u007f]/g, ' ');
+  return `"${clean.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+}
+
+/** One line of a search's answer, as the API returns it. */
+export interface LogLine {
+  readonly time: string;
+  readonly stream: 'stdout' | 'stderr';
+  readonly instance: number;
+  readonly line: string;
+  readonly truncated: boolean;
+}
+
+/** A line of VictoriaLogs' answer, or undefined when it is not one Shipkeep wrote. */
+export function logLineOf(record: unknown): LogLine | undefined {
+  if (!record || typeof record !== 'object') return undefined;
+  const value = record as Record<string, unknown>;
+  const time = value['_time'];
+  const line = value['_msg'];
+  const stream = value['stream'];
+  const instance = Number(value['instance']);
+  if (
+    typeof time !== 'string' ||
+    typeof line !== 'string' ||
+    (stream !== 'stdout' && stream !== 'stderr') ||
+    !Number.isInteger(instance)
+  )
+    return undefined;
+  return { time, stream, instance, line, truncated: value['truncated'] === 'true' };
+}

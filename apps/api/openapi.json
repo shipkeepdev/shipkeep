@@ -5452,6 +5452,135 @@
           "metrics"
         ]
       }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/logs": {
+      "get": {
+        "operationId": "applicationLogs",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "text",
+            "required": false,
+            "in": "query",
+            "description": "Text the lines contain.",
+            "schema": {
+              "maxLength": 256,
+              "type": "string"
+            }
+          },
+          {
+            "name": "stream",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "stdout",
+                "stderr"
+              ]
+            }
+          },
+          {
+            "name": "instance",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 1000,
+              "type": "integer"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "One hour ago by default.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "Now by default.",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "default": 200,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LogsDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "observability"
+        ]
+      }
     }
   },
   "info": {
@@ -9055,6 +9184,61 @@
           "totalRequests",
           "meanSeconds",
           "partial"
+        ]
+      },
+      "LogLineDto": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stream": {
+            "type": "string",
+            "enum": [
+              "stdout",
+              "stderr"
+            ]
+          },
+          "instance": {
+            "type": "integer",
+            "description": "The replica."
+          },
+          "line": {
+            "type": "string",
+            "description": "The line as the application wrote it, its secrets redacted."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "The line was longer than 16 KiB and was cut."
+          }
+        },
+        "required": [
+          "time",
+          "stream",
+          "instance",
+          "line",
+          "truncated"
+        ]
+      },
+      "LogsDto": {
+        "type": "object",
+        "properties": {
+          "kept": {
+            "type": "boolean",
+            "description": "False when this installation keeps no logs."
+          },
+          "lines": {
+            "description": "Newest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LogLineDto"
+            }
+          }
+        },
+        "required": [
+          "kept",
+          "lines"
         ]
       }
     }

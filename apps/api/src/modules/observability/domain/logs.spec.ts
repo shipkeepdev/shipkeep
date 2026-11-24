@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import {
   ByteRate,
   type LogInput,
+  logLineOf,
   logRecords,
+  logsQuery,
   MAX_LOG_ENTRIES,
   MAX_LOG_LINE_BYTES,
   validEntries,
@@ -100,5 +102,65 @@ describe('log batches (ADR 0029)', () => {
     // Two seconds later, one was paid back for the waiting write, one is free.
     expect(rate.take(1000, 2000)).toBe(0);
     expect(rate.take(10_000, 2000)).toBe(10_000);
+  });
+});
+
+describe('log searches (ADR 0029)', () => {
+  const search = {
+    organizationId: '019d0000-0000-7000-8000-00000000000a',
+    applicationId: '019d0000-0000-7000-8000-0000000000a1',
+    text: '',
+    from: new Date('2026-11-24T11:00:00Z'),
+    to: new Date('2026-11-24T12:00:00Z'),
+    limit: 200,
+  };
+
+  it('filters on the labels the control plane wrote, newest first', () => {
+    expect(logsQuery({ ...search, stream: 'stderr', instance: 2, text: 'timeout' })).toBe(
+      '{org="019d0000-0000-7000-8000-00000000000a",app="019d0000-0000-7000-8000-0000000000a1"} ' +
+        '_time:[2026-11-24T11:00:00.000Z, 2026-11-24T12:00:00.000Z] stream:=stderr instance:="2" "timeout" ' +
+        '| sort by (_time desc) | limit 200',
+    );
+  });
+
+  it('keeps the text one phrase, whatever it holds', () => {
+    for (const [text, phrase] of [
+      ['" | delete', '"\\" | delete"'],
+      ['a\\" OR app:*', '"a\\\\\\" OR app:*"'],
+      ['line\nbreak\u0000', '"line break "'],
+      ['} {org="other"}', '"} {org=\\"other\\"}"'],
+    ] as const) {
+      const query = logsQuery({ ...search, text });
+      expect(query).toContain(` ${phrase} | sort`);
+      expect(query.startsWith('{org="019d0000-0000-7000-8000-00000000000a",')).toBe(true);
+    }
+  });
+
+  it('refuses a scope that is not two identifiers', () => {
+    expect(() => logsQuery({ ...search, applicationId: 'x"} OR {app=*' })).toThrow();
+  });
+
+  it('reads back only the lines Shipkeep wrote', () => {
+    expect(
+      logLineOf({ _time: '2026-11-24T11:30:00Z', _msg: 'ready', stream: 'stdout', instance: '1' }),
+    ).toEqual({
+      time: '2026-11-24T11:30:00Z',
+      stream: 'stdout',
+      instance: 1,
+      line: 'ready',
+      truncated: false,
+    });
+    expect(
+      logLineOf({ _time: 't', _msg: 'cut', stream: 'stderr', instance: '3', truncated: 'true' })
+        ?.truncated,
+    ).toBe(true);
+    for (const record of [
+      null,
+      'x',
+      {},
+      { _time: 't', _msg: 'm', stream: 'other', instance: '1' },
+      { _time: 't', _msg: 'm', stream: 'stdout', instance: 'x' },
+    ])
+      expect(logLineOf(record)).toBeUndefined();
   });
 });
