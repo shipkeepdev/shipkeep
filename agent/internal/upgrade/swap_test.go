@@ -2,6 +2,7 @@ package upgrade
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"testing"
@@ -280,5 +281,28 @@ func TestADirectoryInPlaceOfAnUpgradeFileIsReported(t *testing.T) {
 	}
 	if rolledBack, err := Guard(otherState); rolledBack || err == nil || content(t, other) != "new agent" {
 		t.Fatalf("the guard went back to a directory: %v %v", rolledBack, err)
+	}
+}
+
+func TestParseGuardArgsTakesOnlyTheConfigurationPath(t *testing.T) {
+	const fallback = "/etc/shipkeep/agent.yaml"
+	accepted := map[string][]string{
+		fallback:         nil,
+		"/etc/a.yaml":    {"--config", "/etc/a.yaml"},
+		"/etc/b.yaml":    {"-config=/etc/b.yaml"},
+		"/etc/last.yaml": {"--config", "/etc/first.yaml", "--config", "/etc/last.yaml"},
+	}
+	for want, args := range accepted {
+		if got, err := ParseGuardArgs(args, fallback, io.Discard); err != nil || got != want {
+			t.Errorf("%q: %q %v", args, got, err)
+		}
+	}
+	for _, args := range [][]string{
+		{"--config"}, {"--config="}, {"--confg", "/etc/a.yaml"}, {"extra"}, {"--config", "/etc/a.yaml", "extra"},
+		{"-h"}, {"--help"}, {"--", "/etc/a.yaml"}, {"--rollback"},
+	} {
+		if got, err := ParseGuardArgs(args, fallback, io.Discard); err == nil {
+			t.Errorf("%q accepted as %q", args, got)
+		}
 	}
 }

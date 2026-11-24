@@ -139,14 +139,12 @@ func runUpgradeGuard(args []string, stderr io.Writer) int {
 	if err != nil {
 		return exitOK
 	}
-	fs := flag.NewFlagSet("shipkeep-agent upgrade-guard", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	configPath := fs.String("config", config.DefaultPath, "path to agent.yaml")
-	if err := fs.Parse(args); err != nil || fs.NArg() > 0 {
+	configPath, err := upgrade.ParseGuardArgs(args, config.DefaultPath, stderr)
+	if err != nil {
 		logger.Error("upgrade guard: unexpected arguments; nothing done")
 		return exitOK
 	}
-	cfg, err := config.Load(*configPath, config.Default(), false)
+	cfg, err := config.Load(configPath, config.Default(), false)
 	if err != nil {
 		logger.Error("upgrade guard: configuration unreadable; nothing done", "error", err)
 		return exitOK

@@ -365,6 +365,18 @@ func TestTheGuardMustBeAnActiveLineOfTheService(t *testing.T) {
 		"[Service]\nEnvironment=A=1 \\\n" + guard + "\n":     false,
 		"[Service]\n" + guard + " \\\n--verbose\n":           false,
 		"[Service]\nExecStartPre=/usr/bin/true \\\n" + guard: false,
+		// Only arguments the guard parses: it does nothing with any other.
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config=/etc/shipkeep/agent.yaml\n": true,
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard -config /etc/shipkeep/agent.yaml\n":  true,
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --confg /etc/shipkeep/agent.yaml\n":  false,
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config\n":                          false,
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config=\n":                         false,
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config /etc/a.yaml extra\n":        false,
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard -h\n":                                false,
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config '/etc/a b.yaml'\n":          false,
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config \"/etc/a.yaml\"\n":          false,
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config %h/agent.yaml\n":            false,
+		"[Service]\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config $CONFIG\n":                  false,
 	}
 	for unit, want := range cases {
 		if got := hasGuard(unit); got != want {
