@@ -50,6 +50,9 @@ type Runner struct {
 	// Welcome says the control plane accepts them; nil sends none.
 	Metrics         func(context.Context) (*agentv1.MetricsReport, error)
 	MetricsInterval time.Duration
+	// Logs, if set, ships logs for the session's lifetime once its Welcome says they are kept
+	// (ADR 0029); it returns when ctx ends.
+	Logs func(ctx context.Context, epoch uint64)
 	// Connected, if set, is called each time the control plane welcomed this agent's Hello.
 	Connected func(context.Context)
 	// Sent, if set, is called once an action update was written to the stream.
@@ -211,7 +214,7 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 	handshake := time.NewTimer(10 * time.Second)
 	defer handshake.Stop()
 	var interval time.Duration
-	acceptsMetrics := false
+	acceptsMetrics, acceptsLogs := false, false
 	select {
 	case <-ctx.Done():
 		return fmt.Errorf("agent stream cancelled: %w", ctx.Err())
@@ -233,6 +236,7 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 			return errors.New("heartbeat interval outside supported range")
 		}
 		acceptsMetrics = welcome.GetMetrics()
+		acceptsLogs = welcome.GetLogs()
 	}
 	r.Logger.Info("agent connected", "node_id", bundle.NodeID)
 	if r.Connected != nil {
@@ -250,6 +254,14 @@ func (r *Runner) session(ctx context.Context, client agentv1.AgentGatewayService
 			ticker := time.NewTicker(every)
 			defer ticker.Stop()
 			r.reportMetrics(streamCtx, bundle.LeaseEpoch, samples, ticker.C)
+		}()
+		defer func() { cancel(); <-done }()
+	}
+	if r.Logs != nil && acceptsLogs {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			r.Logs(streamCtx, bundle.LeaseEpoch)
 		}()
 		defer func() { cancel(); <-done }()
 	}

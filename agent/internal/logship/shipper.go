@@ -27,7 +27,7 @@ const (
 const NameLabel = "sk.name"
 
 // SecretEnvLabel names the container's secret variables (actions.SecretEnvLabel).
-const SecretEnvLabel = "sk.secret_env"
+const SecretEnvLabel = "sk.secret_env" //nolint:gosec // a label name, not a credential
 
 // Engine is the part of the Docker client the shipper reads.
 type Engine interface {
@@ -161,7 +161,7 @@ func (s *Shipper) acknowledge(ctx context.Context, stream Stream, inFlight <-cha
 		}
 		for container, at := range sent.latest {
 			if err := s.Cursors.SetLogCursor(ctx, container, at); err != nil {
-				return err //nolint:wrapcheck // the store's error is wrapped
+				return err
 			}
 		}
 	}
@@ -221,7 +221,7 @@ func (s *Shipper) followOne(ctx context.Context, id string, lines chan<- line) e
 	}
 	since, _, err := s.Cursors.LogCursor(ctx, name)
 	if err != nil {
-		return err //nolint:wrapcheck // the store's error is wrapped
+		return err
 	}
 	redactor := NewRedactor(container.Config.Env, container.Config.Labels[SecretEnvLabel])
 	err = s.Engine.FollowLogs(ctx, id, since, func(output docker.LogLine) error {

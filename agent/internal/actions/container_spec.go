@@ -40,7 +40,7 @@ const (
 	ProbePortLabel = "sk.probe_port"
 	// SecretEnvLabel names the container's secret environment variables, comma-separated, so that
 	// its log lines can be redacted (ADR 0029). Names are not secret; values never leave Docker.
-	SecretEnvLabel  = "sk.secret_env"
+	SecretEnvLabel  = "sk.secret_env" //nolint:gosec // a label name, not a credential
 	minDiskBytes    = 64 << 20
 	maxDiskBytes    = 1 << 40
 	maxWorkingDir   = 1024
