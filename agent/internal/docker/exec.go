@@ -38,68 +38,95 @@ const maxFrame = 1 << 20
 
 var execID = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
-// CreateExec creates an exec instance in the container ref, attached to stdin, stdout and stderr,
-// and returns its id. Docker refuses it for a container that is not running.
-func (c *Client) CreateExec(ctx context.Context, ref string, config ExecConfig) (string, error) {
+// detachKeys replaces Docker's default detach sequence, ctrl-p ctrl-q, which Docker cannot turn
+// off: a user of a terminal types ctrl-p to recall a command. While a key that starts the
+// sequence is typed, Docker holds it until the next one; ctrl-\\ starts this one, and a terminal
+// sends it to quit a program, rarely as text.
+const detachKeys = "ctrl-\\,ctrl-],ctrl-\\,ctrl-],ctrl-\\"
+
+// ExecInstance is a created exec: its id, and whether it has a terminal, which its start must
+// repeat (Docker multiplexes the output of an exec without one).
+type ExecInstance struct {
+	ID  string
+	TTY bool
+}
+
+// CreateExec creates an exec instance in the container ref, attached to stdin, stdout and stderr.
+// Docker refuses it for a container that is not running.
+func (c *Client) CreateExec(ctx context.Context, ref string, config ExecConfig) (ExecInstance, error) {
 	if len(config.Argv) == 0 {
-		return "", errors.New("docker exec needs an argument vector")
+		return ExecInstance{}, errors.New("docker exec needs an argument vector")
 	}
 	body := struct {
 		AttachStdin  bool
 		AttachStdout bool
 		AttachStderr bool
 		Tty          bool
+		DetachKeys   string
 		Cmd          []string
 		User         string `json:",omitempty"`
-	}{true, true, true, config.TTY, config.Argv, config.User}
+	}{true, true, true, config.TTY, detachKeys, config.Argv, config.User}
 	var created struct {
 		ID string `json:"Id"`
 	}
 	if err := c.do(ctx, http.MethodPost, "/containers/"+url.PathEscape(ref)+"/exec", body, &created); err != nil {
-		return "", err
+		return ExecInstance{}, err
 	}
 	if !execID.MatchString(created.ID) {
-		return "", errors.New("docker returned an invalid exec id")
+		return ExecInstance{}, errors.New("docker returned an invalid exec id")
 	}
-	return created.ID, nil
+	return ExecInstance{ID: created.ID, TTY: config.TTY}, nil
 }
 
 // Exec is a started exec: the connection Docker hands over once it runs the command. Writes go
 // to the command's stdin; Next reads its output.
 type Exec struct {
-	conn   net.Conn
-	reader *bufio.Reader
-	tty    bool
-	close  sync.Once
+	conn    net.Conn
+	reader  *bufio.Reader
+	tty     bool
+	release func() bool
+	close   sync.Once
+	// What remains of the last frame of multiplexed output, and its stream.
+	rest       []byte
+	restStream int
 }
 
-// StartExec starts the exec id and takes over its connection. With tty, the output is one raw
+// StartExec starts the exec and takes over its connection. With a terminal, the output is one raw
 // stream (Docker merges stderr into it); without, it is multiplexed and Next tells them apart.
-// The context bounds the start only: the session then lasts until Close.
-func (c *Client) StartExec(ctx context.Context, id string, tty bool) (*Exec, error) {
-	if !execID.MatchString(id) {
+// ctx bounds the whole session: when it ends, the connection closes, and Next and Write return.
+func (c *Client) StartExec(ctx context.Context, instance ExecInstance) (*Exec, error) {
+	if !execID.MatchString(instance.ID) {
 		return nil, errors.New("invalid docker exec id")
 	}
 	conn, err := c.dial(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("docker exec start: %w", err)
 	}
-	ok := false
-	defer func() {
-		if !ok {
-			conn.Close() //nolint:errcheck,gosec // the start already failed
+	release := context.AfterFunc(ctx, func() { conn.Close() }) //nolint:errcheck,gosec // ends the session with ctx
+	session, err := startExec(ctx, conn, instance)
+	if err != nil {
+		release()
+		conn.Close() //nolint:errcheck,gosec // the start already failed
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("docker exec start: %w", ctx.Err())
 		}
-	}()
-	// The start is written and read on this connection by hand: net/http would not give it back.
-	stop := context.AfterFunc(ctx, func() { conn.Close() }) //nolint:errcheck,gosec // unblocks the reads below
+		return nil, err
+	}
+	session.release = release
+	return session, nil
+}
+
+// startExec writes the start on conn and reads Docker's answer by hand: net/http would not hand
+// the connection back.
+func startExec(ctx context.Context, conn net.Conn, instance ExecInstance) (*Exec, error) {
 	data, err := json.Marshal(struct {
 		Detach bool
 		Tty    bool
-	}{false, tty})
+	}{false, instance.TTY})
 	if err != nil {
 		return nil, fmt.Errorf("encode docker exec start: %w", err)
 	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://docker/"+apiVersion+"/exec/"+id+"/start", bytes.NewReader(data))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://docker/"+apiVersion+"/exec/"+instance.ID+"/start", bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("build docker exec start: %w", err)
 	}
@@ -114,11 +141,9 @@ func (c *Client) StartExec(ctx context.Context, id string, tty bool) (*Exec, err
 	if err != nil {
 		return nil, fmt.Errorf("docker exec start: %w", err)
 	}
-	if !stop() {
-		return nil, fmt.Errorf("docker exec start: %w", ctx.Err())
-	}
 	switch response.StatusCode {
 	case http.StatusSwitchingProtocols, http.StatusOK:
+		return &Exec{conn: conn, reader: reader, tty: instance.TTY}, nil
 	case http.StatusNotFound:
 		response.Body.Close() //nolint:errcheck,gosec // read-only body
 		return nil, ErrNotFound
@@ -127,8 +152,6 @@ func (c *Client) StartExec(ctx context.Context, id string, tty bool) (*Exec, err
 		// The daemon's message can name paths: report the status only.
 		return nil, fmt.Errorf("docker exec start: status %d", response.StatusCode)
 	}
-	ok = true
-	return &Exec{conn: conn, reader: reader, tty: tty}, nil
 }
 
 // Write sends p to the command's stdin.
@@ -146,21 +169,40 @@ func (e *Exec) CloseStdin() error {
 	if !ok {
 		return errors.New("docker exec connection cannot close stdin alone")
 	}
-	return closer.CloseWrite()
+	if err := closer.CloseWrite(); err != nil {
+		return fmt.Errorf("close docker exec stdin: %w", err)
+	}
+	return nil
 }
 
-// Next returns the next piece of output and its stream, Stdout or Stderr, at most max bytes for
-// a tty session. It returns io.EOF once the command's output ended.
+// Next returns the next piece of output, at most max bytes, and its stream, Stdout or Stderr. It
+// returns io.EOF once the command's output ended.
 func (e *Exec) Next(max int) (int, []byte, error) {
+	if max <= 0 {
+		return 0, nil, errors.New("docker exec output needs room")
+	}
 	if e.tty {
 		buffer := make([]byte, max)
-		n, err := e.reader.Read(buffer)
-		if n > 0 {
-			return Stdout, buffer[:n], nil
+		for {
+			n, err := e.reader.Read(buffer)
+			if n > 0 {
+				return Stdout, buffer[:n], nil
+			}
+			if err != nil {
+				return 0, nil, fmt.Errorf("docker exec output: %w", err)
+			}
 		}
-		return 0, nil, fmt.Errorf("docker exec output: %w", err)
 	}
-	return readFrame(e.reader)
+	for len(e.rest) == 0 {
+		stream, data, err := readFrame(e.reader)
+		if err != nil {
+			return 0, nil, err
+		}
+		e.rest, e.restStream = data, stream
+	}
+	chunk := e.rest[:min(max, len(e.rest))]
+	e.rest = e.rest[len(chunk):]
+	return e.restStream, chunk, nil
 }
 
 // Close ends the session's connection. Docker then closes the command's stdin; the command
@@ -168,6 +210,9 @@ func (e *Exec) Next(max int) (int, []byte, error) {
 func (e *Exec) Close() error {
 	var err error
 	e.close.Do(func() {
+		if e.release != nil {
+			e.release()
+		}
 		if closeErr := e.conn.Close(); closeErr != nil {
 			err = fmt.Errorf("close docker exec: %w", closeErr)
 		}
@@ -181,7 +226,7 @@ func readFrame(reader io.Reader) (int, []byte, error) {
 	var header [8]byte
 	if _, err := io.ReadFull(reader, header[:]); err != nil {
 		if errors.Is(err, io.ErrUnexpectedEOF) {
-			return 0, nil, errors.New("docker exec output ended inside a frame header")
+			return 0, nil, fmt.Errorf("docker exec output ended inside a frame header: %w", err)
 		}
 		return 0, nil, fmt.Errorf("docker exec output: %w", err)
 	}
@@ -195,7 +240,7 @@ func readFrame(reader io.Reader) (int, []byte, error) {
 	}
 	data := make([]byte, size)
 	if _, err := io.ReadFull(reader, data); err != nil {
-		return 0, nil, errors.New("docker exec output ended inside a frame")
+		return 0, nil, fmt.Errorf("docker exec output ended inside a frame: %w", err)
 	}
 	return stream, data, nil
 }
