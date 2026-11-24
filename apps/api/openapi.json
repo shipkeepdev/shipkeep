@@ -8867,9 +8867,10 @@
         "properties": {
           "replica": {
             "type": "integer",
-            "minimum": 1,
-            "maximum": 1000,
-            "default": 1
+            "minimum": 0,
+            "maximum": 999,
+            "default": 0,
+            "description": "The replica, numbered from 0."
           },
           "argv": {
             "maxItems": 64,

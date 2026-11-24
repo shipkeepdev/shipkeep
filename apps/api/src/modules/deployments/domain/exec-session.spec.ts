@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 import { auditedCommand, EXEC_ARG_BYTES, EXEC_ARGS, execRequest, validArgv } from './exec-session';
 
 describe('exec session requests (SPEC 3.3)', () => {
-  it('opens a shell in the first replica for 30 minutes by default', () => {
-    expect(execRequest({})).toEqual({ replica: 1, argv: ['sh'], tty: true, minutes: 30 });
+  it('opens a shell in the first replica, numbered 0, for 30 minutes by default', () => {
+    expect(execRequest({})).toEqual({ replica: 0, argv: ['sh'], tty: true, minutes: 30 });
   });
 
   it('keeps what the caller chose', () => {
@@ -15,9 +15,9 @@ describe('exec session requests (SPEC 3.3)', () => {
   });
 
   it.each([
-    ['replica', { replica: 0 }],
+    ['replica', { replica: -1 }],
     ['replica', { replica: 1.5 }],
-    ['replica', { replica: 1001 }],
+    ['replica', { replica: 1000 }],
     ['minutes', { minutes: 0 }],
     ['minutes', { minutes: 241 }],
     ['minutes', { minutes: 2.5 }],

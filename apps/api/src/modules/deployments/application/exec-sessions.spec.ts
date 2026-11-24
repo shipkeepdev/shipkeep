@@ -38,7 +38,7 @@ function replica(overrides: Partial<ReplicaStatus>): ReplicaStatus {
   return {
     id: 'a1',
     releaseId: '019d0000-0000-7000-8000-0000000000c1',
-    replica: 1,
+    replica: 0,
     nodeId: NODE,
     nodeName: 'edge-1',
     container: 'sk-web-0000000000a1-r1-0',
@@ -139,7 +139,7 @@ describe('opening an exec session (SPEC 3.1)', () => {
         environmentId: target.environmentId,
         applicationId: APP,
         nodeId: NODE,
-        replica: 1,
+        replica: 0,
         tty: true,
         minutes: 30,
         program: 'psql',
@@ -155,16 +155,16 @@ describe('opening an exec session (SPEC 3.1)', () => {
   it('takes the running release of the replica asked for', async () => {
     const w = world({
       replicas: [
-        replica({ replica: 1, nodeId: OTHER_NODE }),
-        replica({ replica: 2, state: 'exited', container: 'sk-web-old-r2' }),
+        replica({ replica: 0, nodeId: OTHER_NODE }),
+        replica({ replica: 1, state: 'exited', container: 'sk-web-old-r2' }),
         replica({
-          replica: 2,
+          replica: 1,
           releaseId: '019d0000-0000-7000-8000-0000000000c2',
           container: 'sk-web-new-r2',
         }),
       ],
     });
-    const session = await w.service.open(context, target, APP, { replica: 2 }, NOW);
+    const session = await w.service.open(context, target, APP, { replica: 1 }, NOW);
     expect(session.container).toBe('sk-web-new-r2');
     expect(session.nodeId).toBe(NODE);
   });
