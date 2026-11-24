@@ -306,6 +306,9 @@ printf 'mode=single\ndomain=shipkeep.example.com\nemail=owner@example.com\nemail
 [[ $(read_back) == "1|-f compose.yml -f compose.single-machine.yml|shipkeep.example.com|owner@example.com|Acme Corp|$uuid|1|1|1|0|1" ]] || die "install-state was not read back: $(read_back)"
 printf 'mode=separate\ndomain=shipkeep.example.com\nemail=owner@example.com\nemail_mode=none\n' >"$state/install-state"
 [[ $(read_back) == '0|-f compose.yml|shipkeep.example.com|owner@example.com||||0|0|0|0|0' || $(read_back) == '0|-f compose.yml|shipkeep.example.com|owner@example.com|||0|0|0|0|0' ]] || die "a separate install-state was not read back: $(read_back)"
+# A separate machine that runs an agent (ADR 0028) recorded its first organization too.
+printf 'mode=separate\ndomain=shipkeep.example.com\nemail=owner@example.com\nemail_mode=none\norganization=Acme Corp\n' >"$state/install-state"
+[[ $(read_back) == '0|-f compose.yml|shipkeep.example.com|owner@example.com|Acme Corp||0|0|0|0|0' ]] || die "a separate install-state with an agent was not read back: $(read_back)"
 # shellcheck disable=SC2016
 for bad in 'mode=single\ndomain=shipkeep.example.com\nemail=owner@example.com\n' \
   'mode=separate\ndomain=shipkeep.example.com\n' \
@@ -391,12 +394,26 @@ grep -q 'Starting over' "$work/resume-output" || die 'the foreign installation w
 grep -q -- "sudo bash $work/Release\\\\ Files/install.sh --dir $state --resume yes" "$work/resume-output" || die "the failure did not say how to finish: $(<"$work/resume-output")"
 resume_with "${single_state}account\n" 0 1 1 >"$work/resume-output" 2>&1 && die 'a failed organization was reported as done'
 ! grep -qx organization_created "$state/install-state" || die 'a failed organization was recorded'
+# A separate machine that runs an agent (ADR 0028): the organization and the agent, no slice.
+separate_state='mode=separate\ndomain=shipkeep.example.com\nemail=owner@example.com\nemail_mode=none\n'
+resume_with "${separate_state}organization=Acme Corp\nstarted\naccount\n" 0 1 0 >"$work/resume-output" 2>&1 || die "a separate resume with an agent failed: $(<"$work/resume-output")"
+chosen=$(sed -n 's/^organization_id=//p' "$state/install-state")
+[[ $(<"$work/resume-calls") == "compose up -d"$'\n'"organization $chosen"$'\n'"server $chosen" ]] || die "unexpected separate steps: $(<"$work/resume-calls")"
+grep -q 'This machine runs an agent of the organization Acme Corp' "$work/resume-output" || die 'the agent of a separate machine was not said'
+# Its unfinished agent is removed as the agent part, not as a server's.
+resume_with "${separate_state}organization=Acme Corp\nstarted\naccount\norganization_id=$uuid\norganization_created\n" 0 2 0 >"$work/resume-output" 2>&1 && die 'an unfinished agent of a separate machine was accepted'
+grep -q 'Remove its agent part' "$work/resume-output" || die "the separate machine was told to remove a server part: $(<"$work/resume-output")"
+# Without an agent (another system than Ubuntu 24.04), neither.
+resume_with "${separate_state}started\naccount\n" 0 1 0 >"$work/resume-output" 2>&1 || die "a separate resume without an agent failed: $(<"$work/resume-output")"
+[[ $(<"$work/resume-calls") == "compose up -d" ]] || die "a machine without an agent got one: $(<"$work/resume-calls")"
+! grep -q 'runs an agent' "$work/resume-output" || die 'an agent was said on a machine without one'
 
 # What an earlier run of the server installer left, read from a tree that stands in for /.
 server=$work/server
+# $1 is 0 for a separate machine, and by default 1, a single machine.
 installed() (
   # shellcheck disable=SC2034
-  domain=shipkeep.example.com organization_id=$uuid
+  domain=shipkeep.example.com organization_id=$uuid single=${1:-1}
   status=0
   this_server_installed "$server" || status=$?
   printf '%s' "$status"
@@ -427,6 +444,35 @@ ln -s "$work/real-state" "$server/etc/shipkeep/agent.yaml"
 [[ $(installed) == 2 ]] || die 'an agent configuration that is a link was accepted'
 rm "$server/etc/shipkeep/agent.yaml"
 [[ $(installed) == 2 ]] || die 'a unit without its configuration was accepted'
+# A separate machine: the agent alone, with the control-plane-only role, and no route.
+separate_installed() { installed 0; }
+rm -rf "$server"
+mkdir -p "$server/etc/shipkeep" "$server/var/lib/shipkeep" "$server/etc/systemd/system/multi-user.target.wants"
+[[ $(separate_installed) == 1 ]] || die 'a separate machine without an agent was not seen as such'
+printf "control_plane:\n  address: 'shipkeep.example.com:7443'\n  connect: '127.0.0.1:7443'\nnode:\n  role: control-plane-only\n" >"$server/etc/shipkeep/agent.yaml"
+: >"$server/etc/systemd/system/shipkeep-agent.service"
+: >"$server/etc/shipkeep/join-token"
+[[ $(separate_installed) == 2 ]] || die 'an agent not enabled yet was taken as done'
+ln -s /etc/systemd/system/shipkeep-agent.service "$server/etc/systemd/system/multi-user.target.wants/shipkeep-agent.service"
+[[ $(separate_installed) == 0 ]] || die 'the agent of a separate machine was not recognized'
+sed -i 's/role: control-plane-only/role: server/' "$server/etc/shipkeep/agent.yaml"
+[[ $(separate_installed) == 2 ]] || die 'a server installation was taken for the agent of a separate machine'
+sed -i 's/role: server/role: control-plane-only/' "$server/etc/shipkeep/agent.yaml"
+[[ $(installed 1) == 2 ]] || die 'an agent without Caddy or route was taken for a single machine'
+# Without an agent (another system, or an older Docker), the separate form is the control plane
+# alone, and --organization creates nothing.
+(
+  # shellcheck disable=SC2034
+  agent=1 organization='Acme Corp'
+  without_agent 'This system is not Ubuntu 24.04 with systemd' 2>"$work/without"
+  [[ $agent == 0 && -z $organization ]] || die 'a machine without an agent kept its organization'
+  grep -q 'installed without an agent of its own' "$work/without" || die 'the missing agent was not said'
+) || exit 1
+# The agent pins Docker API 1.47.
+for version in 1.47 1.48 1.100; do docker_api_for_agent "$version" || die "refused the Docker API $version"; done
+for version in '' 1.46 1.9 2 v1.47 '1.47 ' $'1.47\n' 1.47.0; do
+  refused docker_api_for_agent "$version" || die "accepted the Docker API $version"
+done
 
 # A run stopped before its settings file says to run again, not to resume.
 (

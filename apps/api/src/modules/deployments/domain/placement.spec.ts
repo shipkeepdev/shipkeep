@@ -45,6 +45,23 @@ describe('schedulableNodes', () => {
   });
 });
 
+describe('machines that run the control plane alone', () => {
+  it('are never offered to an application; the single machine still is (ADR 0021, 0028)', () => {
+    const facts = { architecture: 'amd64', cpu_count: 8, memory_bytes: 16 * 2 ** 30 };
+    const nodes = schedulableNodes(
+      [
+        node('control', { facts: { ...facts, role: 'control-plane-only' } }),
+        node('single', { facts: { ...facts, role: 'control-plane', reserved_cpu_millis: 2000 } }),
+        node('server', { facts: { ...facts, role: 'server' } }),
+        node('older-agent', { facts }),
+      ],
+      new Map(),
+      NOW,
+    );
+    expect(nodes.map((n) => n.name)).toEqual(['single', 'server', 'older-agent']);
+  });
+});
+
 describe('nodes without capacity facts', () => {
   const request = placementRequest('app-a', {
     version: 1,
