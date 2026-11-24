@@ -1969,7 +1969,7 @@ export const FR: Readonly<Record<string, string>> = {
   'Terminal output': 'Sortie du terminal',
   'The session could not be opened. Is the application running?':
     'La session n’a pas pu être ouverte. L’application tourne-t-elle ?',
-  'Connected to a shell in replica 1.': 'Connecté à un shell dans la réplique 1.',
+  'Connected to a shell in the first replica.': 'Connecté à un shell dans la première réplique.',
   'The session was closed.': 'La session a été fermée.',
   'The command exited with code {code}.': 'La commande s’est terminée avec le code {code}.',
   'The command exited.': 'La commande s’est terminée.',

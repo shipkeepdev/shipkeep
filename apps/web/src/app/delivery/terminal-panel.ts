@@ -16,7 +16,7 @@ import { appendLine, appendOutput, END_REASONS, type Screen, serverMessage } fro
 type State = 'idle' | 'connecting' | 'open' | 'ended';
 
 /**
- * A command line in one replica of the application (SPEC 3.1): each line typed goes to a shell in
+ * A command line in the first replica of the application (r0) (SPEC 3.1): each line typed goes to a shell in
  * the container, through the API and the server's agent, never through SSH. Output is text, its
  * terminal escape sequences removed. The session is audited, and ends at its time limit.
  */
@@ -128,7 +128,7 @@ export class TerminalPanel {
     this.problem.set(null);
     try {
       const session = await this.api.openExecSession(this.environment(), this.applicationId(), {
-        replica: 1,
+        replica: 0,
         argv: ['sh'],
         tty: false,
         minutes: 30,
@@ -140,7 +140,7 @@ export class TerminalPanel {
       this.socket = socket;
       socket.onopen = () => {
         this.state.set('open');
-        this.note('Connected to a shell in replica 1.');
+        this.note('Connected to a shell in the first replica.');
       };
       socket.onmessage = (event: MessageEvent<ArrayBuffer | string>) => {
         this.receive(event.data);
