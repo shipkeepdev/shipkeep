@@ -2,6 +2,7 @@ import { create, fromBinary, toBinary, toJson } from '@bufbuild/protobuf';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   type Actor,
+  ConflictError,
   createEvent,
   InvalidInputError,
   isTenantId,
@@ -81,6 +82,11 @@ export class AgentActions {
       actor: Actor;
       /** The deployment that needs the action, listed in its application's history. */
       origin?: { applicationId: string; deploymentId: string };
+      /**
+       * Admit the action only when no other action of the node is unfinished (an agent upgrade,
+       * ADR 0028): `node_busy` otherwise. Every admission locks the node, so the check holds.
+       */
+      exclusive?: boolean;
     },
     now = new Date(),
   ): Promise<{ id: string; created: boolean }> {
@@ -97,6 +103,9 @@ export class AgentActions {
     )
       throw new InvalidInputError('invalid_agent_action', 'Invalid agent action request.');
     return this.transaction.runTenant(input.organizationId, async () => {
+      // One admission at a time per node: an exclusive one sees every action admitted before it.
+      if (!(await this.nodes.lockForAdmission(input.organizationId, input.nodeId)))
+        throw new NotFoundError('resource');
       const node = await this.nodes.findById(input.organizationId, input.nodeId);
       if (!node || node.status === 'removed') throw new NotFoundError('resource');
       const existing = await this.store.findByKey(
@@ -105,6 +114,11 @@ export class AgentActions {
         input.idempotencyKey,
       );
       if (existing) return { id: existing.id, created: false };
+      if (
+        input.exclusive &&
+        (await this.store.hasUnfinished(input.organizationId, input.nodeId, null, now))
+      )
+        throw new ConflictError('node_busy', 'Another action of this server is not finished.');
       const record: AgentActionRecord = {
         id: uuidv7(),
         organizationId: input.organizationId,

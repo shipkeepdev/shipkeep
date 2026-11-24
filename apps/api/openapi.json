@@ -1455,6 +1455,107 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/agent-upgrades": {
+      "get": {
+        "operationId": "agentUpgrades",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUpgradeOverviewDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "fleet"
+        ]
+      },
+      "post": {
+        "operationId": "startAgentUpgrade",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "description": "Required for session requests.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Required for session requests.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartAgentUpgradeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentUpgradeDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/join-tokens": {
       "post": {
         "operationId": "issueJoinToken",
@@ -6299,6 +6400,180 @@
         },
         "required": [
           "displayName"
+        ]
+      },
+      "AgentUpgradeFailureDto": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The server whose turn it was."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "node_unavailable",
+              "node_busy",
+              "release_unavailable",
+              "action_failed",
+              "rolled_back",
+              "not_confirmed"
+            ]
+          },
+          "actionReason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "malformed_request",
+              "unsupported_action",
+              "stale_lease_epoch",
+              "invalid_input",
+              "idempotency_conflict",
+              "deadline_exceeded",
+              "action_failed",
+              "registry_denied",
+              "image_not_found",
+              "registry_unreachable",
+              "registry_untrusted",
+              "disk_full",
+              "image_volume_undeclared",
+              "egress_unguarded",
+              "upgrade_dev_build",
+              "upgrade_not_newer",
+              "upgrade_unit_outdated",
+              "upgrade_unverified",
+              "upgrade_unavailable",
+              "upgrade_in_progress",
+              "unknown",
+              null
+            ],
+            "description": "Why the agent refused or failed the upgrade, when `reason` is `action_failed`."
+          }
+        },
+        "required": [
+          "nodeId",
+          "reason",
+          "actionReason"
+        ]
+      },
+      "AgentUpgradeDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "string",
+            "description": "The version every listed server goes to."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "running",
+              "succeeded",
+              "failed"
+            ]
+          },
+          "nodeIds": {
+            "description": "The servers, in the order of their turns.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "position": {
+            "type": "integer",
+            "description": "Index of the server whose turn it is; the number of servers once all are done."
+          },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentUpgradeFailureDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "completedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "state",
+          "nodeIds",
+          "position",
+          "failure",
+          "createdAt",
+          "updatedAt",
+          "completedAt"
+        ]
+      },
+      "AgentUpgradeOverviewDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The control plane's version, which agents are upgraded to; null on a development build."
+          },
+          "pending": {
+            "description": "The servers whose agent runs an older release: a rollout started now lists them.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rollout": {
+            "description": "The newest rollout.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AgentUpgradeDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "version",
+          "pending",
+          "rollout"
+        ]
+      },
+      "StartAgentUpgradeDto": {
+        "type": "object",
+        "properties": {
+          "version": {
+            "type": "string",
+            "maxLength": 64,
+            "example": "0.2.0",
+            "description": "The version to upgrade agents to, as the overview gave it: the control plane's own. A control plane that runs another version by now refuses the rollout."
+          }
+        },
+        "required": [
+          "version"
         ]
       },
       "JoinTokenIssuedDto": {

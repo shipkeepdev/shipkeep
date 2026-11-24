@@ -12,7 +12,14 @@ import {
   ValidateIf,
 } from 'class-validator';
 
+import type { AgentUpgradeOverview } from '../application/agent-upgrades';
 import type { IssueJoinTokenResult } from '../application/issue-join-token';
+import { ACTION_REASONS } from '../domain/agent-action';
+import {
+  AGENT_UPGRADE_FAILURES,
+  AGENT_UPGRADE_STATES,
+  type AgentUpgradeRecord,
+} from '../domain/agent-upgrade';
 import { type NodeRecord, observedStatus } from '../domain/node';
 import { MAX_NODE_PUBLIC_ADDRESSES } from '../domain/node-address';
 
@@ -131,5 +138,84 @@ export function nodeDto(node: NodeRecord, now = new Date()): NodeDto {
     leaseEpoch: node.leaseEpoch,
     createdAt: node.createdAt.toISOString(),
     lastHeartbeatAt: node.lastHeartbeatAt?.toISOString() ?? null,
+  };
+}
+
+export class StartAgentUpgradeDto {
+  @ApiProperty({
+    maxLength: 64,
+    example: '0.2.0',
+    description:
+      "The version to upgrade agents to, as the overview gave it: the control plane's own. A " +
+      'control plane that runs another version by now refuses the rollout.',
+  })
+  @IsString()
+  @Length(5, 64)
+  @Matches(/^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$/)
+  version!: string;
+}
+export class AgentUpgradeFailureDto {
+  @ApiProperty({ format: 'uuid', description: 'The server whose turn it was.' }) nodeId!: string;
+  @ApiProperty({ enum: AGENT_UPGRADE_FAILURES }) reason!: string;
+  @ApiProperty({
+    type: String,
+    enum: ACTION_REASONS,
+    nullable: true,
+    description: 'Why the agent refused or failed the upgrade, when `reason` is `action_failed`.',
+  })
+  actionReason!: string | null;
+}
+export class AgentUpgradeDto {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ description: 'The version every listed server goes to.' }) version!: string;
+  @ApiProperty({ enum: AGENT_UPGRADE_STATES }) state!: string;
+  @ApiProperty({ type: [String], description: 'The servers, in the order of their turns.' })
+  nodeIds!: string[];
+  @ApiProperty({
+    type: 'integer',
+    description: 'Index of the server whose turn it is; the number of servers once all are done.',
+  })
+  position!: number;
+  @ApiProperty({ type: AgentUpgradeFailureDto, nullable: true })
+  failure!: AgentUpgradeFailureDto | null;
+  @ApiProperty({ format: 'date-time' }) createdAt!: string;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+  @ApiProperty({ type: String, format: 'date-time', nullable: true }) completedAt!: string | null;
+}
+export class AgentUpgradeOverviewDto {
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      "The control plane's version, which agents are upgraded to; null on a development build.",
+  })
+  version!: string | null;
+  @ApiProperty({
+    type: [String],
+    description: 'The servers whose agent runs an older release: a rollout started now lists them.',
+  })
+  pending!: string[];
+  @ApiProperty({ type: AgentUpgradeDto, nullable: true, description: 'The newest rollout.' })
+  rollout!: AgentUpgradeDto | null;
+}
+
+export function agentUpgradeDto(upgrade: AgentUpgradeRecord): AgentUpgradeDto {
+  return {
+    id: upgrade.id,
+    version: upgrade.version,
+    state: upgrade.state,
+    nodeIds: [...upgrade.nodeIds],
+    position: upgrade.position,
+    failure: upgrade.failure ? { ...upgrade.failure } : null,
+    createdAt: upgrade.createdAt.toISOString(),
+    updatedAt: upgrade.updatedAt.toISOString(),
+    completedAt: upgrade.completedAt?.toISOString() ?? null,
+  };
+}
+export function agentUpgradeOverviewDto(overview: AgentUpgradeOverview): AgentUpgradeOverviewDto {
+  return {
+    version: overview.version,
+    pending: [...overview.pending],
+    rollout: overview.rollout ? agentUpgradeDto(overview.rollout) : null,
   };
 }

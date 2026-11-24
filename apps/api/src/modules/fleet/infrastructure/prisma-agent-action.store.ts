@@ -50,6 +50,25 @@ export class PrismaAgentActionStore implements AgentActionStore {
     return row ? this.record(row) : undefined;
   }
 
+  async hasUnfinished(
+    organizationId: string,
+    nodeId: string,
+    exceptId: string | null,
+    now: Date,
+  ): Promise<boolean> {
+    const found = await this.database.client.agentAction.findFirst({
+      where: {
+        organizationId,
+        nodeId,
+        state: { in: UNFINISHED },
+        deadline: { gt: now },
+        ...(exceptId ? { id: { not: exceptId } } : {}),
+      },
+      select: { id: true },
+    });
+    return found !== null;
+  }
+
   async deliverable(
     organizationId: string,
     nodeId: string,

@@ -27,6 +27,7 @@ export const TENANT_TABLES = [
   'domains',
   'domain_certificates',
   'registry_credentials',
+  'agent_upgrades',
 ] as const;
 
 /** Check both login and effective roles, including memberships that permit a later SET ROLE.

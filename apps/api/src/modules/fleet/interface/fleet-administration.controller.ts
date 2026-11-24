@@ -1,5 +1,6 @@
 import { Body, Controller, Get, HttpCode, Param, Post, Query, Req } from '@nestjs/common';
 import {
+  ApiAcceptedResponse,
   ApiBearerAuth,
   ApiCookieAuth,
   ApiCreatedResponse,
@@ -16,9 +17,14 @@ import { factorInput, ReauthenticateMfaDto } from '../../identity/interface/mfa.
 import { RequireTenant } from '../../identity/interface/route-access';
 import { type IdentityRequest, resourceContext } from '../../identity/interface/session-http';
 import { AppConfig } from '../../../platform/config/app-config';
+import { AgentUpgrades } from '../application/agent-upgrades';
 import { FleetAdministration } from '../application/fleet-administration';
 
 import {
+  AgentUpgradeDto,
+  agentUpgradeDto,
+  AgentUpgradeOverviewDto,
+  agentUpgradeOverviewDto,
   FleetOrganizationPathDto,
   JoinTokenIssuedDto,
   joinTokenIssuedDto,
@@ -29,6 +35,7 @@ import {
   NodePathDto,
   RemoveNodeDto,
   SetNodePublicAddressesDto,
+  StartAgentUpgradeDto,
 } from './fleet-administration.dto';
 
 /**
@@ -41,8 +48,47 @@ import {
 export class FleetAdministrationController {
   constructor(
     private readonly fleet: FleetAdministration,
+    private readonly upgrades: AgentUpgrades,
     private readonly config: AppConfig,
   ) {}
+
+  /** The agents' target version, the servers still on an older release, and the newest rollout. */
+  @Get(':organizationId/agent-upgrades')
+  @RequireTenant('node.manage', 'organization')
+  @IdentityAttemptLimit('api')
+  @ApiOkResponse({ type: AgentUpgradeOverviewDto })
+  async agentUpgrades(
+    @Req() request: IdentityRequest,
+    @Param() path: FleetOrganizationPathDto,
+  ): Promise<AgentUpgradeOverviewDto> {
+    return agentUpgradeOverviewDto(
+      await this.upgrades.overview(resourceContext(request), path.organizationId),
+    );
+  }
+
+  /** Upgrades every agent on an older release to the control plane's version, one at a time. */
+  @Post(':organizationId/agent-upgrades')
+  @HttpCode(202)
+  @RequireTenant('node.manage', 'organization')
+  @AllowApiToken('node.manage')
+  @IdentityAttemptLimit('api')
+  @ApiBearerAuth('apiToken')
+  @ApiHeader({ name: 'Origin', required: false, description: 'Required for session requests.' })
+  @ApiHeader({
+    name: 'X-Shipkeep-CSRF',
+    required: false,
+    description: 'Required for session requests.',
+  })
+  @ApiAcceptedResponse({ type: AgentUpgradeDto })
+  async startAgentUpgrade(
+    @Req() request: IdentityRequest,
+    @Param() path: FleetOrganizationPathDto,
+    @Body() body: StartAgentUpgradeDto,
+  ): Promise<AgentUpgradeDto> {
+    return agentUpgradeDto(
+      await this.upgrades.start(resourceContext(request), path.organizationId, body.version),
+    );
+  }
 
   @Post(':organizationId/join-tokens')
   @HttpCode(201)

@@ -16,6 +16,7 @@ import { AppModule } from './app.module';
 import { createApp } from './bootstrap';
 import { AgentGateway } from './modules/fleet/interface/agent-gateway';
 import { DeploymentWorker } from './modules/deployments/infrastructure/deployment-worker';
+import { AgentUpgradeWorker } from './modules/fleet/infrastructure/agent-upgrade-worker';
 import { AppConfig } from './platform/config/app-config';
 import { API_VERSION } from './platform/health/health.controller';
 import { API_PREFIX } from './platform/http/constants';
@@ -54,6 +55,7 @@ async function main(): Promise<void> {
     await app.init();
     await app.get(AgentGateway).start();
     await app.get(DeploymentWorker).start();
+    await app.get(AgentUpgradeWorker).start();
     await app.listen(port);
   } catch (error: unknown) {
     await app.close();
