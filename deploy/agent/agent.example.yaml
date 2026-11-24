@@ -33,6 +33,11 @@ node:
   # reservation:
   #   cpu_millis: 500
   #   memory_bytes: 1073741824
+  # Optional, written by the installer (ADR 0028): server (the default), control-plane on the
+  # single machine that also runs applications, or control-plane-only on a machine that runs the
+  # control plane alone. A control-plane-only agent runs no application and has no Caddy of its
+  # own, so it takes no reservation, workload slice or control plane route.
+  # role: server
 
 paths:
   state_dir: /var/lib/shipkeep # SQLite state, operation journal, certificates (mode 0700)

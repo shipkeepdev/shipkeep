@@ -33,8 +33,9 @@ export function execRequest(input: {
   tty?: boolean | undefined;
   minutes?: number | undefined;
 }): ExecRequest {
-  const replica = input.replica ?? 1;
-  if (!Number.isInteger(replica) || replica < 1 || replica > 1000) invalid('replica');
+  // Replicas are numbered from 0, as allocations and their containers are.
+  const replica = input.replica ?? 0;
+  if (!Number.isInteger(replica) || replica < 0 || replica > 999) invalid('replica');
   const argv = input.argv ?? DEFAULT_ARGV;
   if (!validArgv(argv)) invalid('argv');
   const minutes = input.minutes ?? EXEC_MINUTES.default;

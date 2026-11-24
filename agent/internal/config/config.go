@@ -79,7 +79,19 @@ type Node struct {
 	// system, on the machine that hosts the control plane (ADR 0021). The agent reports it with its
 	// facts, and placement leaves it free. Zero elsewhere.
 	Reservation Reservation `yaml:"reservation"`
+	// Role is what the machine is for (ADR 0028), written by the installer: `server` (the default
+	// when empty), `control-plane` (the single machine that also runs applications) or
+	// `control-plane-only` (a machine that runs the control plane alone). The control plane never
+	// sets it.
+	Role string `yaml:"role"`
 }
+
+// Roles of a machine (ADR 0028).
+const (
+	RoleServer           = "server"
+	RoleControlPlane     = "control-plane"
+	RoleControlPlaneOnly = "control-plane-only"
+)
 
 // Reservation is an amount of CPU and memory that applications may not use (ADR 0021).
 type Reservation struct {
@@ -265,6 +277,23 @@ func (c Config) Validate() error {
 	}
 	if c.Node.Reservation.MemoryBytes > maxReservedMemoryBytes {
 		add("node.reservation.memory_bytes must be at most %d", uint64(maxReservedMemoryBytes))
+	}
+	switch c.Node.Role {
+	case "", RoleServer, RoleControlPlane:
+	case RoleControlPlaneOnly:
+		// The whole machine is the control plane's: no application, so no share of it to keep, no
+		// slice for workloads, and the control plane's own Caddy serves its route.
+		if c.Node.Reservation != (Reservation{}) {
+			add("node.reservation must be empty with node.role control-plane-only")
+		}
+		if c.Docker.WorkloadsSlice != "" {
+			add("docker.workloads_slice must be empty with node.role control-plane-only")
+		}
+		if c.ControlPlane.Route != (LocalRoute{}) {
+			add("control_plane.route must be empty with node.role control-plane-only")
+		}
+	default:
+		add("node.role must be server, control-plane or control-plane-only")
 	}
 	if c.Docker.WorkloadsSlice != "" && (len(c.Docker.WorkloadsSlice) > 128 || !sliceName.MatchString(c.Docker.WorkloadsSlice) || c.Docker.WorkloadsSlice == "system.slice") {
 		add("docker.workloads_slice must be a systemd slice name such as shipkeep-workloads.slice")

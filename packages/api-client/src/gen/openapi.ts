@@ -1991,7 +1991,10 @@ export type components = {
              * @default 30
              */
             readonly minutes: number;
-            /** @default 1 */
+            /**
+             * @description The replica, numbered from 0.
+             * @default 0
+             */
             readonly replica: number;
             /** @default true */
             readonly tty: boolean;
