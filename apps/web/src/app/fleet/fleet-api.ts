@@ -8,6 +8,8 @@ export type NodeMetrics = Schema<'NodeMetricsDto'>;
 export type JoinToken = Schema<'JoinTokenIssuedDto'>;
 export type NodeReplica = Schema<'NodeReplicaDto'>;
 export type NodeReplicaList = Schema<'NodeReplicaListDto'>;
+export type AgentUpgradeOverview = Schema<'AgentUpgradeOverviewDto'>;
+export type AgentUpgrade = Schema<'AgentUpgradeDto'>;
 
 /**
  * Servers of an organization: listing, enrollment tokens, declared public addresses and confirmed
@@ -85,6 +87,23 @@ export class FleetApi extends WorkspaceApi {
     return this.required(() =>
       this.client.GET('/api/v1/organizations/{organizationId}/nodes/{nodeId}/metrics', {
         params: { path: { organizationId, nodeId }, query: { range } },
+      }),
+    );
+  }
+  /** The agents' target version, the servers on an older release and the newest rollout (ADR 0028). */
+  agentUpgrades(organizationId: string): Promise<AgentUpgradeOverview> {
+    return this.required(() =>
+      this.client.GET('/api/v1/organizations/{organizationId}/agent-upgrades', {
+        params: { path: { organizationId } },
+      }),
+    );
+  }
+  /** Upgrades every agent on an older release to `version`, the control plane's, one at a time. */
+  startAgentUpgrade(organizationId: string, version: string): Promise<AgentUpgrade> {
+    return this.required(() =>
+      this.client.POST('/api/v1/organizations/{organizationId}/agent-upgrades', {
+        body: { version },
+        params: { path: { organizationId }, header: this.browser() },
       }),
     );
   }

@@ -11,7 +11,10 @@ import { localhostTls } from './localhost-tls';
 import { smtpServer } from './smtp-server';
 
 /** Real production assets, HTTPS, PostgreSQL and TLS SMTP, all disposable and loopback-only. */
-export async function browserApp(): Promise<{
+export async function browserApp(
+  /** Providers replaced in the API, as `integrationApp` takes them. */
+  overrides: Parameters<typeof integrationApp>[0] = [],
+): Promise<{
   context: BrowserContext;
   newContext: () => Promise<BrowserContext>;
   origin: string;
@@ -60,7 +63,7 @@ export async function browserApp(): Promise<{
       restore[key] = process.env[key];
       process.env[key] = value;
     }
-    const backend = await integrationApp([], {
+    const backend = await integrationApp(overrides, {
       // Never reset an inherited developer DATABASE_URL, including one loaded by Nx.
       isolatedDatabase: true,
       // The production role: tenant commands refuse one that could bypass row security.
