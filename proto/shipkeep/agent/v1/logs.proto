@@ -1,0 +1,58 @@
+// Frames of the log stream (ADR 0029, SPEC section 3.1 and 12).
+
+syntax = "proto3";
+
+package shipkeep.agent.v1;
+
+import "google/protobuf/timestamp.proto";
+
+// Agent to control plane.
+message ShipLogsRequest {
+  oneof frame {
+    // First frame: the session the agent holds, refused when stale.
+    LogsOpen open = 1;
+    LogBatch batch = 2;
+  }
+}
+
+// Control plane to agent.
+message ShipLogsResponse {
+  oneof frame {
+    LogAck ack = 1;
+  }
+}
+
+message LogsOpen {
+  uint64 lease_epoch = 1;
+}
+
+// At most 256 entries and 60 KiB.
+message LogBatch {
+  // Increases by one with every batch of the stream, from 1.
+  uint64 seq = 1;
+  repeated LogEntry entries = 2;
+}
+
+message LogEntry {
+  // The managed container's name, as the agent created it; the control plane maps it to an
+  // allocation and never writes it as a label.
+  string container = 1;
+  LogStream stream = 2;
+  // Docker's timestamp of the line.
+  google.protobuf.Timestamp time = 3;
+  // The line without its newline, at most 16 KiB, valid UTF-8, with secret values redacted.
+  string line = 4;
+  // The line was longer and was cut.
+  bool truncated = 5;
+}
+
+enum LogStream {
+  LOG_STREAM_UNSPECIFIED = 0;
+  LOG_STREAM_STDOUT = 1;
+  LOG_STREAM_STDERR = 2;
+}
+
+// VictoriaLogs accepted the batch with this sequence number.
+message LogAck {
+  uint64 seq = 1;
+}
