@@ -3,6 +3,7 @@ import type {
   AgentActionEntry,
   AgentActionRecord,
 } from '../domain/agent-action';
+import type { AgentArchitecture, ReleaseVersion } from '../domain/agent-upgrade';
 import type { JoinTokenRecord } from '../domain/join-token';
 import type { NodeCertificateRecord, NodeFacts, NodeRecord, NodeStatus } from '../domain/node';
 import type { NodeCredential, NodeIdentity } from '../domain/node-identity';
@@ -146,3 +147,20 @@ export const JOIN_TOKEN_STORE = Symbol('JoinTokenStore');
 export const NODE_STORE = Symbol('NodeStore');
 export const CERTIFICATE_AUTHORITY = Symbol('CertificateAuthority');
 export const CONFIRMATION_KEY_PROVIDER = Symbol('ConfirmationKeyProvider');
+
+/**
+ * What the control plane relays in an UpgradeAgent: the archive's address, its SHA-256 and its
+ * Sigstore bundle, as the release publishes them (ADR 0028). The agent checks all of it itself.
+ */
+export interface AgentRelease {
+  readonly url: string;
+  /** Lowercase hex. */
+  readonly sha256: string;
+  readonly bundleJson: Uint8Array;
+}
+/** Reads agent releases from where `release.yml` publishes them. */
+export interface AgentReleases {
+  /** The release of `version` for `architecture`; null when it cannot be read, for any reason. */
+  find(version: ReleaseVersion, architecture: AgentArchitecture): Promise<AgentRelease | null>;
+}
+export const AGENT_RELEASES = Symbol('AgentReleases');
