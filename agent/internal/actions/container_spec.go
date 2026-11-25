@@ -85,9 +85,9 @@ func containerConfig(spec *agentv1.ContainerSpec, workloads Workloads) (string, 
 		return "", docker.ContainerConfig{}, err
 	}
 	labels[identityLabel] = spec.GetName()
-	if names := secretNames(spec); names != "" {
-		labels[SecretEnvLabel] = names
-	}
+	// Always set, empty without secrets: a container without the label predates it, and the log
+	// shipper then redacts every value it has (ADR 0029).
+	labels[SecretEnvLabel] = secretNames(spec)
 	disk, err := diskBudget(spec.GetResources())
 	if err != nil {
 		return "", docker.ContainerConfig{}, err
