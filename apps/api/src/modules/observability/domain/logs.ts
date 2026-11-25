@@ -168,6 +168,11 @@ export interface LogSearch {
   readonly stream?: 'stdout' | 'stderr' | undefined;
   readonly instance?: number | undefined;
   readonly from: Date;
+  /**
+   * `from` as the client wrote it, with up to nine digits of fraction: a live view reads forward
+   * from a line's exact time, which a Date would cut to the millisecond.
+   */
+  readonly fromExact?: string | undefined;
   readonly to: Date;
   readonly limit: number;
   /** `newest` first for a search, `oldest` first for a live view reading forward from `from`. */
@@ -185,13 +190,20 @@ export function logsQuery(search: LogSearch): string {
     throw new Error('invalid log search scope');
   const parts = [
     `{org="${search.organizationId}",app="${search.applicationId}"}`,
-    `_time:[${search.from.toISOString()}, ${search.to.toISOString()}]`,
+    `_time:[${exactTime(search.fromExact) ?? search.from.toISOString()}, ${search.to.toISOString()}]`,
   ];
   if (search.stream) parts.push(`stream:=${search.stream}`);
   if (search.instance !== undefined) parts.push(`instance:="${String(search.instance)}"`);
   if (search.text) parts.push(`*${quoted(search.text)}*`);
   const sort = search.order === 'oldest' ? '_time' : '_time desc';
   return `${parts.join(' ')} | sort by (${sort}) | limit ${String(search.limit)}`;
+}
+
+const EXACT_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
+
+/** A UTC time with up to nine digits of fraction, as it may go into the query; else undefined. */
+function exactTime(value: string | undefined): string | undefined {
+  return value !== undefined && EXACT_TIME.test(value) ? value : undefined;
 }
 
 /** A LogsQL quoted string: backslashes and quotes escaped, control characters removed. */

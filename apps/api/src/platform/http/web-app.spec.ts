@@ -9,7 +9,7 @@ import type { Request, Response } from 'express';
 import helmet from 'helmet';
 import request from 'supertest';
 
-import { installWebApp, WEB_NONCE_PLACEHOLDER } from './web-app';
+import { installWebApp, socketOrigin, WEB_NONCE_PLACEHOLDER } from './web-app';
 
 describe('production browser serving', () => {
   let app: INestApplication;
@@ -140,5 +140,15 @@ describe('production browser serving', () => {
     await expect(installWebApp(app, directory)).rejects.toThrow(
       'Built web assets are missing or invalid.',
     );
+  });
+});
+
+describe('the WebSocket origin of the CSP', () => {
+  it('is the public URL with the socket scheme', () => {
+    expect(socketOrigin('https://shipkeep.example.com')).toBe('wss://shipkeep.example.com');
+    expect(socketOrigin('https://shipkeep.example.com:8443/')).toBe(
+      'wss://shipkeep.example.com:8443',
+    );
+    expect(socketOrigin('http://localhost:3000')).toBe('ws://localhost:3000');
   });
 });

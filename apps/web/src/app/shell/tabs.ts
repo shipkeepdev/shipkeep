@@ -1,11 +1,16 @@
 import {
+  afterNextRender,
+  afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   effect,
+  type ElementRef,
   inject,
   input,
   model,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -26,14 +31,15 @@ export interface Tab {
 /**
  * Sections of a page, shown one at a time, as the design's underlined tabs. The open tab is kept in
  * the URL (`?tab=`), so a reload or a shared link opens the same one. Hide the panels with `[hidden]`
- * rather than removing them, so that a form keeps what was typed when another tab is opened.
+ * rather than removing them, so that a form keeps what was typed when another tab is opened. On a
+ * narrow screen the bar scrolls sideways, and keeps the open tab in view.
  */
 @Component({
   selector: 'sk-tabs',
   imports: [Icon, T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div role="tablist" [attr.aria-label]="label() | t" class="tabbar">
+    <div #list role="tablist" [attr.aria-label]="label() | t" class="tabbar">
       @for (tab of tabs(); track tab.id) {
         <button
           type="button"
@@ -64,6 +70,7 @@ export class Tabs {
   readonly active = model.required<string>();
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
+  private readonly list = viewChild.required<ElementRef<HTMLElement>>('list');
   private readonly fromUrl = toSignal(
     this.route.queryParamMap.pipe(map((params) => params.get('tab'))),
   );
@@ -74,6 +81,33 @@ export class Tabs {
       const known = this.tabs().some((tab) => tab.id === wanted);
       if (wanted && known && wanted !== untracked(this.active)) this.active.set(wanted);
     });
+    afterRenderEffect(() => {
+      this.active();
+      this.reveal();
+    });
+    // A narrower bar, a phone turned or a window resized, can hide the open tab too.
+    const destroyRef = inject(DestroyRef);
+    afterNextRender(() => {
+      if (typeof ResizeObserver === 'undefined') return;
+      const observer = new ResizeObserver(() => {
+        this.reveal();
+      });
+      observer.observe(this.list().nativeElement);
+      destroyRef.onDestroy(() => {
+        observer.disconnect();
+      });
+    });
+  }
+
+  /** Only the bar scrolls, never the page: a tab opened from a link may sit past its right edge. */
+  private reveal(): void {
+    const list = this.list().nativeElement;
+    const tab = list.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!tab) return;
+    const bar = list.getBoundingClientRect();
+    const box = tab.getBoundingClientRect();
+    if (box.right > bar.right) list.scrollLeft += box.right - bar.right;
+    else if (box.left < bar.left) list.scrollLeft -= bar.left - box.left;
   }
 
   protected select(id: string): void {

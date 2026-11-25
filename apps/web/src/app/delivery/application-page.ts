@@ -36,14 +36,10 @@ import { ShellContext } from '../shell/shell-context';
 import { type Tab, Tabs } from '../shell/tabs';
 import { Collection } from '../workspace/collection';
 
-import {
-  APP_SAMPLES,
-  APP_SECTIONS,
-  SAMPLE_LOGS,
-  SAMPLE_TERMINAL,
-  type SectionCopy,
-} from './application-design';
+import { APP_SAMPLES, APP_SECTIONS, type SectionCopy } from './application-design';
 import { AgentActionsPanel } from './agent-actions-panel';
+import { LogsPanel } from './logs-panel';
+import { TerminalPanel } from './terminal-panel';
 import { ApplicationDanger } from './application-danger';
 import { configSection } from './config-sections';
 import { ConfigurationEditor } from './configuration-editor';
@@ -104,6 +100,8 @@ const LIVE_POLL_MS = 15_000;
   selector: 'sk-application-page',
   imports: [
     AgentActionsPanel,
+    LogsPanel,
+    TerminalPanel,
     ApplicationDanger,
     BlockView,
     Brand,
@@ -474,46 +472,11 @@ const LIVE_POLL_MS = 15_000;
           [hidden]="tab() !== 'logs'"
           class="flex flex-col gap-3"
         >
-          <sk-preview-pill class="self-start" />
-          <div class="card overflow-hidden">
-            <div class="flex flex-wrap items-center gap-2 border-b border-line px-4 py-3">
-              @for (f of logFilters; track f.k) {
-                <button
-                  type="button"
-                  class="rounded-lg border px-2.5 py-[5px] text-[12px]"
-                  [style.border-color]="logFilter() === f.k ? '#EDEDEF' : '#262628'"
-                  [style.color]="logFilter() === f.k ? '#EDEDEF' : '#8B8B93'"
-                  (click)="logFilter.set(f.k)"
-                >
-                  {{ f.label | t }}
-                </button>
-              }
-              <span class="ml-auto flex items-center gap-1.5 text-[12px] text-mute"
-                ><span class="dot bg-green"></span>{{ 'live' | t }}</span
-              >
-            </div>
-            <div class="max-h-[440px] overflow-auto px-4 py-3 font-mono text-[12px] leading-[1.85]">
-              @for (l of logs(); track $index) {
-                <div
-                  class="grid grid-cols-[70px_78px_40px_minmax(0,1fr)] gap-2.5 whitespace-nowrap"
-                >
-                  <span class="text-dim3">{{ l.t }}</span
-                  ><span class="text-dim">{{ l.node }}</span>
-                  <span
-                    [style.color]="
-                      l.lvl === 'ERR'
-                        ? 'oklch(0.68 0.17 25)'
-                        : l.lvl === 'WRN'
-                          ? 'oklch(0.80 0.12 80)'
-                          : '#7E7E87'
-                    "
-                    >{{ l.lvl }}</span
-                  >
-                  <span class="truncate text-fg2">{{ l.msg | t }}</span>
-                </div>
-              }
-            </div>
-          </div>
+          <sk-application-logs
+            [environment]="environment()"
+            [applicationId]="current.id"
+            [active]="tab() === 'logs'"
+          />
         </div>
 
         <div
@@ -523,30 +486,11 @@ const LIVE_POLL_MS = 15_000;
           [hidden]="tab() !== 'terminal'"
           class="flex flex-col gap-3"
         >
-          <sk-preview-pill class="self-start" />
-          <div class="note note-warn">
-            <sk-icon name="shield-lock" class="text-amber" />
-            <span>{{
-              'Session recorded in the audit log. The terminal goes through the agent: no SSH port is open.'
-                | t
-            }}</span>
-          </div>
-          <div class="card overflow-hidden">
-            <div
-              class="flex items-center gap-2.5 border-b border-line px-4 py-2.5 font-mono text-[11.5px] text-mute"
-            >
-              <span class="text-fg">{{ current.name }}</span
-              >/app<span class="ml-auto">{{ 'not connected' | t }}</span>
-            </div>
-            <div class="min-h-[260px] px-4 py-3.5 font-mono text-[12.5px] leading-[1.8]">
-              @for (l of terminal; track $index) {
-                <div class="whitespace-pre" [style.color]="l.c">{{ l.t | t }}</div>
-              }
-              <div class="flex gap-2">
-                <span class="text-rose">$</span><span class="inline-block h-4 w-2 bg-fg"></span>
-              </div>
-            </div>
-          </div>
+          <sk-terminal
+            [environment]="environment()"
+            [applicationId]="current.id"
+            [name]="current.name"
+          />
         </div>
 
         <div
@@ -649,7 +593,6 @@ export class ApplicationPage {
     { id: 'metrics', label: 'Metrics', icon: 'chart-bar' },
   ]);
   protected readonly menu = APP_SECTIONS;
-  protected readonly terminal = SAMPLE_TERMINAL;
   protected readonly metricsRanges: readonly MetricsRange[] = ['1h', '24h', '7d'];
   protected readonly metricsRange = signal<MetricsRange>('1h');
   protected readonly metrics = signal<ApplicationMetrics | null>(null);
@@ -685,19 +628,6 @@ export class ApplicationPage {
   protected readonly duration = duration;
   protected readonly clock = clock;
   protected readonly shortDate = shortDate;
-  protected readonly logFilter = signal('all');
-  protected readonly logFilters = [
-    { k: 'all', label: 'All' },
-    { k: 'err', label: 'Errors' },
-    { k: 'srv-par-1', label: 'srv-par-1' },
-    { k: 'srv-fra-2', label: 'srv-fra-2' },
-  ];
-  protected readonly logs = computed(() =>
-    SAMPLE_LOGS.filter((l) => {
-      const f = this.logFilter();
-      return f === 'all' || (f === 'err' ? l.lvl !== 'INF' : l.node === f);
-    }),
-  );
   private readonly query = toSignal(
     inject(ActivatedRoute).queryParamMap.pipe(map((q) => q.get('section'))),
   );
