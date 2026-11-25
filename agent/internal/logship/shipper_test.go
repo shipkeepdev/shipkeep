@@ -258,11 +258,12 @@ func TestShipperKeepsTheValuesOfAContainerWithAnEmptyLabel(t *testing.T) {
 	}
 }
 
-// Each line of a multiline secret is redacted on its own line of output, CRLF included (#471).
+// Each line of a multiline secret is redacted on its own line of output, CRLF included: Docker's
+// reader drops the line ends (#471).
 func TestShipperRedactsEachLineOfAMultilineSecret(t *testing.T) {
 	entries := shipped(t, map[string]string{NameLabel: "sk-web-r1-0", SecretEnvLabel: "KEY"}, []string{"KEY=fake-key-line-one\r\nfake-key-line-two"},
-		output("fake-key-line-one\r", false), output("fake-key-line-two", false))
-	if entries[0].GetLine() != Redacted+"\r" || entries[1].GetLine() != Redacted {
+		output("fake-key-line-one", false), output("fake-key-line-two", false))
+	if entries[0].GetLine() != Redacted || entries[1].GetLine() != Redacted {
 		t.Fatalf("lines %q %q", entries[0].GetLine(), entries[1].GetLine())
 	}
 }

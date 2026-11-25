@@ -16,8 +16,18 @@ const Redacted = "[redacted]"
 
 // Redactor removes the values of a container's secret environment variables from its lines.
 type Redactor struct {
-	values []string
+	values []secretValue
 }
+
+// secretValue is one value to redact, with its Knuth-Morris-Pratt failure function: fail[i] is
+// the length of the longest proper prefix of text[:i+1] that is also its suffix.
+type secretValue struct {
+	text string
+	fail []int32
+}
+
+// span is a part of a line to redact, from start to end (exclusive).
+type span struct{ start, end int }
 
 // NewRedactor reads the secret values from env (Docker's NAME=value list), for the names the
 // agent recorded when it created the container (actions.SecretEnvLabel).
@@ -33,83 +43,126 @@ func NewRedactor(env []string, names string) Redactor {
 
 // LegacyRedactor is for a container created before its secret names were recorded: any of its
 // values may be a secret, so every one of MinSecret bytes or more is redacted. Redeploying the
-// application gives it exact redaction.
+// application creates new containers, which get exact redaction.
 func LegacyRedactor(env []string) Redactor {
 	return redactor(env, func(string) bool { return true })
 }
 
 func redactor(env []string, secret func(name string) bool) Redactor {
-	var values []string
+	var texts []string
 	for _, entry := range env {
 		name, value, ok := strings.Cut(entry, "=")
 		if !ok || !secret(name) {
 			continue
 		}
 		if len(value) >= MinSecret {
-			values = append(values, value)
+			texts = append(texts, value)
 		}
-		// Output comes line by line: each line of a multiline value is a value of its own.
+		// Output comes line by line, without its line ends: each line of a multiline value is a
+		// value of its own.
 		if strings.ContainsAny(value, "\r\n") {
 			for line := range strings.SplitSeq(value, "\n") {
 				if line = strings.TrimSuffix(line, "\r"); len(line) >= MinSecret {
-					values = append(values, line)
+					texts = append(texts, line)
 				}
 			}
 		}
 	}
-	// The longest first: a value that contains another is replaced whole.
-	slices.SortFunc(values, func(a, b string) int { return cmp.Compare(len(b), len(a)) })
-	return Redactor{values: slices.Compact(values)}
+	slices.Sort(texts)
+	texts = slices.Compact(texts)
+	values := make([]secretValue, 0, len(texts))
+	for _, text := range texts {
+		values = append(values, secretValue{text: text, fail: failure(text)})
+	}
+	return Redactor{values: values}
 }
 
-// Redact returns line without the secret values.
-func (r Redactor) Redact(line string) string {
-	for _, value := range r.values {
-		line = strings.ReplaceAll(line, value, Redacted)
-	}
-	return line
-}
-
-// RedactCutEnd redacts the start of a secret value that a line cut at its bound ends with: the
-// rest of the value was cut away, so Redact cannot match it whole. It runs on the line as read,
-// before Redact, and takes the longest such start over all values; one shorter than MinSecret is
-// left, like a short value. Its time is linear in the line and the values.
-func (r Redactor) RedactCutEnd(line string) string {
-	longest := 0
-	for _, value := range r.values {
-		longest = max(longest, cutStart(line, value))
-	}
-	if longest < MinSecret {
-		return line
-	}
-	return line[:len(line)-longest] + Redacted
-}
-
-// cutStart returns the length of the longest proper prefix of value that line ends with, by the
-// Knuth-Morris-Pratt failure function.
-func cutStart(line, value string) int {
-	// Only the last len(value)-1 bytes can hold a proper prefix: the whole value never matches.
-	if start := len(line) - (len(value) - 1); start > 0 {
-		line = line[start:]
-	}
-	fail := make([]int, len(value))
-	for i, k := 1, 0; i < len(value); i++ {
-		for k > 0 && value[i] != value[k] {
+func failure(text string) []int32 {
+	fail := make([]int32, len(text))
+	var k int32
+	for i := 1; i < len(text); i++ {
+		for k > 0 && text[i] != text[k] {
 			k = fail[k-1]
 		}
-		if value[i] == value[k] {
+		if text[i] == text[k] {
 			k++
 		}
 		fail[i] = k
 	}
-	k := 0
-	for i := range len(line) {
-		for k > 0 && line[i] != value[k] {
-			k = fail[k-1]
+	return fail
+}
+
+// Redact returns line without the secret values. Every occurrence is redacted, overlapping ones
+// included, and occurrences that overlap or touch become one "[redacted]".
+func (r Redactor) Redact(line string) string {
+	return redact(line, r.spans(line, false))
+}
+
+// RedactCut is Redact for a line cut at its bound: a start of a value that the line ends with,
+// MinSecret bytes or more of it, is redacted too, since the rest of the value was cut away. One
+// shorter than MinSecret is left, like a short value.
+func (r Redactor) RedactCut(line string) string {
+	return redact(line, r.spans(line, true))
+}
+
+// spans returns the parts of line to redact, sorted and merged. Each value is matched in one pass
+// over the line as read, so the time is linear in the line and the values, whatever they hold.
+func (r Redactor) spans(line string, cut bool) []span {
+	var found []span
+	for _, value := range r.values {
+		if !cut && !strings.Contains(line, value.text) {
+			continue
 		}
-		if line[i] == value[k] {
-			k++
+		found = value.match(found, line, cut)
+	}
+	if len(found) == 0 {
+		return nil
+	}
+	slices.SortFunc(found, func(a, b span) int { return cmp.Compare(a.start, b.start) })
+	merged := found[:1]
+	for _, next := range found[1:] {
+		if last := &merged[len(merged)-1]; next.start <= last.end {
+			last.end = max(last.end, next.end)
+		} else {
+			merged = append(merged, next)
 		}
 	}
-	return k
+	return merged
+}
+
+// match appends the spans of every occurrence of the value in line and, when the line was cut,
+// of the longest proper prefix of the value that it ends with.
+func (v secretValue) match(found []span, line string, cut bool) []span {
+	var k int32
+	for i := range len(line) {
+		for k > 0 && line[i] != v.text[k] {
+			k = v.fail[k-1]
+		}
+		if line[i] == v.text[k] {
+			k++
+		}
+		if int(k) == len(v.text) {
+			found = append(found, span{i + 1 - len(v.text), i + 1})
+			k = v.fail[k-1]
+		}
+	}
+	if cut && k >= MinSecret {
+		found = append(found, span{len(line) - int(k), len(line)})
+	}
+	return found
+}
+
+func redact(line string, spans []span) string {
+	if len(spans) == 0 {
+		return line
+	}
+	var out strings.Builder
+	at := 0
+	for _, s := range spans {
+		out.WriteString(line[at:s.start])
+		out.WriteString(Redacted)
+		at = s.end
+	}
+	out.WriteString(line[at:])
+	return out.String()
 }

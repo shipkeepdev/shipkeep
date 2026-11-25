@@ -192,7 +192,7 @@ func TestRealShipperRedactsEachLineOfAMultilineSecret(t *testing.T) {
 	run := shipReal(t, "sk-logs-multi-0", `printf '%s\n' "$KEY"; printf '%s\n' "$KEY" >&2; sleep 300`,
 		[]string{"KEY=" + key}, map[string]string{SecretEnvLabel: "KEY"}, 0, 6)
 	for _, entry := range run.entries {
-		if strings.Contains(entry.GetLine(), "fake-key") || strings.TrimSuffix(entry.GetLine(), "\r") != Redacted {
+		if entry.GetLine() != Redacted {
 			t.Fatalf("entry %v", entry)
 		}
 	}
@@ -206,6 +206,6 @@ func TestRealShipperRedactsTheStartOfASecretCutAtTheLineBound(t *testing.T) {
 		[]string{"PAD=" + pad, "TOKEN=" + printed}, map[string]string{SecretEnvLabel: "TOKEN"}, 0, 1)
 	entry := run.entries[0]
 	if !entry.GetTruncated() || entry.GetLine() != pad+Redacted || strings.Contains(entry.GetLine(), printed[:8]) {
-		t.Fatalf("line ends %q, truncated %v", entry.GetLine()[len(entry.GetLine())-40:], entry.GetTruncated())
+		t.Fatalf("line ends %q, truncated %v", entry.GetLine()[max(0, len(entry.GetLine())-40):], entry.GetTruncated())
 	}
 }
