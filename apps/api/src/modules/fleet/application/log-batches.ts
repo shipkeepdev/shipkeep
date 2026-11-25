@@ -19,21 +19,21 @@ export type LogBatchHandler = (
   delivery: LogDelivery,
 ) => Promise<void>;
 
-/** Deliveries one node may have under way at once, across its streams, a replaced one included. */
+/**
+ * Deliveries one node may have under way at once, across its streams, a replaced one included.
+ * The store bounds its own work across nodes.
+ */
 export const MAX_NODE_DELIVERIES = 2;
-/** Deliveries this process has under way at once, of all nodes: at most 64 KiB each. */
-export const MAX_DELIVERIES = 256;
 
 /**
  * Hands agents' log batches to the context that stores them (ADR 0029), which registers here when
  * a log store is configured. Welcome says whether one is: without it, agents ship none. The work
- * under way is bounded per node and in all, whatever the streams do.
+ * under way is bounded per node, whatever its streams do.
  */
 @Injectable()
 export class LogBatches {
   private handler: LogBatchHandler | undefined;
   private readonly underway = new Map<string, number>();
-  private total = 0;
 
   register(handler: LogBatchHandler): void {
     this.handler = handler;
@@ -48,13 +48,11 @@ export class LogBatches {
     delivery.signal.throwIfAborted();
     const key = `${identity.organizationId}/${identity.nodeId}`;
     const node = this.underway.get(key) ?? 0;
-    if (node >= MAX_NODE_DELIVERIES || this.total >= MAX_DELIVERIES) throw new LogsBusyError();
+    if (node >= MAX_NODE_DELIVERIES) throw new LogsBusyError();
     this.underway.set(key, node + 1);
-    this.total++;
     try {
       await this.handler(identity, batch, delivery);
     } finally {
-      this.total--;
       const left = (this.underway.get(key) ?? 1) - 1;
       if (left === 0) this.underway.delete(key);
       else this.underway.set(key, left);

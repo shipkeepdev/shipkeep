@@ -124,20 +124,45 @@ describe('log batches (ADR 0029)', () => {
     expect(batchBytes(['x'])).toBe(LOG_BATCH_MIN_BYTES);
   });
 
+  const always = Number.POSITIVE_INFINITY;
+
   it('says when a bucket has refilled, so that it can be forgotten', () => {
     const rate = new ByteRate(1000, 4000, 0);
-    rate.take(4000, 0);
+    rate.reserve(4000, always, 0);
     expect(rate.full(1000)).toBe(false);
     expect(rate.full(4000)).toBe(true);
   });
 
   it('lets a node write its burst at once, then its rate', () => {
     const rate = new ByteRate(1000, 4000, 0);
-    expect(rate.take(4000, 0)).toBe(0);
-    expect(rate.take(1000, 0)).toBe(1000);
+    expect(rate.reserve(4000, always, 0)).toBe(0);
+    expect(rate.reserve(1000, always, 0)).toBe(1000);
     // Two seconds later, one was paid back for the waiting write, one is free.
-    expect(rate.take(1000, 2000)).toBe(0);
-    expect(rate.take(10_000, 2000)).toBe(10_000);
+    expect(rate.reserve(1000, always, 2000)).toBe(0);
+    expect(rate.reserve(10_000, always, 2000)).toBe(10_000);
+  });
+
+  it('refuses, taking nothing, a write that would wait past its bound (#473)', () => {
+    const rate = new ByteRate(1000, 4000, 0);
+    expect(rate.reserve(4000, 2000, 0)).toBe(0);
+    // Exactly at the bound passes; one byte more is refused, and the debt stays as it was.
+    expect(rate.reserve(2000, 2000, 0)).toBe(2000);
+    expect(rate.reserve(1, 2000, 0)).toBeUndefined();
+    expect(rate.reserve(1000, 2000, 0)).toBeUndefined();
+    // The debt is paid back over time, refused writes included in nothing.
+    expect(rate.reserve(1000, 2000, 2000)).toBe(1000);
+    expect(rate.reserve(1000, 2000, 5000)).toBe(0);
+  });
+
+  it('gives back a write the control plane refused, never past the burst', () => {
+    const rate = new ByteRate(1000, 4000, 0);
+    rate.reserve(4000, always, 0);
+    rate.refund(4000);
+    expect(rate.reserve(4000, always, 0)).toBe(0);
+    rate.refund(4000);
+    rate.refund(4000);
+    expect(rate.full(0)).toBe(true);
+    expect(rate.reserve(5000, always, 0)).toBe(1000);
   });
 });
 

@@ -1,6 +1,6 @@
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
-import { Injectable, type OnApplicationShutdown } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import {
   type ShipLogsRequest,
   type ShipLogsResponse,
@@ -22,7 +22,7 @@ export const LOG_STREAM_OPEN_MS = 30_000;
  * The agents' log streams (ADR 0029), one per node: a newer stream of a node replaces the older.
  */
 @Injectable()
-export class LogStreams implements OnApplicationShutdown {
+export class LogStreams {
   private readonly active = new Map<string, AbortController>();
 
   constructor(
@@ -112,16 +112,9 @@ export class LogStreams implements OnApplicationShutdown {
       // Do not await return() on an iterator blocked on a silent peer.
     }
   }
-
-  /** The process stops: every stream ends, and the deliveries under way with it. */
-  onApplicationShutdown(): void {
-    for (const controller of this.active.values())
-      controller.abort(new ConnectError('the control plane is stopping', Code.Unavailable));
-    this.active.clear();
-  }
 }
 
-/** Why a stream ended, as its signal says: replaced, stopping, or its transport gone. */
+/** Why a stream ended, as its signal says: replaced, or its transport gone (the process stopping too). */
 function ended(signal: AbortSignal): ConnectError {
   const reason: unknown = signal.reason;
   return reason instanceof ConnectError

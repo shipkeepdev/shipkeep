@@ -5,7 +5,7 @@ import {
   ShipLogsRequestSchema,
   type ShipLogsResponse,
 } from '@shipkeep/proto-ts';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { AuthenticateNode } from '../application/authenticate-node';
 import { LogBatches, MAX_NODE_DELIVERIES } from '../application/log-batches';
@@ -178,9 +178,13 @@ describe('the agent log stream (ADR 0029)', () => {
       const { batches, state } = blocking();
       const relay = streams(batches);
       const ended: Promise<{ acks: bigint[]; code?: Code }>[] = [];
+      const lastTransport = new AbortController();
       // A node that opens a new stream again and again, each with a batch held by its quota.
       for (let i = 0; i < 20; i++) {
-        ended.push(drain(relay.ship(thenSilent(open(3n), batch(1n)), { signal }, node, fast)));
+        const transport = i === 19 ? lastTransport.signal : signal;
+        ended.push(
+          drain(relay.ship(thenSilent(open(3n), batch(1n)), { signal: transport }, node, fast)),
+        );
         await pause(5);
       }
       const results = await Promise.all(ended.slice(0, -1));
@@ -188,9 +192,36 @@ describe('the agent log stream (ADR 0029)', () => {
       expect(state.waiting).toBe(1);
       expect(state.most).toBeLessThanOrEqual(MAX_NODE_DELIVERIES);
       expect(state.written).toBe(0);
-      relay.onApplicationShutdown();
-      expect(await ended.at(-1)).toEqual({ acks: [], code: Code.Unavailable });
+      // The last one, still the node's stream, writes once its quota allows, and is acknowledged.
+      await vi.waitFor(
+        () => {
+          expect(state.written).toBe(1);
+        },
+        { timeout: 3000 },
+      );
+      await pause(20);
+      lastTransport.abort(new Error('agent stopped'));
+      expect(await ended.at(-1)).toEqual({ acks: [1n], code: Code.Canceled });
+    });
+
+    it('cancels the batch under way when its transport ends, as when the control plane stops', async () => {
+      const { batches, state } = blocking();
+      const transport = new AbortController();
+      const ended = drain(
+        streams(batches).ship(
+          thenSilent(open(3n), batch(1n)),
+          { signal: transport.signal },
+          node,
+          fast,
+        ),
+      );
+      await pause(20);
+      expect(state.waiting).toBe(1);
+      // Stopping destroys every agent connection: each stream's transport ends.
+      transport.abort(new Error('session destroyed'));
+      expect(await ended).toEqual({ acks: [], code: Code.Canceled });
       expect(state.waiting).toBe(0);
+      expect(state.written).toBe(0);
     });
 
     it('acknowledges nothing a stream cancelled during its write kept', async () => {

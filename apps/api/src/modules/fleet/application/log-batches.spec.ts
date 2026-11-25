@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 import { LogsBusyError, LogsNotKeptError } from '../domain/logs-not-kept';
 
-import { LogBatches, MAX_DELIVERIES, MAX_NODE_DELIVERIES } from './log-batches';
+import { LogBatches, MAX_NODE_DELIVERIES } from './log-batches';
 
 const node = { organizationId: 'o1', nodeId: 'n1', serial: '01' };
 const open = () => ({
@@ -38,7 +38,7 @@ describe('log batches (ADR 0029)', () => {
     expect(seen).toBe(0);
   });
 
-  it('bounds the deliveries under way, per node across its streams, and in all (#473)', async () => {
+  it('bounds the deliveries under way per node, across its streams (#473)', async () => {
     const batches = new LogBatches();
     const waiting: (() => void)[] = [];
     batches.register(() => new Promise<void>((resolve) => waiting.push(resolve)));
@@ -48,14 +48,10 @@ describe('log batches (ADR 0029)', () => {
     );
     // One more for this node, from a new stream or not, is refused at once.
     await expect(batches.deliver(node, batch, open())).rejects.toBeInstanceOf(LogsBusyError);
-    const others = Array.from({ length: MAX_DELIVERIES - MAX_NODE_DELIVERIES }, (_, i) =>
-      batches.deliver({ ...node, nodeId: `n${String(i + 2)}` }, batch, open()),
-    );
-    await expect(
-      batches.deliver({ ...node, nodeId: 'n-last' }, batch, open()),
-    ).rejects.toBeInstanceOf(LogsBusyError);
+    // Another node is not held up by this one.
+    const other = batches.deliver({ ...node, nodeId: 'n2' }, batch, open());
     for (const release of waiting) release();
-    await Promise.all([...mine, ...others]);
+    await Promise.all([...mine, other]);
     // Once done, the places are free again.
     const again = batches.deliver(node, batch, open());
     waiting.at(-1)?.();

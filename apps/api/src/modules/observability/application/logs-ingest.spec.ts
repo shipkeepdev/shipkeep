@@ -26,7 +26,11 @@ function delivery(stillAllowed = () => Promise.resolve()): LogDelivery & { end()
 }
 const kept = delivery();
 
-function world(store: LogsStore | null, sleep?: 'real') {
+function world(
+  store: LogsStore | null,
+  sleep?: 'real',
+  limits?: { readonly waits: number; readonly writes: number },
+) {
   const batches = new LogBatches();
   const asked: string[][] = [];
   const slept: number[] = [];
@@ -56,6 +60,7 @@ function world(store: LogsStore | null, sleep?: 'real') {
     transaction,
     store,
     sleep === 'real' ? undefined : (ms) => (slept.push(ms), Promise.resolve()),
+    limits,
   );
   ingest.onModuleInit();
   return { batches, ingest, asked, slept };
@@ -238,6 +243,77 @@ describe('log ingestion (ADR 0029)', () => {
       // Nothing refused was charged: once the debt is paid, a batch passes again.
       vi.advanceTimersByTime(MAX_LOG_WAIT_MS + 1000);
       await w.ingest.record(node, big(), kept, NOW);
+    });
+
+    it('bounds the waits of all nodes, and never holds a node within its rate behind them', async () => {
+      // Small bounds, the same rule: the defaults are MAX_LOG_WAITS and MAX_LOG_WRITES.
+      const waits = 3;
+      const w = world(
+        { write: () => Promise.resolve(), query: () => Promise.resolve([]) },
+        'real',
+        { waits, writes: 256 },
+      );
+      vi.useFakeTimers();
+      const spenders = Array.from({ length: waits + 1 }, (_, i) => ({
+        ...node,
+        nodeId: `n${String(i)}`,
+      }));
+      const ends: (() => void)[] = [];
+      const waiting: Promise<void>[] = [];
+      for (const spender of spenders.slice(0, waits)) {
+        for (let i = 0; i < LOG_RATE.burstBytes / (64 * 1024); i++)
+          await w.ingest.record(spender, big(), kept, NOW);
+        const stream = delivery();
+        ends.push(() => {
+          stream.end();
+        });
+        waiting.push(w.ingest.record(spender, big(), stream, NOW).catch(() => undefined));
+      }
+      // Every wait place is taken: one more node past its rate is refused at once, uncharged.
+      const last = spenders.at(-1) ?? node;
+      for (let i = 0; i < LOG_RATE.burstBytes / (64 * 1024); i++)
+        await w.ingest.record(last, big(), kept, NOW);
+      await expect(w.ingest.record(last, big(), kept, NOW)).rejects.toBeInstanceOf(LogsBusyError);
+      // A node within its rate writes at once.
+      await w.ingest.record({ ...node, nodeId: 'fresh' }, big(), kept, NOW);
+      for (const end of ends) end();
+      await Promise.all(waiting);
+      // The refused batch was charged nothing: with the waits gone, it waits only its own share.
+      const after = delivery();
+      const again = w.ingest.record(last, big(), after, NOW);
+      await Promise.resolve();
+      expect(vi.getTimerCount()).toBe(1);
+      after.end();
+      await expect(again).rejects.toThrow('stream ended');
+    });
+
+    it('bounds the writes of all nodes', async () => {
+      const held: (() => void)[] = [];
+      let holding = true;
+      const writes = 4;
+      const w = world(
+        {
+          write: () =>
+            holding ? new Promise<void>((resolve) => held.push(resolve)) : Promise.resolve(),
+          query: () => Promise.resolve([]),
+        },
+        undefined,
+        { waits: 1024, writes },
+      );
+      const line = batchOf({ container: 'sk-web-r1-0', line: 'x' });
+      const writing = Array.from({ length: writes }, (_, i) =>
+        w.ingest.record({ ...node, nodeId: `n${String(i)}` }, line, kept, NOW),
+      );
+      await vi.waitFor(() => {
+        expect(held).toHaveLength(writes);
+      });
+      await expect(
+        w.ingest.record({ ...node, nodeId: 'n-last' }, line, kept, NOW),
+      ).rejects.toBeInstanceOf(LogsBusyError);
+      holding = false;
+      for (const release of held) release();
+      await Promise.all(writing);
+      await w.ingest.record({ ...node, nodeId: 'n-last' }, line, kept, NOW);
     });
 
     it('gives the store its stream, and writes nothing once it ended during the lookup', async () => {

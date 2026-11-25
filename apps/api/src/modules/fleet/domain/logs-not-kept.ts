@@ -15,7 +15,7 @@ export class LogsNotKeptError extends DomainError {
  * batch would wait past its node's longest quota wait: the agent sends it again later.
  */
 export class LogsBusyError extends DomainError {
-  readonly kind = 'precondition_failed' as const;
+  readonly kind = 'unavailable' as const;
   readonly code = 'logs_busy';
 
   constructor() {

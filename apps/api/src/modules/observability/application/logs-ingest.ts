@@ -11,6 +11,8 @@ import {
   type LogInput,
   logRecords,
   MAX_LOG_WAIT_MS,
+  MAX_LOG_WAITS,
+  MAX_LOG_WRITES,
   validEntries,
 } from '../domain/logs';
 
@@ -37,6 +39,9 @@ export class LogsIngest implements OnModuleInit {
   private readonly logger = new Logger(LogsIngest.name);
   private readonly rates = new Map<string, ByteRate>();
   private swept = Date.now();
+  /** Batches waiting for their quota, and batches being looked up and written, of all nodes. */
+  private waits = 0;
+  private writes = 0;
 
   constructor(
     private readonly batches: LogBatches,
@@ -46,6 +51,12 @@ export class LogsIngest implements OnModuleInit {
     @Optional()
     @Inject('LOGS_SLEEP')
     private readonly sleep: (ms: number, signal: AbortSignal) => Promise<void> = wait,
+    @Optional()
+    @Inject('LOGS_LIMITS')
+    private readonly limits: { readonly waits: number; readonly writes: number } = {
+      waits: MAX_LOG_WAITS,
+      writes: MAX_LOG_WRITES,
+    },
   ) {}
 
   onModuleInit(): void {
@@ -54,8 +65,11 @@ export class LogsIngest implements OnModuleInit {
   }
 
   /**
-   * Writes one batch, unless its stream ends first (#473): the wait for the quota, the lookup and
-   * the write all stop with it, and a write that waited checks the node again first.
+   * Writes one batch, unless its stream ends first (#473): the wait for the quota and the write
+   * stop with it; the lookup, which cannot be stopped, runs to its end, and then nothing is
+   * written. A write that waited checks the node again first. Waits and writes are each bounded
+   * across nodes: a batch past a bound is refused and charged nothing, so a node within its rate
+   * is never held up by the waits of others.
    */
   async record(
     identity: NodeIdentity,
@@ -68,12 +82,41 @@ export class LogsIngest implements OnModuleInit {
     const { signal } = delivery;
     signal.throwIfAborted();
     const bytes = batchBytes(batch.entries.map((e) => e.line));
-    const delay = this.rate(identity.nodeId).reserve(bytes, MAX_LOG_WAIT_MS);
+    const rate = this.rate(identity.nodeId);
+    const delay = rate.reserve(bytes, MAX_LOG_WAIT_MS);
     if (delay === undefined) throw new LogsBusyError();
     if (delay > 0) {
-      await this.sleep(delay, signal);
+      if (this.waits >= this.limits.waits) {
+        rate.refund(bytes);
+        throw new LogsBusyError();
+      }
+      this.waits++;
+      try {
+        await this.sleep(delay, signal);
+      } finally {
+        this.waits--;
+      }
       await delivery.stillAllowed();
     }
+    if (this.writes >= this.limits.writes) {
+      rate.refund(bytes);
+      throw new LogsBusyError();
+    }
+    this.writes++;
+    try {
+      await this.write(store, identity, batch, signal, now);
+    } finally {
+      this.writes--;
+    }
+  }
+
+  private async write(
+    store: LogsStore,
+    identity: NodeIdentity,
+    batch: LogBatch,
+    signal: AbortSignal,
+    now: Date,
+  ): Promise<void> {
     const entries = validEntries(batch.entries.map(entryOf).filter((entry) => entry !== undefined));
     if (entries.length < batch.entries.length)
       this.logger.warn({ nodeId: identity.nodeId }, 'malformed log entries dropped');
