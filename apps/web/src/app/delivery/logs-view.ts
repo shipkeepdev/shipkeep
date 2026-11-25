@@ -48,25 +48,33 @@ export function overlapFrom(newest: string): string {
 /** Pages a live view reads at most on each tick before it waits for the next. */
 export const FORWARD_ROUNDS = 5;
 
+/** What a forward read found, and where the next one goes on when it stopped before the end. */
+export interface ForwardRead {
+  readonly lines: LogLine[];
+  /** Set when the last page came back full after FORWARD_ROUNDS: more lines wait from there. */
+  readonly resume?: string;
+}
+
 /**
  * The lines after `from`, oldest first, read page by page while pages come back full: a burst
  * larger than one page is read whole instead of skipped. A page whose last line is at `from` again
- * ends the reading, so that it always moves forward.
+ * ends the reading, so that it always moves forward. When the rounds run out on a full page, the
+ * read says where to go on, so the next one does not read the same lines again.
  */
 export async function readForward(
   page: (from: string) => Promise<readonly LogLine[]>,
   from: string,
   limit: number,
   rounds = FORWARD_ROUNDS,
-): Promise<LogLine[]> {
+): Promise<ForwardRead> {
   const lines: LogLine[] = [];
   let cursor = from;
   for (let round = 0; round < rounds; round++) {
     const answer = await page(cursor);
     lines.push(...answer);
     const last = answer.at(-1);
-    if (answer.length < limit || !last || last.time === cursor) break;
+    if (answer.length < limit || !last || last.time === cursor) return { lines };
     cursor = last.time;
   }
-  return lines;
+  return { lines, resume: cursor };
 }

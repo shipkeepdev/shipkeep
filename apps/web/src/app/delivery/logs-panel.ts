@@ -147,6 +147,11 @@ export class LogsPanel {
   private generation = 0;
   /** The read under way, if any: the next tick waits for it instead of reading the same lines. */
   private reading: symbol | undefined;
+  /** The filter and search the lines shown answer: a tick for another one loads afresh. */
+  private shown: string | undefined;
+  /** Where a live read that stopped on a full page goes on; otherwise a tick starts a little
+   * before the newest line. */
+  private resume: string | undefined;
 
   constructor() {
     effect((onCleanup) => {
@@ -189,41 +194,48 @@ export class LogsPanel {
    * `fresh` loads the newest lines again. Otherwise the live view reads forward from its newest
    * line, oldest first and page after page, so that a burst between two ticks is not skipped.
    */
-  private async load(fresh: boolean): Promise<void> {
+  private async load(asked: boolean): Promise<void> {
     // A tick waits for the read under way; an installation that keeps no logs is not asked again.
-    if (!fresh && (this.reading !== undefined || this.kept() === false)) return;
-    const newest = fresh ? undefined : this.lines().at(0)?.time;
-    const generation = fresh ? ++this.generation : this.generation;
+    if (!asked && (this.reading !== undefined || this.kept() === false)) return;
     const stream = this.filter() === 'all' ? undefined : (this.filter() as 'stdout' | 'stderr');
     const text = this.searched();
+    const asking = JSON.stringify([stream ?? null, text]);
+    // The lines kept answer another filter or search, whose fresh load failed: load afresh.
+    const fresh = asked || asking !== this.shown;
+    const newest = fresh ? undefined : this.lines().at(0)?.time;
+    const from = this.resume ?? (newest ? overlapFrom(newest) : undefined);
+    const generation = fresh ? ++this.generation : this.generation;
     const query = { ...(text ? { text } : {}), ...(stream ? { stream } : {}), limit: LIMIT };
     if (fresh) this.loading.set(true);
     const read = Symbol('read');
     this.reading = read;
     try {
       let kept = true;
-      const lines = newest
-        ? await readForward(
-            async (from) => {
-              const answer = await this.api.logs(this.environment(), this.applicationId(), {
-                ...query,
-                from,
-                order: 'oldest',
-              });
+      // From a little before the newest line, a line another server sent late still shows.
+      const read =
+        !fresh && from
+          ? await readForward(
+              async (at) => {
+                const answer = await this.api.logs(this.environment(), this.applicationId(), {
+                  ...query,
+                  from: at,
+                  order: 'oldest',
+                });
+                kept = answer.kept;
+                return answer.lines;
+              },
+              from,
+              LIMIT,
+            )
+          : await this.api.logs(this.environment(), this.applicationId(), query).then((answer) => {
               kept = answer.kept;
-              return answer.lines;
-            },
-            // A little before the newest line: a line another server sent late still shows.
-            overlapFrom(newest),
-            LIMIT,
-          )
-        : await this.api.logs(this.environment(), this.applicationId(), query).then((answer) => {
-            kept = answer.kept;
-            return answer.lines;
-          });
+              return { lines: answer.lines, resume: undefined };
+            });
       if (generation !== this.generation) return;
       this.kept.set(kept);
-      this.lines.set(mergeLines(fresh ? [] : this.lines(), lines));
+      this.lines.set(mergeLines(fresh ? [] : this.lines(), read.lines));
+      this.shown = asking;
+      this.resume = read.resume;
       this.failed.set(false);
     } catch {
       if (generation === this.generation) this.failed.set(true);

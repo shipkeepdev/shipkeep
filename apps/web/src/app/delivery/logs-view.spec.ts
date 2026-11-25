@@ -48,7 +48,7 @@ describe('reading a live view forward', () => {
 
   it('reads page after page while they come back full, from the last line read', async () => {
     const asked: string[] = [];
-    const lines = await readForward(
+    const { lines, resume } = await readForward(
       (from) => {
         asked.push(from);
         const start = Number(from.slice(17, 19));
@@ -73,11 +73,13 @@ describe('reading a live view forward', () => {
       'l7',
       'l7',
     ]);
+    // It reached the end: the next read starts from the newest line again.
+    expect(resume).toBeUndefined();
   });
 
   it('stops after its rounds, and when a full page does not move', async () => {
     let calls = 0;
-    await readForward(
+    const stopped = await readForward(
       (from) => {
         calls++;
         const start = Number(from.slice(17, 19));
@@ -88,8 +90,11 @@ describe('reading a live view forward', () => {
       3,
     );
     expect(calls).toBe(3);
+    // Out of rounds on a full page: the next read goes on from the last line, not from the
+    // start again, so more lines than its rounds can hold are read in the end.
+    expect(stopped.resume).toBe(at(6));
     calls = 0;
-    await readForward(
+    const still = await readForward(
       () => {
         calls++;
         return Promise.resolve([line(5), line(5)]);
@@ -98,6 +103,7 @@ describe('reading a live view forward', () => {
       2,
     );
     expect(calls).toBe(1);
+    expect(still.resume).toBeUndefined();
   });
 });
 
