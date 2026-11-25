@@ -10,8 +10,10 @@ import { AppConfig } from './platform/config/app-config';
 import { API_VERSION } from './platform/health/health.controller';
 import {
   acceptsLargeJson,
+  acceptsWebhook,
   DEFAULT_BODY_LIMIT,
   LARGE_JSON_LIMIT,
+  WEBHOOK_BODY_LIMIT,
 } from './platform/http/body-limits';
 import { API_PREFIX } from './platform/http/constants';
 import { ProblemDetailsFilter } from './platform/http/problem-details.filter';
@@ -38,7 +40,9 @@ export function configureApp(app: INestApplication): INestApplication {
     response.setHeader('Cache-Control', 'no-store');
     next();
   });
-  // The large parser reads only its routes; the default one skips bodies already read.
+  // Webhooks are read raw and the large parser reads only its routes; the default one skips
+  // bodies already read.
+  http.useBodyParser('raw', { limit: WEBHOOK_BODY_LIMIT, type: acceptsWebhook });
   http.useBodyParser('json', { limit: LARGE_JSON_LIMIT, type: acceptsLargeJson });
   http.useBodyParser('json', { limit: DEFAULT_BODY_LIMIT });
   http.useBodyParser('urlencoded', {

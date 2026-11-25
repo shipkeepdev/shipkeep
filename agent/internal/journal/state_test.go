@@ -246,3 +246,35 @@ func TestRouteRecordsAreRecordedReplacedAndForgotten(t *testing.T) {
 		t.Error("invalid route id accepted")
 	}
 }
+
+func TestLogCursorsOnlyMoveForward(t *testing.T) {
+	store, err := Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() //nolint:errcheck // test store
+	ctx := t.Context()
+	if _, ok, err := store.LogCursor(ctx, "sk-web-r1-0"); ok || err != nil {
+		t.Fatalf("a cursor before any line: %v %v", ok, err)
+	}
+	later := time.Date(2026, 11, 24, 12, 0, 0, 123456789, time.UTC)
+	for _, at := range []time.Time{later, later.Add(-time.Hour)} {
+		if err := store.SetLogCursor(ctx, "sk-web-r1-0", at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if at, ok, err := store.LogCursor(ctx, "sk-web-r1-0"); !ok || err != nil || !at.Equal(later) {
+		t.Fatalf("cursor %v %v %v", at, ok, err)
+	}
+	for _, name := range []string{"", "../x", "sk web", strings.Repeat("a", 300)} {
+		if err := store.SetLogCursor(ctx, name, later); err == nil {
+			t.Errorf("accepted the container name %q", name)
+		}
+	}
+	if err := store.ForgetLogCursors(ctx, map[string]bool{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok, _ := store.LogCursor(ctx, "sk-web-r1-0"); ok {
+		t.Fatal("a forgotten cursor remained")
+	}
+}

@@ -436,6 +436,38 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/github-app": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getGithubApp"];
+        readonly put?: never;
+        readonly post: operations["completeGithubApp"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/github-app/manifests": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["startGithubApp"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/join-tokens": {
         readonly parameters: {
             readonly query?: never;
@@ -1252,6 +1284,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/webhooks/github/{organizationId}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["receiveGithubWebhook"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 };
 export type webhooks = Record<string, never>;
 export type components = {
@@ -1391,7 +1439,7 @@ export type components = {
             /** Format: uuid */
             readonly organizationId?: string;
             /** @enum {string} */
-            readonly permission: "profile.read" | "organization.read" | "organization.update" | "organization.delete" | "billing.manage" | "member.manage" | "node.manage" | "project.read" | "project.create" | "project.update" | "project.delete" | "environment.read" | "environment.create" | "environment.update" | "environment.delete" | "deploy.run" | "secret.write" | "container.exec" | "volume.delete" | "database.delete" | "observability.read" | "audit.read";
+            readonly permission: "profile.read" | "organization.read" | "organization.update" | "organization.delete" | "billing.manage" | "integration.manage" | "member.manage" | "node.manage" | "project.read" | "project.create" | "project.update" | "project.delete" | "environment.read" | "environment.create" | "environment.update" | "environment.delete" | "deploy.run" | "secret.write" | "container.exec" | "volume.delete" | "database.delete" | "observability.read" | "audit.read";
             /** Format: uuid */
             readonly projectId?: string;
         };
@@ -1583,6 +1631,12 @@ export type components = {
         readonly CloneEnvironmentDto: {
             /** @description Name of the new environment (same rules as for creation). */
             readonly name: string;
+        };
+        readonly CompleteGithubAppDto: {
+            /** @description The code GitHub sent the browser back with. */
+            readonly code: string;
+            /** @description The state GitHub sent back, as the flow received it. */
+            readonly state: string;
         };
         readonly ConfirmationIssuedDto: {
             /** Format: date-time */
@@ -1783,6 +1837,26 @@ export type components = {
             readonly nodeId: string;
             /** @description The WebSocket path that joins the session. */
             readonly websocketPath: string;
+        };
+        readonly GithubAppCreationDto: {
+            /** @description The App’s manifest, as JSON. */
+            readonly manifest: string;
+            /** @description Where the browser posts the manifest, as the `manifest` field. */
+            readonly url: string;
+        };
+        readonly GithubAppDto: {
+            readonly appId: number;
+            /** Format: date-time */
+            readonly createdAt: string;
+            readonly name: string;
+            /** @description The GitHub account the App belongs to. */
+            readonly ownerLogin: string;
+            readonly slug: string;
+            /** @description The App’s page on GitHub. */
+            readonly url: string;
+        };
+        readonly GithubAppStatusDto: {
+            readonly app: components["schemas"]["GithubAppDto"] | null;
         };
         readonly HealthDto: {
             /** @enum {string} */
@@ -2308,6 +2382,15 @@ export type components = {
              * @example 0.2.0
              */
             readonly version: string;
+        };
+        readonly StartGithubAppDto: {
+            /** @description The GitHub organization, when `owner` is `organization`. */
+            readonly githubOrganization?: string;
+            /**
+             * @description Create the App on the owner’s own GitHub account, or on a GitHub organization.
+             * @enum {string}
+             */
+            readonly owner: "user" | "organization";
         };
         readonly TransferOwnershipDto: {
             /** Format: password */
@@ -3097,6 +3180,87 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ConfirmationIssuedDto"];
+                };
+            };
+        };
+    };
+    readonly getGithubApp: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GithubAppStatusDto"];
+                };
+            };
+        };
+    };
+    readonly completeGithubApp: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Exact API origin. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CompleteGithubAppDto"];
+            };
+        };
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GithubAppDto"];
+                };
+            };
+        };
+    };
+    readonly startGithubApp: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                /** @description Exact API origin. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["StartGithubAppDto"];
+            };
+        };
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GithubAppCreationDto"];
                 };
             };
         };
@@ -4707,6 +4871,26 @@ export interface operations {
             };
             /** @description A dependency is unavailable (problem details). */
             readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly receiveGithubWebhook: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Accepted, or already received. */
+            readonly 204: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

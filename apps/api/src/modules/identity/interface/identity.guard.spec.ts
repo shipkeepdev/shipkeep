@@ -17,6 +17,8 @@ import { SessionCommands } from '../application/session-commands';
 import { ApiTokenAuthentication } from '../application/api-token-authentication';
 import { AuthenticationError } from '../domain/identity-policy';
 
+import { AllowSignedBody } from '../../../platform/http/allow-anonymous';
+
 import { AllowAnonymous, IdentityGuard } from './identity.guard';
 import { AllowApiToken } from './api-token-access';
 import { AllowAccount, RequireTenant } from './route-access';
@@ -54,6 +56,9 @@ class FixtureController {
     return { ok: true };
   }
   @Post('public') @AllowAnonymous() @IdentityAttemptLimit('login') publicWrite() {
+    return { ok: true };
+  }
+  @Post('hook') @AllowSignedBody() @IdentityAttemptLimit('api') hook() {
     return { ok: true };
   }
   @Post('sign-up') @AllowAnonymous() @IdentityAttemptLimit('register') signUp() {
@@ -268,6 +273,12 @@ describe('identity HTTP guards', () => {
       .send({ email: 'Person@EXAMPLE.com' })
       .expect(201);
     expect(acquire).toHaveBeenCalledWith('login', expect.any(String), 'person@example.com');
+  });
+
+  it('spares a signed-body route, and it only, the Origin of browser mutations', async () => {
+    await http().post('/fixture/hook').expect(201);
+    await http().post('/fixture/hook').set('Sec-Fetch-Site', 'cross-site').expect(201);
+    await http().post('/fixture/public').expect(403);
   });
 
   it('allows explicit bearer mutations without ambient CSRF credentials and keeps session checks', async () => {

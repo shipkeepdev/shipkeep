@@ -20,7 +20,8 @@ REVOKE ALL ON ALL TABLES IN SCHEMA public FROM shipkeep_runtime;
 GRANT SELECT,INSERT,UPDATE,DELETE ON
   users,user_sessions,identity_tokens,identity_throttles,identity_replays,user_mfa,recovery_codes,api_tokens,
   organizations,memberships,projects,environments,role_bindings,
-  nodes,node_certificates,join_tokens,secrets,domains,registry_credentials TO shipkeep_runtime;
+  nodes,node_certificates,join_tokens,secrets,domains,registry_credentials,github_app_flows,
+  github_deliveries,github_installations TO shipkeep_runtime;
 -- Single-use state only moves forward; rows are never deleted by the API.
 GRANT SELECT,INSERT,UPDATE ON confirmation_tokens,agent_actions TO shipkeep_runtime;
 -- An application is deleted by its own confirmed command (SPEC 3.6) or with its environment. Its
@@ -29,6 +30,9 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON applications TO shipkeep_runtime;
 GRANT SELECT,INSERT,UPDATE ON deployments,allocations,allocation_observations TO shipkeep_runtime;
 -- Certificate readings are replaced in place and go with their domain or node by cascade.
 GRANT SELECT,INSERT,UPDATE ON domain_certificates TO shipkeep_runtime;
+-- An organization's GitHub App and its encrypted secrets: replacing it will be a confirmed command
+-- of its own (ADR 0031); until then the API only reads and adds.
+GRANT SELECT,INSERT ON github_apps TO shipkeep_runtime;
 -- Agent rollouts only move forward and are kept as their history: never deleted by the API.
 GRANT SELECT,INSERT,UPDATE ON agent_upgrades TO shipkeep_runtime;
 -- Releases are immutable: the image digest is the only column ever written after insert (once).

@@ -44,6 +44,7 @@ const matrix: Record<Permission, { target: TenantResource; expected: string }> =
   'organization.update': { target: organization, expected: '11000' },
   'organization.delete': { target: organization, expected: '10000' },
   'billing.manage': { target: organization, expected: '10000' },
+  'integration.manage': { target: organization, expected: '10000' },
   'member.manage': { target: projectTarget, expected: '11100' },
   'node.manage': { target: organization, expected: '11000' },
   'project.read': { target: projectTarget, expected: '11111' },
@@ -121,6 +122,7 @@ describe('tenant permission policy', () => {
       'project.delete',
       'environment.create',
       'billing.manage',
+      'integration.manage',
     ])
       expect(allowsTenantAction(principals[0], permission, environment)).toBe(false);
   });

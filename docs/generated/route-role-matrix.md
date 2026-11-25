@@ -38,6 +38,9 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | GET | `/organizations/:organizationId/audit-events` | audit.read @ organization | audit.read | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/audit-events/export` | audit.read @ organization | audit.read | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/confirmations` | organization.read @ organization | organization.read | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
+| GET | `/organizations/:organizationId/github-app` | organization.read @ organization | organization.read | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
+| POST | `/organizations/:organizationId/github-app` | integration.manage @ organization | - | yes | no | no | no | no | no | no | no | no | no | no |
+| POST | `/organizations/:organizationId/github-app/manifests` | integration.manage @ organization | - | yes | no | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/join-tokens` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/members` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/members` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
@@ -98,3 +101,4 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | POST | `/organizations/:organizationId/registries/:registryId/remove` | organization.update @ organization | organization.update | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/settings` | organization.update @ organization | organization.update | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/ready` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |
+| POST | `/webhooks/github/:organizationId` | anonymous | - |  |  |  |  |  |  |  |  |  |  |  |

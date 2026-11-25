@@ -145,7 +145,7 @@ jobs:
           address=$(docker inspect --format '{{(index .NetworkSettings.Networks "sk-it").IPAddress}}' sk-it-caddy)
           echo "SHIPKEEP_IT_CADDY_ADMIN=$RUNNER_TEMP/caddy/admin.sock" >> "$GITHUB_ENV"
           echo "SHIPKEEP_IT_CADDY_ADDRESS=$address:80" >> "$GITHUB_ENV"
-      - run: go test -tags integration -count=1 -v -run '^TestReal' ./agent/internal/actions/ ./agent/internal/docker/
+      - run: go test -tags integration -count=1 -v -run '^TestReal' ./agent/internal/actions/ ./agent/internal/docker/ ./agent/internal/logship/
       - name: Caddy logs
         if: failure()
         run: docker logs sk-it-caddy

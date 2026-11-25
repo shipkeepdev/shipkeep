@@ -27,25 +27,30 @@ model User {
   apiTokens       ApiToken[]
   memberships     Membership[]
   confirmations   ConfirmationToken[]
+  githubAppFlows  GithubAppFlow[]
 
   @@map("users")
 }
 
 model Organization {
-  id            String               @id @db.Uuid
-  name          String               @db.VarChar(80)
-  slug          String               @unique @db.VarChar(40)
-  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
-  memberships   Membership[]
-  projects      Project[]
-  environments  Environment[]
-  roleBindings  RoleBinding[]
-  nodes         Node[]
-  joinTokens    JoinToken[]
-  confirmations ConfirmationToken[]
-  registries    RegistryCredential[]
-  agentUpgrades AgentUpgrade[]
+  id                  String               @id @db.Uuid
+  name                String               @db.VarChar(80)
+  slug                String               @unique @db.VarChar(40)
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  memberships         Membership[]
+  projects            Project[]
+  environments        Environment[]
+  roleBindings        RoleBinding[]
+  nodes               Node[]
+  joinTokens          JoinToken[]
+  confirmations       ConfirmationToken[]
+  registries          RegistryCredential[]
+  agentUpgrades       AgentUpgrade[]
+  githubApp           GithubApp?
+  githubAppFlow       GithubAppFlow?
+  githubDeliveries    GithubDelivery[]
+  githubInstallations GithubInstallation[]
 
   @@map("organizations")
 }
@@ -358,6 +363,68 @@ model ConfirmationToken {
 
   @@index([organizationId, issuedAt])
   @@map("confirmation_tokens")
+}
+
+/// The GitHub App an organization created through the manifest flow (ADR 0031); secrets encrypted.
+model GithubApp {
+  organizationId   String       @id @map("organization_id") @db.Uuid
+  appId            BigInt       @unique @map("app_id")
+  slug             String       @db.VarChar(64)
+  name             String       @db.VarChar(34)
+  ownerLogin       String       @map("owner_login") @db.VarChar(39)
+  clientId         String       @map("client_id") @db.VarChar(64)
+  privateKeyEnc    Bytes        @map("private_key_enc")
+  webhookSecretEnc Bytes        @map("webhook_secret_enc")
+  clientSecretEnc  Bytes        @map("client_secret_enc")
+  createdBy        String?      @map("created_by") @db.VarChar(128)
+  createdAt        DateTime     @map("created_at") @db.Timestamptz(6)
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@map("github_apps")
+}
+
+/// A manifest flow under way: the hashed state GitHub brings back, and who started it.
+model GithubAppFlow {
+  organizationId String       @id @map("organization_id") @db.Uuid
+  stateHash      Bytes        @map("state_hash")
+  userId         String       @map("user_id") @db.Uuid
+  expiresAt      DateTime     @map("expires_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@map("github_app_flows")
+}
+
+/// A webhook delivery of an organization's App, kept 30 days; its identifier and body hash are unique.
+model GithubDelivery {
+  organizationId String       @map("organization_id") @db.Uuid
+  deliveryId     String       @map("delivery_id") @db.Uuid
+  bodySha256     Bytes        @map("body_sha256")
+  event          String       @db.VarChar(64)
+  receivedAt     DateTime     @map("received_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([organizationId, deliveryId])
+  @@unique([organizationId, bodySha256])
+  @@index([organizationId, receivedAt])
+  @@map("github_deliveries")
+}
+
+/// Where an organization's App is installed, as GitHub reported it (ADR 0031).
+model GithubInstallation {
+  organizationId      String       @map("organization_id") @db.Uuid
+  installationId      BigInt       @map("installation_id")
+  accountLogin        String       @map("account_login") @db.VarChar(39)
+  accountType         String       @map("account_type") @db.VarChar(16)
+  repositorySelection String       @map("repository_selection") @db.VarChar(8)
+  suspendedAt         DateTime?    @map("suspended_at") @db.Timestamptz(6)
+  createdAt           DateTime     @map("created_at") @db.Timestamptz(6)
+  /// GitHub's time of the last change applied.
+  updatedAt           DateTime     @map("updated_at") @db.Timestamptz(6)
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([organizationId, installationId])
+  @@map("github_installations")
 }
 
 /// Credentials for one container registry of an organization (ADR 0019); the password is encrypted.

@@ -2058,6 +2058,195 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/github-app": {
+      "get": {
+        "operationId": "getGithubApp",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubAppStatusDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "tags": [
+          "git"
+        ]
+      },
+      "post": {
+        "operationId": "completeGithubApp",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API origin.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "description": "Session-bound CSRF proof.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteGithubAppDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubAppDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "git"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/github-app/manifests": {
+      "post": {
+        "operationId": "startGithubApp",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API origin.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "description": "Session-bound CSRF proof.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StartGithubAppDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubAppCreationDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "git"
+        ]
+      }
+    },
+    "/api/v1/webhooks/github/{organizationId}": {
+      "post": {
+        "operationId": "receiveGithubWebhook",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Accepted, or already received."
+          }
+        },
+        "tags": [
+          "git"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/secrets": {
       "get": {
         "operationId": "listSecrets",
@@ -6144,6 +6333,7 @@
               "organization.update",
               "organization.delete",
               "billing.manage",
+              "integration.manage",
               "member.manage",
               "node.manage",
               "project.read",
@@ -7079,6 +7269,114 @@
           "server",
           "username",
           "password"
+        ]
+      },
+      "GithubAppDto": {
+        "type": "object",
+        "properties": {
+          "appId": {
+            "type": "integer"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "ownerLogin": {
+            "type": "string",
+            "description": "The GitHub account the App belongs to."
+          },
+          "url": {
+            "type": "string",
+            "description": "The App’s page on GitHub."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "appId",
+          "slug",
+          "name",
+          "ownerLogin",
+          "url",
+          "createdAt"
+        ]
+      },
+      "GithubAppStatusDto": {
+        "type": "object",
+        "properties": {
+          "app": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/GithubAppDto"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "app"
+        ]
+      },
+      "StartGithubAppDto": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "enum": [
+              "user",
+              "organization"
+            ],
+            "description": "Create the App on the owner’s own GitHub account, or on a GitHub organization."
+          },
+          "githubOrganization": {
+            "type": "string",
+            "description": "The GitHub organization, when `owner` is `organization`.",
+            "maxLength": 39
+          }
+        },
+        "required": [
+          "owner"
+        ]
+      },
+      "GithubAppCreationDto": {
+        "type": "object",
+        "properties": {
+          "url": {
+            "type": "string",
+            "description": "Where the browser posts the manifest, as the `manifest` field."
+          },
+          "manifest": {
+            "type": "string",
+            "description": "The App’s manifest, as JSON."
+          }
+        },
+        "required": [
+          "url",
+          "manifest"
+        ]
+      },
+      "CompleteGithubAppDto": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "The code GitHub sent the browser back with.",
+            "maxLength": 128
+          },
+          "state": {
+            "type": "string",
+            "description": "The state GitHub sent back, as the flow received it."
+          }
+        },
+        "required": [
+          "code",
+          "state"
         ]
       },
       "SecretDto": {

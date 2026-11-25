@@ -7,6 +7,7 @@ export const PERMISSIONS = [
   'organization.update',
   'organization.delete',
   'billing.manage',
+  'integration.manage',
   'member.manage',
   'node.manage',
   'project.read',
