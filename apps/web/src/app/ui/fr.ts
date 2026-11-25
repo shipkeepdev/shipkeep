@@ -1659,6 +1659,7 @@ export const FR: Readonly<Record<string, string>> = {
   'not backed up': 'non sauvegardée',
   'not configured': 'non configuré',
   'not connected': 'non connecté',
+  'shell connected': 'shell connecté',
   'not reported yet': 'pas encore signalé',
   'not set': 'non défini',
   'not supported by this agent': 'non prise en charge par cet agent',
@@ -1958,4 +1959,29 @@ export const FR: Readonly<Record<string, string>> = {
   'This control plane is a development build: it has no release to upgrade agents to.':
     "Ce plan de contrôle est une version de développement : il n'a pas de version vers laquelle mettre à jour les agents.",
   'A rollout upgrades at most 1,000 servers.': 'Une mise à jour porte sur 1 000 serveurs au plus.',
+  'The logs could not be loaded.': 'Les logs n’ont pas pu être chargés.',
+  'This installation keeps no logs: its control plane has no log store.':
+    'Cette installation ne garde pas de logs : son plan de contrôle n’a pas de stockage de logs.',
+  'Search the logs': 'Chercher dans les logs',
+  paused: 'en pause',
+  'No line in the last hour.': 'Aucune ligne dans la dernière heure.',
+  'connecting…': 'connexion…',
+  Disconnect: 'Déconnecter',
+  'Terminal output': 'Sortie du terminal',
+  'The session could not be opened. Is the application running?':
+    'La session n’a pas pu être ouverte. L’application tourne-t-elle ?',
+  'Connected to a shell in the first replica.': 'Connecté à un shell dans la première réplique.',
+  'The session was closed.': 'La session a été fermée.',
+  'The command exited with code {code}.': 'La commande s’est terminée avec le code {code}.',
+  'The command exited.': 'La commande s’est terminée.',
+  'The session reached its time limit.': 'La session a atteint sa limite de temps.',
+  'The session failed.': 'La session a échoué.',
+  'The server did not join the session in time.': 'Le serveur n’a pas rejoint la session à temps.',
+  'The server left the session.': 'Le serveur a quitté la session.',
+  'Too much input was waiting: the session was closed.':
+    'Trop de saisie était en attente : la session a été fermée.',
+  'You signed out: the session was closed.': 'Vous vous êtes déconnecté : la session a été fermée.',
+  'You no longer have access to this container.': 'Vous n’avez plus accès à ce conteneur.',
+  'The control plane restarted: the session was closed.':
+    'Le control plane a redémarré : la session a été fermée.',
 };
