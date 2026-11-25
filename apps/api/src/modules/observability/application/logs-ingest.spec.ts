@@ -287,6 +287,44 @@ describe('log ingestion (ADR 0029)', () => {
       await expect(again).rejects.toThrow('stream ended');
     });
 
+    it('counts the check after a wait in its place, and starts no lookup once ended during it', async () => {
+      const w = world(
+        { write: () => Promise.resolve(), query: () => Promise.resolve([]) },
+        undefined,
+        { waits: 1, writes: 256 },
+      );
+      const owe = async (who: typeof node) => {
+        for (let i = 0; i < LOG_RATE.burstBytes / (64 * 1024); i++)
+          await w.ingest.record(who, big(), kept, NOW);
+      };
+      const first = { ...node, nodeId: 'n1' };
+      const second = { ...node, nodeId: 'n2' };
+      await owe(first);
+      await owe(second);
+      // The first batch waited and checks its node, slowly: it still holds the only place.
+      let allow: () => void = () => undefined;
+      const checking = delivery(() => new Promise<void>((resolve) => (allow = resolve)));
+      const asked = w.asked.length;
+      const pending = w.ingest.record(first, big(), checking, NOW);
+      await vi.waitFor(() => {
+        expect(w.slept.length).toBeGreaterThan(0);
+      });
+      await expect(w.ingest.record(second, big(), kept, NOW)).rejects.toBeInstanceOf(LogsBusyError);
+      // Its stream ends during the check: no lookup starts.
+      checking.end();
+      allow();
+      await expect(pending).rejects.toThrow('stream ended');
+      expect(w.asked).toHaveLength(asked);
+      // The refused batch was given its bytes back: it waits its own share only, 64 KiB at
+      // 512 KiB/s, not twice that.
+      const slept = w.slept.length;
+      await w.ingest.record(second, big(), kept, NOW);
+      const waited = w.slept.slice(slept);
+      expect(waited).toHaveLength(1);
+      expect(waited[0]).toBeGreaterThan(0);
+      expect(waited[0]).toBeLessThanOrEqual(125);
+    });
+
     it('bounds the writes of all nodes', async () => {
       const held: (() => void)[] = [];
       let holding = true;

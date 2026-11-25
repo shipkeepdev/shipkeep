@@ -90,13 +90,17 @@ export class LogsIngest implements OnModuleInit {
         rate.refund(bytes);
         throw new LogsBusyError();
       }
+      // The check of the node after the wait holds its place too: a slow store cannot let
+      // delayed batches pile up past the bound.
       this.waits++;
       try {
         await this.sleep(delay, signal);
+        await delivery.stillAllowed();
       } finally {
         this.waits--;
       }
-      await delivery.stillAllowed();
+      // Ended during that check: no lookup starts for it.
+      signal.throwIfAborted();
     }
     if (this.writes >= this.limits.writes) {
       rate.refund(bytes);
