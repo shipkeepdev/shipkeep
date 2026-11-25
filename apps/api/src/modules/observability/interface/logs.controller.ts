@@ -41,6 +41,7 @@ export class LogsController {
         stream: query.stream,
         instance: query.instance,
         from,
+        fromExact: query.from,
         to,
         limit: query.limit ?? 200,
         order: query.order,
