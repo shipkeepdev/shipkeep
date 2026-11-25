@@ -15,10 +15,29 @@ import type { Allocation, StepOutcome } from '../domain/pipeline';
 import type { NodeLoad, NodeView, ReplacingRelease } from '../domain/placement';
 import type { DeploymentRecord, DeploymentTrigger, Release, ReleaseDraft } from '../domain/release';
 
+/** What a server may still hold of an application (#474). */
+export interface Leftovers {
+  readonly underway: boolean;
+  readonly containers: readonly {
+    readonly nodeId: string;
+    readonly deploymentId: string;
+    /** Null when no action names it: it is then held, with no removal to ask for. */
+    readonly container: string | null;
+  }[];
+  readonly routes: readonly { readonly nodeId: string; readonly deploymentId: string }[];
+}
+
 export const DEPLOYMENT_STORE = Symbol('DeploymentStore');
 /** Every method runs inside `runTenant` for the application's organization. */
 export interface DeploymentStore {
   active(applicationId: string): Promise<DeploymentRecord | undefined>;
+  /**
+   * What a server that is not removed may still hold of the application (#474): `underway` when
+   * one of its container, route or task actions can still apply; otherwise each container that may
+   * be there with no confirmed removal, and each server whose last route change that may have run
+   * is not a successful removal. Each names the deployment that left it.
+   */
+  leftovers(application: { id: string; organizationId: string }): Promise<Leftovers>;
   /** Snapshots the configuration as the next release number; undefined on a concurrent insert. */
   createRelease(
     application: Application,

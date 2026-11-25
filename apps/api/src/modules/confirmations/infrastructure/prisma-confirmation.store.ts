@@ -33,4 +33,24 @@ export class PrismaConfirmationStore implements ConfirmationStore {
     });
     return result.count === 1;
   }
+
+  async usable(
+    id: string,
+    request: ConfirmationRequest,
+    userId: string,
+    now: Date,
+  ): Promise<boolean> {
+    const found = await this.database.client.confirmationToken.count({
+      where: {
+        id,
+        organizationId: request.organizationId,
+        action: request.action,
+        target: request.target,
+        userId,
+        usedAt: null,
+        expiresAt: { gt: now },
+      },
+    });
+    return found === 1;
+  }
 }

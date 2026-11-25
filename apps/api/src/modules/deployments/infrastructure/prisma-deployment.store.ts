@@ -5,7 +5,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { Application } from '../../apps/domain/application';
-import type { DeploymentStore } from '../application/ports';
+import type { DeploymentStore, Leftovers } from '../application/ports';
 import {
   DEPLOYMENT_TRIGGERS,
   type DeploymentRecord,
@@ -15,6 +15,11 @@ import {
 } from '../domain/release';
 
 const FINISHED: DeploymentState[] = ['succeeded', 'failed', 'cancelled', 'rolled_back'];
+const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
+/** Keys of a deployment's (`d:`) or a deletion's (`c:`) removal of a container, by its name. */
+const KEY_BY_NAME = `^[dc]:${UUID}:remove:[a-z0-9-]{1,63}$`;
+/** Keys of a deployment's creation or cleanup of a replica, by its number. */
+const KEY_BY_REPLICA = `^d:${UUID}:(create|cleanup):[0-9]{1,4}$`;
 const MAX_LISTED = 50;
 
 @Injectable()
@@ -26,6 +31,89 @@ export class PrismaDeploymentStore implements DeploymentStore {
       where: { applicationId, state: { notIn: FINISHED } },
     });
     return row ? deployment(row) : undefined;
+  }
+
+  async leftovers(application: { id: string; organizationId: string }): Promise<Leftovers> {
+    // One statement, so one snapshot. Each container action names its container: by name in a
+    // removal (`remove:<container>`), by replica in a creation or a cleanup (`create:<n>`,
+    // `cleanup:<n>`), which the allocation of that deployment's release names. A server that is
+    // removed holds nothing any more. An action that never reached its server (no attempt) did
+    // nothing, unless it succeeded.
+    const rows = await this.database.client.$queryRaw<
+      {
+        what: 'underway' | 'container' | 'route';
+        node_id: string | null;
+        container: string | null;
+        deployment_id: string | null;
+      }[]
+    >`
+      WITH actions AS (
+        SELECT aa.node_id, aa.kind, aa.state, aa.attempts, aa.created_at, aa.deployment_id,
+          CASE
+            WHEN aa.idempotency_key ~ ${KEY_BY_NAME} THEN split_part(aa.idempotency_key, ':', 4)
+            WHEN aa.idempotency_key ~ ${KEY_BY_REPLICA} THEN (
+              SELECT a.container FROM deployments dp
+              JOIN allocations a ON a.organization_id = dp.organization_id
+                AND a.release_id = dp.release_id
+                AND a.replica = split_part(aa.idempotency_key, ':', 4)::int
+              WHERE dp.organization_id = aa.organization_id
+                AND dp.id = split_part(aa.idempotency_key, ':', 2)::uuid
+            )
+          END AS container
+        FROM agent_actions aa
+        JOIN nodes n ON n.organization_id = aa.organization_id AND n.id = aa.node_id
+        WHERE aa.organization_id = ${application.organizationId}::uuid
+          AND aa.application_id = ${application.id}::uuid
+          AND n.status <> 'removed'
+          AND aa.kind IN ('createContainer', 'startContainer', 'stopContainer', 'removeContainer',
+            'runReleaseTask', 'upsertRoute', 'removeRoute')
+      ),
+      -- A container that may be there: created, or sent and not undone, or a removal sent that did
+      -- not succeed, with no later removal of that container on that server that did.
+      containers AS (
+        SELECT DISTINCT ON (x.node_id, x.container) x.node_id, x.container, x.deployment_id
+        FROM actions x
+        WHERE (
+            (x.kind = 'createContainer'
+              AND (x.state = 'succeeded' OR (x.attempts > 0 AND x.state <> 'compensated')))
+            OR (x.kind = 'removeContainer' AND x.state <> 'succeeded' AND x.attempts > 0)
+          )
+          AND NOT EXISTS (
+            SELECT 1 FROM actions removed
+            WHERE removed.node_id = x.node_id
+              AND removed.kind = 'removeContainer'
+              AND removed.state = 'succeeded'
+              AND removed.container IS NOT DISTINCT FROM x.container
+              AND removed.created_at > x.created_at
+          )
+        ORDER BY x.node_id, x.container, x.created_at DESC
+      ),
+      -- The last route change on each server that may have run: unless it is a removal that
+      -- succeeded, the route may still serve the domains.
+      routes AS (
+        SELECT DISTINCT ON (x.node_id) x.node_id, x.kind, x.state, x.deployment_id
+        FROM actions x
+        WHERE x.kind IN ('upsertRoute', 'removeRoute') AND (x.state = 'succeeded' OR x.attempts > 0)
+        ORDER BY x.node_id, x.created_at DESC
+      )
+      SELECT 'underway' AS what, NULL::uuid AS node_id, NULL AS container, NULL::uuid AS deployment_id
+        FROM actions WHERE state IN ('queued', 'pending', 'running', 'compensating')
+      UNION ALL
+      SELECT 'container', node_id, container, deployment_id FROM containers
+      UNION ALL
+      SELECT 'route', node_id, NULL, deployment_id FROM routes
+        WHERE NOT (kind = 'removeRoute' AND state = 'succeeded')`;
+    const at = (row: (typeof rows)[number]) => ({
+      nodeId: row.node_id ?? '',
+      deploymentId: row.deployment_id ?? '',
+    });
+    return {
+      underway: rows.some((row) => row.what === 'underway'),
+      containers: rows
+        .filter((row) => row.what === 'container')
+        .map((row) => ({ ...at(row), container: row.container })),
+      routes: rows.filter((row) => row.what === 'route').map(at),
+    };
   }
 
   async createRelease(

@@ -92,6 +92,17 @@ export function applicationRunning(): ConflictError {
   );
 }
 
+/**
+ * A server has not confirmed yet that the application's containers and routes are gone (#474):
+ * deleting it now could free a domain a route still serves.
+ */
+export function applicationCleanupPending(): ConflictError {
+  return new ConflictError(
+    'application_cleanup_pending',
+    "A server has not confirmed yet that this application's containers and routes are gone; it has been asked to remove them. Retry in a moment, or remove that server.",
+  );
+}
+
 export function deploymentInProgress(state?: DeploymentState): ConflictError {
   return new ConflictError(
     'deployment_in_progress',
