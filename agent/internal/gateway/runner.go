@@ -54,6 +54,8 @@ type Runner struct {
 	Connected func(context.Context)
 	// Sent, if set, is called once an action update was written to the stream.
 	Sent func(*agentv1.ActionUpdate)
+	// Streams, if set, opens the RPCs beside Connect on each session's connection.
+	Streams *Streams
 
 	// inflight tracks running actions so Run returns only after they stopped.
 	inflight sync.WaitGroup
@@ -112,6 +114,10 @@ func (r *Runner) cycle(ctx context.Context, bundle nodecredentials.Bundle) (node
 	}
 	defer conn.Close() //nolint:errcheck // stream cancellation below finishes before connection close
 	client := agentv1.NewAgentGatewayServiceClient(conn)
+	if r.Streams != nil {
+		r.Streams.use(client)
+		defer r.Streams.use(nil)
+	}
 	renewAt := nodecredentials.RenewalTime(pair)
 	if time.Now().Before(renewAt) {
 		if err := r.session(ctx, client, bundle, renewAt); err != nil {

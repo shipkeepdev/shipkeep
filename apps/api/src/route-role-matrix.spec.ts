@@ -35,6 +35,8 @@ const SPEC_7: Readonly<Partial<Record<string, readonly TenantActor[]>>> = {
   // Fixture environments are protected: developers may not write their secrets (SPEC 7).
   'secret.write@environment': ['owner', 'admin', 'projectAdmin', 'environmentAdmin'],
   'deploy.run@environment': ['owner', 'admin', 'projectAdmin', 'environmentAdmin'],
+  // Developers may exec on unprotected environments only, and the fixture's are protected.
+  'container.exec@environment': ['owner', 'admin', 'projectAdmin', 'environmentAdmin'],
   // An environment grant permits navigation to its parent project.
   'project.read@project': projectReaders,
   'project.update@project': projectAdmins,
