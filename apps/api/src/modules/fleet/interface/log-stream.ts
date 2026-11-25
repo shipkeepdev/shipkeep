@@ -1,6 +1,6 @@
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnApplicationShutdown } from '@nestjs/common';
 import {
   type ShipLogsRequest,
   type ShipLogsResponse,
@@ -22,7 +22,7 @@ export const LOG_STREAM_OPEN_MS = 30_000;
  * The agents' log streams (ADR 0029), one per node: a newer stream of a node replaces the older.
  */
 @Injectable()
-export class LogStreams {
+export class LogStreams implements OnApplicationShutdown {
   private readonly active = new Map<string, AbortController>();
 
   constructor(
@@ -75,11 +75,26 @@ export class LogStreams {
         } else {
           if (frame.case !== 'batch' || frame.value.seq !== expected)
             throw new ConnectError('log batch out of order', Code.InvalidArgument);
+          const seen = epoch;
           try {
-            await this.batches.deliver(node, frame.value);
-          } catch {
+            await this.batches.deliver(node, frame.value, {
+              signal,
+              // After a wait for its quota: a node revoked or a lease moved meanwhile writes nothing.
+              stillAllowed: async () => {
+                const now = BigInt((await this.authenticate.execute(node)).leaseEpoch);
+                if (now !== seen)
+                  throw new ConnectError('the lease epoch moved', Code.FailedPrecondition);
+              },
+            });
+          } catch (error: unknown) {
+            if (signal.aborted) throw ended(signal);
+            if (error instanceof ConnectError || error instanceof NodeAuthenticationError)
+              throw error;
             throw new ConnectError('log batch not kept', Code.Unavailable);
           }
+          // Ended while its batch was written: no acknowledgement, the agent sends it again from
+          // its cursor, and searches drop the repeated lines.
+          if (signal.aborted) throw ended(signal);
           yield create(ShipLogsResponseSchema, {
             frame: { case: 'ack', value: { seq: frame.value.seq } },
           });
@@ -97,4 +112,19 @@ export class LogStreams {
       // Do not await return() on an iterator blocked on a silent peer.
     }
   }
+
+  /** The process stops: every stream ends, and the deliveries under way with it. */
+  onApplicationShutdown(): void {
+    for (const controller of this.active.values())
+      controller.abort(new ConnectError('the control plane is stopping', Code.Unavailable));
+    this.active.clear();
+  }
+}
+
+/** Why a stream ended, as its signal says: replaced, stopping, or its transport gone. */
+function ended(signal: AbortSignal): ConnectError {
+  const reason: unknown = signal.reason;
+  return reason instanceof ConnectError
+    ? reason
+    : new ConnectError('log stream ended', Code.Canceled);
 }

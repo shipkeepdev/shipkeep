@@ -2,9 +2,17 @@ import { timestampDate } from '@bufbuild/protobuf/wkt';
 import { Inject, Injectable, Logger, type OnModuleInit, Optional } from '@nestjs/common';
 import { type LogBatch, LogStream } from '@shipkeep/proto-ts';
 
-import { LogBatches } from '../../fleet/application/log-batches';
+import { type LogDelivery, LogBatches } from '../../fleet/application/log-batches';
+import { LogsBusyError } from '../../fleet/domain/logs-not-kept';
 import type { NodeIdentity } from '../../fleet/domain/node-identity';
-import { batchBytes, ByteRate, type LogInput, logRecords, validEntries } from '../domain/logs';
+import {
+  batchBytes,
+  ByteRate,
+  type LogInput,
+  logRecords,
+  MAX_LOG_WAIT_MS,
+  validEntries,
+} from '../domain/logs';
 
 import {
   LOGS_STORE,
@@ -35,18 +43,37 @@ export class LogsIngest implements OnModuleInit {
     @Inject(METRICS_TARGETS) private readonly targets: MetricsTargets,
     @Inject(METRICS_TRANSACTION) private readonly transaction: MetricsTransaction,
     @Optional() @Inject(LOGS_STORE) private readonly store: LogsStore | null,
-    @Optional() @Inject('LOGS_SLEEP') private readonly sleep: (ms: number) => Promise<void> = wait,
+    @Optional()
+    @Inject('LOGS_SLEEP')
+    private readonly sleep: (ms: number, signal: AbortSignal) => Promise<void> = wait,
   ) {}
 
   onModuleInit(): void {
-    if (this.store) this.batches.register((identity, batch) => this.record(identity, batch));
+    if (this.store)
+      this.batches.register((identity, batch, delivery) => this.record(identity, batch, delivery));
   }
 
-  async record(identity: NodeIdentity, batch: LogBatch, now = new Date()): Promise<void> {
+  /**
+   * Writes one batch, unless its stream ends first (#473): the wait for the quota, the lookup and
+   * the write all stop with it, and a write that waited checks the node again first.
+   */
+  async record(
+    identity: NodeIdentity,
+    batch: LogBatch,
+    delivery: LogDelivery,
+    now = new Date(),
+  ): Promise<void> {
     const store = this.store;
     if (!store) return;
-    const delay = this.rate(identity.nodeId).take(batchBytes(batch.entries.map((e) => e.line)));
-    if (delay > 0) await this.sleep(delay);
+    const { signal } = delivery;
+    signal.throwIfAborted();
+    const bytes = batchBytes(batch.entries.map((e) => e.line));
+    const delay = this.rate(identity.nodeId).reserve(bytes, MAX_LOG_WAIT_MS);
+    if (delay === undefined) throw new LogsBusyError();
+    if (delay > 0) {
+      await this.sleep(delay, signal);
+      await delivery.stillAllowed();
+    }
     const entries = validEntries(batch.entries.map(entryOf).filter((entry) => entry !== undefined));
     if (entries.length < batch.entries.length)
       this.logger.warn({ nodeId: identity.nodeId }, 'malformed log entries dropped');
@@ -59,7 +86,8 @@ export class LogsIngest implements OnModuleInit {
         [],
       ),
     );
-    await store.write(logRecords(entries, found.containers, identity, now));
+    signal.throwIfAborted();
+    await store.write(logRecords(entries, found.containers, identity, now), signal);
   }
 
   private rate(nodeId: string): ByteRate {
@@ -96,6 +124,21 @@ function entryOf(entry: LogBatch['entries'][number]): LogInput | undefined {
   };
 }
 
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+/** Waits `ms`, or rejects at once when `signal` aborts, its timer cleared. */
+function wait(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(signal.reason as Error);
+      return;
+    }
+    const stop = () => {
+      clearTimeout(timer);
+      reject(signal.reason as Error);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', stop);
+      resolve();
+    }, ms);
+    signal.addEventListener('abort', stop, { once: true });
+  });
 }

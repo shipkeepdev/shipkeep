@@ -8,7 +8,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 import { AuthenticateNode } from '../application/authenticate-node';
-import { LogBatches } from '../application/log-batches';
+import { LogBatches, MAX_NODE_DELIVERIES } from '../application/log-batches';
 import type { NodeCredential } from '../domain/node-identity';
 
 import { LogStreams } from './log-stream';
@@ -140,5 +140,92 @@ describe('the agent log stream (ADR 0029)', () => {
     expect((await silent).code).toBe(Code.DeadlineExceeded);
     // The silent one replaced the second in turn.
     expect((await second).code).toBe(Code.Aborted);
+  });
+
+  describe('deliveries under way when a stream ends (#473)', () => {
+    /**
+     * A store whose writes wait a second for their quota, as a node past its rate does, unless
+     * their stream ends first: each wait is counted while it lasts, and each write done.
+     */
+    function blocking() {
+      const batches = new LogBatches();
+      const state = { waiting: 0, most: 0, written: 0 };
+      batches.register(
+        (_identity, _batch, delivery) =>
+          new Promise<void>((resolve, reject) => {
+            state.waiting++;
+            state.most = Math.max(state.most, state.waiting);
+            const quota = setTimeout(() => {
+              state.waiting--;
+              state.written++;
+              resolve();
+            }, 1000);
+            delivery.signal.addEventListener(
+              'abort',
+              () => {
+                clearTimeout(quota);
+                state.waiting--;
+                reject(new Error('cancelled'));
+              },
+              { once: true },
+            );
+          }),
+      );
+      return { batches, state };
+    }
+
+    it('cancels the batch of a replaced stream, and keeps the work of one node bounded', async () => {
+      const { batches, state } = blocking();
+      const relay = streams(batches);
+      const ended: Promise<{ acks: bigint[]; code?: Code }>[] = [];
+      // A node that opens a new stream again and again, each with a batch held by its quota.
+      for (let i = 0; i < 20; i++) {
+        ended.push(drain(relay.ship(thenSilent(open(3n), batch(1n)), { signal }, node, fast)));
+        await pause(5);
+      }
+      const results = await Promise.all(ended.slice(0, -1));
+      for (const result of results) expect(result).toEqual({ acks: [], code: Code.Aborted });
+      expect(state.waiting).toBe(1);
+      expect(state.most).toBeLessThanOrEqual(MAX_NODE_DELIVERIES);
+      expect(state.written).toBe(0);
+      relay.onApplicationShutdown();
+      expect(await ended.at(-1)).toEqual({ acks: [], code: Code.Unavailable });
+      expect(state.waiting).toBe(0);
+    });
+
+    it('acknowledges nothing a stream cancelled during its write kept', async () => {
+      const batches = new LogBatches();
+      const cancelled = new AbortController();
+      batches.register(() => {
+        // The write completes, but the transport went away meanwhile.
+        cancelled.abort(new Error('transport closed'));
+        return Promise.resolve();
+      });
+      const result = await drain(
+        streams(batches).ship(
+          thenSilent(open(3n), batch(1n)),
+          { signal: cancelled.signal },
+          node,
+          fast,
+        ),
+      );
+      expect(result).toEqual({ acks: [], code: Code.Canceled });
+    });
+
+    it('writes nothing for a node revoked while its batch waited', async () => {
+      const revoked = credential();
+      const batches = new LogBatches();
+      let written = 0;
+      batches.register(async (_identity, _batch, delivery) => {
+        revoked.revokedAt = new Date();
+        await delivery.stillAllowed();
+        written++;
+      });
+      const result = await drain(
+        streams(batches, revoked).ship(thenSilent(open(3n), batch(1n)), { signal }, node, fast),
+      );
+      expect(result).toEqual({ acks: [], code: Code.Unauthenticated });
+      expect(written).toBe(0);
+    });
   });
 });

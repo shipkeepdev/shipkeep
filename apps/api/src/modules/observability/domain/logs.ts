@@ -12,6 +12,11 @@ export const MAX_LOG_SKEW_MS = 5 * 60_000;
 export const LOG_RETENTION_MS = 30 * 24 * 3_600_000;
 /** What one node may write: 512 KiB per second, with bursts up to 4 MiB. */
 export const LOG_RATE = { bytesPerSecond: 512 * 1024, burstBytes: 4 * 1024 * 1024 } as const;
+/**
+ * The longest a batch waits for its node's quota: one that would wait longer is refused at once,
+ * charged nothing, so the debt a node can build, its streams replaced or not, stays bounded.
+ */
+export const MAX_LOG_WAIT_MS = 10_000;
 /** The least a batch costs, so that a flood of small or empty batches is held back too. */
 export const LOG_BATCH_MIN_BYTES = 16 * 1024;
 
@@ -124,6 +129,20 @@ export class ByteRate {
     this.at = now;
     this.tokens -= bytes;
     return this.tokens >= 0 ? 0 : Math.ceil((-this.tokens / this.rate) * 1000);
+  }
+
+  /**
+   * Like `take`, but a write that would wait longer than `maxWaitMs` is refused, undefined, and
+   * takes nothing. A write taken stays taken, even when its stream ends before it is written:
+   * reconnecting never gives a node its bytes back.
+   */
+  reserve(bytes: number, maxWaitMs: number, now = Date.now()): number | undefined {
+    const tokens = Math.min(this.burst, this.tokens + ((now - this.at) / 1000) * this.rate) - bytes;
+    const waitMs = tokens >= 0 ? 0 : Math.ceil((-tokens / this.rate) * 1000);
+    if (waitMs > maxWaitMs) return undefined;
+    this.tokens = tokens;
+    this.at = now;
+    return waitMs;
   }
 
   /** True once the bucket has refilled: forgetting it then changes nothing. */
