@@ -41,6 +41,7 @@ export const KIND_STATUS: Readonly<Record<DomainErrorKind, number>> = {
   not_found: 404,
   conflict: 409,
   precondition_failed: 412,
+  unavailable: 503,
 };
 
 /** Codes used for errors that do not originate in the domain. */

@@ -4,4 +4,4 @@
  * Renovate updates the three references together.
  */
 export const POSTGRES_TEST_IMAGE =
-  'postgres:17@sha256:0d938e975177bef9f1f61f3f9dbcf2e0aa0a139568f66d3415ed8892eb97f6ac';
+  'postgres:17@sha256:87c8b42f423b45d5247e6aa8fdb2e7762fec164c68a50fe3eb07e7bfcaf4dbcf';

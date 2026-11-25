@@ -12,6 +12,18 @@ export const MAX_LOG_SKEW_MS = 5 * 60_000;
 export const LOG_RETENTION_MS = 30 * 24 * 3_600_000;
 /** What one node may write: 512 KiB per second, with bursts up to 4 MiB. */
 export const LOG_RATE = { bytesPerSecond: 512 * 1024, burstBytes: 4 * 1024 * 1024 } as const;
+/**
+ * The longest a batch waits for its node's quota: one that would wait longer is refused at once,
+ * charged nothing, so the debt a node can build, its streams replaced or not, stays bounded.
+ */
+export const MAX_LOG_WAIT_MS = 10_000;
+/**
+ * Batches the control plane holds while they wait for their node's quota, of all nodes: at most
+ * 64 KiB each. A node within its rate never waits, so it never needs one of these places.
+ */
+export const MAX_LOG_WAITS = 1024;
+/** Batches the control plane looks up and writes at once, of all nodes. */
+export const MAX_LOG_WRITES = 256;
 /** The least a batch costs, so that a flood of small or empty batches is held back too. */
 export const LOG_BATCH_MIN_BYTES = 16 * 1024;
 
@@ -118,12 +130,23 @@ export class ByteRate {
     this.at = now;
   }
 
-  /** Milliseconds to wait before writing `bytes`; the bucket counts them as taken. */
-  take(bytes: number, now = Date.now()): number {
-    this.tokens = Math.min(this.burst, this.tokens + ((now - this.at) / 1000) * this.rate);
+  /**
+   * Milliseconds to wait before writing `bytes`, which the bucket then counts as taken; undefined,
+   * taking nothing, when the wait would be longer than `maxWaitMs`. A write taken stays taken,
+   * even when its stream ends before it is written: reconnecting never gives a node its bytes back.
+   */
+  reserve(bytes: number, maxWaitMs: number, now = Date.now()): number | undefined {
+    const tokens = Math.min(this.burst, this.tokens + ((now - this.at) / 1000) * this.rate) - bytes;
+    const waitMs = tokens >= 0 ? 0 : Math.ceil((-tokens / this.rate) * 1000);
+    if (waitMs > maxWaitMs) return undefined;
+    this.tokens = tokens;
     this.at = now;
-    this.tokens -= bytes;
-    return this.tokens >= 0 ? 0 : Math.ceil((-this.tokens / this.rate) * 1000);
+    return waitMs;
+  }
+
+  /** Gives back the bytes of a write the control plane refused after taking them. */
+  refund(bytes: number): void {
+    this.tokens += bytes;
   }
 
   /** True once the bucket has refilled: forgetting it then changes nothing. */

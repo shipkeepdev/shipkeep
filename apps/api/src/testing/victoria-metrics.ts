@@ -2,7 +2,7 @@ import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainer
 
 /** VictoriaMetrics image used by integration tests, the one deploy/control-plane/compose.yml pins. */
 export const VICTORIAMETRICS_TEST_IMAGE =
-  'victoriametrics/victoria-metrics:v1.155.0@sha256:f60dc268b54ecf87f6e09d740c2b732838aa9193090cc741417c9f6386a130df';
+  'victoriametrics/victoria-metrics:v1.157.0@sha256:322a7a92fdcc269280e9c38af94c83bc76827a31b792acbc60e44394e7f29c20';
 
 /**
  * A VictoriaMetrics for one spec file: VICTORIAMETRICS_TEST_URL where Docker is out of reach,

@@ -3,7 +3,14 @@
  * domain itself knows nothing about HTTP.
  */
 export type DomainErrorKind =
-  'invalid' | 'not_found' | 'conflict' | 'forbidden' | 'unauthorized' | 'precondition_failed';
+  | 'invalid'
+  | 'not_found'
+  | 'conflict'
+  | 'forbidden'
+  | 'unauthorized'
+  | 'precondition_failed'
+  /** Nothing wrong with the request: the service is busy or down for now, ask again later. */
+  | 'unavailable';
 
 /**
  * Base class for typed domain errors. `code` is a stable machine-readable identifier

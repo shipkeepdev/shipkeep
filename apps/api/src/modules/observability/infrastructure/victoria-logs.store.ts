@@ -15,7 +15,7 @@ const STREAM_FIELDS = 'org,app,instance,stream';
 export class VictoriaLogsStore implements LogsStore {
   constructor(private readonly base: string) {}
 
-  async write(records: readonly LogRecord[]): Promise<void> {
+  async write(records: readonly LogRecord[], signal?: AbortSignal): Promise<void> {
     if (records.length === 0) return;
     const url = new URL('/insert/jsonline', this.base);
     url.searchParams.set('_stream_fields', STREAM_FIELDS);
@@ -27,7 +27,10 @@ export class VictoriaLogsStore implements LogsStore {
         method: 'POST',
         headers: { 'content-type': 'application/stream+json' },
         body: records.map((record) => JSON.stringify(record)).join('\n'),
-        signal: AbortSignal.timeout(TIMEOUT_MS),
+        // The delivery's stream ending stops the request too, not only the wait for it.
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(TIMEOUT_MS)])
+          : AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch {
       throw unavailable();

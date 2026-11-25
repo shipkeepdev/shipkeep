@@ -43,7 +43,7 @@ The maintainer chose a dedicated stream through the control plane.
 ### What the control plane writes
 
 - **Labels.** It maps each container name to the node's placed allocation, as ADR 0024 does for metrics. That gives organization, project, environment, application, replica, node and stream. A line that maps to nothing is dropped, and the agent's own labels are never written.
-- **Rate.** Each node gets 512 KiB per second, with bursts up to 4 MiB. Past that, acknowledgements wait: the agent falls behind, and drops nothing.
+- **Rate.** Each node gets 512 KiB per second, with bursts up to 4 MiB. Past that, acknowledgements wait, at most 10 seconds per batch: the agent falls behind, and drops nothing. A batch that would wait longer is refused, charged nothing, and sent again later; a batch charged stays charged when its stream ends, so a new stream does not reset the rate. Work under way is bounded per node across its streams and for the whole control plane, and it ends with its stream (#473).
 - **Writing.** It writes batches to VictoriaLogs' JSON lines endpoint, and acknowledges each batch only after VictoriaLogs has accepted it.
 - **The VictoriaLogs service.** It is a service of the control plane's Compose project, like VictoriaMetrics:
   - on the internal network only, with no published port;
