@@ -11,15 +11,17 @@ import {
 import { AgentActions } from '../application/agent-actions';
 import { AuthenticateNode } from '../application/authenticate-node';
 import { NodeLiveness } from '../application/node-liveness';
+import { LogBatches } from '../application/log-batches';
 import { MetricsReports } from '../application/metrics-reports';
 import { StateReports } from '../application/state-reports';
 import { NodeAuthenticationError, type NodeIdentity } from '../domain/node-identity';
+
+import { nextFrame, tick, waitForFrame } from './stream-frames';
 
 const pollMs = 1000;
 const idleMs = 15_000;
 /** Heartbeats arrive every 5 s; recording every 10 s stays well inside the 15 s suspect window. */
 const recordEveryMs = 10_000;
-const tick = Symbol('tick');
 
 /**
  * Agent stream: identity, heartbeats (node liveness, M3.4c1) and at-least-once action delivery
@@ -35,6 +37,7 @@ export class NodeStream {
     private readonly liveness: NodeLiveness,
     private readonly reports: StateReports,
     private readonly metrics: MetricsReports,
+    private readonly logs: LogBatches,
   ) {}
 
   async *connect(
@@ -63,7 +66,7 @@ export class NodeStream {
             sent.add(request.actionId);
             yield create(ConnectResponseSchema, { msg: { case: 'actionRequest', value: request } });
           }
-        const result = await waitForFrame(pending, signal);
+        const result = await waitForFrame(pending, signal, pollMs);
         if (result === tick) {
           if (Date.now() - lastMessage >= idleMs)
             throw new ConnectError('agent stream idle timeout', Code.DeadlineExceeded);
@@ -93,6 +96,7 @@ export class NodeStream {
                 heartbeatInterval: { seconds: 5n },
                 serverTime: timestampFromDate(new Date()),
                 metrics: this.metrics.accepting,
+                logs: this.logs.accepting,
               },
             },
           });
@@ -137,47 +141,4 @@ export class NodeStream {
       // Do not await return() on an iterator blocked on a silent peer.
     }
   }
-}
-
-function waitForFrame<T>(pending: Promise<T>, signal: AbortSignal): Promise<T | typeof tick> {
-  return new Promise((resolve, reject) => {
-    const abort = () => {
-      cleanup();
-      reject(
-        signal.reason instanceof ConnectError
-          ? signal.reason
-          : new ConnectError('agent stream cancelled', Code.Canceled),
-      );
-    };
-    const timer = setTimeout(() => {
-      cleanup();
-      resolve(tick);
-    }, pollMs);
-    const cleanup = () => {
-      clearTimeout(timer);
-      signal.removeEventListener('abort', abort);
-    };
-    signal.addEventListener('abort', abort, { once: true });
-    if (signal.aborted) abort();
-    void pending.then(
-      (value) => {
-        cleanup();
-        resolve(value);
-      },
-      (error: unknown) => {
-        cleanup();
-        reject(
-          error instanceof Error ? error : new ConnectError('invalid stream input', Code.Internal),
-        );
-      },
-    );
-  });
-}
-
-function nextFrame<T>(reader: AsyncIterator<T>): Promise<IteratorResult<T>> {
-  const pending = reader.next();
-  // A socket may close while the database check is pending. Observe rejection immediately;
-  // waitForFrame still propagates it unless this stream has already been cancelled.
-  void pending.catch(() => undefined);
-  return pending;
 }
