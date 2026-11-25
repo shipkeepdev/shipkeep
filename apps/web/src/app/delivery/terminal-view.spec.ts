@@ -6,8 +6,10 @@ import {
   MAX_LINE_CHARS,
   MAX_SCREEN_CHARS,
   MAX_TERMINAL_LINES,
+  MAX_HELD_ESCAPE,
   plain,
   serverMessage,
+  unfinished,
 } from './terminal-view';
 
 const empty = { lines: [], open: false };
@@ -81,5 +83,40 @@ describe('the terminal view', () => {
     expect(screen.lines.length).toBeLessThan(1000);
     // The newest lines are the ones kept.
     expect(screen.lines.at(-1)?.text).toBe('y'.repeat(MAX_LINE_CHARS - 1));
+  });
+
+  it('keeps a line open across a frame that only changes the color', () => {
+    let screen = appendOutput(empty, 'stdout', 'hello');
+    screen = appendOutput(screen, 'stdout', '\u001b[0m');
+    screen = appendOutput(screen, 'stdout', ' world\n');
+    expect(screen.lines.map((l) => l.text)).toEqual(['hello world']);
+  });
+
+  it('holds an escape sequence cut between two frames until its end comes', () => {
+    // Frames as a shell sends them: the color code split in two.
+    const first = unfinished('', 'ok \u001b[31');
+    expect(first).toEqual({ text: 'ok ', held: '\u001b[31' });
+    const second = unfinished(first.held, 'merror\u001b[0m\n');
+    expect(second).toEqual({ text: '\u001b[31merror\u001b[0m\n', held: '' });
+    let screen = appendOutput(empty, 'stdout', first.text);
+    screen = appendOutput(screen, 'stdout', second.text);
+    expect(screen.lines.map((l) => l.text)).toEqual(['ok error']);
+    // A title cut before its end, and a lone escape, wait too.
+    expect(unfinished('', 'a\u001b]0;tit')).toEqual({ text: 'a', held: '\u001b]0;tit' });
+    expect(unfinished('', 'a\u001b]0;title\u001b')).toEqual({
+      text: 'a',
+      held: '\u001b]0;title\u001b',
+    });
+    expect(unfinished('', 'b\u001b')).toEqual({ text: 'b', held: '\u001b' });
+  });
+
+  it('lets through complete sequences, plain text, and an unfinished one past its bound', () => {
+    expect(unfinished('', 'a\u001b[0mb')).toEqual({ text: 'a\u001b[0mb', held: '' });
+    expect(unfinished('', 'a\u001b]0;t\u0007b')).toEqual({ text: 'a\u001b]0;t\u0007b', held: '' });
+    expect(unfinished('', 'plain text\n')).toEqual({ text: 'plain text\n', held: '' });
+    // A newline ends what a title could be: the line shows.
+    expect(unfinished('', '\u001b]0;x\nprompt$ ').held).toBe('');
+    const long = `\u001b]0;${'t'.repeat(MAX_HELD_ESCAPE)}`;
+    expect(unfinished('', long)).toEqual({ text: long, held: '' });
   });
 });

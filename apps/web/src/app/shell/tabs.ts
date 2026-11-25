@@ -1,7 +1,9 @@
 import {
+  afterNextRender,
   afterRenderEffect,
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   effect,
   type ElementRef,
   inject,
@@ -79,17 +81,33 @@ export class Tabs {
       const known = this.tabs().some((tab) => tab.id === wanted);
       if (wanted && known && wanted !== untracked(this.active)) this.active.set(wanted);
     });
-    // Only the bar scrolls, never the page: a tab opened from a link may sit past its right edge.
     afterRenderEffect(() => {
       this.active();
-      const list = this.list().nativeElement;
-      const tab = list.querySelector<HTMLElement>('[aria-selected="true"]');
-      if (!tab) return;
-      const bar = list.getBoundingClientRect();
-      const box = tab.getBoundingClientRect();
-      if (box.right > bar.right) list.scrollLeft += box.right - bar.right;
-      else if (box.left < bar.left) list.scrollLeft -= bar.left - box.left;
+      this.reveal();
     });
+    // A narrower bar, a phone turned or a window resized, can hide the open tab too.
+    const destroyRef = inject(DestroyRef);
+    afterNextRender(() => {
+      if (typeof ResizeObserver === 'undefined') return;
+      const observer = new ResizeObserver(() => {
+        this.reveal();
+      });
+      observer.observe(this.list().nativeElement);
+      destroyRef.onDestroy(() => {
+        observer.disconnect();
+      });
+    });
+  }
+
+  /** Only the bar scrolls, never the page: a tab opened from a link may sit past its right edge. */
+  private reveal(): void {
+    const list = this.list().nativeElement;
+    const tab = list.querySelector<HTMLElement>('[aria-selected="true"]');
+    if (!tab) return;
+    const bar = list.getBoundingClientRect();
+    const box = tab.getBoundingClientRect();
+    if (box.right > bar.right) list.scrollLeft += box.right - bar.right;
+    else if (box.left < bar.left) list.scrollLeft -= bar.left - box.left;
   }
 
   protected select(id: string): void {

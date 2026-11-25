@@ -2,9 +2,11 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  effect,
   inject,
   input,
   signal,
+  untracked,
 } from '@angular/core';
 
 import { Icon } from '../shell/icon';
@@ -12,7 +14,14 @@ import { IdentityRequestError } from '../identity/identity-api';
 import { I18n, T } from '../ui/i18n';
 
 import { DeliveryApi, type EnvironmentRef } from './delivery-api';
-import { appendLine, appendOutput, END_REASONS, type Screen, serverMessage } from './terminal-view';
+import {
+  appendLine,
+  appendOutput,
+  END_REASONS,
+  type Screen,
+  serverMessage,
+  unfinished,
+} from './terminal-view';
 
 type State = 'idle' | 'connecting' | 'open' | 'ended';
 
@@ -116,21 +125,39 @@ export class TerminalPanel {
   protected readonly state = signal<State>('idle');
   protected readonly screen = signal<Screen>({ lines: [], open: false });
   protected readonly problem = signal<string | null>(null);
+  /** The session's connection; one that ended is let go, and nothing it does counts any more. */
   private socket: WebSocket | null = null;
-  /** Set once the panel is gone: a session opened meanwhile is not joined. */
-  private destroyed = false;
+  /**
+   * The application the panel is for: it changes when another one is opened, or once the panel is
+   * gone, and a session opened for an earlier one meanwhile is not joined.
+   */
+  private target = 0;
   private readonly encoder = new TextEncoder();
-  private readonly decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
+  private decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
+  private held = { stdout: '', stderr: '' };
 
   constructor() {
+    // Another application in the same page: its terminal starts anew, the session left closed.
+    effect(() => {
+      this.environment();
+      this.applicationId();
+      untracked(() => {
+        this.target++;
+        this.disconnect();
+        this.state.set('idle');
+        this.problem.set(null);
+        this.screen.set({ lines: [], open: false });
+      });
+    });
     inject(DestroyRef).onDestroy(() => {
-      this.destroyed = true;
+      this.target++;
       this.disconnect();
     });
   }
 
   protected async connect(): Promise<void> {
     if (this.state() === 'connecting' || this.state() === 'open') return;
+    const target = this.target;
     this.state.set('connecting');
     this.problem.set(null);
     try {
@@ -140,26 +167,29 @@ export class TerminalPanel {
         tty: false,
         minutes: 30,
       });
-      // Left while the session was being opened: it is not joined, and the server ends it once
-      // nobody joins in time.
-      if (this.destroyed) return;
+      // Left, or another application opened, while the session was being opened: it is not
+      // joined, and the server ends it once nobody joins in time.
+      if (target !== this.target) return;
       const url = new URL(session.websocketPath, window.location.href);
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
       const socket = new WebSocket(url);
       socket.binaryType = 'arraybuffer';
       this.socket = socket;
+      this.decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
+      this.held = { stdout: '', stderr: '' };
       socket.onopen = () => {
         this.state.set('open');
         this.note('Connected to a shell in the first replica.');
       };
       socket.onmessage = (event: MessageEvent<ArrayBuffer | string>) => {
-        this.receive(event.data);
+        this.receive(socket, event.data);
       };
       socket.onclose = () => {
-        if (this.socket === socket) this.socket = null;
+        this.release(socket);
         if (this.state() !== 'ended') this.end('The session was closed.');
       };
     } catch (error: unknown) {
+      if (target !== this.target) return;
       this.state.set('idle');
       // The API's own reason (no permission, replica not running, too many sessions) when it
       // gave one.
@@ -181,23 +211,36 @@ export class TerminalPanel {
   protected disconnect(): void {
     const socket = this.socket;
     if (!socket) return;
+    this.release(socket);
     if (socket.readyState === WebSocket.OPEN)
       socket.send(JSON.stringify({ type: 'close', kill: true }));
     socket.close();
-    this.socket = null;
+    if (this.state() !== 'ended') this.end('The session was closed.');
   }
 
-  private receive(data: ArrayBuffer | string): void {
+  /** Lets an ended connection go: its late messages and its close change nothing any more. */
+  private release(socket: WebSocket): void {
+    socket.onopen = null;
+    socket.onmessage = null;
+    socket.onclose = null;
+    if (this.socket === socket) this.socket = null;
+  }
+
+  private receive(socket: WebSocket, data: ArrayBuffer | string): void {
     if (typeof data === 'string') {
       const message = serverMessage(data);
       if (message?.exit !== undefined)
         this.end('The command exited with code {code}.', { code: String(message.exit) });
       else if (message?.reason) this.end(END_REASONS[message.reason] ?? 'The session was closed.');
+      // The server closes it next: a new session may start before that close comes.
+      if (message) this.release(socket);
       return;
     }
     const bytes = new Uint8Array(data);
     const kind = bytes[0] === 2 ? 'stderr' : 'stdout';
-    const text = this.decoders[kind].decode(bytes.subarray(1), { stream: true });
+    const decoded = this.decoders[kind].decode(bytes.subarray(1), { stream: true });
+    const { text, held } = unfinished(this.held[kind], decoded);
+    this.held[kind] = held;
     this.screen.update((screen) => appendOutput(screen, kind, text));
   }
 

@@ -44,6 +44,24 @@ export function plain(text: string): string {
   );
 }
 
+/** The longest escape sequence held back for the next frame; a longer one is let through. */
+export const MAX_HELD_ESCAPE = 1024;
+
+/** An escape sequence that the output ends with before its last byte came. */
+// eslint-disable-next-line no-control-regex -- escape sequences are what is matched
+const UNFINISHED = /\u001b(?:\[[0-9;?]*[ -/]*|\][^\u0007\u001b\n]*\u001b?)?$/;
+
+/**
+ * One stream's output as it arrives, `held` being what the previous frame ended with: an escape
+ * sequence cut between two frames waits for the rest, so that `plain` removes it whole.
+ */
+export function unfinished(held: string, text: string): { text: string; held: string } {
+  const all = held + text;
+  const start = all.search(UNFINISHED);
+  if (start < 0 || all.length - start > MAX_HELD_ESCAPE) return { text: all, held: '' };
+  return { text: all.slice(0, start), held: all.slice(start) };
+}
+
 /** The terminal's text, and whether its last line waits for the rest of its output. */
 export interface Screen {
   readonly lines: readonly TerminalLine[];
@@ -56,8 +74,11 @@ export interface Screen {
  * bounds, the newest kept.
  */
 export function appendOutput(screen: Screen, kind: 'stdout' | 'stderr', text: string): Screen {
+  const visible = plain(text);
+  // Nothing to show, a color change alone: the open line stays open.
+  if (visible === '') return screen;
   const lines = [...screen.lines];
-  const parts = plain(text).split('\n');
+  const parts = visible.split('\n');
   parts.forEach((part, index) => {
     const last = lines.at(-1);
     if (index === 0 && screen.open && last?.kind === kind) {

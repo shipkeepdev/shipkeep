@@ -58,4 +58,41 @@ describe('tabs', () => {
     await fixture.whenStable();
     expect(list.scrollLeft).toBe(70);
   });
+
+  it('keeps the open tab in view when the bar gets narrower', async () => {
+    let resized: () => void = () => undefined;
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: () => void) {
+          resized = callback;
+        }
+        observe(): void {
+          return undefined;
+        }
+        disconnect(): void {
+          return undefined;
+        }
+      },
+    );
+    try {
+      const { fixture, tab } = setup();
+      const list = tab('one')?.parentElement as HTMLElement;
+      const box = (left: number, right: number) => () => ({ left, right }) as DOMRect;
+      list.getBoundingClientRect = box(0, 200);
+      (tab('one') as HTMLElement).getBoundingClientRect = box(0, 80);
+      (tab('two') as HTMLElement).getBoundingClientRect = box(84, 170);
+      fixture.componentInstance.active.set('two');
+      fixture.detectChanges();
+      await fixture.whenStable();
+      // Wide enough: nothing scrolls.
+      expect(list.scrollLeft).toBe(0);
+      // The window narrows: the open tab now ends past the bar's edge, and comes back in view.
+      list.getBoundingClientRect = box(0, 120);
+      resized();
+      expect(list.scrollLeft).toBe(50);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
