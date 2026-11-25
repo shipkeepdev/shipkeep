@@ -37,6 +37,7 @@ export class LogsQueries {
       stream?: 'stdout' | 'stderr' | undefined;
       instance?: number | undefined;
       from: Date;
+      fromExact?: string | undefined;
       to: Date;
       limit: number;
       order?: 'newest' | 'oldest' | undefined;

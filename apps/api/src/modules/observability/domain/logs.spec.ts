@@ -159,6 +159,14 @@ describe('log searches (ADR 0029)', () => {
     );
   });
 
+  it('starts at the exact time a live view gives, to the nanosecond, and at nothing else', () => {
+    expect(logsQuery({ ...search, fromExact: '2026-11-24T11:00:00.123456789Z' })).toContain(
+      '_time:[2026-11-24T11:00:00.123456789Z, 2026-11-24T12:00:00.000Z]',
+    );
+    for (const fromExact of ['2026-11-24T11:00:00+01:00', '2026-11-24T11:00:00.1234567890Z', 'x'])
+      expect(logsQuery({ ...search, fromExact })).toContain('_time:[2026-11-24T11:00:00.000Z,');
+  });
+
   it('reads forward from a time for a live view, so that nothing between two reads is missed', () => {
     expect(logsQuery({ ...search, order: 'oldest' })).toMatch(
       / \| sort by \(_time\) \| limit 200$/,

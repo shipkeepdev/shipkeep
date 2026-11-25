@@ -2,8 +2,8 @@ import { type Block, type Section } from '../dashboard/screen-model';
 
 /**
  * The application screen of the design: its configuration menu, and sample content for the parts
- * the control plane does not serve yet (scheduled tasks, approvals, webhooks, logs, terminal and
- * metrics). Pages built from these samples carry the "Preview" label.
+ * the control plane does not serve yet (scheduled tasks, approvals and webhooks).
+ * Pages built from these samples carry the "Preview" label.
  */
 export type AppSection = Omit<Section, 'blocks'>;
 
@@ -243,109 +243,3 @@ export const APP_SAMPLES: Readonly<Record<'tasks' | 'approvals' | 'webhooks', Se
     ],
   },
 };
-
-export const SAMPLE_LOGS: readonly { t: string; node: string; lvl: string; msg: string }[] = [
-  {
-    t: '10:22:41',
-    node: 'srv-par-1',
-    lvl: 'INF',
-    msg: 'GET /invoices/8812 200 · 38 ms',
-  },
-  {
-    t: '10:22:41',
-    node: 'srv-fra-2',
-    lvl: 'INF',
-    msg: 'POST /invoices 201 · 112 ms',
-  },
-  {
-    t: '10:22:40',
-    node: 'srv-ams-3',
-    lvl: 'INF',
-    msg: 'GET /healthz 200 · 2 ms',
-  },
-  {
-    t: '10:22:39',
-    node: 'srv-par-1',
-    lvl: 'WRN',
-    msg: 'pg pool 18/20 · wait 40 ms',
-  },
-  {
-    t: '10:22:38',
-    node: 'srv-fra-2',
-    lvl: 'INF',
-    msg: 'GET /invoices?status=due 200 · 64 ms',
-  },
-  {
-    t: '10:22:36',
-    node: 'srv-par-1',
-    lvl: 'ERR',
-    msg: 'POST /invoices/8790/pdf 502 · upstream timeout',
-  },
-  {
-    t: '10:22:35',
-    node: 'srv-ams-3',
-    lvl: 'INF',
-    msg: 'Stripe webhook invoice.paid processed',
-  },
-  {
-    t: '10:22:33',
-    node: 'srv-fra-2',
-    lvl: 'INF',
-    msg: 'GET /invoices/8811 200 · 31 ms',
-  },
-  {
-    t: '10:22:31',
-    node: 'srv-par-1',
-    lvl: 'INF',
-    msg: 'PDF 8789 generated · 1.2 MB',
-  },
-  {
-    t: '10:22:30',
-    node: 'srv-ams-3',
-    lvl: 'INF',
-    msg: 'GET /healthz 200 · 2 ms',
-  },
-  {
-    t: '10:22:28',
-    node: 'srv-fra-2',
-    lvl: 'WRN',
-    msg: 'retry SMTP 1/3 · reminder-8781',
-  },
-  {
-    t: '10:22:27',
-    node: 'srv-par-1',
-    lvl: 'INF',
-    msg: 'GET /invoices 200 · 45 ms',
-  },
-];
-
-export const SAMPLE_TERMINAL: readonly { t: string; c: string }[] = [
-  {
-    t: '$ node -v',
-    c: '#EDEDEF',
-  },
-  {
-    t: 'v22.11.0',
-    c: '#8B8B93',
-  },
-  {
-    t: '$ npm run migrate:status',
-    c: '#EDEDEF',
-  },
-  {
-    t: '✓ 0042_invoice_pdf_export   applied',
-    c: '#8B8B93',
-  },
-  {
-    t: '✓ 0041_vat_rounding         applied',
-    c: '#8B8B93',
-  },
-  {
-    t: '$ ls storage/pdf | wc -l',
-    c: '#EDEDEF',
-  },
-  {
-    t: '8789',
-    c: '#8B8B93',
-  },
-];
