@@ -50,7 +50,14 @@ function replica(overrides: Partial<ReplicaStatus>): ReplicaStatus {
   };
 }
 
-function world(options: { replicas?: ReplicaStatus[]; denied?: boolean; app?: boolean } = {}) {
+function world(
+  options: {
+    replicas?: ReplicaStatus[];
+    denied?: boolean;
+    app?: boolean;
+    waiting?: () => void;
+  } = {},
+) {
   const queued: Parameters<ActionQueue['enqueue']>[0][] = [];
   const published: DomainEvent[] = [];
   const order: string[] = [];
@@ -68,7 +75,11 @@ function world(options: { replicas?: ReplicaStatus[]; denied?: boolean; app?: bo
       find: () => Promise.resolve(options.app === false ? undefined : application),
     } as unknown as ApplicationStore,
     {
-      forApplication: () => Promise.resolve(options.replicas ?? [replica({})]),
+      forApplication: () => {
+        // The database may take a while to answer: tests move the clock meanwhile.
+        options.waiting?.();
+        return Promise.resolve(options.replicas ?? [replica({})]);
+      },
     } as unknown as ObservationStore,
     {
       enqueue: (input: Parameters<ActionQueue['enqueue']>[0]) => {
@@ -184,6 +195,26 @@ describe('opening an exec session (SPEC 3.1)', () => {
       ConflictError,
     );
     expect([...w.queued, ...unseen.queued]).toEqual([]);
+  });
+
+  it('judges freshness and sets deadlines when it decides, not when the request began', async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date', 'performance', 'setTimeout', 'clearTimeout'] });
+    try {
+      // Fresh when the request begins, two minutes and one second old once the database answers.
+      const late = world({
+        replicas: [replica({ observedAt: new Date(NOW.getTime() - 119_000) })],
+        waiting: () => vi.advanceTimersByTime(2_000),
+      });
+      await expect(late.service.open(context, target, APP, {}, NOW)).rejects.toBeInstanceOf(
+        ConflictError,
+      );
+      // Thirty seconds of database time move the deadlines with them.
+      const slow = world({ waiting: () => vi.advanceTimersByTime(30_000) });
+      const session = await slow.service.open(context, target, APP, {}, NOW);
+      expect(session.attachBy.getTime() - NOW.getTime()).toBe(30_000 + 60_000);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('caps the sessions waiting for one person', async () => {

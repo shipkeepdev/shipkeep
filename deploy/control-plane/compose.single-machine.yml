@@ -34,6 +34,11 @@ services:
     cgroup_parent: shipkeep-controlplane.slice
     mem_limit: 320m
 
+  # Likewise for logs: losing them costs history, not state (ADR 0029).
+  victorialogs:
+    cgroup_parent: shipkeep-controlplane.slice
+    mem_limit: 320m
+
   kek:
     cgroup_parent: shipkeep-controlplane.slice
 

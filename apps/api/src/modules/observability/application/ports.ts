@@ -1,3 +1,4 @@
+import type { LogRecord } from '../domain/logs';
 import type { ContainerTarget, HostTarget } from '../domain/metrics';
 
 export const METRICS_TARGETS = Symbol('MetricsTargets');
@@ -44,4 +45,12 @@ export interface MetricsStore {
 export const METRICS_TRANSACTION = Symbol('MetricsTransaction');
 export interface MetricsTransaction {
   runTenant<T>(organizationId: string, work: () => Promise<T>): Promise<T>;
+}
+
+export const LOGS_STORE = Symbol('LogsStore');
+/** VictoriaLogs (ADR 0029), or null when none is configured. */
+export interface LogsStore {
+  write(records: readonly LogRecord[]): Promise<void>;
+  /** The answer of a LogsQL query, one record per line. */
+  query(logsql: string, limit: number): Promise<unknown[]>;
 }

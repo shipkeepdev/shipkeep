@@ -83,6 +83,8 @@ export class ExecRelay {
   private browser: BrowserPort | undefined;
   private agentJoined = false;
   private ended: ExecEnd | undefined;
+  /** The agent's exit or error, kept from its arrival: an end meanwhile does not replace it. */
+  private outcome: { reason: ExecEnd; exitCode: number | null } | undefined;
   private startedAt: number | undefined;
   private readonly waiting: BrowserFrame[] = [];
   private wake: (() => void) | undefined;
@@ -138,9 +140,11 @@ export class ExecRelay {
   /** A frame from the agent, forwarded to the browser; exit and error end the session. */
   async fromAgent(frame: AgentFrame): Promise<void> {
     if (this.ended || !this.browser) return;
+    if (frame.kind === 'exit') this.outcome = { reason: 'exited', exitCode: frame.code };
+    else if (frame.kind === 'error')
+      this.outcome = { reason: execEndOf(frame.message), exitCode: null };
     await this.browser.send(frame);
-    if (frame.kind === 'exit') this.end('exited', frame.code);
-    else if (frame.kind === 'error') this.end(execEndOf(frame.message), null);
+    if (this.outcome) this.end(this.outcome.reason, this.outcome.exitCode);
   }
 
   /** A frame from the browser, queued for the agent. */
@@ -193,6 +197,8 @@ export class ExecRelay {
   /** Ends the session once: both sides are released and the end is recorded. */
   end(reason: ExecEnd, exitCode: number | null): void {
     if (this.ended) return;
+    // An exit already received is the session's end, whatever closes it during its delivery.
+    if (this.outcome) ({ reason, exitCode } = this.outcome);
     this.ended = reason;
     clearTimeout(this.timer);
     clearTimeout(this.limit);
