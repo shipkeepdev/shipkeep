@@ -86,7 +86,7 @@ describe('log ingestion (ADR 0029)', () => {
     expect(written).toEqual([
       [
         {
-          _time: NOW.toISOString(),
+          _time: '2026-11-24T12:00:00.000000000Z',
           _msg: 'ready',
           org: 'o1',
           project: 'p',
@@ -97,7 +97,7 @@ describe('log ingestion (ADR 0029)', () => {
           stream: 'stdout',
         },
         {
-          _time: NOW.toISOString(),
+          _time: '2026-11-24T12:00:00.000000000Z',
           _msg: 'oops',
           org: 'o1',
           project: 'p',

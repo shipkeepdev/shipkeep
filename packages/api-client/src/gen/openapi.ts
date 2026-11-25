@@ -4124,15 +4124,17 @@ export interface operations {
     readonly applicationLogs: {
         readonly parameters: {
             readonly query?: {
-                /** @description One hour ago by default. */
+                /** @description One hour ago by default. With its offset (`Z` or `±hh:mm`). */
                 readonly from?: string;
                 /** @description The replica, numbered from 0. */
                 readonly instance?: number;
                 readonly limit?: number;
+                /** @description `newest` first by default. A live view reads `oldest` first from its last line, and again at once while an answer is full, so that no line is skipped. */
+                readonly order?: "newest" | "oldest";
                 readonly stream?: "stdout" | "stderr";
-                /** @description Text the lines contain. */
+                /** @description Text the lines contain, matched with its case. */
                 readonly text?: string;
-                /** @description Now by default. */
+                /** @description Now by default. With its offset (`Z` or `±hh:mm`). */
                 readonly to?: string;
             };
             readonly header?: never;

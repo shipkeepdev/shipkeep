@@ -21,6 +21,7 @@ const entry = (overrides: Partial<LogInput> = {}): LogInput => ({
   container: 'sk-web-r1-0',
   stream: 'stdout',
   time: new Date('2026-11-24T11:59:59Z'),
+  nanos: 123_456_789,
   line: 'GET / 200',
   truncated: false,
   ...overrides,
@@ -42,6 +43,8 @@ describe('log batches (ADR 0029)', () => {
       entry({ container: 'SK-WEB' }),
       entry({ container: `sk-${'a'.repeat(61)}` }),
       entry({ time: new Date(Number.NaN) }),
+      entry({ nanos: 1_000_000_000 }),
+      entry({ nanos: 1.5 }),
       entry({ line: 'é'.repeat(MAX_LOG_LINE_BYTES / 2 + 1) }),
     ])
       expect(validEntries([bad])).toEqual([]);
@@ -63,7 +66,7 @@ describe('log batches (ADR 0029)', () => {
     );
     expect(records).toEqual([
       {
-        _time: '2026-11-24T11:59:59.000Z',
+        _time: '2026-11-24T11:59:59.123456789Z',
         _msg: 'GET / 200',
         org: 'o1',
         project: 'p1',
@@ -74,7 +77,7 @@ describe('log batches (ADR 0029)', () => {
         stream: 'stdout',
       },
       {
-        _time: '2026-11-24T11:59:59.000Z',
+        _time: '2026-11-24T11:59:59.123456789Z',
         _msg: 'GET / 200',
         org: 'o1',
         project: 'p1',
@@ -96,7 +99,7 @@ describe('log batches (ADR 0029)', () => {
       scope,
       NOW,
     );
-    expect(record._time).toBe(NOW.toISOString());
+    expect(record._time).toBe('2026-11-24T12:00:00.000000000Z');
   });
 
   it('keeps the time of a line sent again after an outage, and drops one past retention', () => {
@@ -111,7 +114,7 @@ describe('log batches (ADR 0029)', () => {
       NOW,
     );
     expect(records.map((record) => [record._time, record._msg])).toEqual([
-      [hourAgo.toISOString(), 'GET / 200'],
+      ['2026-11-24T11:00:00.123456789Z', 'GET / 200'],
     ]);
   });
 
@@ -151,12 +154,18 @@ describe('log searches (ADR 0029)', () => {
   it('filters on the labels the control plane wrote, newest first', () => {
     expect(logsQuery({ ...search, stream: 'stderr', instance: 2, text: 'timeout' })).toBe(
       '{org="019d0000-0000-7000-8000-00000000000a",app="019d0000-0000-7000-8000-0000000000a1"} ' +
-        '_time:[2026-11-24T11:00:00.000Z, 2026-11-24T12:00:00.000Z] stream:=stderr instance:="2" "timeout" ' +
+        '_time:[2026-11-24T11:00:00.000Z, 2026-11-24T12:00:00.000Z] stream:=stderr instance:="2" *"timeout"* ' +
         '| sort by (_time desc) | limit 200',
     );
   });
 
-  it('keeps the text one phrase, whatever it holds', () => {
+  it('reads forward from a time for a live view, so that nothing between two reads is missed', () => {
+    expect(logsQuery({ ...search, order: 'oldest' })).toMatch(
+      / \| sort by \(_time\) \| limit 200$/,
+    );
+  });
+
+  it('keeps the text one quoted substring, whatever it holds', () => {
     for (const [text, phrase] of [
       ['" | delete', '"\\" | delete"'],
       ['a\\" OR app:*', '"a\\\\\\" OR app:*"'],
@@ -164,7 +173,7 @@ describe('log searches (ADR 0029)', () => {
       ['} {org="other"}', '"} {org=\\"other\\"}"'],
     ] as const) {
       const query = logsQuery({ ...search, text });
-      expect(query).toContain(` ${phrase} | sort`);
+      expect(query).toContain(` *${phrase}* | sort`);
       expect(query.startsWith('{org="019d0000-0000-7000-8000-00000000000a",')).toBe(true);
     }
   });
@@ -175,24 +184,39 @@ describe('log searches (ADR 0029)', () => {
 
   it('reads back only the lines Shipkeep wrote', () => {
     expect(
-      logLineOf({ _time: '2026-11-24T11:30:00Z', _msg: 'ready', stream: 'stdout', instance: '1' }),
+      logLineOf({
+        _time: '2026-11-24T11:30:00.97Z',
+        _msg: 'ready',
+        stream: 'stdout',
+        instance: '1',
+      }),
     ).toEqual({
-      time: '2026-11-24T11:30:00Z',
+      // VictoriaLogs trims trailing zeros; the API answers nine digits, so times sort as text.
+      time: '2026-11-24T11:30:00.970000000Z',
       stream: 'stdout',
       instance: 1,
       line: 'ready',
       truncated: false,
     });
     expect(
-      logLineOf({ _time: 't', _msg: 'cut', stream: 'stderr', instance: '3', truncated: 'true' })
-        ?.truncated,
+      logLineOf({
+        _time: '2026-11-24T11:30:00Z',
+        _msg: 'cut',
+        stream: 'stderr',
+        instance: '3',
+        truncated: 'true',
+      })?.truncated,
     ).toBe(true);
     for (const record of [
       null,
       'x',
       {},
-      { _time: 't', _msg: 'm', stream: 'other', instance: '1' },
-      { _time: 't', _msg: 'm', stream: 'stdout', instance: 'x' },
+      { _time: '2026-11-24T11:30:00Z', _msg: 'm', stream: 'other', instance: '1' },
+      { _time: '2026-11-24T11:30:00Z', _msg: 'm', stream: 'stdout', instance: 'x' },
+      { _time: '2026-11-24T11:30:00Z', _msg: 'm', stream: 'stdout', instance: '' },
+      { _time: '2026-11-24T11:30:00Z', _msg: 'm', stream: 'stdout', instance: null },
+      { _time: '2026-11-24T11:30:00Z', _msg: 'm', stream: 'stdout', instance: '1e2' },
+      { _time: 't', _msg: 'm', stream: 'stdout', instance: '1' },
     ])
       expect(logLineOf(record)).toBeUndefined();
   });

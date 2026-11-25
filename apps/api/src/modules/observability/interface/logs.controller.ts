@@ -34,12 +34,7 @@ export class LogsController {
     @Query() query: LogsQueryDto,
   ): Promise<LogsDto> {
     const { applicationId, ...target } = path;
-    const to = query.to ? new Date(query.to) : new Date();
-    const from = query.from ? new Date(query.from) : new Date(to.getTime() - 3_600_000);
-    if (!(from.getTime() < to.getTime()) || to.getTime() - from.getTime() > MAX_PERIOD_MS)
-      throw new BadRequestException(
-        'The period must start before it ends, and last 30 days at most.',
-      );
+    const { from, to } = logsPeriod(query);
     return logsDto(
       await this.logs.search(resourceContext(request), target, applicationId, {
         text: query.text ?? '',
@@ -48,7 +43,22 @@ export class LogsController {
         from,
         to,
         limit: query.limit ?? 200,
+        order: query.order,
       }),
     );
   }
+}
+
+/** The period a search covers: the last hour by default, 30 days at most. */
+export function logsPeriod(
+  query: { readonly from?: string | undefined; readonly to?: string | undefined },
+  now = new Date(),
+): { from: Date; to: Date } {
+  const to = query.to ? new Date(query.to) : now;
+  const from = query.from ? new Date(query.from) : new Date(to.getTime() - 3_600_000);
+  if (!(from.getTime() < to.getTime()) || to.getTime() - from.getTime() > MAX_PERIOD_MS)
+    throw new BadRequestException(
+      'The period must start before it ends, and last 30 days at most.',
+    );
+  return { from, to };
 }

@@ -6,6 +6,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  Matches,
   Max,
   MaxLength,
   Min,
@@ -14,8 +15,15 @@ import {
 import type { LogsAnswer } from '../application/logs-queries';
 import { MAX_LOG_RESULTS, MAX_LOG_TEXT } from '../domain/logs';
 
+/** A time the server cannot read in its own time zone. */
+const WITH_OFFSET = /(?:Z|[+-]\d{2}:\d{2})$/;
+
 export class LogsQueryDto {
-  @ApiProperty({ required: false, maxLength: MAX_LOG_TEXT, description: 'Text the lines contain.' })
+  @ApiProperty({
+    required: false,
+    maxLength: MAX_LOG_TEXT,
+    description: 'Text the lines contain, matched with its case.',
+  })
   @IsOptional()
   @IsString()
   @MaxLength(MAX_LOG_TEXT)
@@ -40,15 +48,35 @@ export class LogsQueryDto {
   @Max(999)
   instance?: number;
 
-  @ApiProperty({ required: false, format: 'date-time', description: 'One hour ago by default.' })
+  @ApiProperty({
+    required: false,
+    format: 'date-time',
+    description: 'One hour ago by default. With its offset (`Z` or `±hh:mm`).',
+  })
   @IsOptional()
   @IsDateString({ strict: true })
+  @Matches(WITH_OFFSET, { message: 'from must end with Z or an offset' })
   from?: string;
 
-  @ApiProperty({ required: false, format: 'date-time', description: 'Now by default.' })
+  @ApiProperty({
+    required: false,
+    format: 'date-time',
+    description: 'Now by default. With its offset (`Z` or `±hh:mm`).',
+  })
   @IsOptional()
   @IsDateString({ strict: true })
+  @Matches(WITH_OFFSET, { message: 'to must end with Z or an offset' })
   to?: string;
+
+  @ApiProperty({
+    required: false,
+    enum: ['newest', 'oldest'],
+    description:
+      '`newest` first by default. A live view reads `oldest` first from its last line, and again at once while an answer is full, so that no line is skipped.',
+  })
+  @IsOptional()
+  @IsIn(['newest', 'oldest'])
+  order?: 'newest' | 'oldest';
 
   @ApiProperty({
     required: false,
