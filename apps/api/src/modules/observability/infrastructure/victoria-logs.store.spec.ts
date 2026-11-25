@@ -1,6 +1,7 @@
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
+import { ServiceUnavailableException } from '@nestjs/common';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { VictoriaLogsStore } from './victoria-logs.store';
@@ -57,7 +58,11 @@ describe('the VictoriaLogs store', () => {
 
   it('fails without the store text, and writes nothing for no records', async () => {
     const { store: logs, seen } = await store(500);
-    await expect(logs.write([record])).rejects.toThrow('log store answered 500');
+    await expect(logs.write([record])).rejects.toBeInstanceOf(ServiceUnavailableException);
+    // A store that cannot be reached fails the same way.
+    await expect(
+      new VictoriaLogsStore('http://127.0.0.1:1').write([record]),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
     await expect(logs.write([record])).rejects.not.toThrow('/var/lib');
     seen.url = undefined;
     await logs.write([]);

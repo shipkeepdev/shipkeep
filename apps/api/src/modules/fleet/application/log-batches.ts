@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { LogBatch } from '@shipkeep/proto-ts';
 
+import { LogsNotKeptError } from '../domain/logs-not-kept';
 import type { NodeIdentity } from '../domain/node-identity';
 
 /** Stores one batch; it resolves once the batch is kept, which the agent's acknowledgement waits for. */
@@ -23,7 +24,7 @@ export class LogBatches {
   }
 
   async deliver(identity: NodeIdentity, batch: LogBatch): Promise<void> {
-    if (!this.handler) throw new Error('no log store');
+    if (!this.handler) throw new LogsNotKeptError();
     await this.handler(identity, batch);
   }
 }

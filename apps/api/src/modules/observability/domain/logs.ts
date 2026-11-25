@@ -12,6 +12,8 @@ export const MAX_LOG_SKEW_MS = 5 * 60_000;
 export const LOG_RETENTION_MS = 30 * 24 * 3_600_000;
 /** What one node may write: 512 KiB per second, with bursts up to 4 MiB. */
 export const LOG_RATE = { bytesPerSecond: 512 * 1024, burstBytes: 4 * 1024 * 1024 } as const;
+/** The least a batch costs, so that a flood of small or empty batches is held back too. */
+export const LOG_BATCH_MIN_BYTES = 16 * 1024;
 
 const CONTAINER = /^(?:[a-f0-9]{64}|sk-[a-z0-9-]{1,60})$/;
 
@@ -45,7 +47,7 @@ export function validEntries(entries: readonly LogInput[]): LogInput[] {
       (entry) =>
         CONTAINER.test(entry.container) &&
         Number.isFinite(entry.time.getTime()) &&
-        new TextEncoder().encode(entry.line).length <= MAX_LOG_LINE_BYTES,
+        utf8.encode(entry.line).length <= MAX_LOG_LINE_BYTES,
     );
 }
 
@@ -83,6 +85,17 @@ export function logRecords(
   return records;
 }
 
+const utf8 = new TextEncoder();
+
+/**
+ * What a batch costs against its node's rate: its lines in UTF-8 bytes, whether they are kept or
+ * not, and at least LOG_BATCH_MIN_BYTES.
+ */
+export function batchBytes(lines: readonly string[]): number {
+  const bytes = lines.reduce((sum, line) => sum + utf8.encode(line).length, 0);
+  return Math.max(LOG_BATCH_MIN_BYTES, bytes);
+}
+
 /** A token bucket in bytes: how long a write of `bytes` must wait, and takes them. */
 export class ByteRate {
   private tokens: number;
@@ -103,5 +116,10 @@ export class ByteRate {
     this.at = now;
     this.tokens -= bytes;
     return this.tokens >= 0 ? 0 : Math.ceil((-this.tokens / this.rate) * 1000);
+  }
+
+  /** True once the bucket has refilled: forgetting it then changes nothing. */
+  full(now = Date.now()): boolean {
+    return this.tokens + ((now - this.at) / 1000) * this.rate >= this.burst;
   }
 }
