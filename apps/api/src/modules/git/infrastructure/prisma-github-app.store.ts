@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { ConflictError, NotFoundError, type Secret } from '@shipkeep/domain';
+import { ConflictError, NotFoundError, Secret } from '@shipkeep/domain';
 
+import { ValueDecryptionError } from '../../../platform/crypto/envelope';
 import { EnvelopeService } from '../../../platform/crypto/envelope.service';
 import { Prisma } from '../../../platform/prisma/generated/client';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
@@ -54,6 +55,41 @@ export class PrismaGithubAppStore implements GithubAppStore {
     return row
       ? { stateHash: new Uint8Array(row.stateHash), userId: row.userId, expiresAt: row.expiresAt }
       : undefined;
+  }
+
+  async credentials(
+    organizationId: string,
+  ): Promise<{ appId: number; privateKey: Secret } | undefined> {
+    const row = await this.database.client.githubApp.findUnique({
+      where: { organizationId },
+      select: { appId: true, privateKeyEnc: true },
+    });
+    if (!row) return undefined;
+    try {
+      const key = await this.envelope.decryptFor(
+        `organization:${organizationId}`,
+        `github-app:${String(row.appId)}:private-key`,
+        Buffer.from(row.privateKeyEnc),
+      );
+      return { appId: Number(row.appId), privateKey: new Secret(key.toString('utf8')) };
+    } catch (error: unknown) {
+      // A row moved or altered no longer decrypts: the App must be connected again. A data key
+      // that cannot be read reaches the caller as it is.
+      if (!(error instanceof ValueDecryptionError)) throw error;
+      throw new ConflictError(
+        'github_app_unreadable',
+        'The stored GitHub App cannot be read; connect it again.',
+      );
+    }
+  }
+
+  async activeInstallations(organizationId: string): Promise<number[]> {
+    const rows = await this.database.client.githubInstallation.findMany({
+      where: { organizationId, suspendedAt: null },
+      orderBy: { createdAt: 'asc' },
+      select: { installationId: true },
+    });
+    return rows.map((row) => Number(row.installationId));
   }
 
   async create(

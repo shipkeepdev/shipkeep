@@ -13,6 +13,7 @@ import { IdentityAttemptLimit } from '../../identity/interface/identity-rate.gua
 import { RequireTenant } from '../../identity/interface/route-access';
 import { type IdentityRequest, resourceContext } from '../../identity/interface/session-http';
 import { GithubAppCommands } from '../application/github-app-commands';
+import { GithubRepositories } from '../application/github-repositories';
 
 import {
   CompleteGithubAppDto,
@@ -20,6 +21,7 @@ import {
   GithubAppDto,
   githubAppDto,
   GithubAppStatusDto,
+  GithubRepositoriesDto,
   GitOrganizationPathDto,
   StartGithubAppDto,
 } from './github-app.dto';
@@ -47,7 +49,22 @@ function SessionHeaders(): MethodDecorator {
 @IdentityAttemptLimit('api')
 @Controller('organizations')
 export class GithubAppController {
-  constructor(private readonly apps: GithubAppCommands) {}
+  constructor(
+    private readonly apps: GithubAppCommands,
+    private readonly repositories: GithubRepositories,
+  ) {}
+
+  @Get(`${APP}/repositories`)
+  @RequireTenant('organization.read', 'organization')
+  @AllowApiToken('organization.read')
+  @ApiBearerAuth('apiToken')
+  @ApiOkResponse({ type: GithubRepositoriesDto })
+  listGithubRepositories(
+    @Req() request: IdentityRequest,
+    @Param() path: GitOrganizationPathDto,
+  ): Promise<GithubRepositoriesDto> {
+    return this.repositories.list(resourceContext(request), path.organizationId);
+  }
 
   @Get(APP)
   @RequireTenant('organization.read', 'organization')

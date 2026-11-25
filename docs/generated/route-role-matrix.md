@@ -41,6 +41,7 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | GET | `/organizations/:organizationId/github-app` | organization.read @ organization | organization.read | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
 | POST | `/organizations/:organizationId/github-app` | integration.manage @ organization | - | yes | no | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/github-app/manifests` | integration.manage @ organization | - | yes | no | no | no | no | no | no | no | no | no | no |
+| GET | `/organizations/:organizationId/github-app/repositories` | organization.read @ organization | organization.read | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
 | POST | `/organizations/:organizationId/join-tokens` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/members` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/members` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
