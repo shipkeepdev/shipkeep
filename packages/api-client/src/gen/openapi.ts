@@ -4881,11 +4881,7 @@ export interface operations {
     readonly receiveGithubWebhook: {
         readonly parameters: {
             readonly query?: never;
-            readonly header: {
-                readonly "x-github-delivery": string;
-                readonly "x-github-event": string;
-                readonly "x-hub-signature-256": string;
-            };
+            readonly header?: never;
             readonly path: {
                 readonly organizationId: string;
             };
