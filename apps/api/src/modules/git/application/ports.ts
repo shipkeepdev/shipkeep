@@ -1,5 +1,6 @@
 import type { Secret } from '@shipkeep/domain';
 
+import type { GithubRepository, TokenScope } from '../domain/github-api';
 import type { CreatedGithubApp, GithubAppMetadata } from '../domain/github-app';
 import type { DeliveryHeaders, InstallationChange } from '../domain/github-webhook';
 
@@ -18,6 +19,10 @@ export interface GithubAppStore {
   /** Starts a flow, replacing one under way. */
   startFlow(organizationId: string, flow: GithubAppFlow): Promise<void>;
   flow(organizationId: string): Promise<GithubAppFlow | undefined>;
+  /** The App's identifier and decrypted private key, or undefined without an App. */
+  credentials(organizationId: string): Promise<{ appId: number; privateKey: Secret } | undefined>;
+  /** The installations GitHub reported and did not suspend, oldest first. */
+  activeInstallations(organizationId: string): Promise<number[]>;
   /**
    * Stores the App and ends its flow, if that flow is still the one whose state hashes to
    * `stateHash`; false otherwise. The store encrypts the App's secrets.
@@ -55,6 +60,25 @@ export interface GithubWebhookStore {
     change: InstallationChange,
     now: Date,
   ): Promise<boolean>;
+}
+
+export const GITHUB_API = Symbol('GithubApi');
+/** GitHub's REST API, as the organization's App (ADR 0031). */
+export interface GithubApi {
+  appJwt(appId: number, privateKey: Secret, now: Date): Secret;
+  installationToken(
+    jwt: Secret,
+    installationId: number,
+    scope: TokenScope,
+  ): Promise<{ token: Secret; expiresAt: Date }>;
+  repositories(
+    token: Secret,
+    installationId: number,
+    limit: number,
+  ): Promise<{ repositories: GithubRepository[]; truncated: boolean }>;
+  /** The commit a branch points to; undefined when the repository or branch is unknown. */
+  branchHead(token: Secret, fullName: string, branch: string): Promise<string | undefined>;
+  revoke(token: Secret): Promise<void>;
 }
 
 export const GITHUB_MANIFESTS = Symbol('GithubManifests');

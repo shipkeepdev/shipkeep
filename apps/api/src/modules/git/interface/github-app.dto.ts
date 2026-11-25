@@ -71,3 +71,16 @@ export function githubAppDto(app: GithubAppMetadata): GithubAppDto {
     createdAt: app.createdAt.toISOString(),
   };
 }
+
+export class GithubRepositoryDto {
+  @ApiProperty({ type: 'integer' }) installationId!: number;
+  @ApiProperty({ type: 'integer' }) id!: number;
+  @ApiProperty({ description: '`owner/name`.' }) fullName!: string;
+  @ApiProperty() defaultBranch!: string;
+  @ApiProperty() private!: boolean;
+}
+
+export class GithubRepositoriesDto {
+  @ApiProperty({ type: [GithubRepositoryDto] }) repositories!: GithubRepositoryDto[];
+  @ApiProperty({ description: 'True when more than the 500 listed exist.' }) truncated!: boolean;
+}

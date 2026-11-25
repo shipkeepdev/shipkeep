@@ -468,6 +468,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/github-app/repositories": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listGithubRepositories"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/join-tokens": {
         readonly parameters: {
             readonly query?: never;
@@ -1857,6 +1873,19 @@ export type components = {
         };
         readonly GithubAppStatusDto: {
             readonly app: components["schemas"]["GithubAppDto"] | null;
+        };
+        readonly GithubRepositoriesDto: {
+            readonly repositories: readonly components["schemas"]["GithubRepositoryDto"][];
+            /** @description True when more than the 500 listed exist. */
+            readonly truncated: boolean;
+        };
+        readonly GithubRepositoryDto: {
+            readonly defaultBranch: string;
+            /** @description `owner/name`. */
+            readonly fullName: string;
+            readonly id: number;
+            readonly installationId: number;
+            readonly private: boolean;
         };
         readonly HealthDto: {
             /** @enum {string} */
@@ -3261,6 +3290,27 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["GithubAppCreationDto"];
+                };
+            };
+        };
+    };
+    readonly listGithubRepositories: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["GithubRepositoriesDto"];
                 };
             };
         };

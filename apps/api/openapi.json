@@ -2058,6 +2058,45 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/github-app/repositories": {
+      "get": {
+        "operationId": "listGithubRepositories",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GithubRepositoriesDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          },
+          {
+            "apiToken": []
+          }
+        ],
+        "tags": [
+          "git"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/github-app": {
       "get": {
         "operationId": "getGithubApp",
@@ -7293,6 +7332,53 @@
           "server",
           "username",
           "password"
+        ]
+      },
+      "GithubRepositoryDto": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "fullName": {
+            "type": "string",
+            "description": "`owner/name`."
+          },
+          "defaultBranch": {
+            "type": "string"
+          },
+          "private": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "installationId",
+          "id",
+          "fullName",
+          "defaultBranch",
+          "private"
+        ]
+      },
+      "GithubRepositoriesDto": {
+        "type": "object",
+        "properties": {
+          "repositories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/GithubRepositoryDto"
+            }
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "True when more than the 500 listed exist."
+          }
+        },
+        "required": [
+          "repositories",
+          "truncated"
         ]
       },
       "GithubAppDto": {
