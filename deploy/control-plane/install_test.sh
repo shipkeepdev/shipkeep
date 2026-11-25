@@ -61,15 +61,37 @@ refuse 'Give --smtp-host' --smtp-from shipkeep@example.com
 refuse 'Give --smtp-host' --smtp-user user@example.com
 # The password of the first account is never an option.
 refuse 'Unknown option' --password "$secret-long-enough"
+# Without a terminal, standard input holds the password only: it is never read as the answer to
+# the single-machine question, which must then come as an option.
+refuse 'Without a terminal, give --single-machine yes or no, --domain and --email' --domain shipkeep.example.com --email owner@example.com
+refuse 'Without a terminal, give --single-machine yes or no, --domain and --email' --single-machine no --email owner@example.com
+refuse 'Without a terminal, give --single-machine yes or no, --domain and --email' --single-machine no --domain shipkeep.example.com
 # Valid options go as far as the sudo check, and no further without root.
-refuse 'Run with sudo' --dir /opt/shipkeep --domain shipkeep.example.com --email owner@example.com --smtp-host smtp.example.com --smtp-port 465 --smtp-from shipkeep@example.com --smtp-user user@example.com
-# So does an installation without email, which is the ordinary one.
-refuse 'Run with sudo' --domain shipkeep.example.com --email owner@example.com
+refuse 'Run with sudo' --single-machine no --dir /opt/shipkeep --domain shipkeep.example.com --email owner@example.com --smtp-host smtp.example.com --smtp-port 465 --smtp-from shipkeep@example.com --smtp-user user@example.com
+# So does an installation without email, which is the ordinary one, on one machine or two.
+refuse 'Run with sudo' --single-machine yes --organization 'Acme Corp' --domain shipkeep.example.com --email owner@example.com
+refuse 'Run with sudo' --single-machine no --domain shipkeep.example.com --email owner@example.com
 
 # The remaining checks call the installer's own functions.
 # shellcheck source=/dev/null
 . "$installer"
 refused() { ! ("$@") 2>"$work/output"; }
+
+# A question without a terminal reads no line: the line would be a password. A password shaped like
+# an answer (here a valid DNS name) is neither taken nor printed back. The line comes from a file
+# whose offset the subshell shares, so a line read there is gone for the read below.
+printf '%s\n' 'a.password.shaped.like.a.name' >"$work/line"
+for question in 'domain DNS valid_domain Invalid --domain' 'organization Name valid_organization Invalid --organization' 'smtp_from Sender valid_address Invalid --smtp-from'; do
+  read -r name label check error option <<<"$question"
+  printf -v "$name" '%s' ''
+  exec 3<"$work/line"
+  refused ask "$name" "$label" "$check" "$error" "$option" <&3 || die "$name was read without a terminal"
+  grep -qF -- "Without a terminal, give $option" "$work/output" || die "$name was refused without naming $option: $(cat "$work/output")"
+  ! grep -q 'password.shaped' "$work/output" || die "the line read for $name was printed"
+  IFS= read -r left <&3 || left=''
+  exec 3<&-
+  [[ $left == a.password.shaped.like.a.name ]] || die "the line was read for $name"
+done
 
 # shellcheck source=/dev/null
 . deploy/docker-repository-test.sh
