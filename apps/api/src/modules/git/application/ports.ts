@@ -52,8 +52,10 @@ export interface GithubWebhookStore {
     now: Date,
   ): Promise<boolean>;
   /**
-   * Applies an installation change, recording an installation it did not know; false when the
-   * change is no newer than what is recorded, or removes nothing.
+   * Applies an installation change under a lock per installation, inside the delivery's
+   * transaction, recording an installation it did not know; a removal leaves a tombstone, even of
+   * one never recorded. False when `changeApplies` refuses the change: older, the same time and
+   * not more restrictive, or aimed at a tombstone.
    */
   applyInstallation(
     organizationId: string,
