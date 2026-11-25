@@ -37,10 +37,13 @@ describe('the GitHub App manifest flow over HTTP', () => {
     pem: PEM,
   };
   let answered: object = answer;
+  /** Runs while GitHub "answers", before the answer comes back. */
+  let meanwhile: (() => Promise<void>) | undefined;
   const manifests: GithubManifests = {
-    convert: (code) => {
+    convert: async (code) => {
       codes.push(code);
-      return Promise.resolve(answered);
+      await meanwhile?.();
+      return answered;
     },
   };
   const app = () => `${fixture.root}/github-app`;
@@ -114,6 +117,24 @@ describe('the GitHub App manifest flow over HTTP', () => {
       'https://github.com/apps/shipkeep-tenant-a1b2c3',
     );
     expect(JSON.stringify(refused.body)).not.toMatch(/whsec|sk_test/);
+    codes.length = 0;
+  });
+
+  it('refuses a flow that expires while GitHub answers', async () => {
+    const creation = (await start()).body as Creation;
+    meanwhile = async () => {
+      // Valid when the request began, expired once GitHub has answered.
+      await admin.query(
+        "UPDATE github_app_flows SET expires_at = now() + interval '200 milliseconds' WHERE organization_id = $1",
+        [fixture.organizationId],
+      );
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    };
+    const refused = await fixture
+      .post(app(), 'owner', { code: 'code-late', state: stateOf(creation) })
+      .expect(409);
+    meanwhile = undefined;
+    expect(refused.body).toMatchObject({ code: 'github_app_not_connected' });
     codes.length = 0;
   });
 
@@ -194,6 +215,7 @@ describe('the GitHub App manifest flow over HTTP', () => {
       orderBy: { createdAt: 'asc' },
     });
     expect(events.map((event) => event.action)).toEqual([
+      'github.app_flow_started',
       'github.app_flow_started',
       'github.app_flow_started',
       'github.app_flow_started',

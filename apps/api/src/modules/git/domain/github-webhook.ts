@@ -32,10 +32,12 @@ export function deliveryHeaders(headers: {
   readonly delivery?: string | undefined;
   readonly signature?: string | undefined;
 }): DeliveryHeaders {
-  const signature = SIGNATURE.exec(headers.signature ?? '')?.[1];
+  // Headers reach here as strings, or not at all: anything else is refused as missing.
+  const text = (value: unknown) => (typeof value === 'string' ? value : '');
+  const signature = SIGNATURE.exec(text(headers.signature))?.[1];
   if (!signature) throw new WebhookRejected();
-  const event = headers.event ?? '';
-  const delivery = (headers.delivery ?? '').toLowerCase();
+  const event = text(headers.event);
+  const delivery = text(headers.delivery).toLowerCase();
   if (!EVENT.test(event) || !DELIVERY.test(delivery))
     throw new InvalidInputError('github_webhook_invalid', 'This is not a GitHub delivery.');
   return { event, delivery, signature };
