@@ -7,7 +7,7 @@ import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { type AgentFrame, ExecSessionRegistry } from '../application/exec-relay';
 import type { FleetTransaction } from '../application/ports';
 
-import { relayExecStream } from './exec-stream';
+import { EXEC_OPEN_MS, relayExecStream } from './exec-stream';
 
 const ORG = '019d0000-0000-7000-8000-00000000000a';
 const NODE = '019d0000-0000-7000-8000-0000000000e1';
@@ -147,6 +147,9 @@ describe('a session whose node loses its credential', () => {
         revoked ? Promise.reject(new Error('revoked')) : Promise.resolve(),
       );
       const first = responses.next();
+      // Joined first, with a valid credential; revoked during the session.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(r.pending(SESSION)).toBeDefined();
       revoked = true;
       await vi.advanceTimersByTimeAsync(10_000);
       const frame = await first;
@@ -155,5 +158,58 @@ describe('a session whose node loses its credential', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe('the opening of an exec stream (#478)', () => {
+  async function* silent(): AsyncGenerator<ExecStreamRequest> {
+    // An agent that opens its stream and never names a session.
+    await new Promise(() => undefined);
+    yield open;
+  }
+
+  it('ends a stream that names no session in time, and leaves the session to its agent', async () => {
+    vi.useFakeTimers();
+    try {
+      const r = registry();
+      const checks = vi.fn(valid);
+      const code = codeOf(relayExecStream(r, silent(), node, checks));
+      await vi.advanceTimersByTimeAsync(EXEC_OPEN_MS);
+      expect(await code).toBe(Code.DeadlineExceeded);
+      expect(checks).not.toHaveBeenCalled();
+      expect(r.pending(SESSION)).toBeDefined();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ends a stream whose transport is cancelled while it opens', async () => {
+    const r = registry();
+    const cancelled = new AbortController();
+    const code = codeOf(relayExecStream(r, silent(), node, valid, cancelled.signal));
+    cancelled.abort();
+    expect(await code).toBe(Code.Canceled);
+    const already = new AbortController();
+    already.abort();
+    expect(await codeOf(relayExecStream(r, silent(), node, valid, already.signal))).toBe(
+      Code.Canceled,
+    );
+  });
+
+  it('checks the node again before it joins, and refuses one revoked meanwhile', async () => {
+    const r = registry();
+    const revoked = () => Promise.reject(new Error('revoked'));
+    expect(await codeOf(relayExecStream(r, frames(open), node, revoked))).toBe(
+      Code.Unauthenticated,
+    );
+    // Not joined: the session still waits for a valid agent.
+    expect(r.pending(SESSION)).toBeDefined();
+    const checks = vi.fn(valid);
+    r.joinBrowser(SESSION, USER, { send: () => Promise.resolve(), close: () => undefined });
+    const responses = relayExecStream(r, frames(open, exit(0)), node, checks);
+    const out: string[] = [];
+    for await (const frame of responses) out.push(frame.frame.case ?? '');
+    expect(checks).toHaveBeenCalledTimes(1);
+    expect(out).toEqual([]);
   });
 });
