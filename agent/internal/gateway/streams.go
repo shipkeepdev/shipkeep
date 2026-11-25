@@ -40,3 +40,18 @@ func (s *Streams) OpenExec(ctx context.Context) (agentv1.AgentGatewayService_Exe
 	}
 	return stream, nil
 }
+
+// OpenLogs opens a ShipLogs stream (ADR 0029). ctx bounds the stream: cancelling it ends the stream.
+func (s *Streams) OpenLogs(ctx context.Context) (agentv1.AgentGatewayService_ShipLogsClient, error) {
+	s.mu.Lock()
+	client := s.client
+	s.mu.Unlock()
+	if client == nil {
+		return nil, errNoSession
+	}
+	stream, err := client.ShipLogs(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("open log stream: %w", err)
+	}
+	return stream, nil
+}
