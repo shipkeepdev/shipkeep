@@ -294,7 +294,7 @@ The milestones below describe the whole MVP. The first stable version ships part
   - Read config at commit, validate, show drift; UI editor that writes back as commit or PR with diff preview.
   - Acceptance: editing replicas in the UI opens a PR with the exact YAML change.
 - [ ] **M3.3 Builds and registry** (A + C). Depends: M1.2, M1.4, M3.1
-  - `BuildImage` with rootless BuildKit; Dockerfile, Railpack, Nixpacks, image; internal registry on WireGuard with short-lived tokens; build logs streamed.
+  - `BuildImage` with rootless BuildKit on the application's first server; Dockerfile, Railpack, Nixpacks, image; the control plane's registry on its public name with per-action credentials (ADR 0030); build logs streamed.
   - Acceptance: builds for Node, Python, Go, PHP sample repos; malicious Dockerfile cannot reach the host Docker socket.
 - [ ] **M3.4 Deployment state machine** (C). Depends: M3.3, M1.5, M4.3
   - SPEC 5.1 implemented as a domain aggregate with exhaustive transition tests; orchestration via pg-boss jobs.

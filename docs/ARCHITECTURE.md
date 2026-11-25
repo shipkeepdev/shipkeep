@@ -16,7 +16,7 @@ flowchart TB
     pg[("PostgreSQL<br/>state, encrypted secrets, audit")]
     ca["Internal CA<br/>agent certificates"]
     obs["VictoriaLogs + VictoriaMetrics<br/>alert evaluation"]
-    reg["OCI registry<br/>(WireGuard only)"]
+    reg["OCI registry<br/>(public name, action tokens)"]
   end
 
   subgraph n1["Node 1"]
@@ -34,7 +34,9 @@ flowchart TB
 
   a1 -- "outbound gRPC stream, mTLS" --> api
   a2 -- "outbound gRPC stream, mTLS" --> api
-  n1 <-. "WireGuard mesh: app traffic, registry" .-> n2
+  b1 -- "push, action credentials" --> reg
+  w2 -. "pull, action credentials" .-> reg
+  n1 <-. "WireGuard mesh, later (M4.1): app traffic" .-> n2
 ```
 
 ## Components
@@ -52,7 +54,7 @@ flowchart TB
 
 ### The control plane node
 
-- The server that hosts the control plane is always an enrolled node: `control-plane-only` on its own machine, `control-plane` on one machine that also runs applications (ADR 0028). Its agent upgrades the control plane; Docker Compose runs its containers (API, PostgreSQL, registry, VictoriaLogs, VictoriaMetrics).
+- The server that hosts the control plane is always an enrolled node: `control-plane-only` on its own machine, `control-plane` on one machine that also runs applications (ADR 0028). Docker Compose runs its containers (API, PostgreSQL, registry, VictoriaLogs, VictoriaMetrics); its agent will upgrade them (ADR 0028, `UpgradeControlPlane`, not built yet).
 - Builds run on the server that will run the application, never on a control-plane-only machine, and push to the control plane's registry on its public name (ADR 0030). The private network moves the registry and the observability stack onto WireGuard once it exists (M4.1).
 - Control plane maintenance (database backups, upgrades) runs through typed agent actions on that node (`DumpDatabase`, `UpgradeControlPlane`). The NestJS process never spawns processes.
 - Today the control plane runs with Docker Compose, on its own machine or on a machine that is also a server (ADR 0021). In the second form the server's Caddy owns ports 80 and 443 and the agent keeps the control plane's route, first among the routes, from its own configuration; the control plane listens on loopback, its containers run in `shipkeep-controlplane.slice` and applications in `shipkeep-workloads.slice`, and placement leaves the reservation free.
@@ -90,9 +92,9 @@ flowchart TB
 
 1. Push to the tracked branch triggers a webhook. The API verifies the webhook signature.
 2. The `deployments` context reads `shipkeep.yml` at that commit, validates it against the schema, and creates a Deployment in state `queued`.
-3. Build: the control plane sends `BuildImage` to a builder node. BuildKit rootless builds, pushes to the internal registry. State `building` then `built`.
-4. Release task (migrations) runs once with `RunReleaseTask` if defined.
-5. Scheduling: the scheduler picks nodes for each replica.
+3. Scheduling: the scheduler picks nodes for each replica.
+4. Build: the control plane sends `BuildImage` to the server of the first replica (ADR 0030). BuildKit rootless builds, and pushes to the control plane's registry with the action's credentials. State `building` then `built`.
+5. Release task (migrations) runs once with `RunReleaseTask` if defined.
 6. For each replica: `PullImage`, `CreateContainer`, `StartContainer`, then health check. On success, `UpsertRoute` adds the new upstream; the old upstream is removed and drained; the old container is stopped.
 7. The routing table is recomputed and pushed to all agents.
 8. On failure at any step the deployment moves to `failed` and the previous release keeps serving traffic. No partial switch.

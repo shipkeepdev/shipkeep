@@ -28,7 +28,11 @@ ADR 0012 holds for BuildKit:
 - limits apply per build;
 - the installer sets up cgroup delegation, subordinate ID ranges and the AppArmor profile.
 
-What changes is the network: builds get the egress guard of ADR 0023, applied to `shipkeep-build`'s cgroup. `RUN` steps reach public addresses, so they can fetch dependencies, and never loopback, private ranges or link-local addresses, cloud metadata included.
+What changes is the network. ADR 0023's kernel rule only keeps loopback away, and its proxy only sees what goes through it, which `RUN` steps need not do. So `shipkeep-build`'s traffic gets a rule of its own, in the same nftables table, matched on its user:
+
+- it reaches public addresses, on any port, plain HTTP included, so that `RUN` steps fetch dependencies (`apt-get` from `http://deb.debian.org`);
+- it never reaches loopback, private and shared ranges (RFC 1918, `100.64.0.0/10`, `fc00::/7`), link-local addresses (cloud metadata included), multicast, nor the server's own addresses, so a build cannot reach a service the server binds on all its addresses;
+- the one exception is the host's DNS resolver, on port 53, which slirp4netns forwards names to.
 
 ### Build types
 
@@ -42,23 +46,24 @@ Their images are pinned by digest in the agent, never on the host, so the agent 
 
 ### The source
 
-BuildKit fetches the repository itself, at the commit, over HTTPS. The installation token of the Git provider (ADR 0031) is a BuildKit secret. It is minted for the action, travels inside it, encrypted as SPEC 3.3 says, and is never written to disk.
+BuildKit fetches the repository itself, at the commit, over HTTPS. The token of the Git provider (ADR 0031) is a BuildKit secret. It is minted for the action with read access to that one repository's contents and nothing else, travels inside the action, encrypted as SPEC 3.3 says, and is never written to disk. The agent serves it under a random secret name that only its own Git source step uses: a `RUN --mount=type=secret` in the Dockerfile cannot guess it. The control plane revokes the token when the build ends.
 
 ### The registry
 
 CNCF Distribution (Apache-2.0) runs as a service of the control plane's Compose project.
 
 - **Where it is served.** On the control plane's public name, under `/v2/`. On a separate machine, the Compose Caddy routes it. On one machine, the agent's route for the control plane does (ADR 0021). Pulls and pushes go through the egress proxy like any public registry (ADR 0023).
-- **Tokens.** Distribution's token authentication checks a JWT that the control plane signs with a key of its own. The control plane mints one per action:
+- **Credentials.** Distribution uses its token authentication: a request without a token gets `401` with a `Bearer realm`, the control plane's token endpoint. The Docker daemon and BuildKit call it with a user name and a password, then send the JWT it returns. So each action carries a user name and password, as `RegistryCredentials` already does (ADR 0019), and `actions.proto` does not change:
   - `push` and `pull` on one application's repository, for the build;
-  - `pull` only, for a server that deploys it.
+  - `pull` only on it, for a server that deploys it.
 
-  A token lasts 15 minutes and travels inside the encrypted action, as registry credentials do (ADR 0019). No token endpoint is published.
+  The password is a random secret, stored hashed with its scope, and valid until the action's own deadline: the queue wait and the build timeout for a build, so a long build can still push. The endpoint answers a token of 5 minutes, for what was asked within that scope, signed with a key of the control plane's own. It is rate limited, and its answers never say why a credential was refused.
 
 - **Images.**
   - Each application has its repository, `<control plane name>/<organization id>/<application id>`, tagged with its release number.
   - A release pins its image by digest, as any release does.
-  - The last 5 images of each application are kept for rollback (ADR 0012). Older manifests are deleted, and the registry's garbage collection frees their space.
+  - An image is kept while a release that a rollback can reach names it: the current release of each environment and the 5 successful ones before it (ADR 0012). A build whose deployment failed does not count. Other manifests are deleted.
+  - Distribution's garbage collection only runs on a registry that does not write, so it runs at a quiet hour with the registry read-only. A push in that window fails, and the build is retried.
   - Rollback never depends on a registry outside the installation.
 - **Data.** Images live in a volume of the control plane. They are not in the instance backup (ADR 0026): an image can be built again from its commit, while the database cannot.
 
@@ -69,10 +74,11 @@ The build's output goes through the log stream of ADR 0029, under the deployment
 ## Consequences
 
 - Builds use the application server's CPU, memory and disk, within the build limits.
-- The control plane's name must reach its own machine from every server, so on one machine it must reach itself. Behind a NAT that does not loop back, set the name in `/etc/hosts`, which `docs/INSTALL.md` will say.
-- The registry holds every built image. Its volume grows with the applications, up to five images each.
+- The control plane's name must resolve to a public address that reaches its own machine from every server, so on one machine it must reach itself through that address. Behind a NAT that does not loop back, Git deployments do not work in this version: the egress proxy and the build rule refuse private addresses, and an exception would open the private network to every pull. `docs/INSTALL.md` will say so.
+- The registry holds every built image a rollback can reach. Its volume grows with the applications, about six images each.
 - A server that cannot reach the control plane cannot pull a new image. Running workloads keep running, as they do with any other registry (CLAUDE.md rule 10).
-- `actions.proto` is unchanged: `BuildImage` already has `push_credentials`, `git_token`, `build_type` and limits.
+- `actions.proto` is unchanged: `BuildImage` already has `push_credentials`, `git_token`, `build_type` and limits, and `PullImage` has its credentials.
+- The control plane publishes one more endpoint, the registry's token endpoint, which takes only action credentials.
 
 ## Alternatives considered
 
