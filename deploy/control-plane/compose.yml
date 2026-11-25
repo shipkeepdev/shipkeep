@@ -81,6 +81,10 @@ services:
       - '443:443/udp'
       # Agent gateway: gRPC over mutual TLS, terminated by the control plane itself.
       - '7443:7443'
+    # The control plane shares this namespace: it alone reaches VictoriaLogs, on `logs`.
+    networks:
+      - default
+      - logs
     restart: unless-stopped
 
   control-plane:
@@ -162,16 +166,27 @@ services:
     restart: unless-stopped
 
   # Container logs (ADR 0029): agents send them to the API, which writes them here with labels it
-  # sets itself, and reads them back for the interface. Internal network only, like metrics.
+  # sets itself, and reads them back for the interface. Logs can hold what an application printed,
+  # secrets included, and VictoriaLogs has no authentication: it is alone on the `logs` network,
+  # which only the control plane's namespace joins, and publishes no port.
   victorialogs:
     image: victoriametrics/victoria-logs:v1.54.0@sha256:ee4e820cac3721f5f5d91641b950c22439593adc4224f9655e5333d5a84c1dfe
     command:
       - -storageDataPath=/victoria-logs-data
       - -retentionPeriod=30d
+      # The disk is shared with PostgreSQL: past 80 % of it in use, the oldest days of logs are
+      # dropped, and below 1 GiB free no line is accepted (agents send it again later).
+      - -retention.maxDiskUsagePercent=80
+      - -storage.minFreeDiskSpaceBytes=1GiB
       - -httpListenAddr=:9428
       - -memory.allowedBytes=256MiB
+      # Searches are bounded so that memory stays within the single machine's limit.
+      - -search.maxConcurrentRequests=4
+      - -search.maxQueryDuration=10s
     volumes:
       - victorialogs-data:/victoria-logs-data
+    networks:
+      - logs
     restart: unless-stopped
 
   caddy:
@@ -187,6 +202,12 @@ services:
       control-plane:
         condition: service_healthy
     restart: unless-stopped
+
+networks:
+  default:
+  # No route out, and no container but VictoriaLogs and the control plane's namespace.
+  logs:
+    internal: true
 
 volumes:
   postgres-data:
