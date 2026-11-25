@@ -326,7 +326,7 @@ describe('GitHub webhooks over HTTP', () => {
       answers.push(
         started(
           'installation_repositories',
-          installation('added', 51, { id: 86, selection: 'all' }),
+          installation('added', 52, { id: 86, selection: 'all' }),
         ),
       );
       await waiting(2);
@@ -360,20 +360,35 @@ describe('GitHub webhooks over HTTP', () => {
       expect(await row(87)).toMatchObject({ repository_selection: 'all', deleted_at: null });
     });
 
-    it('never waits for another installation', async () => {
+    it('never waits for another installation, even while expired records are removed', async () => {
+      // Expired records: the delivery that removes them keeps them locked while it waits.
+      for (const minute of [1, 2, 3])
+        await deliver('push', { ref: 'refs/heads/main', after: String(minute).repeat(40) }).expect(
+          204,
+        );
+      await admin.query(
+        "UPDATE github_deliveries SET received_at = now() - interval '31 days' WHERE organization_id = $1 AND event = 'push'",
+        [fixture.organizationId],
+      );
       const holder = new Client({ connectionString: fixture.databaseUrl });
       await holder.connect();
       await holder.query('BEGIN');
       await holder.query('SELECT pg_advisory_xact_lock($1)', [
         installationLockKey(fixture.organizationId, 88).toString(),
       ]);
+      // This one removes the expired records, then waits for installation 88.
+      const blocked = started('installation', installation('created', 70, { id: 88 }));
+      await waiting(1);
       try {
         await deliver('installation', installation('created', 70, { id: 89 })).expect(204);
+        await deliver('ping', { hook: { app_id: APP_ID } }).expect(204);
         expect(await row(89)).toMatchObject({ deleted_at: null });
       } finally {
         await holder.query('COMMIT');
         await holder.end();
       }
+      expect(await blocked).toBe(204);
+      expect(await row(88)).toMatchObject({ deleted_at: null });
     });
   });
 

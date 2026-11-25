@@ -51,12 +51,16 @@ export class PrismaGithubWebhookStore implements GithubWebhookStore {
     bodySha256: Uint8Array,
     now: Date,
   ): Promise<boolean> {
-    await this.database.client.githubDelivery.deleteMany({
-      where: {
-        organizationId,
-        receivedAt: { lt: new Date(now.getTime() - DELIVERY_RETENTION_MS) },
-      },
-    });
+    // Expired records go unless another delivery is removing them: a purge never waits for
+    // another delivery's transaction, which may itself wait for its installation.
+    const expired = new Date(now.getTime() - DELIVERY_RETENTION_MS);
+    await this.database.client.$executeRaw`
+      DELETE FROM github_deliveries
+      WHERE (organization_id, delivery_id) IN (
+        SELECT organization_id, delivery_id FROM github_deliveries
+        WHERE organization_id = ${organizationId}::uuid AND received_at < ${expired}
+        FOR UPDATE SKIP LOCKED
+      )`;
     // Either key already recorded, the identifier or the body, skips the row.
     const recorded = await this.database.client.githubDelivery.createMany({
       data: {
@@ -77,7 +81,10 @@ export class PrismaGithubWebhookStore implements GithubWebhookStore {
     now: Date,
   ): Promise<boolean> {
     // One installation's deliveries apply one at a time, its first one included: two at once
-    // would both find the same row, and the older could write last.
+    // would both find the same row, and the older could write last. The lock lasts as long as
+    // the delivery's transaction, so there must be one.
+    if (!this.database.inTransaction())
+      throw new Error('An installation change applies inside its delivery transaction.');
     await this.database.client
       .$queryRaw`SELECT pg_advisory_xact_lock(${installationLockKey(organizationId, change.installationId)})::text`;
     const client = this.database.client.githubInstallation;
