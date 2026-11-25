@@ -19,6 +19,7 @@ export const END_REASONS: Readonly<Record<string, string>> = {
   flooded: 'Too much input was waiting: the session was closed.',
   signed_out: 'You signed out: the session was closed.',
   access_removed: 'You no longer have access to this container.',
+  shutdown: 'The control plane restarted: the session was closed.',
 };
 
 /**

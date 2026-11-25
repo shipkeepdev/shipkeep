@@ -1981,4 +1981,6 @@ export const FR: Readonly<Record<string, string>> = {
     'Trop de saisie était en attente : la session a été fermée.',
   'You signed out: the session was closed.': 'Vous vous êtes déconnecté : la session a été fermée.',
   'You no longer have access to this container.': 'Vous n’avez plus accès à ce conteneur.',
+  'The control plane restarted: the session was closed.':
+    'Le control plane a redémarré : la session a été fermée.',
 };
