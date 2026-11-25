@@ -4,7 +4,7 @@ import {
   InvalidInputError,
   NotFoundError,
 } from '@shipkeep/domain';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import type { ApplicationStore } from '../../apps/application/ports';
@@ -108,6 +108,15 @@ function world(
 }
 
 describe('opening an exec session (SPEC 3.1)', () => {
+  // `open` measures the time its database work takes on the monotonic clock: held still here, so
+  // that deadlines are exact, whatever the machine's speed.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['performance'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it('queues the agent action for the running replica, audits it, and waits for both sides', async () => {
     const w = world();
     const session = await w.service.open(
