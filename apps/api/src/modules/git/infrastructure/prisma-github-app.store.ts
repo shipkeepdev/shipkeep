@@ -85,7 +85,7 @@ export class PrismaGithubAppStore implements GithubAppStore {
 
   async activeInstallations(organizationId: string): Promise<number[]> {
     const rows = await this.database.client.githubInstallation.findMany({
-      where: { organizationId, suspendedAt: null },
+      where: { organizationId, suspendedAt: null, deletedAt: null },
       orderBy: { createdAt: 'asc' },
       select: { installationId: true },
     });
