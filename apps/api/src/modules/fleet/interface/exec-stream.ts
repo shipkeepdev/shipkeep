@@ -7,7 +7,7 @@ import {
 } from '@shipkeep/proto-ts';
 
 import type { AgentFrame, BrowserFrame, ExecSessionRegistry } from '../application/exec-relay';
-import type { NodeIdentity } from '../domain/node-identity';
+import { NodeAuthenticationError, type NodeIdentity } from '../domain/node-identity';
 
 /** How often an open session checks again that its node is still enrolled and not revoked. */
 export const CREDENTIAL_CHECK_MS = 10_000;
@@ -28,16 +28,8 @@ export async function* relayExecStream(
   signal?: AbortSignal,
 ): AsyncGenerator<ExecStreamResponse> {
   const incoming = requests[Symbol.asyncIterator]();
-  const first = await opening(incoming, signal);
-  if (first.done || first.value.frame.case !== 'open')
-    throw new ConnectError('an exec stream opens a session first', Code.InvalidArgument);
-  // A node removed or revoked while its stream opened joins nothing.
-  try {
-    await stillValid();
-  } catch {
-    throw new ConnectError('node authentication required', Code.Unauthenticated);
-  }
-  const relay = registry.joinAgent(first.value.frame.value.sessionId, node);
+  const sessionId = await opened(incoming, registry, node, stillValid, signal);
+  const relay = registry.joinAgent(sessionId, node);
   // Unknown, foreign, expired or already joined: the same answer, which says nothing more.
   if (!relay) throw new ConnectError('exec session not found', Code.NotFound);
   // Not awaited: it ends when the stream does, which this generator's end causes.
@@ -76,13 +68,18 @@ export async function* relayExecStream(
 }
 
 /**
- * The stream's first frame, within EXEC_OPEN_MS and while its transport lasts: a silent stream
- * holds nothing for long. Past either, the read under way is let go with the stream.
+ * The session the stream opens, named by its first frame and checked before it joins: the
+ * session is this node's, and the node's credential still holds. All of it within EXEC_OPEN_MS
+ * and while the transport lasts, so a silent or stalled stream holds nothing for long; past
+ * either, the read under way is let go with the stream.
  */
-async function opening(
+async function opened(
   incoming: AsyncIterator<ExecStreamRequest>,
+  registry: ExecSessionRegistry,
+  node: NodeIdentity,
+  stillValid: () => Promise<unknown>,
   signal: AbortSignal | undefined,
-): Promise<IteratorResult<ExecStreamRequest>> {
+): Promise<string> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   let cancelled: (() => void) | undefined;
   const stopped = new Promise<never>((_resolve, reject) => {
@@ -96,7 +93,26 @@ async function opening(
     else signal?.addEventListener('abort', cancelled, { once: true });
   });
   try {
-    return await Promise.race([incoming.next(), stopped]);
+    const first = await Promise.race([incoming.next(), stopped]);
+    if (first.done || first.value.frame.case !== 'open')
+      throw new ConnectError('an exec stream opens a session first', Code.InvalidArgument);
+    const sessionId = first.value.frame.value.sessionId;
+    // Refused at once when it is not this node's: no lookup of the credential for it.
+    const session = registry.pending(sessionId);
+    if (session?.organizationId !== node.organizationId || session.nodeId !== node.nodeId)
+      throw new ConnectError('exec session not found', Code.NotFound);
+    // A node removed or revoked while its stream opened joins nothing; a store that cannot
+    // tell is no refusal of the node, and the agent may open its stream again.
+    await Promise.race([
+      stillValid().catch((error: unknown) => {
+        throw error instanceof NodeAuthenticationError
+          ? new ConnectError('node authentication required', Code.Unauthenticated)
+          : new ConnectError('the node could not be checked', Code.Unavailable);
+      }),
+      stopped,
+    ]);
+    if (signal?.aborted) throw new ConnectError('exec stream cancelled', Code.Canceled);
+    return sessionId;
   } catch (error: unknown) {
     void incoming.return?.().catch(() => undefined);
     throw error;
