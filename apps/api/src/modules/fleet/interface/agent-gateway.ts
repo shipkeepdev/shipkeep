@@ -135,8 +135,12 @@ export class AgentGateway implements OnModuleDestroy {
             const authenticated = context.values.get(identity);
             if (!authenticated)
               throw new ConnectError('node authentication required', Code.Unauthenticated);
-            return relayExecStream(this.exec, requests, authenticated, () =>
-              this.authenticate.execute(authenticated),
+            return relayExecStream(
+              this.exec,
+              requests,
+              authenticated,
+              () => this.authenticate.execute(authenticated),
+              context.signal,
             );
           },
           { maxTimeoutMs: 24 * 60 * 60_000 },

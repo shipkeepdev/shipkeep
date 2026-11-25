@@ -154,12 +154,63 @@ describe('the exec relay (SPEC 3.1)', () => {
     w.registry.joinAgent(s.id, node);
     relay?.fromBrowser({ kind: 'stdin', data: new Uint8Array([1]) });
     relay?.browserLeft();
-    expect(relay ? await collect(relay.toAgent()) : []).toEqual([
-      { kind: 'stdin', data: new Uint8Array([1]) },
-      { kind: 'close', kill: true },
-    ]);
+    // What the browser typed before it left is not sent: the command is stopped at once.
+    expect(relay ? await collect(relay.toAgent()) : []).toEqual([{ kind: 'close', kill: true }]);
     await Promise.resolve();
     expect(w.published[0]?.payload).toMatchObject({ reason: 'browser_left' });
+  });
+
+  it('drops the input still waiting when a session is ended, and stops the command (#479)', async () => {
+    for (const reason of [
+      'access_removed',
+      'signed_out',
+      'time_limit',
+      'failed',
+      'browser_left',
+      'shutdown',
+    ] as const) {
+      const w = world();
+      const s = session();
+      w.registry.add(s, NOW);
+      const relay = w.registry.joinBrowser(s.id, USER, w.port);
+      w.registry.joinAgent(s.id, node);
+      if (!relay) throw new Error('not joined');
+      relay.fromBrowser({ kind: 'stdin', data: new TextEncoder().encode('rm -rf /data\n') });
+      relay.fromBrowser({ kind: 'resize', cols: 80, rows: 24 });
+      relay.end(reason, null);
+      // Refused once ended, as before.
+      relay.fromBrowser({ kind: 'stdin', data: new Uint8Array([1]) });
+      expect(await collect(relay.toAgent()), reason).toEqual([{ kind: 'close', kill: true }]);
+      await Promise.resolve();
+      expect(w.published, reason).toHaveLength(1);
+      expect(w.published[0]?.payload, reason).toMatchObject({ reason });
+    }
+  });
+
+  it('wakes the agent side waiting for input when the session ends', async () => {
+    const w = world();
+    const s = session();
+    w.registry.add(s, NOW);
+    const relay = w.registry.joinBrowser(s.id, USER, w.port);
+    w.registry.joinAgent(s.id, node);
+    if (!relay) throw new Error('not joined');
+    const frames = relay.toAgent();
+    const waiting = frames.next();
+    relay.end('access_removed', null);
+    expect((await waiting).value).toEqual({ kind: 'close', kill: true });
+    expect((await frames.next()).done).toBe(true);
+  });
+
+  it('sends nothing more once the command exited', async () => {
+    const w = world();
+    const s = session();
+    w.registry.add(s, NOW);
+    const relay = w.registry.joinBrowser(s.id, USER, w.port);
+    const agent = w.registry.joinAgent(s.id, node);
+    if (!relay || !agent) throw new Error('not joined');
+    relay.fromBrowser({ kind: 'stdin', data: new Uint8Array([1]) });
+    await agent.fromAgent({ kind: 'exit', code: 0 });
+    expect(await collect(relay.toAgent())).toEqual([]);
   });
 
   it('names the end from the agent fixed texts, and nothing else', async () => {
