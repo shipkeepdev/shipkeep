@@ -1,4 +1,4 @@
-import { createServer, type IncomingMessage, type Server } from 'node:http';
+import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
 import { ServiceUnavailableException } from '@nestjs/common';
@@ -67,5 +67,42 @@ describe('the VictoriaLogs store', () => {
     seen.url = undefined;
     await logs.write([]);
     expect(seen.url).toBeUndefined();
+  });
+});
+
+describe('reading VictoriaLogs', () => {
+  it('sends the query with its limit and reads JSON lines', async () => {
+    let seen = '';
+    server = createServer((request, response) => {
+      seen = request.url ?? '';
+      response.end('{"_msg":"a"}\n\n{"_msg":"b"}\n');
+    });
+    await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
+    const logs = new VictoriaLogsStore(
+      `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`,
+    );
+    expect(await logs.query('{app="x"} | limit 2', 2)).toEqual([{ _msg: 'a' }, { _msg: 'b' }]);
+    expect(seen).toBe('/select/logsql/query?query=%7Bapp%3D%22x%22%7D+%7C+limit+2&limit=2');
+  });
+
+  it('answers 503 without the store text, whatever failed', async () => {
+    for (const answer of [
+      (response: ServerResponse) => {
+        response.statusCode = 500;
+        response.end('/var/lib/victoria-logs failed');
+      },
+      (response: ServerResponse) => response.end('not json'),
+    ]) {
+      server?.close();
+      server = createServer((_request, response) => {
+        answer(response);
+      });
+      await new Promise<void>((resolve) => server?.listen(0, '127.0.0.1', resolve));
+      const logs = new VictoriaLogsStore(
+        `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`,
+      );
+      await expect(logs.query('*', 1)).rejects.toMatchObject({ status: 503 });
+      await expect(logs.query('*', 1)).rejects.not.toThrow('/var/lib');
+    }
   });
 });
