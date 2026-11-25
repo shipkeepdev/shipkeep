@@ -229,6 +229,23 @@ describe('the browser messages', () => {
       expect(browserFrame(Buffer.from(text), false), text).toBeUndefined();
   });
 
+  it('refuses, without throwing, a control message carrying anything it does not expect', () => {
+    const depth = 3000;
+    const nested = `${'{"a":'.repeat(depth)}{}${'}'.repeat(depth)}`;
+    for (const text of [
+      // Under the 64 KiB limit, deep enough to overflow a recursive transformation.
+      `{"type":"resize","cols":80,"rows":24,"x":${nested}}`,
+      `{"type":"close","kill":true,"x":${nested}}`,
+      `${'['.repeat(30_000)}${']'.repeat(30_000)}`,
+      '{"type":"resize","cols":80,"rows":24,"extra":1}',
+      '{"type":"close","kill":true,"constructor":{"prototype":{"x":1}}}',
+    ]) {
+      expect(text.length).toBeLessThan(64 * 1024);
+      expect(() => browserFrame(Buffer.from(text), false)).not.toThrow();
+      expect(browserFrame(Buffer.from(text), false), text.slice(0, 60)).toBeUndefined();
+    }
+  });
+
   it('sends output with its stream, and an error only as the reason it maps to', () => {
     const frame: AgentFrame = { kind: 'stderr', data: new Uint8Array([104, 105]) };
     expect(encode(frame)).toEqual(Buffer.from([2, 104, 105]));
@@ -260,6 +277,26 @@ describe('the WebSocket handshake', () => {
     expect(w.registry.pending(SESSION)).toBeDefined();
     const ws = await connect(w.url, allowed);
     if (typeof ws === 'number') throw new Error(`refused: ${String(ws)}`);
+    ws.terminate();
+  });
+
+  it('keeps serving a session, and the others, after a malformed control message', async () => {
+    const w = await world();
+    const ws = await connect(w.url, allowed);
+    if (typeof ws === 'number') throw new Error(`refused: ${String(ws)}`);
+    const relay = w.registry.joinAgent(SESSION, { organizationId: ORG, nodeId: NODE });
+    const toAgent = relay?.toAgent();
+    const depth = 3000;
+    ws.send(
+      `{"type":"resize","cols":80,"rows":24,"x":${'{"a":'.repeat(depth)}{}${'}'.repeat(depth)}}`,
+    );
+    ws.send('{"type":"resize","cols":100,"rows":30}');
+    // The malformed message was dropped; the next one went through, and the server still answers.
+    expect((await toAgent?.next())?.value).toEqual({ kind: 'resize', cols: 100, rows: 30 });
+    const other = await world();
+    const second = await connect(other.url, allowed);
+    expect(typeof second).not.toBe('number');
+    if (typeof second !== 'number') second.terminate();
     ws.terminate();
   });
 

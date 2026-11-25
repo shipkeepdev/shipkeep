@@ -188,8 +188,15 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
       return;
     }
     ws.on('message', (data, binary) => {
-      const frame = browserFrame(data, binary);
-      if (frame) relay.fromBrowser(frame);
+      // Outside Nest's exception handling: whatever a message does, it ends at most its own
+      // session, never the process.
+      try {
+        const frame = browserFrame(data, binary);
+        if (frame) relay.fromBrowser(frame);
+      } catch {
+        this.logger.warn(`exec session ${id}: a browser message could not be read`);
+        relay.end('failed', null);
+      }
     });
     // Signing out, a password change, or losing container.exec ends the session too. A failure
     // of the store is no refusal: the next check decides.
@@ -302,11 +309,10 @@ export function browserFrame(data: RawData, binary: boolean): BrowserFrame | und
       ? Buffer.from(data)
       : data;
   if (binary) return { kind: 'stdin', data: new Uint8Array(bytes) };
-  let message: unknown;
   try {
-    message = JSON.parse(bytes.toString('utf8'));
+    return controlFrame(JSON.parse(bytes.toString('utf8')));
   } catch {
+    // Not JSON, or nested past what the parser takes: no frame.
     return undefined;
   }
-  return controlFrame(message);
 }
