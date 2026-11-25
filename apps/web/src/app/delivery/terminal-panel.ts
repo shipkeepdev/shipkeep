@@ -8,6 +8,7 @@ import {
 } from '@angular/core';
 
 import { Icon } from '../shell/icon';
+import { IdentityRequestError } from '../identity/identity-api';
 import { I18n, T } from '../ui/i18n';
 
 import { DeliveryApi, type EnvironmentRef } from './delivery-api';
@@ -46,7 +47,7 @@ type State = 'idle' | 'connecting' | 'open' | 'ended';
           @switch (state()) {
             @case ('open') {
               <span class="flex items-center gap-1.5"
-                ><span class="dot bg-green"></span>{{ 'connected' | t }}</span
+                ><span class="dot bg-green"></span>{{ 'shell connected' | t }}</span
               >
               <button type="button" class="btn btn-sm" (click)="disconnect()">
                 {{ 'Disconnect' | t }}
@@ -113,11 +114,14 @@ export class TerminalPanel {
   protected readonly screen = signal<Screen>({ lines: [], open: false });
   protected readonly problem = signal<string | null>(null);
   private socket: WebSocket | null = null;
+  /** Set once the panel is gone: a session opened meanwhile is not joined. */
+  private destroyed = false;
   private readonly encoder = new TextEncoder();
   private readonly decoders = { stdout: new TextDecoder(), stderr: new TextDecoder() };
 
   constructor() {
     inject(DestroyRef).onDestroy(() => {
+      this.destroyed = true;
       this.disconnect();
     });
   }
@@ -133,6 +137,9 @@ export class TerminalPanel {
         tty: false,
         minutes: 30,
       });
+      // Left while the session was being opened: it is not joined, and the server ends it once
+      // nobody joins in time.
+      if (this.destroyed) return;
       const url = new URL(session.websocketPath, window.location.href);
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
       const socket = new WebSocket(url);
@@ -149,9 +156,15 @@ export class TerminalPanel {
         if (this.socket === socket) this.socket = null;
         if (this.state() !== 'ended') this.end('The session was closed.');
       };
-    } catch {
+    } catch (error: unknown) {
       this.state.set('idle');
-      this.problem.set('The session could not be opened. Is the application running?');
+      // The API's own reason (no permission, replica not running, too many sessions) when it
+      // gave one.
+      this.problem.set(
+        error instanceof IdentityRequestError
+          ? error.message
+          : 'The session could not be opened. Is the application running?',
+      );
     }
   }
 
@@ -175,9 +188,7 @@ export class TerminalPanel {
     if (typeof data === 'string') {
       const message = serverMessage(data);
       if (message?.exit !== undefined)
-        this.end(
-          this.i18n.t('The command exited with code {code}.', { code: String(message.exit) }),
-        );
+        this.end('The command exited with code {code}.', { code: String(message.exit) });
       else if (message?.reason) this.end(END_REASONS[message.reason] ?? 'The session was closed.');
       return;
     }
@@ -187,12 +198,14 @@ export class TerminalPanel {
     this.screen.update((screen) => appendOutput(screen, kind, text));
   }
 
-  private end(reason: string): void {
+  /** `reason` is the English text, translated once here, with its values. */
+  private end(reason: string, values?: Record<string, string>): void {
     this.state.set('ended');
-    this.note(reason);
+    this.note(reason, values);
   }
 
-  private note(text: string): void {
-    this.screen.update((screen) => appendLine(screen, { kind: 'note', text: this.i18n.t(text) }));
+  private note(text: string, values?: Record<string, string>): void {
+    const shown = this.i18n.t(text, values);
+    this.screen.update((screen) => appendLine(screen, { kind: 'note', text: shown }));
   }
 }

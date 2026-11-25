@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LogLine } from './delivery-api';
-import { lineKey, MAX_LINES, mergeLines, readForward } from './logs-view';
+import { lineKey, MAX_LINES, mergeLines, overlapFrom, readForward } from './logs-view';
 
 const line = (time: string, text: string, instance = 1): LogLine => ({
   time,
@@ -98,5 +98,11 @@ describe('reading a live view forward', () => {
       2,
     );
     expect(calls).toBe(1);
+  });
+});
+
+describe('where a live read starts', () => {
+  it('starts a little before the newest line, so a line another server sent late still shows', () => {
+    expect(overlapFrom('2026-11-25T12:00:05.123456789Z')).toBe('2026-11-25T12:00:02.123Z');
   });
 });

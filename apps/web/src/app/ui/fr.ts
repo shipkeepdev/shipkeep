@@ -1659,6 +1659,7 @@ export const FR: Readonly<Record<string, string>> = {
   'not backed up': 'non sauvegardée',
   'not configured': 'non configuré',
   'not connected': 'non connecté',
+  'shell connected': 'shell connecté',
   'not reported yet': 'pas encore signalé',
   'not set': 'non défini',
   'not supported by this agent': 'non prise en charge par cet agent',

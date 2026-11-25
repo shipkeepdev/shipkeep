@@ -34,6 +34,17 @@ export function clock(time: string): string {
   });
 }
 
+/**
+ * How far before its newest line a live view reads again: lines from several servers reach the
+ * store in batches, so one stamped a little earlier may arrive after a later one.
+ */
+export const OVERLAP_MS = 3000;
+
+/** Where a live read starts: OVERLAP_MS before the newest line shown, repeats merged away. */
+export function overlapFrom(newest: string): string {
+  return new Date(Date.parse(newest) - OVERLAP_MS).toISOString();
+}
+
 /** Pages a live view reads at most on each tick before it waits for the next. */
 export const FORWARD_ROUNDS = 5;
 

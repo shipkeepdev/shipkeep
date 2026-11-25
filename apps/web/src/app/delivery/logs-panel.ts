@@ -13,7 +13,7 @@ import { Icon } from '../shell/icon';
 import { T } from '../ui/i18n';
 
 import { DeliveryApi, type EnvironmentRef, type LogLine } from './delivery-api';
-import { clock, lineKey, mergeLines, readForward } from './logs-view';
+import { clock, lineKey, mergeLines, overlapFrom, readForward } from './logs-view';
 
 type Filter = 'all' | 'stdout' | 'stderr';
 
@@ -134,6 +134,8 @@ export class LogsPanel {
   ];
   protected readonly filter = signal<Filter>('all');
   protected readonly text = signal('');
+  /** The text of the last search submitted: typing alone changes nothing shown. */
+  private readonly searched = signal('');
   protected readonly live = signal(true);
   protected readonly lines = signal<LogLine[]>([]);
   protected readonly kept = signal<boolean | null>(null);
@@ -143,8 +145,8 @@ export class LogsPanel {
   protected readonly key = lineKey;
   /** The search the lines shown answer; a newer one replaces them. */
   private generation = 0;
-  /** A live read under way: the next tick waits for it instead of reading the same lines. */
-  private reading = false;
+  /** The read under way, if any: the next tick waits for it instead of reading the same lines. */
+  private reading: symbol | undefined;
 
   constructor() {
     effect((onCleanup) => {
@@ -175,6 +177,7 @@ export class LogsPanel {
   }
 
   protected search(): void {
+    this.searched.set(this.text().trim());
     void this.load(true);
   }
 
@@ -187,14 +190,16 @@ export class LogsPanel {
    * line, oldest first and page after page, so that a burst between two ticks is not skipped.
    */
   private async load(fresh: boolean): Promise<void> {
+    // A tick waits for the read under way; an installation that keeps no logs is not asked again.
+    if (!fresh && (this.reading !== undefined || this.kept() === false)) return;
     const newest = fresh ? undefined : this.lines().at(0)?.time;
-    if (!fresh && newest && this.reading) return;
     const generation = fresh ? ++this.generation : this.generation;
     const stream = this.filter() === 'all' ? undefined : (this.filter() as 'stdout' | 'stderr');
-    const text = this.text().trim();
+    const text = this.searched();
     const query = { ...(text ? { text } : {}), ...(stream ? { stream } : {}), limit: LIMIT };
     if (fresh) this.loading.set(true);
-    this.reading = true;
+    const read = Symbol('read');
+    this.reading = read;
     try {
       let kept = true;
       const lines = newest
@@ -208,7 +213,8 @@ export class LogsPanel {
               kept = answer.kept;
               return answer.lines;
             },
-            newest,
+            // A little before the newest line: a line another server sent late still shows.
+            overlapFrom(newest),
             LIMIT,
           )
         : await this.api.logs(this.environment(), this.applicationId(), query).then((answer) => {
@@ -222,7 +228,7 @@ export class LogsPanel {
     } catch {
       if (generation === this.generation) this.failed.set(true);
     } finally {
-      this.reading = false;
+      if (this.reading === read) this.reading = undefined;
       if (generation === this.generation) this.loading.set(false);
     }
   }

@@ -31,7 +31,6 @@ const MAX_INSTALL_FILE = 48 * 1024 * 1024;
 const MAX_INSTALL_TOTAL = 100 * 1024 * 1024;
 type Asset = { body: Buffer; type: string; etag: string; immutable: boolean };
 
-/** Snapshot the trusted build before listening: requests never resolve user paths on disk. */
 /**
  * The WebSocket origin of the public URL. Not every browser lets 'self' cover ws: and wss:, and
  * the exec sessions' WebSocket needs it (SPEC 3.1).
@@ -42,6 +41,7 @@ export function socketOrigin(publicUrl: string): string {
   return url.origin;
 }
 
+/** Snapshot the trusted build before listening: requests never resolve user paths on disk. */
 export async function installWebApp(app: INestApplication, directory: string): Promise<void> {
   // A module without configuration, as in some tests, names no socket origin beyond 'self'.
   let socket = '';
