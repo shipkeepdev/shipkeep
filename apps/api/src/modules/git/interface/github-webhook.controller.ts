@@ -1,5 +1,5 @@
 import { Controller, Headers, HttpCode, Param, Post, Req } from '@nestjs/common';
-import { ApiHeader, ApiNoContentResponse, ApiTags } from '@nestjs/swagger';
+import { ApiNoContentResponse, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 
 import { AllowSignedBody } from '../../../platform/http/allow-anonymous';
@@ -23,9 +23,6 @@ export class GithubWebhookController {
   @HttpCode(204)
   @AllowSignedBody()
   @IdentityAttemptLimit('api')
-  @ApiHeader({ name: 'X-Hub-Signature-256', required: true })
-  @ApiHeader({ name: 'X-GitHub-Event', required: true })
-  @ApiHeader({ name: 'X-GitHub-Delivery', required: true })
   @ApiNoContentResponse({ description: 'Accepted, or already received.' })
   async receiveGithubWebhook(
     @Req() request: Request,

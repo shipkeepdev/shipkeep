@@ -1,4 +1,4 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { createHash, createHmac, timingSafeEqual } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
 import { createEvent, InvalidInputError, isTenantId, SYSTEM_ACTOR } from '@shipkeep/domain';
@@ -23,12 +23,13 @@ import {
 export type DeliveryOutcome = 'applied' | 'duplicate' | 'ignored';
 
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
-/** The audit event of each installation change: `github.installation_<…>`. */
+/** The audit event of each installation change. */
 const AUDITED = {
-  created: 'added',
-  deleted: 'removed',
-  suspend: 'suspended',
-  unsuspend: 'unsuspended',
+  created: 'github.installation_added',
+  deleted: 'github.installation_removed',
+  suspend: 'github.installation_suspended',
+  unsuspend: 'github.installation_unsuspended',
+  repositories: 'github.installation_repositories_changed',
 } as const;
 
 /**
@@ -68,14 +69,19 @@ export class GithubWebhooks {
     } catch {
       throw new InvalidInputError('github_webhook_invalid', 'This delivery is not JSON.');
     }
+    // GitHub signs the body, not the delivery identifier: the same body under a new identifier is
+    // the same delivery.
+    const bodySha256 = new Uint8Array(createHash('sha256').update(body).digest());
     return this.transaction.runTenant(organizationId, async () => {
-      if (!(await this.store.recordDelivery(organizationId, delivery, now))) return 'duplicate';
+      if (!(await this.store.recordDelivery(organizationId, delivery, bodySha256, now)))
+        return 'duplicate';
       switch (delivery.event) {
         case 'ping':
           if (pingedApp(payload) !== app.appId) throw new WebhookRejected();
           return 'applied';
         case 'installation':
-          return this.installation(organizationId, payload, app.appId, now);
+        case 'installation_repositories':
+          return this.installation(organizationId, delivery.event, payload, app.appId, now);
         default:
           // Push events are recorded here and deploy nothing yet (M3.1, next step).
           return 'ignored';
@@ -85,17 +91,18 @@ export class GithubWebhooks {
 
   private async installation(
     organizationId: string,
+    event: 'installation' | 'installation_repositories',
     payload: unknown,
     appId: number,
     now: Date,
   ): Promise<DeliveryOutcome> {
-    const change = installationChange(payload, appId);
+    const change = installationChange(event, payload, appId, now);
     if (!change) return 'ignored';
     if (!(await this.store.applyInstallation(organizationId, change, now))) return 'ignored';
     const sender = (payload as { sender?: { login?: unknown } }).sender?.login;
     await this.events.publish([
       createEvent({
-        type: `github.installation_${AUDITED[change.action]}`,
+        type: AUDITED[change.action],
         organizationId,
         actor: SYSTEM_ACTOR,
         target: { type: 'github_installation', id: String(change.installationId) },

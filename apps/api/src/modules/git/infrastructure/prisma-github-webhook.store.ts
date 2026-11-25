@@ -45,6 +45,7 @@ export class PrismaGithubWebhookStore implements GithubWebhookStore {
   async recordDelivery(
     organizationId: string,
     delivery: DeliveryHeaders,
+    bodySha256: Uint8Array,
     now: Date,
   ): Promise<boolean> {
     await this.database.client.githubDelivery.deleteMany({
@@ -53,10 +54,12 @@ export class PrismaGithubWebhookStore implements GithubWebhookStore {
         receivedAt: { lt: new Date(now.getTime() - DELIVERY_RETENTION_MS) },
       },
     });
+    // Either key already recorded, the identifier or the body, skips the row.
     const recorded = await this.database.client.githubDelivery.createMany({
       data: {
-        deliveryId: delivery.delivery,
         organizationId,
+        deliveryId: delivery.delivery,
+        bodySha256: new Uint8Array(bodySha256),
         event: delivery.event,
         receivedAt: now,
       },
@@ -70,33 +73,45 @@ export class PrismaGithubWebhookStore implements GithubWebhookStore {
     change: InstallationChange,
     now: Date,
   ): Promise<boolean> {
-    const installationId = BigInt(change.installationId);
     const client = this.database.client.githubInstallation;
+    const where = {
+      organizationId_installationId: {
+        organizationId,
+        installationId: BigInt(change.installationId),
+      },
+    };
+    const existing = await client.findUnique({ where });
     if (change.action === 'deleted') {
-      const removed = await client.deleteMany({ where: { organizationId, installationId } });
-      return removed.count === 1;
+      if (!existing || existing.updatedAt.getTime() > change.updatedAt.getTime()) return false;
+      await client.delete({ where });
+      return true;
     }
+    // An event no newer than the last one applied, a replay among them, changes nothing.
+    if (existing && existing.updatedAt.getTime() >= change.updatedAt.getTime()) return false;
+    const suspendedAt =
+      change.action === 'suspend'
+        ? change.updatedAt
+        : change.action === 'repositories'
+          ? (existing?.suspendedAt ?? null)
+          : null;
     const facts = {
       accountLogin: change.accountLogin,
       accountType: change.accountType,
       repositorySelection: change.repositorySelection,
-      updatedAt: now,
+      suspendedAt,
+      updatedAt: change.updatedAt,
     };
-    if (change.action === 'created') {
-      const added = await client.createMany({
-        data: { installationId, organizationId, ...facts, suspendedAt: null, createdAt: now },
-        skipDuplicates: true,
+    // A change for an installation not recorded yet, its `created` delivery lost, records it.
+    if (!existing)
+      await client.create({
+        data: {
+          organizationId,
+          installationId: BigInt(change.installationId),
+          ...facts,
+          createdAt: now,
+        },
       });
-      return added.count === 1;
-    }
-    const updated = await client.updateMany({
-      where: {
-        organizationId,
-        installationId,
-        suspendedAt: change.action === 'suspend' ? null : { not: null },
-      },
-      data: { ...facts, suspendedAt: change.action === 'suspend' ? now : null },
-    });
-    return updated.count === 1;
+    else await client.update({ where, data: facts });
+    return true;
   }
 }

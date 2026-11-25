@@ -43,23 +43,30 @@ export function deliveryHeaders(headers: {
 
 /** An installation of the organization's App, as an `installation` event describes it. */
 export interface InstallationChange {
-  readonly action: 'created' | 'deleted' | 'suspend' | 'unsuspend';
+  /** `repositories` is an `installation_repositories` event: the selection changed. */
+  readonly action: 'created' | 'deleted' | 'suspend' | 'unsuspend' | 'repositories';
   readonly installationId: number;
   readonly accountLogin: string;
   readonly accountType: 'User' | 'Organization';
   readonly repositorySelection: 'all' | 'selected';
+  /** GitHub's time of the change: one no newer than what is recorded changes nothing. */
+  readonly updatedAt: Date;
 }
 
 const ACTIONS = new Set(['created', 'deleted', 'suspend', 'unsuspend']);
+/** GitHub's clock may run a little ahead of this one, never much. */
+const MAX_AHEAD_MS = 5 * 60_000;
 
 /**
- * The change an `installation` event makes, or undefined for an action that changes nothing here
- * (`new_permissions_accepted`). An installation of another App is refused: the payload is signed by
- * this organization's App, so it names that App.
+ * The change an `installation` or `installation_repositories` event makes, or undefined for one
+ * that changes nothing here (`new_permissions_accepted`). An installation of another App is
+ * refused: the payload is signed by this organization's App, so it names that App.
  */
 export function installationChange(
+  event: 'installation' | 'installation_repositories',
   payload: unknown,
   appId: number,
+  now: Date,
 ): InstallationChange | undefined {
   const value = record(payload);
   const installation = record(value?.['installation']);
@@ -69,6 +76,7 @@ export function installationChange(
   const accountLogin = account?.['login'];
   const accountType = account?.['type'];
   const repositorySelection = installation?.['repository_selection'];
+  const updatedAt = githubTime(installation?.['updated_at']);
   if (
     typeof action !== 'string' ||
     typeof installationId !== 'number' ||
@@ -78,17 +86,35 @@ export function installationChange(
     typeof accountLogin !== 'string' ||
     !LOGIN.test(accountLogin) ||
     (accountType !== 'User' && accountType !== 'Organization') ||
-    (repositorySelection !== 'all' && repositorySelection !== 'selected')
+    (repositorySelection !== 'all' && repositorySelection !== 'selected') ||
+    !updatedAt ||
+    updatedAt.getTime() > now.getTime() + MAX_AHEAD_MS
   )
     throw new InvalidInputError('github_webhook_invalid', 'This installation event is malformed.');
-  if (!ACTIONS.has(action)) return undefined;
-  return {
-    action: action as InstallationChange['action'],
+  const change: Omit<InstallationChange, 'action'> = {
     installationId,
     accountLogin,
     accountType,
     repositorySelection,
+    updatedAt,
   };
+  if (event === 'installation_repositories')
+    return action === 'added' || action === 'removed'
+      ? { action: 'repositories', ...change }
+      : undefined;
+  if (!ACTIONS.has(action)) return undefined;
+  return { action: action as InstallationChange['action'], ...change };
+}
+
+/** A time as GitHub writes it, ISO 8601 with its offset, or undefined. */
+function githubTime(value: unknown): Date | undefined {
+  if (
+    typeof value !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)
+  )
+    return undefined;
+  const time = new Date(value);
+  return Number.isFinite(time.getTime()) ? time : undefined;
 }
 
 /** The App a `ping` names: it must be this organization's. */

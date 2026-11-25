@@ -37,11 +37,19 @@ export interface GithubWebhookStore {
   /** The App's identifier and decrypted webhook secret, or undefined without an App. */
   webhookSecret(organizationId: string): Promise<{ appId: number; secret: Secret } | undefined>;
   /**
-   * Records a delivery; false when it was recorded before. Deliveries older than the retention
-   * are forgotten on the way.
+   * Records a delivery; false when its identifier or its body was recorded before. Deliveries
+   * older than the retention are forgotten on the way.
    */
-  recordDelivery(organizationId: string, delivery: DeliveryHeaders, now: Date): Promise<boolean>;
-  /** Applies an installation change; false when it changed nothing. */
+  recordDelivery(
+    organizationId: string,
+    delivery: DeliveryHeaders,
+    bodySha256: Uint8Array,
+    now: Date,
+  ): Promise<boolean>;
+  /**
+   * Applies an installation change, recording an installation it did not know; false when the
+   * change is no newer than what is recorded, or removes nothing.
+   */
   applyInstallation(
     organizationId: string,
     change: InstallationChange,

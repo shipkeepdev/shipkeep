@@ -54,20 +54,31 @@ describe('GitHub webhooks over HTTP', () => {
       .set('x-hub-signature-256', options.signature ?? sign(body))
       .send(body);
   };
-  const installation = (action: string, id = 77) => ({
+  /** GitHub's time of a change, `minutes` after a fixed start, so that each event is newer. */
+  const at = (minutes: number) => new Date(Date.UTC(2026, 10, 25, 9, minutes)).toISOString();
+  const installation = (
+    action: string,
+    minutes: number,
+    options: { id?: number; selection?: string } = {},
+  ) => ({
     action,
     installation: {
-      id,
+      id: options.id ?? 77,
       app_id: APP_ID,
-      repository_selection: 'selected',
+      repository_selection: options.selection ?? 'selected',
+      updated_at: at(minutes),
       account: { login: 'acme-corp', type: 'Organization' },
     },
     sender: { login: 'octocat' },
   });
   const installations = async () =>
     (
-      await admin.query<{ installation_id: string; suspended_at: Date | null }>(
-        'SELECT installation_id, suspended_at FROM github_installations WHERE organization_id = $1',
+      await admin.query<{
+        installation_id: string;
+        suspended_at: Date | null;
+        repository_selection: string;
+      }>(
+        'SELECT installation_id, suspended_at, repository_selection FROM github_installations WHERE organization_id = $1',
         [fixture.organizationId],
       )
     ).rows;
@@ -117,19 +128,41 @@ describe('GitHub webhooks over HTTP', () => {
       .expect(413);
   });
 
-  it('records installations once per delivery, and audits each change', async () => {
+  it('records installations once per delivery and per body, newer changes only, audited', async () => {
     const delivery = randomUUID();
-    await deliver('installation', installation('created'), { delivery }).expect(204);
-    expect(await installations()).toEqual([{ installation_id: '77', suspended_at: null }]);
-    // The same delivery again does nothing; a suspension and its end change the row.
-    await deliver('installation', installation('created'), { delivery }).expect(204);
-    await deliver('installation', installation('suspend')).expect(204);
+    await deliver('installation', installation('created', 1), { delivery }).expect(204);
+    expect(await installations()).toEqual([
+      { installation_id: '77', suspended_at: null, repository_selection: 'selected' },
+    ]);
+    // The same delivery again, or its signed body under a new identifier, does nothing.
+    await deliver('installation', installation('created', 1), { delivery }).expect(204);
+    await deliver('installation', installation('created', 1)).expect(204);
+    await deliver('installation', installation('suspend', 2)).expect(204);
     expect((await installations())[0]?.suspended_at).toBeInstanceOf(Date);
-    await deliver('installation', installation('unsuspend')).expect(204);
-    await deliver('installation', installation('deleted')).expect(204);
+    // An event older than the last one applied changes nothing, even signed and new.
+    await deliver('installation', installation('unsuspend', 1, { selection: 'all' })).expect(204);
+    expect((await installations())[0]?.suspended_at).toBeInstanceOf(Date);
+    await deliver('installation', installation('unsuspend', 3)).expect(204);
+    await deliver(
+      'installation_repositories',
+      installation('added', 4, { selection: 'all' }),
+    ).expect(204);
+    expect(await installations()).toEqual([
+      { installation_id: '77', suspended_at: null, repository_selection: 'all' },
+    ]);
+    await deliver('installation', installation('deleted', 5)).expect(204);
     expect(await installations()).toEqual([]);
+    // A suspension of an installation whose creation was never received records it.
+    await deliver('installation', installation('suspend', 6, { id: 79 })).expect(204);
+    expect(await installations()).toEqual([
+      {
+        installation_id: '79',
+        suspended_at: expect.any(Date) as Date,
+        repository_selection: 'selected',
+      },
+    ]);
     // An installation of another App, even signed, is refused and recorded nowhere.
-    const foreign = installation('created', 78);
+    const foreign = installation('created', 7, { id: 78 });
     foreign.installation.app_id = APP_ID + 1;
     const refused = randomUUID();
     await deliver('installation', foreign, { delivery: refused }).expect(400);
@@ -147,7 +180,9 @@ describe('GitHub webhooks over HTTP', () => {
       'github.installation_added',
       'github.installation_suspended',
       'github.installation_unsuspended',
+      'github.installation_repositories_changed',
       'github.installation_removed',
+      'github.installation_suspended',
     ]);
     expect(events[0]?.metadata).toEqual({
       installationId: 77,
@@ -160,12 +195,16 @@ describe('GitHub webhooks over HTTP', () => {
 
   it('keeps a delivery identifier 30 days, then forgets it', async () => {
     const old = randomUUID();
-    await deliver('push', { ref: 'refs/heads/main' }, { delivery: old }).expect(204);
+    await deliver(
+      'push',
+      { ref: 'refs/heads/main', after: 'a'.repeat(40) },
+      { delivery: old },
+    ).expect(204);
     await admin.query(
       "UPDATE github_deliveries SET received_at = now() - interval '31 days' WHERE delivery_id = $1",
       [old],
     );
-    await deliver('push', { ref: 'refs/heads/main' }).expect(204);
+    await deliver('push', { ref: 'refs/heads/main', after: 'b'.repeat(40) }).expect(204);
     const kept = await admin.query('SELECT 1 FROM github_deliveries WHERE delivery_id = $1', [old]);
     expect(kept.rows).toEqual([]);
   });

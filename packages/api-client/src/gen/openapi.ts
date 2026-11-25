@@ -4883,11 +4883,8 @@ export interface operations {
             readonly query?: never;
             readonly header: {
                 readonly "x-github-delivery": string;
-                readonly "X-GitHub-Delivery": string;
                 readonly "x-github-event": string;
-                readonly "X-GitHub-Event": string;
                 readonly "x-hub-signature-256": string;
-                readonly "X-Hub-Signature-256": string;
             };
             readonly path: {
                 readonly organizationId: string;
