@@ -62,6 +62,8 @@ const AUDITED: Readonly<Record<string, readonly string[]>> = {
   'POST /organizations/:organizationId/projects/:projectId/settings': ['project.updated'],
   'POST /organizations/:organizationId/settings': ['organization.updated'],
   'POST /organizations/:organizationId/registries': ['registry.credentials_set'],
+  'POST /organizations/:organizationId/github-app/manifests': ['github.app_flow_started'],
+  'POST /organizations/:organizationId/github-app': ['github.app_created'],
   'POST /organizations/:organizationId/registries/:registryId/remove': [
     'registry.credentials_removed',
   ],

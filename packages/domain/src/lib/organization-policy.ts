@@ -41,7 +41,13 @@ export function allowsTenantAction(
   )
     return false;
   if (membership.role === 'owner') return true;
-  if (permission === 'billing.manage' || permission === 'organization.delete') return false;
+  // Owners only: billing, deletion, and the Git provider integration that can write to repositories.
+  if (
+    permission === 'billing.manage' ||
+    permission === 'organization.delete' ||
+    permission === 'integration.manage'
+  )
+    return false;
   if (membership.role === 'admin') return true;
   if (permission === 'organization.read') return true;
   if (['node.manage', 'project.create', 'project.delete'].includes(permission)) return false;
@@ -125,6 +131,7 @@ function validPermissionScope(permission: string, target: TenantResource): boole
     case 'organization.update':
     case 'organization.delete':
     case 'billing.manage':
+    case 'integration.manage':
     case 'node.manage':
     case 'project.create':
       return target.projectId === undefined;

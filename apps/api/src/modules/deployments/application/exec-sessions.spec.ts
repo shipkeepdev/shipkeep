@@ -4,7 +4,7 @@ import {
   InvalidInputError,
   NotFoundError,
 } from '@shipkeep/domain';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import type { ApplicationStore } from '../../apps/application/ports';
@@ -15,6 +15,7 @@ import type { TenantAccess } from '../../organizations/application/tenant-access
 import type { ReplicaStatus } from '../domain/observations';
 
 import { ExecSessionRegistry } from '../../fleet/application/exec-relay';
+import type { FleetTransaction } from '../../fleet/application/ports';
 
 import { ExecSessions } from './exec-sessions';
 import type { ActionQueue, DeploymentTransaction, ObservationStore } from './ports';
@@ -49,11 +50,23 @@ function replica(overrides: Partial<ReplicaStatus>): ReplicaStatus {
   };
 }
 
-function world(options: { replicas?: ReplicaStatus[]; denied?: boolean; app?: boolean } = {}) {
+function world(
+  options: {
+    replicas?: ReplicaStatus[];
+    denied?: boolean;
+    app?: boolean;
+    waiting?: () => void;
+  } = {},
+) {
   const queued: Parameters<ActionQueue['enqueue']>[0][] = [];
   const published: DomainEvent[] = [];
   const order: string[] = [];
-  const registry = new ExecSessionRegistry();
+  const registry = new ExecSessionRegistry(
+    {
+      runTenant: (_org: string, work: () => Promise<unknown>) => work(),
+    } as unknown as FleetTransaction,
+    { publish: () => Promise.resolve() } as unknown as DomainEventBus,
+  );
   const service = new ExecSessions(
     {
       runTenant: (_org: string, work: () => Promise<unknown>) => work(),
@@ -62,7 +75,11 @@ function world(options: { replicas?: ReplicaStatus[]; denied?: boolean; app?: bo
       find: () => Promise.resolve(options.app === false ? undefined : application),
     } as unknown as ApplicationStore,
     {
-      forApplication: () => Promise.resolve(options.replicas ?? [replica({})]),
+      forApplication: () => {
+        // The database may take a while to answer: tests move the clock meanwhile.
+        options.waiting?.();
+        return Promise.resolve(options.replicas ?? [replica({})]);
+      },
     } as unknown as ObservationStore,
     {
       enqueue: (input: Parameters<ActionQueue['enqueue']>[0]) => {
@@ -148,8 +165,7 @@ describe('opening an exec session (SPEC 3.1)', () => {
     });
     // What the person typed never reaches the audit log.
     expect(JSON.stringify(event)).not.toContain('secret-pw');
-    expect(w.registry.pending(session.id, NOW)).toEqual(session);
-    expect(w.registry.pending(session.id, session.attachBy)).toBeUndefined();
+    expect(w.registry.pending(session.id)).toEqual(session);
   });
 
   it('takes the running release of the replica asked for', async () => {
@@ -181,16 +197,42 @@ describe('opening an exec session (SPEC 3.1)', () => {
     expect([...w.queued, ...unseen.queued]).toEqual([]);
   });
 
+  it('judges freshness and sets deadlines when it decides, not when the request began', async () => {
+    vi.useFakeTimers({ now: NOW, toFake: ['Date', 'performance', 'setTimeout', 'clearTimeout'] });
+    try {
+      // Fresh when the request begins, two minutes and one second old once the database answers.
+      const late = world({
+        replicas: [replica({ observedAt: new Date(NOW.getTime() - 119_000) })],
+        waiting: () => vi.advanceTimersByTime(2_000),
+      });
+      await expect(late.service.open(context, target, APP, {}, NOW)).rejects.toBeInstanceOf(
+        ConflictError,
+      );
+      // Thirty seconds of database time move the deadlines with them.
+      const slow = world({ waiting: () => vi.advanceTimersByTime(30_000) });
+      const session = await slow.service.open(context, target, APP, {}, NOW);
+      expect(session.attachBy.getTime() - NOW.getTime()).toBe(30_000 + 60_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('caps the sessions waiting for one person', async () => {
-    const w = world();
-    for (let i = 0; i < 4; i++) await w.service.open(context, target, APP, {}, NOW);
-    await expect(w.service.open(context, target, APP, {}, NOW)).rejects.toMatchObject({
-      code: 'exec_sessions_limit',
-    });
-    expect(w.queued).toHaveLength(4);
-    // Once their join window passed, they no longer count.
-    await w.service.open(context, target, APP, {}, new Date(NOW.getTime() + 61_000));
-    expect(w.queued).toHaveLength(5);
+    vi.useFakeTimers();
+    try {
+      const w = world();
+      for (let i = 0; i < 4; i++) await w.service.open(context, target, APP, {}, NOW);
+      await expect(w.service.open(context, target, APP, {}, NOW)).rejects.toMatchObject({
+        code: 'exec_sessions_limit',
+      });
+      expect(w.queued).toHaveLength(4);
+      // Once their join window passed, they no longer count.
+      vi.advanceTimersByTime(60_000);
+      await w.service.open(context, target, APP, {}, NOW);
+      expect(w.queued).toHaveLength(5);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('refuses a replica that does not run, before queueing or auditing anything', async () => {
@@ -236,6 +278,6 @@ describe('opening an exec session (SPEC 3.1)', () => {
       { publish: () => Promise.resolve() } as unknown as DomainEventBus,
     );
     await expect(failing.open(context, target, APP, {}, NOW)).rejects.toThrow('commit failed');
-    expect(w.registry.pending('anything', NOW)).toBeUndefined();
+    expect(w.registry.pending('anything')).toBeUndefined();
   });
 });
