@@ -10,6 +10,7 @@ import { TenantAccessModule } from '../organizations/tenant-access.module';
 import { MetricsIngest } from './application/metrics-ingest';
 import { MetricsQueries } from './application/metrics-queries';
 import { LogsIngest } from './application/logs-ingest';
+import { LogsQueries } from './application/logs-queries';
 import {
   LOGS_STORE,
   METRICS_STORE,
@@ -19,16 +20,18 @@ import {
 import { PrismaMetricsTargets } from './infrastructure/prisma-metrics-targets.store';
 import { VictoriaLogsStore } from './infrastructure/victoria-logs.store';
 import { VictoriaMetricsStore } from './infrastructure/victoria-metrics.store';
+import { LogsController } from './interface/logs.controller';
 import { MetricsController } from './interface/metrics.controller';
 
 /** Metrics of nodes, containers and routes (ADR 0024, PLAN M6.2). */
 @Module({
   imports: [IdentityModule, TenantAccessModule, FleetModule, AppsModule],
-  controllers: [MetricsController],
+  controllers: [MetricsController, LogsController],
   providers: [
     MetricsIngest,
     MetricsQueries,
     LogsIngest,
+    LogsQueries,
     {
       provide: LOGS_STORE,
       useFactory: (config: AppConfig) => {
