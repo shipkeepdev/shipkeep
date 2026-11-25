@@ -33,3 +33,29 @@ export function clock(time: string): string {
     hour12: false,
   });
 }
+
+/** Pages a live view reads at most on each tick before it waits for the next. */
+export const FORWARD_ROUNDS = 5;
+
+/**
+ * The lines after `from`, oldest first, read page by page while pages come back full: a burst
+ * larger than one page is read whole instead of skipped. A page whose last line is at `from` again
+ * ends the reading, so that it always moves forward.
+ */
+export async function readForward(
+  page: (from: string) => Promise<readonly LogLine[]>,
+  from: string,
+  limit: number,
+  rounds = FORWARD_ROUNDS,
+): Promise<LogLine[]> {
+  const lines: LogLine[] = [];
+  let cursor = from;
+  for (let round = 0; round < rounds; round++) {
+    const answer = await page(cursor);
+    lines.push(...answer);
+    const last = answer.at(-1);
+    if (answer.length < limit || !last || last.time === cursor) break;
+    cursor = last.time;
+  }
+  return lines;
+}

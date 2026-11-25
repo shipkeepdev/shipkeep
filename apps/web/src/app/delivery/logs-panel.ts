@@ -13,12 +13,14 @@ import { Icon } from '../shell/icon';
 import { T } from '../ui/i18n';
 
 import { DeliveryApi, type EnvironmentRef, type LogLine } from './delivery-api';
-import { clock, lineKey, mergeLines } from './logs-view';
+import { clock, lineKey, mergeLines, readForward } from './logs-view';
 
 type Filter = 'all' | 'stdout' | 'stderr';
 
 /** How often the live view asks for newer lines. */
 const LIVE_MS = 3000;
+/** Lines one request asks for. */
+const LIMIT = 200;
 
 /**
  * An application's logs (ADR 0029): its replicas' output, newest first, with a search and a live
@@ -141,6 +143,8 @@ export class LogsPanel {
   protected readonly key = lineKey;
   /** The search the lines shown answer; a newer one replaces them. */
   private generation = 0;
+  /** A live read under way: the next tick waits for it instead of reading the same lines. */
+  private reading = false;
 
   constructor() {
     effect((onCleanup) => {
@@ -178,27 +182,47 @@ export class LogsPanel {
     void this.load(true);
   }
 
-  /** Loads the newest lines; `fresh` starts again, otherwise it asks from the newest line on. */
+  /**
+   * `fresh` loads the newest lines again. Otherwise the live view reads forward from its newest
+   * line, oldest first and page after page, so that a burst between two ticks is not skipped.
+   */
   private async load(fresh: boolean): Promise<void> {
-    const generation = fresh ? ++this.generation : this.generation;
     const newest = fresh ? undefined : this.lines().at(0)?.time;
+    if (!fresh && newest && this.reading) return;
+    const generation = fresh ? ++this.generation : this.generation;
     const stream = this.filter() === 'all' ? undefined : (this.filter() as 'stdout' | 'stderr');
     const text = this.text().trim();
+    const query = { ...(text ? { text } : {}), ...(stream ? { stream } : {}), limit: LIMIT };
     if (fresh) this.loading.set(true);
+    this.reading = true;
     try {
-      const answer = await this.api.logs(this.environment(), this.applicationId(), {
-        ...(text ? { text } : {}),
-        ...(stream ? { stream } : {}),
-        ...(newest ? { from: newest } : {}),
-        limit: 200,
-      });
+      let kept = true;
+      const lines = newest
+        ? await readForward(
+            async (from) => {
+              const answer = await this.api.logs(this.environment(), this.applicationId(), {
+                ...query,
+                from,
+                order: 'oldest',
+              });
+              kept = answer.kept;
+              return answer.lines;
+            },
+            newest,
+            LIMIT,
+          )
+        : await this.api.logs(this.environment(), this.applicationId(), query).then((answer) => {
+            kept = answer.kept;
+            return answer.lines;
+          });
       if (generation !== this.generation) return;
-      this.kept.set(answer.kept);
-      this.lines.set(mergeLines(fresh ? [] : this.lines(), answer.lines));
+      this.kept.set(kept);
+      this.lines.set(mergeLines(fresh ? [] : this.lines(), lines));
       this.failed.set(false);
     } catch {
       if (generation === this.generation) this.failed.set(true);
     } finally {
+      this.reading = false;
       if (generation === this.generation) this.loading.set(false);
     }
   }

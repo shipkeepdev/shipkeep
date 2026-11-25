@@ -142,7 +142,13 @@ export class DeliveryApi extends WorkspaceApi {
   async logs(
     environment: EnvironmentRef,
     applicationId: string,
-    query: { text?: string; stream?: 'stdout' | 'stderr'; from?: string; limit?: number },
+    query: {
+      text?: string;
+      stream?: 'stdout' | 'stderr';
+      from?: string;
+      limit?: number;
+      order?: 'newest' | 'oldest';
+    },
   ): Promise<ApplicationLogs> {
     return this.required(() =>
       this.client.GET(
