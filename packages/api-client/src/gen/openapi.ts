@@ -1284,6 +1284,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/webhooks/github/{organizationId}": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["receiveGithubWebhook"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
 };
 export type webhooks = Record<string, never>;
 export type components = {
@@ -4855,6 +4871,33 @@ export interface operations {
             };
             /** @description A dependency is unavailable (problem details). */
             readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly receiveGithubWebhook: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                readonly "x-github-delivery": string;
+                readonly "X-GitHub-Delivery": string;
+                readonly "x-github-event": string;
+                readonly "X-GitHub-Event": string;
+                readonly "x-hub-signature-256": string;
+                readonly "X-Hub-Signature-256": string;
+            };
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            /** @description Accepted, or already received. */
+            readonly 204: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

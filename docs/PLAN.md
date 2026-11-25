@@ -290,7 +290,7 @@ The milestones below describe the whole MVP. The first stable version ships part
 - [ ] **M3.1 Git providers** (C + W). Depends: M2.3
   - GitHub App (installation flow, webhooks, checks API), GitLab, Gitea, Bitbucket via OAuth or tokens. Webhook signature verification.
   - Acceptance: a verified push webhook enqueues a deploy request job with the commit and branch; a forged or replayed webhook is rejected. (Turning the request into a deployment is M3.4.)
-  - Progress: an organization's GitHub App through the manifest flow, API side (ADR 0031). Next: its web page, installations, webhooks.
+  - Progress: an organization's GitHub App through the manifest flow, and its signed webhooks with installations, API side (ADR 0031). Next: its web page, then a push to an application's branch.
 - [ ] **M3.2 shipkeep.yml sync** (C + W). Depends: M3.1, M0.4
   - Read config at commit, validate, show drift; UI editor that writes back as commit or PR with diff preview.
   - Acceptance: editing replicas in the UI opens a PR with the exact YAML change.

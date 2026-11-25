@@ -33,22 +33,24 @@ model User {
 }
 
 model Organization {
-  id            String               @id @db.Uuid
-  name          String               @db.VarChar(80)
-  slug          String               @unique @db.VarChar(40)
-  createdAt     DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt     DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
-  memberships   Membership[]
-  projects      Project[]
-  environments  Environment[]
-  roleBindings  RoleBinding[]
-  nodes         Node[]
-  joinTokens    JoinToken[]
-  confirmations ConfirmationToken[]
-  registries    RegistryCredential[]
-  agentUpgrades AgentUpgrade[]
-  githubApp     GithubApp?
-  githubAppFlow GithubAppFlow?
+  id                  String               @id @db.Uuid
+  name                String               @db.VarChar(80)
+  slug                String               @unique @db.VarChar(40)
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+  memberships         Membership[]
+  projects            Project[]
+  environments        Environment[]
+  roleBindings        RoleBinding[]
+  nodes               Node[]
+  joinTokens          JoinToken[]
+  confirmations       ConfirmationToken[]
+  registries          RegistryCredential[]
+  agentUpgrades       AgentUpgrade[]
+  githubApp           GithubApp?
+  githubAppFlow       GithubAppFlow?
+  githubDeliveries    GithubDelivery[]
+  githubInstallations GithubInstallation[]
 
   @@map("organizations")
 }
@@ -391,6 +393,34 @@ model GithubAppFlow {
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict)
 
   @@map("github_app_flows")
+}
+
+/// A webhook delivery of an organization's App, recorded once and kept 30 days (ADR 0031).
+model GithubDelivery {
+  deliveryId     String       @id @map("delivery_id") @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  event          String       @db.VarChar(64)
+  receivedAt     DateTime     @map("received_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@index([organizationId, receivedAt])
+  @@map("github_deliveries")
+}
+
+/// Where an organization's App is installed, as GitHub reported it (ADR 0031).
+model GithubInstallation {
+  installationId      BigInt       @id @map("installation_id")
+  organizationId      String       @map("organization_id") @db.Uuid
+  accountLogin        String       @map("account_login") @db.VarChar(39)
+  accountType         String       @map("account_type") @db.VarChar(16)
+  repositorySelection String       @map("repository_selection") @db.VarChar(8)
+  suspendedAt         DateTime?    @map("suspended_at") @db.Timestamptz(6)
+  createdAt           DateTime     @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime     @map("updated_at") @db.Timestamptz(6)
+  organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@index([organizationId])
+  @@map("github_installations")
 }
 
 /// Credentials for one container registry of an organization (ADR 0019); the password is encrypted.

@@ -1,4 +1,7 @@
+import type { Secret } from '@shipkeep/domain';
+
 import type { CreatedGithubApp, GithubAppMetadata } from '../domain/github-app';
+import type { DeliveryHeaders, InstallationChange } from '../domain/github-webhook';
 
 /** A manifest flow under way: the hashed state GitHub brings back, and who started it. */
 export interface GithubAppFlow {
@@ -26,6 +29,24 @@ export interface GithubAppStore {
     createdBy: string,
     now: Date,
   ): Promise<GithubAppMetadata | undefined>;
+}
+
+export const GITHUB_WEBHOOK_STORE = Symbol('GithubWebhookStore');
+/** Every method runs inside `runTenant` for the organization. */
+export interface GithubWebhookStore {
+  /** The App's identifier and decrypted webhook secret, or undefined without an App. */
+  webhookSecret(organizationId: string): Promise<{ appId: number; secret: Secret } | undefined>;
+  /**
+   * Records a delivery; false when it was recorded before. Deliveries older than the retention
+   * are forgotten on the way.
+   */
+  recordDelivery(organizationId: string, delivery: DeliveryHeaders, now: Date): Promise<boolean>;
+  /** Applies an installation change; false when it changed nothing. */
+  applyInstallation(
+    organizationId: string,
+    change: InstallationChange,
+    now: Date,
+  ): Promise<boolean>;
 }
 
 export const GITHUB_MANIFESTS = Symbol('GithubManifests');

@@ -1,6 +1,6 @@
 import type { IncomingMessage } from 'node:http';
 
-import { acceptsLargeJson } from './body-limits';
+import { acceptsLargeJson, acceptsWebhook } from './body-limits';
 
 const ID = '0190f5a8-7b1c-7e2d-8f3a-0123456789ab';
 const ENVIRONMENT = `/api/v1/organizations/${ID}/projects/${ID}/environments/${ID}`;
@@ -45,5 +45,22 @@ describe('acceptsLargeJson', () => {
         headers: {},
       } as unknown as IncomingMessage),
     ).toBe(false);
+  });
+});
+
+describe('acceptsWebhook', () => {
+  it('reads GitHub deliveries raw, whatever their media type, and nothing else', () => {
+    const hook = `/api/v1/webhooks/github/${ID}`;
+    expect(acceptsWebhook(request(hook))).toBe(true);
+    expect(
+      acceptsWebhook(request(`${hook}?x=1`, 'POST', 'application/x-www-form-urlencoded')),
+    ).toBe(true);
+    for (const [path, method] of [
+      [hook, 'GET'],
+      [`${hook}/extra`, 'POST'],
+      ['/api/v1/webhooks/github/not-an-id', 'POST'],
+      [`${ENVIRONMENT}/secrets`, 'POST'],
+    ] as const)
+      expect(acceptsWebhook(request(path, method))).toBe(false);
   });
 });
