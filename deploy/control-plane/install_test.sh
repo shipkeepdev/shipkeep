@@ -78,14 +78,19 @@ refuse 'Run with sudo' --single-machine no --domain shipkeep.example.com --email
 refused() { ! ("$@") 2>"$work/output"; }
 
 # A question without a terminal reads no line: the line would be a password. A password shaped like
-# an answer (here a valid DNS name) is neither taken nor printed back.
+# an answer (here a valid DNS name) is neither taken nor printed back. The line comes from a file
+# whose offset the subshell shares, so a line read there is gone for the read below.
+printf '%s\n' 'a.password.shaped.like.a.name' >"$work/line"
 for question in 'domain DNS valid_domain Invalid --domain' 'organization Name valid_organization Invalid --organization' 'smtp_from Sender valid_address Invalid --smtp-from'; do
   read -r name label check error option <<<"$question"
   printf -v "$name" '%s' ''
-  refused ask "$name" "$label" "$check" "$error" "$option" <<<'a.password.shaped.like.a.name' || die "$name was read without a terminal"
+  exec 3<"$work/line"
+  refused ask "$name" "$label" "$check" "$error" "$option" <&3 || die "$name was read without a terminal"
   grep -qF -- "Without a terminal, give $option" "$work/output" || die "$name was refused without naming $option: $(cat "$work/output")"
   ! grep -q 'password.shaped' "$work/output" || die "the line read for $name was printed"
-  [[ -z ${!name} ]] || die "$name was set from standard input"
+  IFS= read -r left <&3 || left=''
+  exec 3<&-
+  [[ $left == a.password.shaped.like.a.name ]] || die "the line was read for $name"
 done
 
 # shellcheck source=/dev/null
