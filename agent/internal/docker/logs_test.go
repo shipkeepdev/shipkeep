@@ -3,6 +3,7 @@ package docker
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 	"testing"
@@ -198,5 +199,54 @@ func TestFollowLogsReportsStatusesOnly(t *testing.T) {
 	err := client.FollowLogs(context.Background(), "sk-app", time.Time{}, noop)
 	if err == nil || strings.Contains(err.Error(), "secret") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestFollowLogsTreatsAFrameCutAfterItsHeaderAsAnError(t *testing.T) {
+	// A header that promises five bytes, then the end of the stream.
+	client, _ := logsDaemon(t, multiplexed, []byte{1, 0, 0, 0, 0, 0, 0, 5})
+	if _, err := follow(t, client); !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("a cut frame ended the stream as %v", err)
+	}
+}
+
+func TestFollowLogsSendsAFullLineBeforeItsNextFrame(t *testing.T) {
+	full := strings.Repeat("x", MaxLogLine)
+	client, _ := logsDaemon(t, multiplexed,
+		// Exactly full, with its newline in the same frame: a whole line, not truncated.
+		stamped(Stdout, "2026-11-24T20:00:00Z", full+"\n"),
+		// Exactly full, no newline: sent before anything else arrives.
+		stamped(Stdout, "2026-11-24T20:00:01Z", full),
+		stamped(Stderr, "2026-11-24T20:00:02Z", "err\n"),
+		stamped(Stdout, "2026-11-24T20:00:03Z", "\nnext\n"),
+	)
+	lines, err := follow(t, client)
+	if err != nil || len(lines) != 4 {
+		t.Fatalf("got %d lines, %v", len(lines), err)
+	}
+	if lines[0].Text != full || lines[0].Truncated {
+		t.Fatalf("whole line: %d bytes, truncated %v", len(lines[0].Text), lines[0].Truncated)
+	}
+	if lines[1].Stream != Stdout || lines[1].Text != full || !lines[1].Truncated {
+		t.Fatalf("the full line did not come before the stderr one: %+v", lines[1].Stream)
+	}
+	if lines[2].Text != "err" || lines[3].Text != "next" {
+		t.Fatalf("got %q then %q", lines[2].Text, lines[3].Text)
+	}
+}
+
+func TestFollowLogsCutsOnACharacterThatBeganInAnEarlierFrame(t *testing.T) {
+	start := strings.Repeat("x", MaxLogLine-3)
+	client, _ := logsDaemon(t, multiplexed,
+		// A rocket split across Docker's frames: its first byte ends the first one.
+		stamped(Stdout, "2026-11-24T20:00:00Z", start+"\xf0"),
+		stamped(Stdout, "2026-11-24T20:00:01Z", "\x9f\x9a\x80tail\n"),
+	)
+	lines, err := follow(t, client)
+	if err != nil || len(lines) != 1 {
+		t.Fatalf("got %d lines, %v", len(lines), err)
+	}
+	if lines[0].Text != start || !lines[0].Truncated {
+		t.Fatalf("line ends with %q, truncated %v", lines[0].Text[len(lines[0].Text)-4:], lines[0].Truncated)
 	}
 }

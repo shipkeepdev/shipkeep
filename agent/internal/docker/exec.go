@@ -241,6 +241,10 @@ func readFrame(reader io.Reader) (int, []byte, error) {
 	}
 	data := make([]byte, size)
 	if _, err := io.ReadFull(reader, data); err != nil {
+		// A header promised these bytes: their absence is a cut stream, never its clean end.
+		if errors.Is(err, io.EOF) {
+			err = io.ErrUnexpectedEOF
+		}
 		return 0, nil, fmt.Errorf("docker output ended inside a frame: %w", err)
 	}
 	return stream, data, nil
