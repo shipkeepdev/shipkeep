@@ -1,6 +1,6 @@
 # Installing Shipkeep
 
-> **Status: a prerelease, exercised on one machine, not yet on a public server.** Installing the control plane with the installer, adding a server and deploying an application have run with the published artifacts of [`v0.1.0-alpha.3`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.3), without an email account (see [What has been tested](#what-has-been-tested)). A rollback and a restart of the server's container were run with `v0.1.0-alpha.1`. The upgrade steps have not run, and neither a real server, a public certificate nor a real mail provider has been tried. Use it on servers you can afford to lose, and please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
+> **Status: a prerelease, exercised on one machine, not yet on a public server.** Installing the control plane on a single machine, deploying an application, backing up and restoring have run with the published artifacts of [`v0.1.0-alpha.5`](https://github.com/shipkeepdev/shipkeep/releases/tag/v0.1.0-alpha.5), without an email account, and so has the upgrade from `v0.1.0-alpha.3` with a separate server (see [What has been tested](#what-has-been-tested)). A rollback and a restart of the server's container were run with `v0.1.0-alpha.1`. Neither a real server, a public certificate nor a real mail provider has been tried. Use it on servers you can afford to lose, and please [report](https://github.com/shipkeepdev/shipkeep/issues) where it breaks.
 
 A Shipkeep installation has two kinds of machines:
 
@@ -52,7 +52,7 @@ Each release since `v0.1.0-alpha.2` carries a bundle, `shipkeep-control-plane_<v
 
    `Verified OK`, then nothing else, means the bundle is unpacked. Any error means it is not: a modified file, a signature for another version or from another workflow, or a missing signature. Do not go on. What this proves: the file is the one that this repository's release workflow signed when it ran for the tag `v<version>`. It relies on GitHub for this page and the SHA-256 of cosign, and on Sigstore for the signature.
 
-3. Run the installer and answer its questions: the DNS name, then the email address and the password of the first account. The address is the sign-in name, nothing is sent to it. The password has 15 characters or more and is not shown while you type it.
+3. Run the installer and answer its questions: whether this machine runs applications too (see [One machine for everything](#one-machine-for-everything); the default is yes), the DNS name, the email address and the password of the first account, then on Ubuntu 24.04 with systemd the name of the first organization. The address is the sign-in name, nothing is sent to it. The password has 15 characters or more and is not shown while you type it.
 
    ```sh
    sudo ./shipkeep-control-plane/install.sh
@@ -76,9 +76,9 @@ It never overwrites an installation: run again, it refuses. If the certificate h
 
 The questions are checked before anything is installed, with rules no wider than the control plane's: the password has 15 to 128 characters on one line, and the address is a name of letters, digits and `_ % + -` joined by single dots, then a domain. An address the installer refuses and the control plane accepts (other punctuation in the name) can be given to an account [created afterwards](#accounts-without-email).
 
-Without a terminal, give the answers as options: `--domain` and `--email`. The password of the first account is read from standard input, its first line, never from an option.
+Without a terminal, give the answers as options: `--single-machine yes` or `no`, `--domain`, `--email`, and `--organization` on Ubuntu 24.04 with systemd, where the installer also sets up an agent. The password of the first account is read from standard input, its first line, never from an option. A missing option stops the installer before it changes anything.
 
-For an installation that sends email, add `--smtp-host`, and optionally `--smtp-port` (465 by default), `--smtp-from` and `--smtp-user` (empty when the server asks for no login). The installer then asks for what is missing; the SMTP password is read from standard input too, after the password of the first account.
+For an installation that sends email, add `--smtp-host`, and optionally `--smtp-port` (465 by default), `--smtp-from` and `--smtp-user` (empty when the server asks for no login). The installer then asks for what is missing; without a terminal, give `--smtp-from` and `--smtp-user` too. The SMTP password is read from standard input too, after the password of the first account.
 
 ### Install by hand
 
@@ -239,7 +239,7 @@ The restore prints the time the backup was made: check that it is the one you me
 
 Point the domain to the new machine: the servers reconnect on their own, with the identity they already have. Everyone signs in again: the restore ends every session.
 
-The restore brings back the installation as it was when the backup was made. A password changed since then is the previous one again, an API token revoked since is valid again, and a member removed since is back. After a compromise, change those passwords, revoke those tokens and remove those members again. A backup from a newer version is refused. Sessions come back with the database. Metrics, Caddy's certificate and the `.env` settings do not: the SMTP settings are typed again.
+The restore brings back the installation as it was when the backup was made. A password changed since then is the previous one again, an API token revoked since is valid again, and a member removed since is back. After a compromise, change those passwords, revoke those tokens and remove those members again. A backup from a newer version is refused. Sessions come back with the database. Deployments made after the backup are unknown to it, but their containers keep running on the servers: the next deployment of such an application fails once, and its earlier container stays until it is removed by hand ([#501](https://github.com/shipkeepdev/shipkeep/issues/501)). Metrics, Caddy's certificate and the `.env` settings do not: the SMTP settings are typed again.
 
 If a step fails, the script says what state it left and stops there, with the control plane stopped. Until the restored database takes the place of the current one, the current one is unchanged. If the key step fails after that, the restored database is in place, and the key file holds this installation's key or the restored one, never neither: run the restore again before starting the control plane. The previous database is kept under the name the script prints.
 
@@ -257,12 +257,12 @@ Store the output in a password manager or another place that is not this server.
 
 ## Upgrade
 
-The installer does not upgrade. In the installation directory, replace `compose.yml` with the one of the new release's bundle, and `compose.single-machine.yml` too on a single machine: they pin the PostgreSQL, Caddy, VictoriaMetrics and VictoriaLogs images of that release and set their limits. On a single machine, pass both files to every command below (`docker compose -f compose.yml -f compose.single-machine.yml …`). Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest (the `image` file of the same bundle), then run `docker compose pull` and `docker compose up -d`. The `migrate` and `database-role` steps run again before the new control plane starts. Take a PostgreSQL backup first: automatic snapshots before upgrades are not built yet. VictoriaMetrics keeps 30 days of metrics in its own volume, `victoriametrics-data`; it is not in a PostgreSQL backup, and losing it loses that history only (ADR 0024). VictoriaLogs keeps 30 days of application logs in `victorialogs-data`, likewise (ADR 0029). Once the disk is 80 % full it drops its oldest days, and below 1 GiB free it accepts no new line, so that logs never take the space PostgreSQL needs.
+The installer does not upgrade. In the installation directory, replace `compose.yml` with the one of the new release's bundle, and `compose.single-machine.yml` too on a single machine: they pin the PostgreSQL, Caddy, VictoriaMetrics and VictoriaLogs images of that release and set their limits. On a single machine, pass both files to every command below (`docker compose -f compose.yml -f compose.single-machine.yml …`). Change `SHIPKEEP_IMAGE` in `.env` to the new release's tag and digest (the `image` file of the same bundle), then run `docker compose pull`. Nothing restarts yet: take a backup now, with the `backup.sh` of the same bundle ([Back up and restore](#back-up-and-restore)), since automatic snapshots before upgrades are not built yet. It runs from the new image and dumps the database that is still running, so it also works on an installation made before the script existed. Then run `docker compose up -d`. The `migrate` and `database-role` steps run again before the new control plane starts. VictoriaMetrics keeps 30 days of metrics in its own volume, `victoriametrics-data`; it is not in a PostgreSQL backup, and losing it loses that history only (ADR 0024). VictoriaLogs keeps 30 days of application logs in `victorialogs-data`, likewise (ADR 0029). Once the disk is 80 % full it drops its oldest days, and below 1 GiB free it accepts no new line, so that logs never take the space PostgreSQL needs.
 
-A server's agent can replace itself with a signed release, but the control plane does not ask it to yet (ADR 0028).
+A server's agent can replace itself with a signed release (ADR 0028). After a control plane upgrade, **Servers** lists the agents that run an older release, and **Upgrade agents** upgrades them to the control plane's version, one server at a time. The first server that fails stops the rollout, and the page names it with the reason.
 
 - **How it goes.** The agent checks the release's signature and keeps its running binary as `/var/lib/shipkeep/bin/shipkeep-agent.previous`. It restarts on the new one, which has 5 minutes to reach the control plane. A new binary that fails 3 starts is replaced by the previous one, and `journalctl -u shipkeep-agent` says that the upgrade was rolled back.
-- **Servers installed before this release.** Their agent refuses the upgrade, saying that its service predates upgrades: its unit lacks the step that puts the previous binary back. Install the server again to get it; [`deploy/README.md`](../deploy/README.md) lists what to remove first.
+- **Servers installed before this release.** Their agent refuses the upgrade, saying that its service predates upgrades: its unit lacks the step that puts the previous binary back. An agent of `v0.1.0-alpha.3` or earlier does not know the upgrade at all: the rollout stops on its server with "not supported by this agent", and nothing changes there. Install the server again to get it; [`deploy/README.md`](../deploy/README.md) lists what to remove first. Until then that agent keeps running applications for the upgraded control plane.
 
 ## Troubleshooting
 
@@ -346,6 +346,21 @@ Docker stays installed. The installer then runs again as on a new machine.
 
 ## What has been tested
 
+With the published artifacts of `v0.1.0-alpha.5`, on 25 November 2026, in fresh Ubuntu 24.04 containers with systemd and without Docker (amd64), following this page from its first command and without any email account:
+
+- The download and the verification step as written: cosign 3.1.4 matched its SHA-256, and the bundle signature verified. Outside the test machines, the image signature verified with `cosign verify` for the release workflow of the tag, the bundle's provenance with `gh attestation verify`, and the image's manifest lists amd64 and arm64.
+- The installer through a terminal, answering its questions with the defaults: one machine for everything, the DNS name, the address and the password of the first account, and the name of the first organization. The password did not appear in its output, and nothing was asked about email. Docker, the control plane, PostgreSQL, VictoriaMetrics and VictoriaLogs started, the control plane reports `0.1.0-alpha.5`, and the machine's own server is `ready`, with its agent, Caddy, the egress proxy, the three slices and the `inet shipkeep_egress` table. The test name was not public, so the run ended the way this page describes for that case. Its agent failed its first start because the control plane was still starting, then enrolled 5 seconds later ([#500](https://github.com/shipkeepdev/shipkeep/pull/500) makes that message say so).
+- Once the server's Caddy used its internal certificate authority (by hand, for the test): sign-in with the account the installer created, and a deployment of `docker.io/traefik/whoami:v1.10.3`, pulled through the egress proxy. It answers over HTTPS through that Caddy, and plain HTTP redirects to HTTPS. Its log line reached the Logs search, and the server and application charts had points within a minute.
+- `backup.sh keygen`, `create`, then `restore` of that archive after a change: the change was gone, earlier sessions were refused, the account signed in again, the server reconnected and a new deployment succeeded. A deployment made between a backup and its restore makes the next deployment fail once ([#501](https://github.com/shipkeepdev/shipkeep/issues/501)).
+- Without a terminal, `--domain` and `--email` alone stopped at the first question before any change: hence `--single-machine` (and `--organization`) in [Install the control plane](#install-the-control-plane).
+
+The upgrade from `v0.1.0-alpha.3`, on the same day: its published bundle installed as this page describes, a separate server added with the command and the token copied from the Servers page, and an application deployed. Then [Upgrade](#upgrade) as written: `compose.yml` and `SHIPKEEP_IMAGE` of `v0.1.0-alpha.5`, `docker compose pull`, a backup with the new bundle's `backup.sh` while `v0.1.0-alpha.3` kept running, then `docker compose up -d`.
+
+- Every migration applied, and the control plane reports `0.1.0-alpha.5`.
+- The session, the data and the server stayed. The application kept answering while the control plane restarted, and the `v0.1.0-alpha.3` agent reconnected on its own and ran a new deployment.
+- **Upgrade agents** stopped on that server with "not supported by this agent" and changed nothing there.
+- Restoring the backup taken before the upgrade into `v0.1.0-alpha.5` applied the migrations again, and the account signed in.
+
 The verification step of [Install the control plane](#install-the-control-plane), on 19 November 2026, with the blocks of this page run as written in fresh Ubuntu 24.04 containers (amd64), on the published `v0.1.0-alpha.3` bundle: cosign 3.1.4 matched its SHA-256, the signature verified and the bundle was unpacked. Each refusal left no installer to run: a bundle with one byte added, a signature for another version (the same bundle under the name and identity of `v0.1.0-alpha.2`), a missing signature, and a cosign whose SHA-256 does not match (the file is deleted, and the check then fails). The arm64 SHA-256 comes from cosign's signed checksum file, verified with cosign; it was not run on arm64.
 
 With the published artifacts of `v0.1.0-alpha.3`, on 19 November 2026, in fresh Ubuntu 24.04 containers with systemd and without Docker, following this page from its first command and without any email account:
@@ -389,8 +404,7 @@ The control plane installer, on 15 November 2026, from a bundle built with `depl
 Not tested yet:
 
 - The installer ending with a publicly trusted certificate.
-- The provenance attestation of the bundle: GitHub lists one for the published file, and `gh attestation verify` did not answer on the test machine, so it was not verified.
 - A real server or virtual machine, its reboot, and a firewall. The server of the test was a privileged container.
 - A public DNS name: Caddy obtaining certificates from Let's Encrypt, for the control plane and for an application domain. Applications were checked over HTTP on the server.
 - A real SMTP provider.
-- arm64 at run time, upgrading from one published release to the next, removing a server, and the released CLI against an installation.
+- arm64 at run time, an agent upgrade (servers installed with `v0.1.0-alpha.4` or later), removing a server, and the released CLI against an installation.

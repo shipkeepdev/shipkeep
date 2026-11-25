@@ -5,14 +5,15 @@ plane image v0.1.0-alpha.3 and in the third-party images Shipkeep pins, and what
 each. Counts and findings come from Trivy 0.70 with that day's database. The rescans are the
 security workflow's runs on #497, for linux/amd64 and linux/arm64.
 
-A published image never changes. The release v0.1.0-alpha.3 keeps what it was built with; v0.1.0-alpha.4
-replaces it.
+A published image never changes. The release v0.1.0-alpha.3 keeps what it was built with; v0.1.0-alpha.5
+replaces it. v0.1.0-alpha.4 has the same code, but its release stopped before the control plane image
+and its bundle were published (#498), so it cannot be installed.
 
 | Advisory                                         | Component, image                                    | Disposition                                                                                                                                                                                                        |
 | ------------------------------------------------ | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| CVE-2026-121707 (high)                           | `effect` 3.20.0, control plane alpha.3              | Affected. Fixed in the source: the lockfile has `effect` 3.22.4 (fix in 3.22.1). The image built from main passes the scan with no exception. Replaced by alpha.4.                                                 |
+| CVE-2026-121707 (high)                           | `effect` 3.20.0, control plane alpha.3              | Affected. Fixed in the source: the lockfile has `effect` 3.22.4 (fix in 3.22.1). The image built from main passes the scan with no exception. Replaced by alpha.5.                                                 |
 | CVE-2023-45853 (critical)                        | zlib, control plane alpha.3 (Debian Bookworm)       | Not affected, per the vendor: the flaw is in minizip, which Debian's zlib packages do not build ([Debian tracker](https://security-tracker.debian.org/tracker/CVE-2023-45853)). Not reported on the rebuilt image. |
-| Other alpha.3 findings                           | control plane alpha.3                               | The image rebuilt from main, on the refreshed `node:22-bookworm-slim` and `golang:1.26-bookworm` digests, passes the scan with no exception. Replaced by alpha.4.                                                  |
+| Other alpha.3 findings                           | control plane alpha.3                               | The image rebuilt from main, on the refreshed `node:22-bookworm-slim` and `golang:1.26-bookworm` digests, passes the scan with no exception. Replaced by alpha.5.                                                  |
 | CVE-2026-6653 (high)                             | libxml2, `postgres:17`                              | Fixed upstream: not reported on the rebuilt digest `sha256:87c8b42f…`.                                                                                                                                             |
 | CVE-2026-124851 (high)                           | libzstd1, `postgres:17`                             | Accepted until 2026-12-18 in `.trivyignore.yaml`. Fixed in Debian 13, not yet in the official image. PostgreSQL listens only on the private Compose network.                                                       |
 | CVE-2025-68121 and the other Go findings in gosu | `postgres:17`, `usr/local/bin/gosu`                 | Accepted until 2026-12-18, path by path. gosu switches user once at start, and uses no TLS.                                                                                                                        |
@@ -23,3 +24,40 @@ replaces it.
 
 Each acceptance expires: the scan fails again on that date, and the entry is reviewed then. The
 Shipkeep image itself accepts nothing.
+
+## Rescan of the published v0.1.0-alpha.5 image
+
+`ghcr.io/shipkeepdev/shipkeep:0.1.0-alpha.5@sha256:330dbcb2…`, linux/amd64 and linux/arm64, scanned on
+2026-11-25 by Trivy 0.70.0 with the vulnerability database of 2026-11-25 13:07 UTC, without the release
+gate's filters (`--ignore-unfixed`, `--severity HIGH,CRITICAL`), so that every advisory is counted. The
+findings, per platform, are in [`scans/control-plane-v0.1.0-alpha.5.json`](scans/control-plane-v0.1.0-alpha.5.json),
+with the command that produced them.
+
+| Platform    | Distinct advisories | Critical | High | Fixable high or critical | Secrets |
+| ----------- | ------------------: | -------: | ---: | -----------------------: | ------: |
+| linux/amd64 |                 121 |        1 |   11 |                        0 |       0 |
+| linux/arm64 |                 121 |        1 |   11 |                        0 |       0 |
+
+Every high and critical advisory left is in a Debian 12 package with no fixed version at the scan date.
+What the control plane runs was checked in the published image: every service of the image (`control-plane`,
+`kek`, `migrate`, `database-role`, `backup`, `backup-transfer`) runs `node`, as the `node` user. The `node`
+binary links only glibc and libstdc++, and carries its own zlib 1.3.1 and zstd 1.5.7. Its one native
+addon, argon2, links none of the packages below. The `migrate` step starts through a `/bin/sh` shim that
+runs `readlink`, `uname` and `sed` on its own path.
+
+| Advisory                                       | Debian packages                                     | Disposition                                                                                          |
+| ---------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| CVE-2023-45853 (critical)                      | zlib1g                                              | Not affected, per the vendor (minizip is not built). `node` uses its own zlib.                       |
+| CVE-2026-85091                                 | zlib1g                                              | No fix yet. `node` uses its own zlib, and nothing else in the image loads it at run time.            |
+| CVE-2026-124851                                | libzstd1                                            | No fix yet in Debian 12 (fixed in 13). `node` uses its own zstd.                                     |
+| CVE-2025-6020                                  | libpam-modules, libpam0g and related                | No fix yet. Nothing in the image logs in or switches user: PAM is never loaded.                      |
+| CVE-2026-53613, CVE-2026-53615, CVE-2026-78410 | util-linux, mount, libblkid1, libmount1 and related | No fix yet. The control plane runs none of these tools and loads none of these libraries.            |
+| CVE-2026-16742                                 | libsystemd0, libudev1                               | No fix yet. No systemd runs in the container, and nothing loads these libraries.                     |
+| CVE-2025-69720                                 | ncurses-base, ncurses-bin, libtinfo6                | No fix yet. No terminal program runs in the container.                                               |
+| CVE-2026-41992                                 | gzip                                                | No fix yet. The control plane never runs `gzip`; the database dump runs in the PostgreSQL container. |
+| CVE-2026-9538                                  | perl-base                                           | No fix yet. Nothing in the image runs Perl.                                                          |
+| CVE-2026-54369                                 | libacl1                                             | No fix yet. Loaded only by `sed` in the `migrate` shim, on a path the image itself provides.         |
+
+These are accepted while Debian 12 has no fix, without an entry in `.trivyignore.yaml`: the release
+scan and the security workflow's scan of `main` ignore findings without a fix, and fail on the first one
+that gets a fix. Renovate then proposes the new `node:22-bookworm-slim` digest.
