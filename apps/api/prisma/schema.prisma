@@ -27,6 +27,7 @@ model User {
   apiTokens       ApiToken[]
   memberships     Membership[]
   confirmations   ConfirmationToken[]
+  githubAppFlows  GithubAppFlow[]
 
   @@map("users")
 }
@@ -46,6 +47,8 @@ model Organization {
   confirmations ConfirmationToken[]
   registries    RegistryCredential[]
   agentUpgrades AgentUpgrade[]
+  githubApp     GithubApp?
+  githubAppFlow GithubAppFlow?
 
   @@map("organizations")
 }
@@ -358,6 +361,36 @@ model ConfirmationToken {
 
   @@index([organizationId, issuedAt])
   @@map("confirmation_tokens")
+}
+
+/// The GitHub App an organization created through the manifest flow (ADR 0031); secrets encrypted.
+model GithubApp {
+  organizationId   String       @id @map("organization_id") @db.Uuid
+  appId            BigInt       @unique @map("app_id")
+  slug             String       @db.VarChar(64)
+  name             String       @db.VarChar(34)
+  ownerLogin       String       @map("owner_login") @db.VarChar(39)
+  clientId         String       @map("client_id") @db.VarChar(64)
+  privateKeyEnc    Bytes        @map("private_key_enc")
+  webhookSecretEnc Bytes        @map("webhook_secret_enc")
+  clientSecretEnc  Bytes        @map("client_secret_enc")
+  createdBy        String?      @map("created_by") @db.VarChar(128)
+  createdAt        DateTime     @map("created_at") @db.Timestamptz(6)
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@map("github_apps")
+}
+
+/// A manifest flow under way: the hashed state GitHub brings back, and who started it.
+model GithubAppFlow {
+  organizationId String       @id @map("organization_id") @db.Uuid
+  stateHash      Bytes        @map("state_hash")
+  userId         String       @map("user_id") @db.Uuid
+  expiresAt      DateTime     @map("expires_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@map("github_app_flows")
 }
 
 /// Credentials for one container registry of an organization (ADR 0019); the password is encrypted.

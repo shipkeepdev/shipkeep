@@ -28,6 +28,8 @@ const projectAdmins: readonly TenantActor[] = ['owner', 'admin', 'projectAdmin',
 const SPEC_7: Readonly<Partial<Record<string, readonly TenantActor[]>>> = {
   'organization.read@organization': members,
   'organization.update@organization': ['owner', 'admin'],
+  // Connecting a Git provider: owners only (SPEC 7, ADR 0031).
+  'integration.manage@organization': ['owner'],
   'project.create@organization': ['owner', 'admin'],
   'member.manage@organization': ['owner', 'admin'],
   'node.manage@organization': ['owner', 'admin'],

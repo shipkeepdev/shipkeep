@@ -531,6 +531,7 @@ Org roles: `owner`, `admin`, `member`. Project or environment roles for members:
 | Capability                    | Owner              | Org admin          | Project admin      | Developer        | Viewer |
 | ----------------------------- | ------------------ | ------------------ | ------------------ | ---------------- | ------ |
 | Billing, delete organization  | yes                | no                 | no                 | no               | no     |
+| Connect a Git provider        | yes                | no                 | no                 | no               | no     |
 | Add or remove nodes           | yes                | yes                | no                 | no               | no     |
 | Manage members and roles      | yes                | yes                | project only       | no               | no     |
 | Create or delete projects     | yes                | yes                | no                 | no               | no     |
@@ -775,6 +776,11 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
   - An organization stores credentials for at most 100 registries; one more answers 409 `registry_limit_reached`. The list returns them all.
   - The password is encrypted with the organization's data key, bound to the host and the version. Audit events `registry.credentials_set` and `registry.credentials_removed` carry the host, the user name and the version.
   - Every deployment of the organization whose image comes from that host uses them, for the digest lookup and for the pull (SPEC 8, image resolution). Nothing in `shipkeep.yml` refers to them.
+- The GitHub App of an organization (`modules/git`, ADR 0031), created through GitHub's manifest flow by an owner (`integration.manage`), with a session only:
+  - `POST …/organizations/{organizationId}/github-app/manifests` with `{owner: "user"}` or `{owner: "organization", githubOrganization}` answers 201 `{url, manifest}`: the browser posts `manifest` to `url` on github.com. The App is private, named `Shipkeep <slug> <6 random characters>` within GitHub's 34 characters, with the permissions and the `push` event of ADR 0031, its webhook on `/api/v1/webhooks/github/{organizationId}`, and GitHub sending the owner back to `/orgs/{organizationId}/integrations/github`. The flow's state is 32 random bytes in the URL, stored as its SHA-256 with the owner and an expiry of one hour; a new flow replaces the one under way. An organization that has an App answers 409 `github_app_exists`.
+  - `POST …/github-app` with the `{code, state}` GitHub sent back stores the App (201). The state must be the flow's, the owner's and unexpired, checked before GitHub is called and again, under the transaction, when the App is stored; otherwise 400 `github_app_flow_invalid`. A code GitHub no longer knows is `github_app_flow_invalid`, and any other failure of GitHub a 503 that does not repeat its text. Once GitHub has answered, the App exists there: if it cannot be stored (an answer that fails a field check, a flow replaced meanwhile), the answer is 409 `github_app_not_connected` with the App's page in `appUrl`, for the owner to delete it on GitHub before starting again.
+  - The private key, the webhook secret and the client secret are encrypted with the organization's data key and bound to the App's identifier and to what each one is; no route returns them, and the runtime role can only read and add Apps. `GET …/github-app` (`organization.read`) answers `{app}`, null without an App: its identifier, slug, name, owner account and page on GitHub.
+  - Audited: `github.app_flow_started` (the App's name and the GitHub organization, if any) and `github.app_created` (identifier, slug, name, owner account).
 
 ## 10. Backups
 
