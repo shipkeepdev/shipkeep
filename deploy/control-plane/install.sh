@@ -210,11 +210,19 @@ image_file() {
   printf '%s  %s\n' "$1" "$3" | sha256sum --check --status
 }
 
-# Sets the variable named by $1 from stdin, unless a flag already did. An invalid answer is asked
-# again on a terminal, and ends the run otherwise.
+# Without a terminal, standard input holds the passwords only, one per line: any other answer must
+# come as an option, or a password would be read as that answer, and could be printed back in an
+# error about it.
+on_terminal() {
+  [[ -t 0 ]] || fail "Without a terminal, give $1: standard input holds the passwords only."
+}
+
+# Sets the variable named by $1 from the terminal, unless the option $5 already did. An invalid
+# answer is asked again.
 ask() {
-  local name=$1 question=$2 check=$3 error=$4 answer
+  local name=$1 question=$2 check=$3 error=$4 option=$5 answer
   [[ -z ${!name} ]] || return 0
+  on_terminal "$option"
   while :; do
     printf '%s: ' "$question" >&2
     if ! IFS= read -r answer && [[ -z $answer ]]; then
@@ -225,9 +233,6 @@ ask() {
       printf -v "$name" '%s' "$answer"
       return 0
     fi
-    # Not a terminal: nobody can answer again, and the question still waits for its line end.
-    [[ -t 0 ]] || printf '\n' >&2
-    [[ -t 0 ]] || fail "$error"
     printf '%s\n' "$error" >&2
   done
 }
@@ -714,6 +719,8 @@ main() {
   valid_credential "$smtp_user" 254 || fail 'Invalid SMTP user.'
   # Email is optional (ADR 0020): its other settings mean nothing without the host.
   [[ -n $smtp_host || (-z $smtp_port && -z $smtp_from && $user_given == 0) ]] || fail 'Give --smtp-host with the other SMTP options, or none of them.'
+  # The answers every installation needs, refused before anything else when they cannot be asked.
+  [[ -n $resume || (-n $single_answer && -n $domain && -n $owner_email) ]] || on_terminal '--single-machine yes or no, --domain and --email'
 
   # Everything up to the questions only reads: a refusal leaves the machine as it was.
   ((EUID == 0)) || fail 'Run with sudo.'
@@ -783,22 +790,23 @@ main() {
     without_agent 'This system is not Ubuntu 24.04 with systemd'
   fi
 
-  ask domain 'DNS name of the control plane, for example shipkeep.example.com' valid_domain 'A lowercase DNS name is required, for example shipkeep.example.com.'
+  ask domain 'DNS name of the control plane, for example shipkeep.example.com' valid_domain 'A lowercase DNS name is required, for example shipkeep.example.com.' --domain
   # Without its DNS record Caddy cannot obtain the certificate, and failed attempts are rate limited.
   if command -v getent >/dev/null; then
     getent ahosts "$domain" >/dev/null || fail "$domain does not resolve. Create its DNS record pointing at this machine, then run this installer again: nothing was changed."
   fi
   # The first account is created here, on the server: no email is needed to start (ADR 0020).
-  ask owner_email 'Email address of the first account (it is the sign-in name; nothing is sent to it)' valid_address 'An email address is required, for example you@example.com.'
+  ask owner_email 'Email address of the first account (it is the sign-in name; nothing is sent to it)' valid_address 'An email address is required, for example you@example.com.' --email
   ask_owner_password
   if ((agent)); then
-    ask organization 'Name of the first organization, for example your company or team' valid_organization 'An organization name of 1 to 80 printable characters is required.'
+    ask organization 'Name of the first organization, for example your company or team' valid_organization 'An organization name of 1 to 80 printable characters is required.' --organization
   fi
   # Email is only asked for when --smtp-host says the installation sends some.
   if [[ -n $smtp_host ]]; then
     [[ -n $smtp_port ]] || smtp_port=465
-    ask smtp_from 'Sender address, for example shipkeep@example.com' valid_address 'A sender address is required.'
+    ask smtp_from 'Sender address, for example shipkeep@example.com' valid_address 'A sender address is required.' --smtp-from
     if ((!user_given)); then
+      on_terminal '--smtp-user (empty when the server asks for no login)'
       printf 'SMTP user (empty when the server asks for no login): ' >&2
       if ! IFS= read -r smtp_user && [[ -z $smtp_user ]]; then
         printf '\n' >&2
