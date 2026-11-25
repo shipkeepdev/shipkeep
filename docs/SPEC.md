@@ -692,6 +692,13 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - While the application is in maintenance, a deployment and a rollback are refused with 409 `application_in_maintenance`, so no new release starts behind the page unseen. A stop is allowed.
   - `POST …/applications/{applicationId}/delete` (204, `environment.update`) deletes an application. Destructive: the body carries a `confirmation` token for `application.delete` on this application (section 3.6), spent in the same transaction, and the command is audited as `application.deleted` with the confirmation id.
     - Refused with 409 `application_running` while a replica is placed and 409 `deployment_in_progress` while a deployment runs, so no container is left on a server: stop the application first. A refusal does not spend the confirmation.
+    - Refused with 409 `application_cleanup_pending` while a server that is not removed has not confirmed that the application's containers and routes are gone (#474), since its domains go with it and a route may still serve them. That covers:
+      - a container or route action still under way;
+      - a route change that ended without effect and was not followed by a successful one on that server (as for releasing a domain, #302);
+      - a container created, or sent for creation with an unknown outcome, or whose removal did not succeed, with no later successful removal of that container on that server.
+
+      A creation that never reached the server holds nothing. For a server that will not come back, remove it (a confirmed action): its actions then hold nothing either.
+
     - The application's row is locked first, so a deployment queued at the same moment is either seen or refused.
     - Its releases, deployments, stopped allocations and claimed domains are deleted with it by cascade. The audit log and the servers' action history stay; the history loses only its link to the application.
     - The runtime database role may delete rows of `applications` for this command, and of no table that depends on it.
