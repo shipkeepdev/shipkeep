@@ -8,6 +8,7 @@ import {
   resourceContext,
   setSessionCookies,
   type IdentityRequest,
+  upgradeClientIp,
 } from './session-http';
 
 describe('HTTP session boundary', () => {
@@ -118,5 +119,36 @@ describe('HTTP session boundary', () => {
       name: 'shipkeep_session',
       secure: false,
     });
+  });
+});
+
+describe('the client address of a WebSocket upgrade', () => {
+  const request = (peer: string, forwarded?: string) => ({
+    socket: { remoteAddress: peer },
+    headers: forwarded === undefined ? {} : { 'x-forwarded-for': forwarded },
+  });
+
+  it('reads the forwarded client only behind a trusted proxy, as Express does', () => {
+    expect(upgradeClientIp(request('127.0.0.1', '203.0.113.5') as never, 'none')).toBe('127.0.0.1');
+    expect(upgradeClientIp(request('127.0.0.1', '203.0.113.5') as never, 'loopback')).toBe(
+      '203.0.113.5',
+    );
+    expect(upgradeClientIp(request('::ffff:127.0.0.1', '203.0.113.5') as never, 'loopback')).toBe(
+      '203.0.113.5',
+    );
+    // A forged first entry is never taken: only what the trusted hop added counts.
+    expect(
+      upgradeClientIp(request('127.0.0.1', '198.51.100.9, 203.0.113.5') as never, 'loopback'),
+    ).toBe('203.0.113.5');
+    expect(upgradeClientIp(request('10.0.0.2', '203.0.113.5') as never, '10.0.0.2')).toBe(
+      '203.0.113.5',
+    );
+    // An untrusted peer keeps its own address, whatever it forwards.
+    expect(upgradeClientIp(request('198.51.100.7', '203.0.113.5') as never, 'loopback')).toBe(
+      '198.51.100.7',
+    );
+    expect(upgradeClientIp(request('127.0.0.1', 'not-an-ip') as never, 'loopback')).toBe(
+      '127.0.0.1',
+    );
   });
 });

@@ -1,3 +1,4 @@
+import type { IncomingMessage } from 'node:http';
 import { isIP } from 'node:net';
 
 import { ForbiddenException } from '@nestjs/common';
@@ -92,6 +93,36 @@ export function clientIp(request: Request): string {
   const ip = request.ip;
   if (ip && isIP(ip)) return ip;
   return request.socket.remoteAddress ?? 'unknown';
+}
+
+/**
+ * The client's address on a request Express does not see, a WebSocket upgrade, resolved as Express
+ * resolves `req.ip` with `trust proxy`: from the socket's peer leftwards through `X-Forwarded-For`
+ * while the address in hand is a trusted proxy (`TRUST_PROXY`: none, loopback or one address).
+ */
+export function upgradeClientIp(
+  request: Pick<IncomingMessage, 'headers' | 'socket'>,
+  trust: string,
+): string {
+  const header = request.headers['x-forwarded-for'];
+  const forwarded = (typeof header === 'string' ? header : '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter((entry) => entry !== '');
+  let address = request.socket.remoteAddress ?? '';
+  for (let index = forwarded.length - 1; index >= 0 && trustedProxy(address, trust); index--) {
+    const next = forwarded[index] ?? '';
+    if (isIP(next) === 0) break;
+    address = next;
+  }
+  return address === '' ? 'unknown' : address;
+}
+
+function trustedProxy(address: string, trust: string): boolean {
+  const plain = address.startsWith('::ffff:') ? address.slice(7) : address;
+  if (trust === 'none' || plain === '') return false;
+  if (trust === 'loopback') return plain === '::1' || /^127\./.test(plain);
+  return plain === trust;
 }
 
 export function principal(request: IdentityRequest): SessionPrincipal {
