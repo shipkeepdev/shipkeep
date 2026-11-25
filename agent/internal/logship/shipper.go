@@ -56,6 +56,8 @@ type Shipper struct {
 	// Scan is how often running containers are listed; Flush how long a batch may wait.
 	Scan  time.Duration
 	Flush time.Duration
+	// legacy holds the containers without secret names already reported.
+	legacy sync.Map
 }
 
 type line struct {
@@ -224,13 +226,27 @@ func (s *Shipper) followOne(ctx context.Context, id string, lines chan<- line) e
 	if err != nil {
 		return err
 	}
-	redactor := NewRedactor(container.Config.Env, container.Config.Labels[SecretEnvLabel])
+	names, known := container.Config.Labels[SecretEnvLabel]
+	redactor := NewRedactor(container.Config.Env, names)
+	if !known {
+		// Created before its secret names were recorded: any value may be a secret.
+		redactor = LegacyRedactor(container.Config.Env)
+		// Followed again after each stop: said once per container.
+		if _, said := s.legacy.LoadOrStore(id, true); !said {
+			s.Logger.Info("container predates its secret names: every environment value is redacted from its logs until it is redeployed", "container", name)
+		}
+	}
 	err = s.Engine.FollowLogs(ctx, id, since, func(output docker.LogLine) error {
 		stream := agentv1.LogStream_LOG_STREAM_STDOUT
 		if output.Stream == docker.Stderr {
 			stream = agentv1.LogStream_LOG_STREAM_STDERR
 		}
-		text := redactor.Redact(output.Text)
+		redact := redactor.Redact
+		if output.Truncated {
+			// Cut at its bound, the line may end with the start of a secret.
+			redact = redactor.RedactCut
+		}
+		text := redact(output.Text)
 		entry := &agentv1.LogEntry{Container: name, Stream: stream, Time: timestamppb.New(output.Time), Line: cut(text), Truncated: output.Truncated || len(text) > docker.MaxLogLine}
 		select {
 		case lines <- line{container: name, entry: entry, at: output.Resume}:
