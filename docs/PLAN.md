@@ -49,14 +49,14 @@ The milestones below describe the whole MVP. The first stable version ships part
 
 **Order:**
 
-| Step | Work                                                                             | Issues                                              | Waits for                                             |
-| ---- | -------------------------------------------------------------------------------- | --------------------------------------------------- | ----------------------------------------------------- |
-| 1    | The single-machine installation (ADR 0021): code and docs merged in #378 to #382 | #377                                                | Only its acceptance on a real machine, with step 5    |
-| 2    | Server detail, deployment detail, maintenance mode                               | #264, #265, #256                                    | Nothing; the full deployment log comes with step 4    |
-| 3    | Deployment from Git: providers, `shipkeep.yml` sync, builds (ADR 0012)           | #213, #214, #215                                    | The GitHub App on the organization                    |
-| 4    | Logs and container exec (M6.1)                                                   | #232                                                | Nothing: logs go through the control plane (ADR 0029) |
-| 5    | Real-server acceptance, control plane backup, upgrades                           | #200, #202, #18, #216, #239, #352, #377, #231, #240 | The test VM and the domain; #231 lands before #240    |
-| 6    | Hardening and documentation (M10.2, M10.4)                                       | #244, #246                                          | Nothing                                               |
+| Step | Work                                                                             | Issues                                              | Waits for                                                    |
+| ---- | -------------------------------------------------------------------------------- | --------------------------------------------------- | ------------------------------------------------------------ |
+| 1    | The single-machine installation (ADR 0021): code and docs merged in #378 to #382 | #377                                                | Only its acceptance on a real machine, with step 5           |
+| 2    | Server detail, deployment detail, maintenance mode                               | #264, #265, #256                                    | Nothing; the full deployment log comes with step 4           |
+| 3    | Deployment from Git: providers, `shipkeep.yml` sync, builds (ADR 0030, 0031)     | #213, #214, #215                                    | Nothing: each organization creates its GitHub App (ADR 0031) |
+| 4    | Logs and container exec (M6.1)                                                   | #232                                                | Nothing: logs go through the control plane (ADR 0029)        |
+| 5    | Real-server acceptance, control plane backup, upgrades                           | #200, #202, #18, #216, #239, #352, #377, #231, #240 | The test VM and the domain; #231 lands before #240           |
+| 6    | Hardening and documentation (M10.2, M10.4)                                       | #244, #246                                          | Nothing                                                      |
 
 **Releases:** `v0.1.0-beta.1` once steps 1 to 4 are merged, then `v0.1.0` once step 5 has passed on a real server and step 6 is merged. Each tag needs the maintainer's go-ahead.
 
@@ -295,7 +295,7 @@ The milestones below describe the whole MVP. The first stable version ships part
   - Read config at commit, validate, show drift; UI editor that writes back as commit or PR with diff preview.
   - Acceptance: editing replicas in the UI opens a PR with the exact YAML change.
 - [ ] **M3.3 Builds and registry** (A + C). Depends: M1.2, M1.4, M3.1
-  - `BuildImage` with rootless BuildKit; Dockerfile, Railpack, Nixpacks, image; internal registry on WireGuard with short-lived tokens; build logs streamed.
+  - `BuildImage` with rootless BuildKit on the application's first server; Dockerfile, Railpack, Nixpacks, image; the control plane's registry on its public name with per-action credentials (ADR 0030); build logs streamed.
   - Acceptance: builds for Node, Python, Go, PHP sample repos; malicious Dockerfile cannot reach the host Docker socket.
 - [ ] **M3.4 Deployment state machine** (C). Depends: M3.3, M1.5, M4.3
   - SPEC 5.1 implemented as a domain aggregate with exhaustive transition tests; orchestration via pg-boss jobs.

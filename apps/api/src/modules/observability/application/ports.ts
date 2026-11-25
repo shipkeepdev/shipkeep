@@ -51,4 +51,6 @@ export const LOGS_STORE = Symbol('LogsStore');
 /** VictoriaLogs (ADR 0029), or null when none is configured. */
 export interface LogsStore {
   write(records: readonly LogRecord[]): Promise<void>;
+  /** The answer of a LogsQL query, one record per line. */
+  query(logsql: string, limit: number): Promise<unknown[]>;
 }

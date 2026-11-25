@@ -90,6 +90,7 @@ function entryOf(entry: LogBatch['entries'][number]): LogInput | undefined {
     container: entry.container,
     stream,
     time: entry.time ? timestampDate(entry.time) : new Date(Number.NaN),
+    nanos: entry.time?.nanos ?? 0,
     line: entry.line,
     truncated: entry.truncated,
   };
