@@ -179,7 +179,10 @@ func discoverCA(ctx context.Context, endpoint Endpoint, fingerprint string, dev 
 	dialer := tls.Dialer{Config: config}
 	conn, err := dialer.DialContext(ctx, "tcp", address)
 	if err != nil {
-		return nil, errors.New("gateway TLS verification failed")
+		// The cause tells a gateway that is not up yet (refused, closed during the handshake) from
+		// one that failed verification, whose error comes from VerifyConnection above. Neither
+		// holds the join token, which is only sent after this probe.
+		return nil, fmt.Errorf("gateway TLS handshake: %w", err)
 	}
 	if err := conn.Close(); err != nil {
 		return nil, fmt.Errorf("close enrollment trust probe: %w", err)
