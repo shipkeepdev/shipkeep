@@ -1,4 +1,4 @@
-import { InvalidInputError, Secret } from '@shipkeep/domain';
+import { ConflictError, InvalidInputError, Secret } from '@shipkeep/domain';
 
 /** GitHub refuses an App name longer than this. */
 export const GITHUB_APP_NAME_MAX = 34;
@@ -119,6 +119,21 @@ export function flowInvalid(): InvalidInputError {
   return new InvalidInputError(
     'github_app_flow_invalid',
     'The GitHub App could not be connected. Start again from the integrations page.',
+  );
+}
+
+/**
+ * GitHub created the App, but it could not be stored here: the owner deletes it on GitHub, whose
+ * page is named when the answer gave a slug, then starts again.
+ */
+export function appNotConnected(raw: unknown): ConflictError {
+  const slug =
+    raw && typeof raw === 'object' ? (raw as Record<string, unknown>)['slug'] : undefined;
+  const appUrl = typeof slug === 'string' && SLUG.test(slug) ? githubAppUrl(slug) : undefined;
+  return new ConflictError(
+    'github_app_not_connected',
+    'GitHub created the App, but it could not be connected here. Delete it on GitHub, then start again.',
+    appUrl ? { appUrl } : undefined,
   );
 }
 

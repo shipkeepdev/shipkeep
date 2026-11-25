@@ -3192,7 +3192,12 @@ export interface operations {
     readonly completeGithubApp: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header: {
+                /** @description Exact API origin. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
             readonly path: {
                 readonly organizationId: string;
             };
@@ -3217,7 +3222,12 @@ export interface operations {
     readonly startGithubApp: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header: {
+                /** @description Exact API origin. */
+                readonly Origin: string;
+                /** @description Session-bound CSRF proof. */
+                readonly "X-Shipkeep-CSRF": string;
+            };
             readonly path: {
                 readonly organizationId: string;
             };

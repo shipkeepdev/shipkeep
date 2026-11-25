@@ -2086,10 +2086,10 @@
         },
         "security": [
           {
-            "apiToken": []
+            "session": []
           },
           {
-            "session": []
+            "apiToken": []
           }
         ],
         "tags": [
@@ -2105,6 +2105,24 @@
             "in": "path",
             "schema": {
               "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API origin.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "description": "Session-bound CSRF proof.",
+            "required": true,
+            "schema": {
               "type": "string"
             }
           }
@@ -2133,9 +2151,6 @@
         },
         "security": [
           {
-            "apiToken": []
-          },
-          {
             "session": []
           }
         ],
@@ -2154,6 +2169,24 @@
             "in": "path",
             "schema": {
               "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "description": "Exact API origin.",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "description": "Session-bound CSRF proof.",
+            "required": true,
+            "schema": {
               "type": "string"
             }
           }
@@ -2181,9 +2214,6 @@
           }
         },
         "security": [
-          {
-            "apiToken": []
-          },
           {
             "session": []
           }

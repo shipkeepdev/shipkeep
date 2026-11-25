@@ -1,8 +1,9 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
+import { applyDecorators, Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCookieAuth,
   ApiCreatedResponse,
+  ApiHeader,
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -25,13 +26,24 @@ import {
 
 const APP = ':organizationId/github-app';
 
+/** OpenAPI headers of a session-only mutation: its exact Origin and its CSRF proof. */
+function SessionHeaders(): MethodDecorator {
+  return applyDecorators(
+    ApiHeader({ name: 'Origin', required: true, description: 'Exact API origin.' }),
+    ApiHeader({
+      name: 'X-Shipkeep-CSRF',
+      required: true,
+      description: 'Session-bound CSRF proof.',
+    }),
+  );
+}
+
 /**
  * An organization's GitHub App (ADR 0031). Creating it is a browser flow of an owner, so its two
  * steps take a session only, never an API token.
  */
 @ApiTags('git')
 @ApiCookieAuth('session')
-@ApiBearerAuth('apiToken')
 @IdentityAttemptLimit('api')
 @Controller('organizations')
 export class GithubAppController {
@@ -40,6 +52,7 @@ export class GithubAppController {
   @Get(APP)
   @RequireTenant('organization.read', 'organization')
   @AllowApiToken('organization.read')
+  @ApiBearerAuth('apiToken')
   @ApiOkResponse({ type: GithubAppStatusDto })
   async getGithubApp(
     @Req() request: IdentityRequest,
@@ -52,6 +65,7 @@ export class GithubAppController {
   @Post(`${APP}/manifests`)
   @HttpCode(201)
   @RequireTenant('integration.manage', 'organization')
+  @SessionHeaders()
   @ApiCreatedResponse({ type: GithubAppCreationDto })
   startGithubApp(
     @Req() request: IdentityRequest,
@@ -66,6 +80,7 @@ export class GithubAppController {
   @Post(APP)
   @HttpCode(201)
   @RequireTenant('integration.manage', 'organization')
+  @SessionHeaders()
   @ApiCreatedResponse({ type: GithubAppDto })
   async completeGithubApp(
     @Req() request: IdentityRequest,

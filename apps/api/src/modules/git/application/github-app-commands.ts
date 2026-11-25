@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 
-import { Inject, Injectable } from '@nestjs/common';
-import { ConflictError, createEvent, type Permission } from '@shipkeep/domain';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ConflictError, createEvent, DomainError, type Permission } from '@shipkeep/domain';
 
 import { AppConfig } from '../../../platform/config/app-config';
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
@@ -12,6 +12,8 @@ import {
 } from '../../identity/application/resource-security-context';
 import { TenantAccess } from '../../organizations/application/tenant-access';
 import {
+  appNotConnected,
+  type CreatedGithubApp,
   createdGithubApp,
   flowInvalid,
   GITHUB_APP_FLOW_MS,
@@ -50,6 +52,8 @@ export interface GithubAppCreation {
  */
 @Injectable()
 export class GithubAppCommands {
+  private readonly logger = new Logger(GithubAppCommands.name);
+
   constructor(
     @Inject(GITHUB_APP_STORE) private readonly store: GithubAppStore,
     @Inject(GITHUB_MANIFESTS) private readonly manifests: GithubManifests,
@@ -125,7 +129,27 @@ export class GithubAppCommands {
         throw flowInvalid();
     });
     // GitHub's code is single use and lasts an hour; it is exchanged outside any transaction.
-    const app = createdGithubApp(await this.manifests.convert(input.code));
+    const raw = await this.manifests.convert(input.code);
+    // From here the App exists on GitHub: if it cannot be stored, the owner learns which one to
+    // delete there, since its secrets cannot be asked for again.
+    try {
+      return await this.keep(context, organizationId, stateHash, createdGithubApp(raw), now);
+    } catch (error) {
+      this.logger.warn(
+        { organizationId, reason: error instanceof DomainError ? error.code : 'store_failed' },
+        'GitHub App created but not connected',
+      );
+      throw appNotConnected(raw);
+    }
+  }
+
+  private keep(
+    context: SecurityContext,
+    organizationId: string,
+    stateHash: Uint8Array,
+    app: CreatedGithubApp,
+    now: Date,
+  ): Promise<GithubAppMetadata> {
     return this.scoped(context, organizationId, MANAGE, async () => {
       const stored = await this.store.create(organizationId, stateHash, app, context.userId, now);
       if (!stored) throw flowInvalid();

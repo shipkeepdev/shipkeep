@@ -65,7 +65,12 @@ export class PrismaGithubAppStore implements GithubAppStore {
   ): Promise<GithubAppMetadata | undefined> {
     // The flow ends with its App: a second completion of the same flow finds nothing to end.
     const ended = await this.database.client.githubAppFlow.deleteMany({
-      where: { organizationId, stateHash: new Uint8Array(stateHash) },
+      where: {
+        organizationId,
+        stateHash: new Uint8Array(stateHash),
+        userId: createdBy,
+        expiresAt: { gt: now },
+      },
     });
     if (ended.count !== 1) return undefined;
     const [privateKeyEnc, webhookSecretEnc, clientSecretEnc] = await Promise.all([

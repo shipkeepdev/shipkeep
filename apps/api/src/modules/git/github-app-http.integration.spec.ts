@@ -21,19 +21,21 @@ describe('the GitHub App manifest flow over HTTP', () => {
   let fixture: Awaited<ReturnType<typeof tenantHttpFixture>>;
   let admin: Client;
   const codes: string[] = [];
+  const answer = {
+    id: 424242,
+    slug: 'shipkeep-tenant-a1b2c3',
+    name: 'Shipkeep tenant a1b2c3',
+    owner: { login: 'acme-corp' },
+    client_id: 'Iv23liFakeClient',
+    client_secret: CLIENT,
+    webhook_secret: WEBHOOK,
+    pem: PEM,
+  };
+  let answered: object = answer;
   const manifests: GithubManifests = {
     convert: (code) => {
       codes.push(code);
-      return Promise.resolve({
-        id: 424242,
-        slug: 'shipkeep-tenant-a1b2c3',
-        name: 'Shipkeep tenant a1b2c3',
-        owner: { login: 'acme-corp' },
-        client_id: 'Iv23liFakeClient',
-        client_secret: CLIENT,
-        webhook_secret: WEBHOOK,
-        pem: PEM,
-      });
+      return Promise.resolve(answered);
     },
   };
   const app = () => `${fixture.root}/github-app`;
@@ -93,6 +95,21 @@ describe('the GitHub App manifest flow over HTTP', () => {
     );
     expect(flows.rows).toHaveLength(1);
     expect(flows.rows[0]?.state_hash.toString('utf8')).not.toContain(stateOf(onOrganization));
+  });
+
+  it('names the App to delete on GitHub when GitHub created one this installation cannot keep', async () => {
+    const creation = (await start()).body as Creation;
+    answered = { ...answer, pem: 'not a key' };
+    const refused = await fixture
+      .post(app(), 'owner', { code: 'code-0', state: stateOf(creation) })
+      .expect(409);
+    answered = answer;
+    expect(refused.body).toMatchObject({ code: 'github_app_not_connected' });
+    expect(JSON.stringify(refused.body)).toContain(
+      'https://github.com/apps/shipkeep-tenant-a1b2c3',
+    );
+    expect(JSON.stringify(refused.body)).not.toMatch(/whsec|sk_test/);
+    codes.length = 0;
   });
 
   it('completes only the latest flow of the owner who started it, before it expires', async () => {
@@ -172,6 +189,7 @@ describe('the GitHub App manifest flow over HTTP', () => {
       orderBy: { createdAt: 'asc' },
     });
     expect(events.map((event) => event.action)).toEqual([
+      'github.app_flow_started',
       'github.app_flow_started',
       'github.app_flow_started',
       'github.app_flow_started',

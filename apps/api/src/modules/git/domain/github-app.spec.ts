@@ -2,6 +2,7 @@ import { InvalidInputError } from '@shipkeep/domain';
 import { describe, expect, it } from 'vitest';
 
 import {
+  appNotConnected,
   createdGithubApp,
   GITHUB_APP_NAME_MAX,
   githubAppCreationUrl,
@@ -127,5 +128,13 @@ describe('the GitHub App of an organization (ADR 0031)', () => {
       { ...answer, pem: `${pem}${'A'.repeat(8192)}` },
     ])
       expect(() => createdGithubApp(broken)).toThrow(InvalidInputError);
+  });
+
+  it('names the App to delete on GitHub when it cannot be kept, and only a real slug', () => {
+    expect(appNotConnected(answer).details).toEqual({
+      appUrl: 'https://github.com/apps/shipkeep-acme-x7k2p9',
+    });
+    expect(appNotConnected({ slug: 'x/../evil' }).details).toBeUndefined();
+    expect(appNotConnected(null).code).toBe('github_app_not_connected');
   });
 });

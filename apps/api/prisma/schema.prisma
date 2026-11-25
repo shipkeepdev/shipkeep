@@ -363,7 +363,6 @@ model ConfirmationToken {
   @@map("confirmation_tokens")
 }
 
-/// Credentials for one container registry of an organization (ADR 0019); the password is encrypted.
 /// The GitHub App an organization created through the manifest flow (ADR 0031); secrets encrypted.
 model GithubApp {
   organizationId   String       @id @map("organization_id") @db.Uuid
@@ -394,6 +393,7 @@ model GithubAppFlow {
   @@map("github_app_flows")
 }
 
+/// Credentials for one container registry of an organization (ADR 0019); the password is encrypted.
 model RegistryCredential {
   id             String       @id @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
