@@ -1,17 +1,45 @@
 import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
-import { type ShipLogsRequest, ShipLogsRequestSchema } from '@shipkeep/proto-ts';
+import {
+  type ShipLogsRequest,
+  ShipLogsRequestSchema,
+  type ShipLogsResponse,
+} from '@shipkeep/proto-ts';
 import { describe, expect, it } from 'vitest';
 
+import { AuthenticateNode } from '../application/authenticate-node';
 import { LogBatches } from '../application/log-batches';
+import type { NodeCredential } from '../domain/node-identity';
 
-import { relayShipLogs } from './log-stream';
+import { LogStreams } from './log-stream';
 
 const node = { organizationId: 'o1', nodeId: 'n1', serial: '01' };
 const open = (epoch: bigint) =>
   create(ShipLogsRequestSchema, { frame: { case: 'open', value: { leaseEpoch: epoch } } });
 const batch = (seq: bigint) =>
   create(ShipLogsRequestSchema, { frame: { case: 'batch', value: { seq, entries: [] } } });
+const fast = { checkMs: 5, openWithinMs: 50 };
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The node's credential as the store holds it; tests change it while a stream runs. */
+function credential(): NodeCredential {
+  return {
+    ...node,
+    status: 'enrolling',
+    leaseEpoch: 3,
+    notBefore: new Date(Date.now() - 1000),
+    notAfter: new Date(Date.now() + 60_000),
+    revokedAt: null,
+  };
+}
+
+function streams(batches: LogBatches, stored = credential()): LogStreams {
+  const authenticate = new AuthenticateNode({
+    find: () => Promise.resolve(stored),
+    replace: () => Promise.resolve(false),
+  });
+  return new LogStreams(batches, authenticate);
+}
 
 async function* frames(...items: ShipLogsRequest[]): AsyncGenerator<ShipLogsRequest> {
   for (const item of items) {
@@ -20,20 +48,29 @@ async function* frames(...items: ShipLogsRequest[]): AsyncGenerator<ShipLogsRequ
   }
 }
 
-async function run(
-  batches: LogBatches,
-  ...items: ShipLogsRequest[]
+/** Frames, then silence: the peer keeps the stream open without sending. */
+async function* thenSilent(...items: ShipLogsRequest[]): AsyncGenerator<ShipLogsRequest> {
+  yield* frames(...items);
+  await new Promise(() => undefined);
+}
+
+async function drain(
+  stream: AsyncGenerator<ShipLogsResponse>,
 ): Promise<{ acks: bigint[]; code?: Code }> {
   const acks: bigint[] = [];
   try {
-    for await (const response of relayShipLogs(batches, frames(...items), node, () =>
-      Promise.resolve(3n),
-    ))
+    for await (const response of stream)
       if (response.frame.case === 'ack') acks.push(response.frame.value.seq);
   } catch (error) {
     return { acks, code: error instanceof ConnectError ? error.code : Code.Unknown };
   }
   return { acks };
+}
+
+const signal = new AbortController().signal;
+
+function run(batches: LogBatches, ...items: ShipLogsRequest[]) {
+  return drain(streams(batches).ship(frames(...items), { signal }, node, fast));
 }
 
 function accepting(fail = false): { batches: LogBatches; kept: bigint[] } {
@@ -75,5 +112,33 @@ describe('the agent log stream (ADR 0029)', () => {
       code: Code.Unavailable,
     });
     expect((await run(new LogBatches(), open(3n))).code).toBe(Code.FailedPrecondition);
+  });
+
+  it('ends a silent stream once the node is revoked or its lease moves', async () => {
+    const revoked = credential();
+    const relay = streams(accepting().batches, revoked);
+    const ended = drain(relay.ship(thenSilent(open(3n), batch(1n)), { signal }, node, fast));
+    await pause(20);
+    revoked.revokedAt = new Date();
+    expect(await ended).toEqual({ acks: [1n], code: Code.Unauthenticated });
+
+    const moved = credential();
+    const failover = streams(accepting().batches, moved);
+    const stale = drain(failover.ship(thenSilent(open(3n)), { signal }, node, fast));
+    await pause(20);
+    moved.leaseEpoch = 4;
+    expect((await stale).code).toBe(Code.FailedPrecondition);
+  });
+
+  it('keeps one stream per node, and drops a peer that never opens', async () => {
+    const relay = streams(accepting().batches);
+    const first = drain(relay.ship(thenSilent(open(3n)), { signal }, node, fast));
+    await pause(20);
+    const second = drain(relay.ship(thenSilent(open(3n)), { signal }, node, fast));
+    expect((await first).code).toBe(Code.Aborted);
+    const silent = drain(relay.ship(thenSilent(), { signal }, node, fast));
+    expect((await silent).code).toBe(Code.DeadlineExceeded);
+    // The silent one replaced the second in turn.
+    expect((await second).code).toBe(Code.Aborted);
   });
 });

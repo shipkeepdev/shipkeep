@@ -8,6 +8,7 @@ import { TenantAccessModule } from '../organizations/tenant-access.module';
 
 import { ConfirmationsModule } from '../confirmations/confirmations.module';
 
+import { ExecSessionRegistry } from './application/exec-relay';
 import { FleetAdministration } from './application/fleet-administration';
 import { NodeConfirmationTarget } from './application/node-confirmation-target';
 import { FleetAdministrationController } from './interface/fleet-administration.controller';
@@ -18,6 +19,7 @@ import { PrismaNodeCredentialStore } from './infrastructure/prisma-node-credenti
 import { AppConfig } from '../../platform/config/app-config';
 import { AgentGateway } from './interface/agent-gateway';
 import { EnrollmentAdmission } from './interface/enrollment-admission';
+import { LogStreams } from './interface/log-stream';
 import { NodeStream } from './interface/node-stream';
 
 import { EnrollNode } from './application/enroll-node';
@@ -71,6 +73,8 @@ import { StateReports } from './application/state-reports';
       inject: [AppConfig],
     },
     NodeStream,
+    LogStreams,
+    ExecSessionRegistry,
     AuthenticateNode,
     RenewNodeCertificate,
     { provide: FLEET_TRANSACTION, useExisting: PrismaUnitOfWork },
@@ -106,6 +110,7 @@ import { StateReports } from './application/state-reports';
     StateReports,
     MetricsReports,
     LogBatches,
+    ExecSessionRegistry,
   ],
 })
 export class FleetModule {}

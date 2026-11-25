@@ -76,6 +76,7 @@ type handlerOptions struct {
 	workloads       Workloads
 	routeBook       *RouteBook
 	upgrader        *Upgrader
+	exec            *execSettings
 	controlPlane    bool
 }
 
@@ -152,7 +153,7 @@ func dockerHandlers(engine Engine, confirmations Confirmer, prober Prober, inten
 	for _, option := range options {
 		option(&settings)
 	}
-	return map[string]Handler{
+	handlers := map[string]Handler{
 		"health_check": {Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
 			return healthCheck(engine, prober, req.GetHealthCheck())
 		}, Result: healthResult},
@@ -184,6 +185,12 @@ func dockerHandlers(engine Engine, confirmations Confirmer, prober Prober, inten
 			return removeContainer(engine, confirmations, intents, req.GetRemoveContainer())
 		}, Result: resourceResult},
 	}
+	if exec := settings.exec; exec != nil {
+		handlers["exec_session"] = Handler{Plan: func(req *agentv1.ActionRequest) (journal.Plan, error) {
+			return execSession(exec, req.GetExecSession())
+		}, Result: resourceResult}
+	}
+	return handlers
 }
 
 func ensureNetwork(engine Engine, action *agentv1.EnsureNetwork) (journal.Plan, error) {

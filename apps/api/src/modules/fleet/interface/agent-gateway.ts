@@ -19,7 +19,6 @@ import { NodeStream } from './node-stream';
 import { AppConfig } from '../../../platform/config/app-config';
 import { AuthenticateNode } from '../application/authenticate-node';
 import { EnrollNode } from '../application/enroll-node';
-import { LogBatches } from '../application/log-batches';
 import { factsFromProto } from '../application/node-facts';
 import { RenewNodeCertificate } from '../application/renew-node-certificate';
 import { parseNodeSpiffeId } from '../domain/node';
@@ -28,7 +27,7 @@ import { CsrError } from '../infrastructure/ca/x509';
 import { X509CertificateAuthority } from '../infrastructure/ca/x509-certificate-authority';
 import { EnrollmentAdmission, enrollmentBusy } from './enrollment-admission';
 import { gatewaySecureContext } from './gateway-tls';
-import { relayShipLogs } from './log-stream';
+import { LogStreams } from './log-stream';
 
 const peer = createContextKey<TLSSocket | undefined>(undefined);
 const identity = createContextKey<NodeIdentity | undefined>(undefined);
@@ -49,7 +48,7 @@ export class AgentGateway implements OnModuleDestroy {
     private readonly renew: RenewNodeCertificate,
     private readonly streams: NodeStream,
     private readonly admission: EnrollmentAdmission,
-    private readonly logs: LogBatches,
+    private readonly logStreams: LogStreams,
   ) {}
 
   /** Called explicitly after Nest initialization; OpenAPI generation never opens this listener. */
@@ -122,9 +121,7 @@ export class AgentGateway implements OnModuleDestroy {
             const authenticated = context.values.get(identity);
             if (!authenticated)
               throw new ConnectError('node authentication required', Code.Unauthenticated);
-            return relayShipLogs(this.logs, requests, authenticated, async () =>
-              BigInt((await this.authenticate.execute(authenticated)).leaseEpoch),
-            );
+            return this.logStreams.ship(requests, context, authenticated);
           },
           { maxTimeoutMs: 24 * 60 * 60_000 },
         );

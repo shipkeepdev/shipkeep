@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  batchBytes,
   ByteRate,
   distinctLines,
+  LOG_BATCH_MIN_BYTES,
   LOG_RETENTION_MS,
   type LogInput,
   logLineOf,
@@ -111,6 +113,19 @@ describe('log batches (ADR 0029)', () => {
     expect(records.map((record) => [record._time, record._msg])).toEqual([
       [hourAgo.toISOString(), 'GET / 200'],
     ]);
+  });
+
+  it('charges a batch its lines in UTF-8 bytes, and at least a minimum', () => {
+    expect(batchBytes(['é'.repeat(20_000), 'abc'])).toBe(40_003);
+    expect(batchBytes([])).toBe(LOG_BATCH_MIN_BYTES);
+    expect(batchBytes(['x'])).toBe(LOG_BATCH_MIN_BYTES);
+  });
+
+  it('says when a bucket has refilled, so that it can be forgotten', () => {
+    const rate = new ByteRate(1000, 4000, 0);
+    rate.take(4000, 0);
+    expect(rate.full(1000)).toBe(false);
+    expect(rate.full(4000)).toBe(true);
   });
 
   it('lets a node write its burst at once, then its rate', () => {
