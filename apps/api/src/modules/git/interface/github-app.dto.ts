@@ -71,3 +71,25 @@ export function githubAppDto(app: GithubAppMetadata): GithubAppDto {
     createdAt: app.createdAt.toISOString(),
   };
 }
+
+export class GithubRepositoryDto {
+  @ApiProperty({ type: 'integer' }) installationId!: number;
+  @ApiProperty({ type: 'integer' }) id!: number;
+  @ApiProperty({ description: '`owner/name`.' }) fullName!: string;
+  @ApiProperty() defaultBranch!: string;
+  @ApiProperty() private!: boolean;
+}
+
+export class GithubRepositoriesDto {
+  @ApiProperty({ type: [GithubRepositoryDto] }) repositories!: GithubRepositoryDto[];
+  @ApiProperty({
+    description: 'True when the listing stopped at 500 with pages or installations left.',
+  })
+  truncated!: boolean;
+
+  @ApiProperty({
+    type: [Number],
+    description: 'Installations GitHub did not answer for: removed or suspended there meanwhile.',
+  })
+  unreachable!: number[];
+}
