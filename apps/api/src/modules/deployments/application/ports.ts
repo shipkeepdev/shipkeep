@@ -19,6 +19,12 @@ export const DEPLOYMENT_STORE = Symbol('DeploymentStore');
 /** Every method runs inside `runTenant` for the application's organization. */
 export interface DeploymentStore {
   active(applicationId: string): Promise<DeploymentRecord | undefined>;
+  /**
+   * True while a server that is not removed may still hold the application's containers or
+   * routes (#474): such work is still under way, a route change is not settled, or a container
+   * created, or perhaps created, has no confirmed removal.
+   */
+  cleanupPending(application: { id: string; organizationId: string }): Promise<boolean>;
   /** Snapshots the configuration as the next release number; undefined on a concurrent insert. */
   createRelease(
     application: Application,

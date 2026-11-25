@@ -178,6 +178,130 @@ describe('deleting an application over HTTP', () => {
       .expect(404);
   });
 
+  describe('after a first deployment that failed with a container created (#474)', () => {
+    /** A first deployment whose container was created, then failed: its cleanup is queued. */
+    async function failedFirst(name: string, hostname: string) {
+      const { id } = await create(name, hostname);
+      const application = `${fixture.environment}/applications/${id}`;
+      const deployed = (await fixture.post(`${application}/deployments`, 'owner', {}).expect(201))
+        .body as { deployment: { id: string } };
+      await runToTheEnd(deployed.deployment.id);
+      const rows = await admin.query<{ id: string; kind: string; state: string }>(
+        'SELECT id, kind, state FROM agent_actions WHERE deployment_id = $1',
+        [deployed.deployment.id],
+      );
+      const of = (kind: string) => {
+        const found = rows.rows.find((row) => row.kind === kind);
+        if (!found) throw new Error(`no ${kind} action`);
+        return found;
+      };
+      // The scenario of the issue: created, the deployment failed, its cleanup not run yet.
+      expect(of('createContainer').state).toBe('succeeded');
+      expect(of('removeContainer').state).toBe('queued');
+      expect(await count('allocations', id)).toBe(1);
+      return {
+        id,
+        application,
+        creation: of('createContainer').id,
+        cleanup: of('removeContainer').id,
+      };
+    }
+    const set = (actionId: string, state: string, attempts = 1) =>
+      admin.query('UPDATE agent_actions SET state = $2, attempts = $3 WHERE id = $1', [
+        actionId,
+        state,
+        attempts,
+      ]);
+    /** A confirmation for the application, then the request that deletes it with it. */
+    const issue = async (target: { id: string }, name: string) =>
+      ((await confirmation('owner', target.id, name).expect(201)).body as { token: string }).token;
+    const remove = (target: { application: string }, token: string) =>
+      fixture.post(`${target.application}/delete`, 'owner', { confirmation: token });
+    /** Refused, the application and its domain kept: no other one can claim the hostname. */
+    const kept = async (
+      target: { id: string; application: string },
+      name: string,
+      host: string,
+    ) => {
+      await remove(target, await issue(target, name))
+        .expect(409)
+        .expect((response) => {
+          expect(response.body).toMatchObject({ code: 'application_cleanup_pending' });
+        });
+      await fixture
+        .post(`${fixture.environment}/applications`, 'owner', {
+          config: {
+            version: 1,
+            name: `${name}-claimer`,
+            build: { type: 'image', image: `ghcr.io/acme/billing@sha256:${'c'.repeat(64)}` },
+            run: { port: 3000 },
+            domains: [host],
+          },
+        })
+        .expect(409)
+        .expect((response) => {
+          expect(response.body).toMatchObject({ code: 'domain_taken' });
+        });
+      await fixture.get(target.application, 'owner').expect(200);
+    };
+
+    it('keeps the application and its domain until its cleanup is confirmed', async () => {
+      const target = await failedFirst('leftover-api', 'leftover.example.com');
+      // Queued, under way, failed or of unknown outcome: the container may still be there.
+      for (const state of ['queued', 'running', 'failed', 'expired', 'cancelled']) {
+        await set(target.cleanup, state);
+        await kept(target, 'leftover-api', 'leftover.example.com');
+      }
+      // A route change that never ran may still serve the domain.
+      const route = await admin.query<{ id: string }>(
+        `INSERT INTO agent_actions (id, organization_id, node_id, kind, idempotency_key, payload_enc,
+           lease_epoch, deadline, state, attempts, application_id, deployment_id, created_at, updated_at)
+         SELECT gen_random_uuid(), organization_id, node_id, 'removeRoute',
+           idempotency_key || '-unroute', payload_enc, lease_epoch, deadline, 'expired', 1,
+           application_id, deployment_id, now(), now()
+         FROM agent_actions WHERE id = $1 RETURNING id`,
+        [target.cleanup],
+      );
+      await set(target.cleanup, 'succeeded');
+      await kept(target, 'leftover-api', 'leftover.example.com');
+      // Settled: the route removal succeeded, the container is confirmed gone.
+      await set(route.rows[0]?.id ?? '', 'succeeded');
+      await remove(target, await issue(target, 'leftover-api')).expect(204);
+      expect(await count('domains', target.id)).toBe(0);
+      await create('leftover-api-claimer', 'leftover.example.com');
+    });
+
+    it('keeps an application whose created container no removal confirmed', async () => {
+      const target = await failedFirst('orphan-api', 'orphan.example.com');
+      // No removal at all, for a container created or whose creation may have run.
+      await admin.query('DELETE FROM agent_actions WHERE id = $1', [target.cleanup]);
+      await kept(target, 'orphan-api', 'orphan.example.com');
+      await set(target.creation, 'expired');
+      await kept(target, 'orphan-api', 'orphan.example.com');
+      // A creation that never reached the server left nothing behind.
+      await set(target.creation, 'expired', 0);
+      await remove(target, await issue(target, 'orphan-api')).expect(204);
+    });
+
+    it('lets a removed server stop holding the deletion', async () => {
+      const target = await failedFirst('stranded-api', 'stranded.example.com');
+      await kept(target, 'stranded-api', 'stranded.example.com');
+      const status = await admin.query<{ status: string }>(
+        'SELECT status FROM nodes WHERE id = $1',
+        [nodeId],
+      );
+      await admin.query("UPDATE nodes SET status = 'removed' WHERE id = $1", [nodeId]);
+      try {
+        await remove(target, await issue(target, 'stranded-api')).expect(204);
+      } finally {
+        await admin.query('UPDATE nodes SET status = $2 WHERE id = $1', [
+          nodeId,
+          status.rows[0]?.status,
+        ]);
+      }
+    });
+  });
+
   it('refuses an application whose first deployment is still queued', async () => {
     const { id } = await create('queued-api', 'queued.example.com');
     const application = `${fixture.environment}/applications/${id}`;

@@ -48,6 +48,7 @@ import type { NodeReplica, ReplicaStatus } from '../domain/observations';
 import { deploymentSteps, type DeploymentStep, MAX_STEPS } from '../domain/timeline';
 import {
   applicationNotRunning,
+  applicationCleanupPending,
   applicationRunning,
   assertRollbackTarget,
   assertSecretsSet,
@@ -351,7 +352,8 @@ export class DeploymentCommands {
    * Deletes an application (SPEC 3.6, issue #256). Destructive: it needs `environment.update` on
    * the application's environment and a confirmation token for this exact application, spent in
    * the same transaction. Refused while a deployment runs or a replica is placed, so no container
-   * is left behind on a server: stop the application first. Its releases, deployments and
+   * is left behind on a server: stop the application first. Refused too while a server has not
+   * confirmed that its containers and routes are gone (#474). Its releases, deployments and
    * claimed domains go with it; the audit log and the servers' action history stay.
    */
   remove(
@@ -373,6 +375,8 @@ export class DeploymentCommands {
         if (running) throw deploymentInProgress(running.state);
         if ((await this.observations.forApplication(application.id)).length)
           throw applicationRunning();
+        // Its domains go with it: not while a server may still route them to its containers.
+        if (await this.store.cleanupPending(application)) throw applicationCleanupPending();
         const confirmationId = await this.confirmations.consume(
           confirmation,
           {

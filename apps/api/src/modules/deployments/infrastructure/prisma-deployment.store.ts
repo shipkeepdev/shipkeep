@@ -28,6 +28,80 @@ export class PrismaDeploymentStore implements DeploymentStore {
     return row ? deployment(row) : undefined;
   }
 
+  async cleanupPending(application: { id: string; organizationId: string }): Promise<boolean> {
+    // One statement, so one snapshot. Each container action names its container: by name in a
+    // removal (`remove:<container>`), by replica in a creation or a cleanup (`create:<n>`,
+    // `cleanup:<n>`), which the allocation of that deployment's release names. A server that is
+    // removed holds nothing any more.
+    const rows = await this.database.client.$queryRaw<{ pending: boolean }[]>`
+      WITH actions AS (
+        SELECT aa.organization_id, aa.application_id, aa.node_id, aa.kind, aa.state,
+          aa.attempts, aa.created_at,
+          CASE
+            WHEN aa.idempotency_key ~ '^d:[0-9a-f-]{36}:remove:[a-z0-9-]{1,63}$'
+              THEN split_part(aa.idempotency_key, ':', 4)
+            WHEN aa.idempotency_key ~ '^d:[0-9a-f-]{36}:(create|cleanup):[0-9]{1,4}$' THEN (
+              SELECT a.container FROM deployments dp
+              JOIN allocations a ON a.organization_id = dp.organization_id
+                AND a.release_id = dp.release_id
+                AND a.replica = split_part(aa.idempotency_key, ':', 4)::int
+              WHERE dp.organization_id = aa.organization_id
+                AND dp.id = split_part(aa.idempotency_key, ':', 2)::uuid
+            )
+          END AS container
+        FROM agent_actions aa
+        JOIN nodes n ON n.organization_id = aa.organization_id AND n.id = aa.node_id
+        WHERE aa.organization_id = ${application.organizationId}::uuid
+          AND aa.application_id = ${application.id}::uuid
+          AND n.status <> 'removed'
+          AND aa.kind IN ('createContainer', 'startContainer', 'stopContainer', 'removeContainer',
+            'upsertRoute', 'removeRoute')
+      )
+      SELECT EXISTS (
+        SELECT 1 FROM actions x
+        WHERE
+          -- Still under way: it can still apply, whatever happened since.
+          x.state IN ('queued', 'pending', 'running', 'compensating')
+          -- A route change that ended without effect while the route may still serve the
+          -- domains, until a later route change on that server succeeded (as for #302).
+          OR (
+            x.kind IN ('upsertRoute', 'removeRoute')
+            AND (
+              x.state = 'failed'
+              OR (x.kind = 'removeRoute' AND x.state IN ('cancelled', 'expired', 'compensated'))
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM actions later
+              WHERE later.node_id = x.node_id
+                AND later.kind IN ('upsertRoute', 'removeRoute')
+                AND later.state = 'succeeded'
+                AND later.created_at > x.created_at
+            )
+          )
+          -- A container that may be there: created, or sent and of unknown outcome, or a removal
+          -- that did not succeed, with no later removal of that container on that server that
+          -- did. A container no action names is taken as there.
+          OR (
+            (
+              (
+                x.kind = 'createContainer'
+                AND (x.state = 'succeeded' OR (x.state IN ('failed', 'expired') AND x.attempts > 0))
+              )
+              OR (x.kind = 'removeContainer' AND x.state <> 'succeeded')
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM actions removed
+              WHERE removed.node_id = x.node_id
+                AND removed.kind = 'removeContainer'
+                AND removed.state = 'succeeded'
+                AND removed.container = x.container
+                AND removed.created_at > x.created_at
+            )
+          )
+      ) AS pending`;
+    return rows[0]?.pending ?? false;
+  }
+
   async createRelease(
     application: Application,
     draft: ReleaseDraft,
