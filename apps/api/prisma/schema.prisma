@@ -421,6 +421,8 @@ model GithubInstallation {
   createdAt           DateTime     @map("created_at") @db.Timestamptz(6)
   /// GitHub's time of the last change applied.
   updatedAt           DateTime     @map("updated_at") @db.Timestamptz(6)
+  /// When the removal was received: the row stays as a tombstone, and nothing changes it again.
+  deletedAt           DateTime?    @map("deleted_at") @db.Timestamptz(6)
   organization        Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
 
   @@id([organizationId, installationId])

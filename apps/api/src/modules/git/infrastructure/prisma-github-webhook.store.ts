@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Injectable } from '@nestjs/common';
 import { Secret } from '@shipkeep/domain';
 
@@ -6,6 +8,7 @@ import { EnvelopeService } from '../../../platform/crypto/envelope.service';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { GithubWebhookStore } from '../application/ports';
 import {
+  changeApplies,
   DELIVERY_RETENTION_MS,
   type DeliveryHeaders,
   type InstallationChange,
@@ -48,12 +51,16 @@ export class PrismaGithubWebhookStore implements GithubWebhookStore {
     bodySha256: Uint8Array,
     now: Date,
   ): Promise<boolean> {
-    await this.database.client.githubDelivery.deleteMany({
-      where: {
-        organizationId,
-        receivedAt: { lt: new Date(now.getTime() - DELIVERY_RETENTION_MS) },
-      },
-    });
+    // Expired records go unless another delivery is removing them: a purge never waits for
+    // another delivery's transaction, which may itself wait for its installation.
+    const expired = new Date(now.getTime() - DELIVERY_RETENTION_MS);
+    await this.database.client.$executeRaw`
+      DELETE FROM github_deliveries
+      WHERE (organization_id, delivery_id) IN (
+        SELECT organization_id, delivery_id FROM github_deliveries
+        WHERE organization_id = ${organizationId}::uuid AND received_at < ${expired}
+        FOR UPDATE SKIP LOCKED
+      )`;
     // Either key already recorded, the identifier or the body, skips the row.
     const recorded = await this.database.client.githubDelivery.createMany({
       data: {
@@ -73,6 +80,13 @@ export class PrismaGithubWebhookStore implements GithubWebhookStore {
     change: InstallationChange,
     now: Date,
   ): Promise<boolean> {
+    // One installation's deliveries apply one at a time, its first one included: two at once
+    // would both find the same row, and the older could write last. The lock lasts as long as
+    // the delivery's transaction, so there must be one.
+    if (!this.database.inTransaction())
+      throw new Error('An installation change applies inside its delivery transaction.');
+    await this.database.client
+      .$queryRaw`SELECT pg_advisory_xact_lock(${installationLockKey(organizationId, change.installationId)})::text`;
     const client = this.database.client.githubInstallation;
     const where = {
       organizationId_installationId: {
@@ -81,13 +95,33 @@ export class PrismaGithubWebhookStore implements GithubWebhookStore {
       },
     };
     const existing = await client.findUnique({ where });
+    if (!changeApplies(change, existing)) return false;
     if (change.action === 'deleted') {
-      if (!existing || existing.updatedAt.getTime() > change.updatedAt.getTime()) return false;
-      await client.delete({ where });
+      // The tombstone outlives the delivery records: nothing brings the installation back.
+      if (existing)
+        await client.update({
+          where,
+          data: {
+            deletedAt: now,
+            updatedAt: new Date(Math.max(existing.updatedAt.getTime(), change.updatedAt.getTime())),
+          },
+        });
+      else
+        await client.create({
+          data: {
+            organizationId,
+            installationId: BigInt(change.installationId),
+            accountLogin: change.accountLogin,
+            accountType: change.accountType,
+            repositorySelection: change.repositorySelection,
+            suspendedAt: null,
+            createdAt: now,
+            updatedAt: change.updatedAt,
+            deletedAt: now,
+          },
+        });
       return true;
     }
-    // An event no newer than the last one applied, a replay among them, changes nothing.
-    if (existing && existing.updatedAt.getTime() >= change.updatedAt.getTime()) return false;
     const suspendedAt =
       change.action === 'suspend'
         ? change.updatedAt
@@ -114,4 +148,12 @@ export class PrismaGithubWebhookStore implements GithubWebhookStore {
     else await client.update({ where, data: facts });
     return true;
   }
+}
+
+/** The lock that applies one installation's deliveries one at a time. */
+export function installationLockKey(organizationId: string, installationId: number): bigint {
+  const hash = createHash('sha256')
+    .update(`shipkeep:github-installation:${organizationId}:${String(installationId)}`)
+    .digest('hex');
+  return BigInt.asIntN(64, BigInt(`0x${hash.slice(0, 16)}`));
 }

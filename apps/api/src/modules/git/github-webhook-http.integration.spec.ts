@@ -6,6 +6,7 @@ import { auditLog } from '../../testing/audit-log';
 import { tenantHttpFixture } from '../../testing/tenant-http';
 
 import { GITHUB_MANIFESTS, type GithubManifests } from './application/ports';
+import { installationLockKey } from './infrastructure/prisma-github-webhook.store';
 
 /** A key-shaped value that is no key, put together here so that no scanner reads the source as one. */
 function fakePem(body: string): string {
@@ -71,6 +72,7 @@ describe('GitHub webhooks over HTTP', () => {
     },
     sender: { login: 'octocat' },
   });
+  /** The installations in place: a removed one stays as a tombstone, counted apart. */
   const installations = async () =>
     (
       await admin.query<{
@@ -78,10 +80,79 @@ describe('GitHub webhooks over HTTP', () => {
         suspended_at: Date | null;
         repository_selection: string;
       }>(
-        'SELECT installation_id, suspended_at, repository_selection FROM github_installations WHERE organization_id = $1',
+        'SELECT installation_id, suspended_at, repository_selection FROM github_installations WHERE organization_id = $1 AND deleted_at IS NULL ORDER BY installation_id',
         [fixture.organizationId],
       )
     ).rows;
+  const row = async (id: number) =>
+    (
+      await admin.query<{
+        suspended_at: Date | null;
+        repository_selection: string;
+        updated_at: Date;
+        deleted_at: Date | null;
+      }>(
+        'SELECT suspended_at, repository_selection, updated_at, deleted_at FROM github_installations WHERE organization_id = $1 AND installation_id = $2',
+        [fixture.organizationId, id],
+      )
+    ).rows.at(0);
+  const audited = async (id: number) =>
+    (
+      await auditLog().findMany({
+        where: { targetType: 'github_installation', targetId: String(id) },
+        orderBy: { createdAt: 'asc' },
+      })
+    ).map((event) => event.action);
+  /** Waits until `count` requests of this database wait for a lock. */
+  const waiting = async (count: number) => {
+    for (let tries = 0; tries < 200; tries++) {
+      const waits = await admin.query<{ n: string }>(
+        "SELECT count(*)::text AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'",
+      );
+      if (Number(waits.rows[0]?.n) >= count) return;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    throw new Error(`fewer than ${String(count)} requests wait for a lock`);
+  };
+  /**
+   * Opens a transaction that holds what `sql` locks until the release, which ends it and its
+   * connection once, even when a test fails before it: blocked deliveries never stay blocked.
+   */
+  const hold = async (sql: string, params: unknown[]) => {
+    const holder = new Client({ connectionString: fixture.databaseUrl });
+    await holder.connect();
+    let released: Promise<void> | undefined;
+    const release = () =>
+      (released ??= (async () => {
+        try {
+          await holder.query('COMMIT');
+        } finally {
+          await holder.end();
+        }
+      })());
+    try {
+      await holder.query('BEGIN');
+      await holder.query(sql, params);
+    } catch (error: unknown) {
+      await release().catch(() => undefined);
+      throw error;
+    }
+    return release;
+  };
+  /** Holds the installation's row, so that deliveries meet at its write. */
+  const holdRow = (id: number) =>
+    hold(
+      'SELECT 1 FROM github_installations WHERE organization_id = $1 AND installation_id = $2 FOR UPDATE',
+      [fixture.organizationId, id],
+    );
+  /** Holds the installation's lock, as a delivery applying a change does. */
+  const holdLock = (id: number) =>
+    hold('SELECT pg_advisory_xact_lock($1)', [
+      installationLockKey(fixture.organizationId, id).toString(),
+    ]);
+  /** Starts a delivery now and returns its status once answered. */
+  const started = (event: string, payload: object) =>
+    deliver(event, payload).then((response) => response.status);
 
   beforeAll(async () => {
     fixture = await tenantHttpFixture([{ token: GITHUB_MANIFESTS, value: manifests }]);
@@ -152,6 +223,7 @@ describe('GitHub webhooks over HTTP', () => {
     ]);
     await deliver('installation', installation('deleted', 5)).expect(204);
     expect(await installations()).toEqual([]);
+    expect((await row(77))?.deleted_at).toBeInstanceOf(Date);
     // A suspension of an installation whose creation was never received records it.
     await deliver('installation', installation('suspend', 6, { id: 79 })).expect(204);
     expect(await installations()).toEqual([
@@ -190,6 +262,156 @@ describe('GitHub webhooks over HTTP', () => {
       accountType: 'Organization',
       repositorySelection: 'selected',
       githubSender: 'octocat',
+    });
+  });
+
+  it('never brings a removed installation back, whatever comes later (#475)', async () => {
+    await deliver('installation', installation('created', 10, { id: 81 })).expect(204);
+    await deliver('installation', installation('deleted', 12, { id: 81 })).expect(204);
+    // A delayed, distinct, signed delivery older than the removal, then newer ones: none applies.
+    await deliver('installation', installation('unsuspend', 11, { id: 81 })).expect(204);
+    await deliver(
+      'installation_repositories',
+      installation('added', 11, { id: 81, selection: 'all' }),
+    ).expect(204);
+    await deliver('installation', installation('created', 13, { id: 81 })).expect(204);
+    await deliver('installation', installation('unsuspend', 14, { id: 81 })).expect(204);
+    // The same removal again, under another identifier or body, does nothing more.
+    await deliver('installation', installation('deleted', 12, { id: 81 })).expect(204);
+    await deliver('installation', installation('deleted', 15, { id: 81 })).expect(204);
+    // Nor once the deliveries recorded are forgotten.
+    await admin.query('DELETE FROM github_deliveries WHERE organization_id = $1', [
+      fixture.organizationId,
+    ]);
+    await deliver('installation', installation('unsuspend', 11, { id: 81 })).expect(204);
+    expect((await row(81))?.deleted_at).toBeInstanceOf(Date);
+    expect((await installations()).map((i) => i.installation_id)).not.toContain('81');
+    expect(await audited(81)).toEqual(['github.installation_added', 'github.installation_removed']);
+    // A removal whose installation was never received leaves a tombstone too: its delayed
+    // creation brings nothing back.
+    await deliver('installation', installation('deleted', 21, { id: 82 })).expect(204);
+    await deliver('installation', installation('created', 20, { id: 82 })).expect(204);
+    expect((await row(82))?.deleted_at).toBeInstanceOf(Date);
+    expect(await audited(82)).toEqual(['github.installation_removed']);
+  });
+
+  it('keeps the more restrictive state at equal times', async () => {
+    await deliver('installation', installation('created', 30, { id: 83 })).expect(204);
+    // Suspended in the same second it was created: the suspension applies.
+    await deliver('installation', installation('suspend', 30, { id: 83 })).expect(204);
+    expect((await row(83))?.suspended_at).toBeInstanceOf(Date);
+    // An unsuspension or a selection change at that same time does not undo it.
+    await deliver('installation', installation('unsuspend', 30, { id: 83 })).expect(204);
+    await deliver(
+      'installation_repositories',
+      installation('added', 30, { id: 83, selection: 'all' }),
+    ).expect(204);
+    expect(await row(83)).toMatchObject({ repository_selection: 'selected' });
+    expect((await row(83))?.suspended_at).toBeInstanceOf(Date);
+    expect(await audited(83)).toEqual([
+      'github.installation_added',
+      'github.installation_suspended',
+    ]);
+  });
+
+  describe('two deliveries for one installation at once (#476)', () => {
+    for (const order of ['newer first', 'older first'] as const) {
+      it(`keeps the newer state, the ${order}`, async () => {
+        const id = order === 'newer first' ? 84 : 85;
+        await deliver('installation', installation('created', 40, { id })).expect(204);
+        const newer = installation('suspend', 42, { id });
+        const older = installation('unsuspend', 41, { id });
+        const [first, second] = order === 'newer first' ? [newer, older] : [older, newer];
+        const release = await holdRow(id);
+        const answers: Promise<number>[] = [];
+        try {
+          answers.push(started('installation', first));
+          await waiting(1);
+          answers.push(started('installation', second));
+          await waiting(2);
+        } finally {
+          await release();
+        }
+        expect(await Promise.all(answers)).toEqual([204, 204]);
+        const after = await row(id);
+        expect(after?.suspended_at).toBeInstanceOf(Date);
+        expect(after?.updated_at.toISOString()).toBe(
+          installation('suspend', 42).installation.updated_at,
+        );
+        // A stale event that lost is not audited as applied after the newer one.
+        const actions = await audited(id);
+        expect(actions.at(-1)).toBe('github.installation_suspended');
+      });
+    }
+
+    it('keeps a removal against a change at the same time', async () => {
+      await deliver('installation', installation('created', 50, { id: 86 })).expect(204);
+      const release = await holdRow(86);
+      const answers: Promise<number>[] = [];
+      try {
+        answers.push(started('installation', installation('deleted', 52, { id: 86 })));
+        await waiting(1);
+        answers.push(
+          started(
+            'installation_repositories',
+            installation('added', 52, { id: 86, selection: 'all' }),
+          ),
+        );
+        await waiting(2);
+      } finally {
+        await release();
+      }
+      expect(await Promise.all(answers)).toEqual([204, 204]);
+      expect((await row(86))?.deleted_at).toBeInstanceOf(Date);
+      expect(await audited(86)).toEqual([
+        'github.installation_added',
+        'github.installation_removed',
+      ]);
+    });
+
+    it('records a first delivery once when two arrive together', async () => {
+      const release = await holdLock(87);
+      const answers: Promise<number>[] = [];
+      try {
+        answers.push(
+          started('installation', installation('created', 60, { id: 87 })),
+          started(
+            'installation_repositories',
+            installation('added', 61, { id: 87, selection: 'all' }),
+          ),
+        );
+        await waiting(2);
+      } finally {
+        await release();
+      }
+      expect(await Promise.all(answers)).toEqual([204, 204]);
+      expect(await row(87)).toMatchObject({ repository_selection: 'all', deleted_at: null });
+    });
+
+    it('never waits for another installation, even while expired records are removed', async () => {
+      // Expired records: the delivery that removes them keeps them locked while it waits.
+      for (const minute of [1, 2, 3])
+        await deliver('push', { ref: 'refs/heads/main', after: String(minute).repeat(40) }).expect(
+          204,
+        );
+      await admin.query(
+        "UPDATE github_deliveries SET received_at = now() - interval '31 days' WHERE organization_id = $1 AND event = 'push'",
+        [fixture.organizationId],
+      );
+      const release = await holdLock(88);
+      let blocked: Promise<number> | undefined;
+      try {
+        // This one removes the expired records, then waits for installation 88.
+        blocked = started('installation', installation('created', 70, { id: 88 }));
+        await waiting(1);
+        await deliver('installation', installation('created', 70, { id: 89 })).expect(204);
+        await deliver('ping', { hook: { app_id: APP_ID } }).expect(204);
+        expect(await row(89)).toMatchObject({ deleted_at: null });
+      } finally {
+        await release();
+      }
+      expect(await blocked).toBe(204);
+      expect(await row(88)).toMatchObject({ deleted_at: null });
     });
   });
 
