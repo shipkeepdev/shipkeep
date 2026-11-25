@@ -2,6 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-11-03
+- Amended by: ADR 0030 (builds on the application's server, the registry on the control plane's name)
 
 ## Context
 
