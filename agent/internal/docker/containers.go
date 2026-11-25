@@ -14,6 +14,8 @@ type Container struct {
 	Config struct {
 		Labels       map[string]string   `json:"Labels"`
 		ExposedPorts map[string]struct{} `json:"ExposedPorts"`
+		// Env holds secret values: read it for redaction only, never log or report it.
+		Env []string `json:"Env"`
 	} `json:"Config"`
 	NetworkSettings struct {
 		Networks map[string]struct {

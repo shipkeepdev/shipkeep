@@ -321,3 +321,26 @@ func TestReadOnlyRootRefusesUndeclaredImageVolumes(t *testing.T) {
 		}
 	}
 }
+
+// The names of the secret variables travel as a label, for log redaction (ADR 0029); their values
+// stay in the environment alone.
+func TestCreateContainerLabelsTheSecretNamesOnly(t *testing.T) {
+	spec := validSpec()
+	spec.Secrets = append(spec.Secrets, &agentv1.SecretEnv{Name: "API_TOKEN", Version: 1, Value: []byte("sk_fake_value")})
+	_, config, err := containerConfig(spec, Workloads{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Labels[SecretEnvLabel] != "API_TOKEN,DATABASE_URL" {
+		t.Fatalf("label %q", config.Labels[SecretEnvLabel])
+	}
+	for key, value := range config.Labels {
+		if strings.Contains(value, "private-secret") || strings.Contains(value, "sk_fake") {
+			t.Fatalf("label %s carries a secret value", key)
+		}
+	}
+	spec.Secrets = nil
+	if _, config, _ := containerConfig(spec, Workloads{}); config.Labels[SecretEnvLabel] != "" {
+		t.Fatal("a container without secrets got the label")
+	}
+}
