@@ -309,10 +309,14 @@ export function browserFrame(data: RawData, binary: boolean): BrowserFrame | und
       ? Buffer.from(data)
       : data;
   if (binary) return { kind: 'stdin', data: new Uint8Array(bytes) };
+  let message: unknown;
   try {
-    return controlFrame(JSON.parse(bytes.toString('utf8')));
+    message = JSON.parse(bytes.toString('utf8'));
   } catch {
-    // Not JSON, or nested past what the parser takes: no frame.
+    // Not JSON: no frame.
     return undefined;
   }
+  // Checked flat first, it never throws on what a browser sends; if it ever did, the message
+  // handler ends the session as failed and says so in the log.
+  return controlFrame(message);
 }

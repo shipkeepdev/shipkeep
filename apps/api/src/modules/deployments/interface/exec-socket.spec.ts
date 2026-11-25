@@ -13,6 +13,7 @@ import type { FleetTransaction } from '../../fleet/application/ports';
 import type { SessionCommands } from '../../identity/application/session-commands';
 import type { TenantAccess } from '../../organizations/application/tenant-access';
 
+import { controlFrame } from './exec-socket.dto';
 import { browserFrame, encode, ExecSocket } from './exec-socket';
 
 const ORG = '019d0000-0000-7000-8000-00000000000a';
@@ -20,6 +21,7 @@ const USER = '019d0000-0000-7000-8000-0000000000f1';
 const OTHER = '019d0000-0000-7000-8000-0000000000f2';
 const NODE = '019d0000-0000-7000-8000-0000000000e1';
 const SESSION = '019d0000-0000-7000-8000-0000000000d1';
+const SECOND = '019d0000-0000-7000-8000-0000000000d2';
 const PUBLIC = 'https://shipkeep.example.com';
 // The sample nonce of RFC 6455, section 1.3: a handshake value, not a credential.
 const SAMPLE_KEY = 'dGhlIHNhbXBsZSBub25jZQ=='; // gitleaks:allow (RFC 6455 sample nonce)
@@ -61,22 +63,23 @@ async function world(
     } as unknown as DomainEventBus,
   );
   const now = new Date();
-  registry.add(
-    {
-      id: SESSION,
-      organizationId: ORG,
-      projectId: '019d0000-0000-7000-8000-00000000000b',
-      environmentId: '019d0000-0000-7000-8000-00000000000c',
-      applicationId: '019d0000-0000-7000-8000-0000000000a1',
-      userId: USER,
-      nodeId: NODE,
-      container: 'sk-web-r1-0',
-      tty: true,
-      attachBy: new Date(now.getTime() + 60_000),
-      endsAt: new Date(now.getTime() + 120_000),
-    },
-    now,
-  );
+  for (const id of [SESSION, SECOND])
+    registry.add(
+      {
+        id,
+        organizationId: ORG,
+        projectId: '019d0000-0000-7000-8000-00000000000b',
+        environmentId: '019d0000-0000-7000-8000-00000000000c',
+        applicationId: '019d0000-0000-7000-8000-0000000000a1',
+        userId: USER,
+        nodeId: NODE,
+        container: 'sk-web-r1-0',
+        tty: true,
+        attachBy: new Date(now.getTime() + 60_000),
+        endsAt: new Date(now.getTime() + 120_000),
+      },
+      now,
+    );
   const socket = new ExecSocket(
     {} as HttpAdapterHost,
     {
@@ -241,6 +244,9 @@ describe('the browser messages', () => {
       '{"type":"close","kill":true,"constructor":{"prototype":{"x":1}}}',
     ]) {
       expect(text.length).toBeLessThan(64 * 1024);
+      // The shape check itself, not a catch around it, keeps a transformation from overflowing.
+      expect(() => controlFrame(JSON.parse(text))).not.toThrow();
+      expect(controlFrame(JSON.parse(text))).toBeUndefined();
       expect(() => browserFrame(Buffer.from(text), false)).not.toThrow();
       expect(browserFrame(Buffer.from(text), false), text.slice(0, 60)).toBeUndefined();
     }
@@ -293,11 +299,36 @@ describe('the WebSocket handshake', () => {
     ws.send('{"type":"resize","cols":100,"rows":30}');
     // The malformed message was dropped; the next one went through, and the server still answers.
     expect((await toAgent?.next())?.value).toEqual({ kind: 'resize', cols: 100, rows: 30 });
-    const other = await world();
-    const second = await connect(other.url, allowed);
+    const second = await connect(w.url.replace(SESSION, SECOND), allowed);
     expect(typeof second).not.toBe('number');
     if (typeof second !== 'number') second.terminate();
     ws.terminate();
+  });
+
+  it('ends only its own session, as failed, when a message cannot be read', async () => {
+    const w = await world();
+    const join = w.registry.joinBrowser.bind(w.registry);
+    w.registry.joinBrowser = (...args: Parameters<typeof join>) => {
+      const relay = join(...args);
+      if (relay && args[0] === SESSION)
+        relay.fromBrowser = () => {
+          throw new Error('unreadable');
+        };
+      return relay;
+    };
+    const ws = await connect(w.url, allowed);
+    if (typeof ws === 'number') throw new Error(`refused: ${String(ws)}`);
+    const messages: string[] = [];
+    ws.on('message', (data: Buffer, binary) => {
+      if (!binary) messages.push(data.toString());
+    });
+    const closed = new Promise<number>((resolve) => ws.once('close', resolve));
+    ws.send('{"type":"resize","cols":100,"rows":30}');
+    await closed;
+    expect(messages).toEqual(['{"type":"end","reason":"failed"}']);
+    const second = await connect(w.url.replace(SESSION, SECOND), allowed);
+    expect(typeof second).not.toBe('number');
+    if (typeof second !== 'number') second.terminate();
   });
 
   it('limits failed joins from one network', async () => {
