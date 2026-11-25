@@ -96,6 +96,13 @@ const AUDITED: Readonly<Record<string, readonly string[]>> = {
     ['deployment.queued'],
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/delete':
     ['application.deleted'],
+  'POST /webhooks/github/:organizationId': [
+    'github.installation_added',
+    'github.installation_removed',
+    'github.installation_suspended',
+    'github.installation_unsuspended',
+    'github.installation_repositories_changed',
+  ],
 };
 
 /** Production sources of the API, without tests and generated code. */

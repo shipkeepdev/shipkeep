@@ -30,6 +30,8 @@ export const TENANT_TABLES = [
   'agent_upgrades',
   'github_apps',
   'github_app_flows',
+  'github_deliveries',
+  'github_installations',
 ] as const;
 
 /** Check both login and effective roles, including memberships that permit a later SET ROLE.

@@ -4,7 +4,7 @@ import { type Permission, type ResourceContext, Secret } from '@shipkeep/domain'
 import type { Response } from 'express';
 
 import { AppConfig } from '../../../platform/config/app-config';
-import { ANONYMOUS } from '../../../platform/http/allow-anonymous';
+import { ANONYMOUS, SIGNED_BODY } from '../../../platform/http/allow-anonymous';
 import { TenantAccess } from '../../organizations/application/tenant-access';
 import { ApiTokenAuthentication } from '../application/api-token-authentication';
 import { IDENTITY_THROTTLE, type IdentityThrottle } from '../application/identity-throttle';
@@ -50,7 +50,11 @@ export class IdentityGuard implements CanActivate {
         context.getClass(),
       ])
     ) {
-      if (unsafe) assertOrigin(request, this.config.get('API_PUBLIC_URL'));
+      const signed = this.reflector.getAllAndOverride<boolean>(SIGNED_BODY, [
+        context.getHandler(),
+        context.getClass(),
+      ]);
+      if (unsafe && !signed) assertOrigin(request, this.config.get('API_PUBLIC_URL'));
       return true;
     }
     const access = this.reflector.getAllAndOverride<RouteAccess | undefined>(ROUTE_ACCESS, [
