@@ -41,7 +41,7 @@ describe("GitHub's answers to the App (ADR 0031)", () => {
       expect(installationTokenOf(bad)).toBeUndefined();
   });
 
-  it('reads a page of repositories, and refuses the page for any entry it could not be', () => {
+  it('reads a page of repositories, leaving out the entries it could not be', () => {
     expect(repositoryPageOf({ total_count: 1, repositories: [repository()] }, 9)).toEqual({
       total: 1,
       repositories: [
@@ -55,6 +55,7 @@ describe("GitHub's answers to the App (ADR 0031)", () => {
       ],
     });
     for (const bad of [
+      repository({ full_name: 'acme-corp/..' }),
       repository({ full_name: 'acme-corp/../etc' }),
       repository({ full_name: 'web' }),
       repository({ default_branch: '../main' }),
@@ -62,7 +63,20 @@ describe("GitHub's answers to the App (ADR 0031)", () => {
       repository({ private: 'yes' }),
       repository({ id: 0 }),
     ])
-      expect(repositoryPageOf({ total_count: 1, repositories: [bad] }, 9)).toBeUndefined();
+      expect(
+        repositoryPageOf(
+          { total_count: 2, repositories: [bad, repository({ id: 6 })] },
+          9,
+        )?.repositories.map((entry) => entry.id),
+      ).toEqual([6]);
+    // Names Git allows that a narrow pattern would refuse.
+    for (const branch of ['développement', 'release+2', 'fix#12', 'user@feature'])
+      expect(
+        repositoryPageOf(
+          { total_count: 1, repositories: [repository({ default_branch: branch })] },
+          9,
+        )?.repositories,
+      ).toHaveLength(1);
     expect(repositoryPageOf({ repositories: [] }, 9)).toBeUndefined();
   });
 
@@ -74,13 +88,22 @@ describe("GitHub's answers to the App (ADR 0031)", () => {
 
   it('accepts the repository and branch names GitHub allows, and no path tricks', () => {
     expect(validRepository('acme-corp/web.site', 'feature/login-v2')).toBe(true);
+    expect(validRepository('acme-corp/web', 'développement')).toBe(true);
     for (const [name, branch] of [
       ['acme/../x', 'main'],
+      ['acme/..', 'main'],
+      ['acme/.', 'main'],
+      ['acme/web/extra', 'main'],
       ['acme/web', '/main'],
       ['acme/web', 'main/'],
       ['acme/web', 'a..b'],
       ['acme/web', 'a b'],
+      ['acme/web', '.'],
+      ['acme/web', 'x/.hidden'],
+      ['acme/web', 'x.lock'],
+      ['acme/web', 'a@{b'],
+      ['acme/web', 'a:b'],
     ] as const)
-      expect(validRepository(name, branch)).toBe(false);
+      expect(validRepository(name, branch), `${name} ${branch}`).toBe(false);
   });
 });

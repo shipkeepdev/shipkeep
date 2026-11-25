@@ -10,6 +10,7 @@ import {
   installationTokenOf,
   repositoryPageOf,
   type TokenScope,
+  validRepository,
 } from '../domain/github-api';
 
 import { discardGithubAnswer, githubUnavailable, readGithubAnswer } from './github-http';
@@ -89,9 +90,11 @@ export class GithubApiClient implements GithubApi {
   }
 
   async branchHead(token: Secret, fullName: string, branch: string): Promise<string | undefined> {
+    // Checked here too: a `.` or `..` segment would be resolved to another resource.
+    if (!validRepository(fullName, branch)) return undefined;
     const answer = await this.call(
       'GET',
-      `/repos/${fullName}/branches/${encodeURIComponent(branch)}`,
+      `/repos/${fullName.split('/').map(encodeURIComponent).join('/')}/branches/${encodeURIComponent(branch)}`,
       token,
     );
     if (answer.status === 404) return undefined;

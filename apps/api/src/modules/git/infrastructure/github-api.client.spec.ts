@@ -103,13 +103,18 @@ describe('GitHub REST API as the App', () => {
       'https://api.github.com/repos/acme-corp/web/branches/feature%2Flogin',
     );
     expect(await client.branchHead(token, 'acme-corp/web', 'missing')).toBeUndefined();
+    // A dot segment is never sent: GitHub would resolve it to another resource.
+    const before = calls.length;
+    expect(await client.branchHead(token, 'acme-corp/..', 'main')).toBeUndefined();
+    expect(await client.branchHead(token, 'acme-corp/web', '.')).toBeUndefined();
+    expect(calls).toHaveLength(before);
   });
 
   it('is unavailable on any other answer, without repeating GitHub, and revokes at best', async () => {
     for (const make of [
       () => new Response('internal detail', { status: 500 }),
       () => new Response(null, { status: 302, headers: { location: 'https://evil.example' } }),
-      () => json(200, { total_count: 1, repositories: [repository(0)] }),
+      () => json(200, { repositories: 'not a page' }),
       () => new Response('x'.repeat((2 << 20) + 1), { status: 200 }),
       () => Promise.reject(new TypeError('network down')),
     ]) {
@@ -122,5 +127,10 @@ describe('GitHub REST API as the App', () => {
     await expect(
       github(() => Promise.reject(new TypeError('down'))).client.revoke(token),
     ).resolves.toBeUndefined();
+    // An entry GitHub could not have sent is left out, not the page.
+    const page = await github(() =>
+      json(200, { total_count: 2, repositories: [repository(0), repository(7)] }),
+    ).client.repositories(token, 7, 10);
+    expect(page.repositories.map((entry) => entry.id)).toEqual([7]);
   });
 });

@@ -3,8 +3,8 @@ import { Secret } from '@shipkeep/domain';
 /** At most this many repositories are listed for an organization: pages of 100, five each. */
 export const MAX_LISTED_REPOSITORIES = 500;
 
-const FULL_NAME = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})\/[A-Za-z0-9._-]{1,100}$/;
-const BRANCH = /^(?!\/)(?!.*\/\/)(?!.*\.\.)[A-Za-z0-9._/-]{1,255}(?<!\/)$/;
+const OWNER = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,38})$/;
+const NAME = /^[A-Za-z0-9._-]{1,100}$/;
 const SHA = /^[0-9a-f]{40}$/;
 const TOKEN = /^[A-Za-z0-9_]{20,255}$/;
 
@@ -46,7 +46,10 @@ export function installationTokenOf(raw: unknown): { token: Secret; expiresAt: D
   return { token: new Secret(token), expiresAt };
 }
 
-/** One page of an installation's repositories, or undefined when any entry cannot be one. */
+/**
+ * One page of an installation's repositories, or undefined when the page is not one. An entry
+ * whose names Git or GitHub could not have given is left out, not the page.
+ */
 export function repositoryPageOf(
   raw: unknown,
   installationId: number,
@@ -73,12 +76,12 @@ export function repositoryPageOf(
       !Number.isSafeInteger(id) ||
       id <= 0 ||
       typeof fullName !== 'string' ||
-      !FULL_NAME.test(fullName) ||
+      !validFullName(fullName) ||
       typeof defaultBranch !== 'string' ||
-      !BRANCH.test(defaultBranch) ||
+      !validBranch(defaultBranch) ||
       typeof isPrivate !== 'boolean'
     )
-      return undefined;
+      continue;
     repositories.push({ installationId, id, fullName, defaultBranch, private: isPrivate });
   }
   return { total, repositories };
@@ -90,9 +93,37 @@ export function branchHeadOf(raw: unknown): string | undefined {
   return typeof sha === 'string' && SHA.test(sha) ? sha : undefined;
 }
 
-/** A repository's `owner/name` and a branch, as a request may name them. */
+/** A repository's `owner/name`: GitHub names, and never `.` or `..`, which a URL would resolve. */
+export function validFullName(fullName: string): boolean {
+  const parts = fullName.split('/');
+  if (parts.length !== 2) return false;
+  const [owner = '', name = ''] = parts;
+  return OWNER.test(owner) && NAME.test(name) && name !== '.' && name !== '..';
+}
+
+/**
+ * A branch name as Git allows it (`git check-ref-format`): letters of any script, digits and most
+ * punctuation, but no control character, space, `~^:?*[\`, `..`, `@{`, empty or dot-led
+ * component, leading or trailing `/`, or final `.lock` or `.`.
+ */
+export function validBranch(branch: string): boolean {
+  return (
+    branch.length >= 1 &&
+    branch.length <= 255 &&
+    // eslint-disable-next-line no-control-regex -- control characters are what is refused
+    !/[\u0000-\u0020\u007f~^:?*[\\]/.test(branch) &&
+    !branch.includes('..') &&
+    !branch.includes('@{') &&
+    branch !== '@' &&
+    !branch.endsWith('.lock') &&
+    !branch.endsWith('.') &&
+    branch.split('/').every((part) => part.length > 0 && !part.startsWith('.'))
+  );
+}
+
+/** A repository and a branch, as a request may name them. */
 export function validRepository(fullName: string, branch: string): boolean {
-  return FULL_NAME.test(fullName) && BRANCH.test(branch);
+  return validFullName(fullName) && validBranch(branch);
 }
 
 function record(value: unknown): Record<string, unknown> | undefined {

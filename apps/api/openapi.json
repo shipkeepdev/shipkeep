@@ -2274,30 +2274,6 @@
               "format": "uuid",
               "type": "string"
             }
-          },
-          {
-            "name": "x-github-event",
-            "required": true,
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "x-github-delivery",
-            "required": true,
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "x-hub-signature-256",
-            "required": true,
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
           }
         ],
         "responses": {
@@ -7373,12 +7349,20 @@
           },
           "truncated": {
             "type": "boolean",
-            "description": "True when more than the 500 listed exist."
+            "description": "True when the listing stopped at 500 with pages or installations left."
+          },
+          "unreachable": {
+            "description": "Installations GitHub did not answer for: removed or suspended there meanwhile.",
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
           }
         },
         "required": [
           "repositories",
-          "truncated"
+          "truncated",
+          "unreachable"
         ]
       },
       "GithubAppDto": {

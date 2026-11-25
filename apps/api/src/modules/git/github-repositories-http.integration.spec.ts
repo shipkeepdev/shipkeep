@@ -1,3 +1,4 @@
+import { ServiceUnavailableException } from '@nestjs/common';
 import { Secret } from '@shipkeep/domain';
 import { Client } from 'pg';
 
@@ -47,6 +48,8 @@ describe('GitHub repositories over HTTP', () => {
     },
     installationToken: (_jwt, installationId, scope) => {
       scopes.push({ installationId, scope });
+      // Removed on GitHub, its delivery lost: GitHub refuses a token for it.
+      if (installationId === 13) return Promise.reject(new ServiceUnavailableException());
       return Promise.resolve({
         token: new Secret(`ghs_token_for_${String(installationId)}`),
         expiresAt: new Date(Date.now() + 3_600_000),
@@ -97,6 +100,7 @@ describe('GitHub repositories over HTTP', () => {
     expect((await fixture.get(path(), 'owner').expect(200)).body).toEqual({
       repositories: [],
       truncated: false,
+      unreachable: [],
     });
     const creation = await fixture
       .post(`${fixture.root}/github-app/manifests`, 'owner', { owner: 'user' })
@@ -116,7 +120,8 @@ describe('GitHub repositories over HTTP', () => {
       );
 
     const listed = await fixture.get(path(), 'member').expect(200);
-    expect(listed.body).toEqual({
+    expect(listed.body).toMatchObject({
+      unreachable: [],
       repositories: [
         {
           installationId: 11,
@@ -140,6 +145,29 @@ describe('GitHub repositories over HTTP', () => {
     expect(scopes).toEqual([{ installationId: 11, scope: { permissions: { metadata: 'read' } } }]);
     expect(revoked).toEqual(['ghs_token_for_11']);
     expect(JSON.stringify(listed.body)).not.toMatch(/ghs_|jwt-for|PRIVATE/);
+
+    // The same listing again within a minute asks GitHub nothing.
+    await fixture.get(path(), 'owner').expect(200);
+    expect(scopes).toHaveLength(1);
+
+    // An installation GitHub no longer answers for is reported, and hides nothing else.
+    const add = (id: number) =>
+      admin.query(
+        `INSERT INTO github_installations (organization_id, installation_id, account_login, account_type,
+           repository_selection, suspended_at, created_at, updated_at)
+         VALUES ($1, $2, 'acme-corp', 'Organization', 'selected', NULL, now(), now())`,
+        [fixture.organizationId, id],
+      );
+    await add(13);
+    const partial = await fixture.get(path(), 'owner').expect(200);
+    expect(partial.body).toMatchObject({ unreachable: [13] });
+    expect((partial.body as { repositories: unknown[] }).repositories).toHaveLength(2);
+    // When none answers, GitHub is unavailable.
+    await admin.query(
+      'DELETE FROM github_installations WHERE organization_id = $1 AND installation_id = 11',
+      [fixture.organizationId],
+    );
+    await fixture.get(path(), 'owner').expect(503);
   });
 
   it('hides the list from someone outside the organization', async () => {

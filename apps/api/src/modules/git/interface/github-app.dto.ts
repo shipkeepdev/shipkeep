@@ -82,5 +82,14 @@ export class GithubRepositoryDto {
 
 export class GithubRepositoriesDto {
   @ApiProperty({ type: [GithubRepositoryDto] }) repositories!: GithubRepositoryDto[];
-  @ApiProperty({ description: 'True when more than the 500 listed exist.' }) truncated!: boolean;
+  @ApiProperty({
+    description: 'True when the listing stopped at 500 with pages or installations left.',
+  })
+  truncated!: boolean;
+
+  @ApiProperty({
+    type: [Number],
+    description: 'Installations GitHub did not answer for: removed or suspended there meanwhile.',
+  })
+  unreachable!: number[];
 }

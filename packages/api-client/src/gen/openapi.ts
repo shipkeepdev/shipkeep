@@ -1876,8 +1876,10 @@ export type components = {
         };
         readonly GithubRepositoriesDto: {
             readonly repositories: readonly components["schemas"]["GithubRepositoryDto"][];
-            /** @description True when more than the 500 listed exist. */
+            /** @description True when the listing stopped at 500 with pages or installations left. */
             readonly truncated: boolean;
+            /** @description Installations GitHub did not answer for: removed or suspended there meanwhile. */
+            readonly unreachable: readonly number[];
         };
         readonly GithubRepositoryDto: {
             readonly defaultBranch: string;
@@ -4931,11 +4933,7 @@ export interface operations {
     readonly receiveGithubWebhook: {
         readonly parameters: {
             readonly query?: never;
-            readonly header: {
-                readonly "x-github-delivery": string;
-                readonly "x-github-event": string;
-                readonly "x-hub-signature-256": string;
-            };
+            readonly header?: never;
             readonly path: {
                 readonly organizationId: string;
             };
