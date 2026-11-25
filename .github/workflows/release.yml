@@ -143,7 +143,7 @@ jobs:
         run: |
           skopeo() {
             docker run --rm --network host "${mounts[@]}" \
-              quay.io/skopeo/stable:v1.25.1@sha256:58db214a5bdca54f5f14de36c6a9052d7c189ce9d7a500688da0ce94f5a33e92 "$@"
+              quay.io/skopeo/stable:v1.25.1@sha256:4531abd9632dca34af50bd524ec46db5bcaec01d3bb0c62dc9916a02b3472bb3 "$@"
           }
           if [ "$PUBLISH" = true ]; then
             mounts=(-v "$HOME/.docker/config.json:/auth.json:ro")
