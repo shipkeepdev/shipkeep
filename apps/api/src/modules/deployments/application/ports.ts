@@ -143,8 +143,11 @@ export interface ActionQueue {
     action: ActionRequest['action'];
     deadline: Date;
     actor: Actor;
-    /** Links the action to its deployment, for the application's action history. */
-    origin: { applicationId: string; deploymentId: string };
+    /**
+     * Links the action to its deployment, for the application's action history. An exec session
+     * belongs to no deployment.
+     */
+    origin?: { applicationId: string; deploymentId: string };
   }): Promise<{ id: string; created: boolean }>;
 }
 

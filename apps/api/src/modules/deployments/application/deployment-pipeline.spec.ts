@@ -321,7 +321,7 @@ describe('DeploymentPipeline', () => {
     // Every action names its deployment, for the application's action history (#263).
     expect(
       [...w.queued.values()].every(
-        (a) => a.origin.applicationId === APP && a.origin.deploymentId === w.deployment.id,
+        (a) => a.origin?.applicationId === APP && a.origin.deploymentId === w.deployment.id,
       ),
     ).toBe(true);
     expect(w.events.map((e) => [e.type, e.payload['to'] ?? ''])).toEqual([
