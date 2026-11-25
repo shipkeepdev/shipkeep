@@ -114,20 +114,42 @@ describe('GitHub webhooks over HTTP', () => {
     }
     throw new Error(`fewer than ${String(count)} requests wait for a lock`);
   };
-  /** Holds the installation's row until `release`, so that deliveries meet at its write. */
-  const holdRow = async (id: number) => {
+  /**
+   * Opens a transaction that holds what `sql` locks until the release, which ends it and its
+   * connection once, even when a test fails before it: blocked deliveries never stay blocked.
+   */
+  const hold = async (sql: string, params: unknown[]) => {
     const holder = new Client({ connectionString: fixture.databaseUrl });
     await holder.connect();
-    await holder.query('BEGIN');
-    await holder.query(
+    let released: Promise<void> | undefined;
+    const release = () =>
+      (released ??= (async () => {
+        try {
+          await holder.query('COMMIT');
+        } finally {
+          await holder.end();
+        }
+      })());
+    try {
+      await holder.query('BEGIN');
+      await holder.query(sql, params);
+    } catch (error: unknown) {
+      await release().catch(() => undefined);
+      throw error;
+    }
+    return release;
+  };
+  /** Holds the installation's row, so that deliveries meet at its write. */
+  const holdRow = (id: number) =>
+    hold(
       'SELECT 1 FROM github_installations WHERE organization_id = $1 AND installation_id = $2 FOR UPDATE',
       [fixture.organizationId, id],
     );
-    return async () => {
-      await holder.query('COMMIT');
-      await holder.end();
-    };
-  };
+  /** Holds the installation's lock, as a delivery applying a change does. */
+  const holdLock = (id: number) =>
+    hold('SELECT pg_advisory_xact_lock($1)', [
+      installationLockKey(fixture.organizationId, id).toString(),
+    ]);
   /** Starts a delivery now and returns its status once answered. */
   const started = (event: string, payload: object) =>
     deliver(event, payload).then((response) => response.status);
@@ -297,15 +319,19 @@ describe('GitHub webhooks over HTTP', () => {
       it(`keeps the newer state, the ${order}`, async () => {
         const id = order === 'newer first' ? 84 : 85;
         await deliver('installation', installation('created', 40, { id })).expect(204);
-        const release = await holdRow(id);
         const newer = installation('suspend', 42, { id });
         const older = installation('unsuspend', 41, { id });
         const [first, second] = order === 'newer first' ? [newer, older] : [older, newer];
-        const answers = [started('installation', first)];
-        await waiting(1);
-        answers.push(started('installation', second));
-        await waiting(2);
-        await release();
+        const release = await holdRow(id);
+        const answers: Promise<number>[] = [];
+        try {
+          answers.push(started('installation', first));
+          await waiting(1);
+          answers.push(started('installation', second));
+          await waiting(2);
+        } finally {
+          await release();
+        }
         expect(await Promise.all(answers)).toEqual([204, 204]);
         const after = await row(id);
         expect(after?.suspended_at).toBeInstanceOf(Date);
@@ -321,16 +347,20 @@ describe('GitHub webhooks over HTTP', () => {
     it('keeps a removal against a change at the same time', async () => {
       await deliver('installation', installation('created', 50, { id: 86 })).expect(204);
       const release = await holdRow(86);
-      const answers = [started('installation', installation('deleted', 52, { id: 86 }))];
-      await waiting(1);
-      answers.push(
-        started(
-          'installation_repositories',
-          installation('added', 52, { id: 86, selection: 'all' }),
-        ),
-      );
-      await waiting(2);
-      await release();
+      const answers: Promise<number>[] = [];
+      try {
+        answers.push(started('installation', installation('deleted', 52, { id: 86 })));
+        await waiting(1);
+        answers.push(
+          started(
+            'installation_repositories',
+            installation('added', 52, { id: 86, selection: 'all' }),
+          ),
+        );
+        await waiting(2);
+      } finally {
+        await release();
+      }
       expect(await Promise.all(answers)).toEqual([204, 204]);
       expect((await row(86))?.deleted_at).toBeInstanceOf(Date);
       expect(await audited(86)).toEqual([
@@ -340,22 +370,20 @@ describe('GitHub webhooks over HTTP', () => {
     });
 
     it('records a first delivery once when two arrive together', async () => {
-      const holder = new Client({ connectionString: fixture.databaseUrl });
-      await holder.connect();
-      await holder.query('BEGIN');
-      await holder.query('SELECT pg_advisory_xact_lock($1)', [
-        installationLockKey(fixture.organizationId, 87).toString(),
-      ]);
-      const answers = [
-        started('installation', installation('created', 60, { id: 87 })),
-        started(
-          'installation_repositories',
-          installation('added', 61, { id: 87, selection: 'all' }),
-        ),
-      ];
-      await waiting(2);
-      await holder.query('COMMIT');
-      await holder.end();
+      const release = await holdLock(87);
+      const answers: Promise<number>[] = [];
+      try {
+        answers.push(
+          started('installation', installation('created', 60, { id: 87 })),
+          started(
+            'installation_repositories',
+            installation('added', 61, { id: 87, selection: 'all' }),
+          ),
+        );
+        await waiting(2);
+      } finally {
+        await release();
+      }
       expect(await Promise.all(answers)).toEqual([204, 204]);
       expect(await row(87)).toMatchObject({ repository_selection: 'all', deleted_at: null });
     });
@@ -370,22 +398,17 @@ describe('GitHub webhooks over HTTP', () => {
         "UPDATE github_deliveries SET received_at = now() - interval '31 days' WHERE organization_id = $1 AND event = 'push'",
         [fixture.organizationId],
       );
-      const holder = new Client({ connectionString: fixture.databaseUrl });
-      await holder.connect();
-      await holder.query('BEGIN');
-      await holder.query('SELECT pg_advisory_xact_lock($1)', [
-        installationLockKey(fixture.organizationId, 88).toString(),
-      ]);
-      // This one removes the expired records, then waits for installation 88.
-      const blocked = started('installation', installation('created', 70, { id: 88 }));
-      await waiting(1);
+      const release = await holdLock(88);
+      let blocked: Promise<number> | undefined;
       try {
+        // This one removes the expired records, then waits for installation 88.
+        blocked = started('installation', installation('created', 70, { id: 88 }));
+        await waiting(1);
         await deliver('installation', installation('created', 70, { id: 89 })).expect(204);
         await deliver('ping', { hook: { app_id: APP_ID } }).expect(204);
         expect(await row(89)).toMatchObject({ deleted_at: null });
       } finally {
-        await holder.query('COMMIT');
-        await holder.end();
+        await release();
       }
       expect(await blocked).toBe(204);
       expect(await row(88)).toMatchObject({ deleted_at: null });
