@@ -13,10 +13,10 @@
 #   node setup/ensure-kek.mjs                                 create the key-encryption key once
 #
 # The base image is pinned by digest (THREAT_MODEL, supply chain); Renovate keeps it current.
-ARG NODE_IMAGE=node:22-bookworm-slim@sha256:e9f565d32859f0cbfb52125eafe8be39390f24dac302dc3cdf566e8ba3ab21ee
+ARG NODE_IMAGE=node:22-bookworm-slim@sha256:be979e5523c76fa4d5ca4ebd3099078f220aa47ec39c48ad5b5df9314debd6eb
 ARG PNPM_VERSION=11.28.6
 # Toolchain for the agent binaries that the web build publishes under /install (deploy/build-installer.sh).
-ARG GO_IMAGE=golang:1.26-bookworm@sha256:dc40a13b61304647ed7e5d581d246b86413dfc29d63c6d018310feb93cd98fc0
+ARG GO_IMAGE=golang:1.26-bookworm@sha256:ea47ee45f1284d60f9cc09cb2c3bb4f508c256b640bd8bb30342ff13d1adcb52
 
 FROM --platform=$BUILDPLATFORM ${GO_IMAGE} AS go
 

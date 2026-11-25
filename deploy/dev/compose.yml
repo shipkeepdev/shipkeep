@@ -7,7 +7,7 @@ name: shipkeep-dev
 
 services:
   postgres:
-    image: postgres:17@sha256:0d938e975177bef9f1f61f3f9dbcf2e0aa0a139568f66d3415ed8892eb97f6ac
+    image: postgres:17@sha256:87c8b42f423b45d5247e6aa8fdb2e7762fec164c68a50fe3eb07e7bfcaf4dbcf
     environment:
       POSTGRES_USER: shipkeep
       POSTGRES_PASSWORD: shipkeep
@@ -36,7 +36,7 @@ services:
     restart: unless-stopped
 
   victoriametrics:
-    image: victoriametrics/victoria-metrics:v1.155.0@sha256:f60dc268b54ecf87f6e09d740c2b732838aa9193090cc741417c9f6386a130df
+    image: victoriametrics/victoria-metrics:v1.157.0@sha256:322a7a92fdcc269280e9c38af94c83bc76827a31b792acbc60e44394e7f29c20
     command:
       - -storageDataPath=/victoria-metrics-data
       - -retentionPeriod=30d
