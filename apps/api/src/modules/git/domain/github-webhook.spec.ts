@@ -42,6 +42,17 @@ describe('GitHub deliveries (ADR 0031)', () => {
       expect(() => deliveryHeaders({ event, delivery: id, signature })).toThrow(InvalidInputError);
   });
 
+  it('reads a header given twice as missing, never as text', () => {
+    const twice = [signature, signature] as unknown as string;
+    expect(() => deliveryHeaders({ event: 'push', delivery, signature: twice })).toThrow(
+      WebhookRejected,
+    );
+    const events = ['push', 'ping'] as unknown as string;
+    expect(() => deliveryHeaders({ event: events, delivery, signature })).toThrow(
+      InvalidInputError,
+    );
+  });
+
   it('reads an installation of this App, and refuses one of another App', () => {
     expect(installationChange('installation', installation(), 7, now)).toEqual({
       action: 'created',

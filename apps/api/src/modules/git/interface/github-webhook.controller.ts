@@ -27,12 +27,21 @@ export class GithubWebhookController {
   async receiveGithubWebhook(
     @Req() request: Request,
     @Param() path: GitOrganizationPathDto,
-    @Headers('x-github-event') event?: string,
-    @Headers('x-github-delivery') delivery?: string,
-    @Headers('x-hub-signature-256') signature?: string,
+    @Headers('x-github-event') event?: unknown,
+    @Headers('x-github-delivery') delivery?: unknown,
+    @Headers('x-hub-signature-256') signature?: unknown,
   ): Promise<void> {
     const body: unknown = request.body;
     if (!Buffer.isBuffer(body)) throw new WebhookRejected();
-    await this.webhooks.receive(path.organizationId, { event, delivery, signature }, body);
+    await this.webhooks.receive(
+      path.organizationId,
+      { event: single(event), delivery: single(delivery), signature: single(signature) },
+      body,
+    );
   }
+}
+
+/** A header sent once, as a string; a repeated one is read as missing. */
+function single(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined;
 }
