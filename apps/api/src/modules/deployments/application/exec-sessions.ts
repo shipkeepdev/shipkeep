@@ -60,6 +60,10 @@ export class ExecSessions {
     now = new Date(),
   ): Promise<ExecSession> {
     const request = execRequest(input);
+    // Time passes while the request waits on the database: freshness and deadlines are decided
+    // when they are, measured on a monotonic clock from the request's own time.
+    const began = performance.now();
+    const at = () => new Date(now.getTime() + (performance.now() - began));
     const scope = {
       organizationId: target.organizationId,
       projectId: target.projectId,
@@ -70,87 +74,100 @@ export class ExecSessions {
       async () => {
         await this.access.require(context.userId, 'container.exec', scope);
         if (
-          this.registry.count({ userId: context.userId }, now) >= EXEC_SESSIONS_PER_USER ||
-          this.registry.count({ organizationId: target.organizationId }, now) >=
+          this.registry.count({ userId: context.userId }) >= EXEC_SESSIONS_PER_USER ||
+          this.registry.count({ organizationId: target.organizationId }) >=
             EXEC_SESSIONS_PER_ORGANIZATION
         )
           throw new ConflictError('exec_sessions_limit', 'Too many exec sessions are open.');
-        const opened = await this.transaction.runTenant(target.organizationId, async () => {
-          const application = await this.applications.find(target, applicationId);
-          if (!application) throw new NotFoundError('application');
-          const replicas = await this.observations.forApplication(application.id);
-          // During a rollout two releases share a replica number: the running one, newest first.
-          const replica = replicas
-            .filter(
-              (found) =>
-                found.replica === request.replica &&
-                found.state === 'running' &&
-                // An old observation may describe a server that is down.
-                found.observedAt !== null &&
-                now.getTime() - found.observedAt.getTime() <= EXEC_FRESH_MS,
-            )
-            .sort((a, b) => b.releaseId.localeCompare(a.releaseId))
-            .at(0);
-          if (!replica)
-            throw new ConflictError('replica_not_running', 'This replica is not running.', {
-              replica: request.replica,
-            });
-          const id = uuidv7();
-          const limitMs = request.minutes * 60_000;
-          const session: ExecSession = {
-            id,
-            organizationId: application.organizationId,
-            applicationId: application.id,
-            userId: context.userId,
-            nodeId: replica.nodeId,
-            container: replica.container,
-            tty: request.tty,
-            attachBy: new Date(now.getTime() + EXEC_ATTACH_MS),
-            endsAt: new Date(now.getTime() + EXEC_ATTACH_MS + limitMs),
-          };
-          await this.actions.enqueue({
-            organizationId: application.organizationId,
-            nodeId: replica.nodeId,
-            idempotencyKey: `exec:${id}`,
-            action: {
-              case: 'execSession',
-              value: create(ExecSessionSchema, {
-                containerId: replica.container,
-                argv: [...request.argv],
-                tty: request.tty,
-                sessionId: id,
-                timeLimit: create(DurationSchema, { seconds: BigInt(limitMs / 1000) }),
-              }),
-            },
-            // Expires with the join window: an agent that reconnects later never runs it with
-            // nobody there. Once started, the agent ends it at its own time limit.
-            deadline: session.attachBy,
-            actor: resourceActor(context),
-          });
-          await this.events.publish([
-            createEvent({
-              type: 'exec.session.opened',
-              organizationId: application.organizationId,
-              actor: resourceActor(context),
-              target: { type: 'exec_session', id },
-              payload: {
-                projectId: application.projectId,
-                environmentId: application.environmentId,
-                applicationId: application.id,
-                nodeId: replica.nodeId,
-                replica: request.replica,
-                tty: request.tty,
-                minutes: request.minutes,
-                ...auditedCommand(request.argv),
-              },
-              occurredAt: now,
-            }),
-          ]);
-          return session;
+        // Counted from now on, so that concurrent opens cannot pass the caps together.
+        const release = this.registry.reserve({
+          userId: context.userId,
+          organizationId: target.organizationId,
         });
-        // Joinable once its action and audit event are committed.
-        this.registry.add(opened, now);
-        return opened;
+        try {
+          const opened = await this.transaction.runTenant(target.organizationId, async () => {
+            const application = await this.applications.find(target, applicationId);
+            if (!application) throw new NotFoundError('application');
+            const replicas = await this.observations.forApplication(application.id);
+            const decidedAt = at();
+            // During a rollout two releases share a replica number: the running one, newest first.
+            const replica = replicas
+              .filter(
+                (found) =>
+                  found.replica === request.replica &&
+                  found.state === 'running' &&
+                  // An old observation may describe a server that is down.
+                  found.observedAt !== null &&
+                  decidedAt.getTime() - found.observedAt.getTime() <= EXEC_FRESH_MS,
+              )
+              .sort((a, b) => b.releaseId.localeCompare(a.releaseId))
+              .at(0);
+            if (!replica)
+              throw new ConflictError('replica_not_running', 'This replica is not running.', {
+                replica: request.replica,
+              });
+            const id = uuidv7();
+            const limitMs = request.minutes * 60_000;
+            const session: ExecSession = {
+              id,
+              organizationId: application.organizationId,
+              projectId: application.projectId,
+              environmentId: application.environmentId,
+              applicationId: application.id,
+              userId: context.userId,
+              nodeId: replica.nodeId,
+              container: replica.container,
+              tty: request.tty,
+              attachBy: new Date(decidedAt.getTime() + EXEC_ATTACH_MS),
+              endsAt: new Date(decidedAt.getTime() + EXEC_ATTACH_MS + limitMs),
+            };
+            await this.actions.enqueue({
+              organizationId: application.organizationId,
+              nodeId: replica.nodeId,
+              idempotencyKey: `exec:${id}`,
+              action: {
+                case: 'execSession',
+                value: create(ExecSessionSchema, {
+                  containerId: replica.container,
+                  argv: [...request.argv],
+                  tty: request.tty,
+                  sessionId: id,
+                  timeLimit: create(DurationSchema, { seconds: BigInt(limitMs / 1000) }),
+                }),
+              },
+              // Expires with the join window: an agent that reconnects later never runs it with
+              // nobody there. Once started, the agent ends it at its own time limit.
+              deadline: session.attachBy,
+              actor: resourceActor(context),
+            });
+            await this.events.publish([
+              createEvent({
+                type: 'exec.session.opened',
+                organizationId: application.organizationId,
+                actor: resourceActor(context),
+                target: { type: 'exec_session', id },
+                payload: {
+                  projectId: application.projectId,
+                  environmentId: application.environmentId,
+                  applicationId: application.id,
+                  nodeId: replica.nodeId,
+                  replica: request.replica,
+                  tty: request.tty,
+                  minutes: request.minutes,
+                  ...auditedCommand(request.argv),
+                },
+                occurredAt: now,
+              }),
+            ]);
+            return session;
+          });
+          // Joinable once its action and audit event are committed.
+          // Its timers are armed from the time they are, not from the request's.
+          this.registry.add(opened, at());
+          return opened;
+        } finally {
+          release();
+        }
       },
       { permission: 'container.exec', target: scope },
     );
