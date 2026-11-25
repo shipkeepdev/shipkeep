@@ -98,13 +98,18 @@ func TestRealShipperSendsAContainersRedactedLinesAndKeepsItsCursor(t *testing.T)
 		}
 		return own
 	}
+	// The cursor moves once the batch is acknowledged, after it was sent: wait for both.
 	for {
 		count := len(mine())
-		if count >= 2 {
+		_, kept, err := store.LogCursor(ctx, "sk-logs-r1-0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if count >= 2 && kept {
 			break
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("got %d entries", count)
+			t.Fatalf("got %d entries, cursor kept %v", count, kept)
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
