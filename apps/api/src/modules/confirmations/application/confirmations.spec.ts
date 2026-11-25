@@ -46,6 +46,19 @@ class MemoryStore implements ConfirmationStore {
     this.records.set(id, { ...record, usedAt: at });
     return Promise.resolve(true);
   }
+  usable(id: string, wanted: ConfirmationRequest, userId: string, at: Date): Promise<boolean> {
+    const record = this.records.get(id);
+    const action: string | undefined = record?.action;
+    return Promise.resolve(
+      !!record &&
+        !record.usedAt &&
+        record.expiresAt > at &&
+        record.userId === userId &&
+        record.organizationId === wanted.organizationId &&
+        action === wanted.action &&
+        record.target === wanted.target,
+    );
+  }
 }
 
 function setup(

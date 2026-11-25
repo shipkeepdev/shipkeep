@@ -32,6 +32,33 @@ export class ConfirmationVerifier {
     userId: string,
     now = new Date(),
   ): Promise<string> {
+    const id = await this.verified(token, request, userId, now);
+    if (!(await this.store.consume(id, request, userId, now)))
+      throw new ConfirmationRejectedError();
+    return id;
+  }
+
+  /**
+   * Checks the token as `consume` does, without spending it: for a destructive command that does
+   * part of its work first and spends the token only when it completes (#474).
+   */
+  async check(
+    token: Secret,
+    request: ConfirmationRequest,
+    userId: string,
+    now = new Date(),
+  ): Promise<void> {
+    const id = await this.verified(token, request, userId, now);
+    if (!(await this.store.usable(id, request, userId, now))) throw new ConfirmationRejectedError();
+  }
+
+  /** The token's id once its signature and claims hold for this request. */
+  private async verified(
+    token: Secret,
+    request: ConfirmationRequest,
+    userId: string,
+    now: Date,
+  ): Promise<string> {
     const parsed = parseConfirmationToken(token.expose());
     if (
       !parsed ||
@@ -39,8 +66,7 @@ export class ConfirmationVerifier {
       !(await this.keys.verifyConfirmation(
         Buffer.from(parsed.signingInput, 'utf8'),
         parsed.signature,
-      )) ||
-      !(await this.store.consume(parsed.claims.jti, request, userId, now))
+      ))
     )
       throw new ConfirmationRejectedError();
     return parsed.claims.jti;

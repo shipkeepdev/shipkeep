@@ -385,21 +385,25 @@ export class DeploymentCommands {
         if (running) throw deploymentInProgress(running.state);
         if ((await this.observations.forApplication(application.id)).length)
           throw applicationRunning();
+        const request = {
+          organizationId: application.organizationId,
+          action: 'application.delete' as const,
+          target: application.id,
+        };
         // Its domains go with it: not while a server may still route them to its containers.
         // What a server may still hold is asked for removal, and the deletion waits for it.
         const left = await this.store.leftovers(application);
         if (left.underway) throw applicationCleanupPending();
         if (left.containers.length || left.routes.length) {
+          // Removals are destructive too: asked only with a confirmation that holds, which stays
+          // unspent for the deletion that follows them.
+          await this.confirmations.check(confirmation, request, context.userId, now);
           await this.requestCleanup(context, application, left, now);
           return 'cleanup_requested';
         }
         const confirmationId = await this.confirmations.consume(
           confirmation,
-          {
-            organizationId: application.organizationId,
-            action: 'application.delete',
-            target: application.id,
-          },
+          request,
           context.userId,
           now,
         );

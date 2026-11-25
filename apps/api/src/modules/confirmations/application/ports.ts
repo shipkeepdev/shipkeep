@@ -17,6 +17,8 @@ export interface ConfirmationStore {
   insert(record: ConfirmationRecord): Promise<void>;
   /** Marks the token used if it is unused, unexpired and bound to exactly this request and user. */
   consume(id: string, request: ConfirmationRequest, userId: string, now: Date): Promise<boolean>;
+  /** Whether `consume` would succeed now, without marking anything. */
+  usable(id: string, request: ConfirmationRequest, userId: string, now: Date): Promise<boolean>;
 }
 
 export const CONFIRMATION_TRANSACTION = Symbol('ConfirmationTransaction');

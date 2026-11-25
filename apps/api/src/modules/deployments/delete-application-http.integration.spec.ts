@@ -320,6 +320,30 @@ describe('deleting an application over HTTP', () => {
       await remove(unsent, await issue(unsent, 'unsent-api')).expect(204);
     });
 
+    it('asks for nothing without a confirmation that holds, and keeps a good one unspent', async () => {
+      const target = await failedFirst('guarded-api', 'guarded.example.com');
+      await set(target.cleanup, 'failed');
+      const other = await create('guarded-other', 'guarded-other.example.com');
+      for (const token of ['not-a-token', await issue(other, 'guarded-other')])
+        await remove(target, token)
+          .expect(400)
+          .expect((response) => {
+            expect(response.body).toMatchObject({ code: 'confirmation_rejected' });
+          });
+      expect(await requested(target.id)).toEqual([]);
+      // A good one asks for the removal and is not spent by it.
+      const token = await issue(target, 'guarded-api');
+      await remove(target, token)
+        .expect(409)
+        .expect((response) => {
+          expect(response.body).toMatchObject({ code: 'application_cleanup_pending' });
+        });
+      const asked = await requested(target.id);
+      expect(asked).toHaveLength(1);
+      await set(asked[0]?.id ?? '', 'succeeded');
+      await remove(target, token).expect(204);
+    });
+
     it('lets a removed server stop holding the deletion', async () => {
       const target = await failedFirst('stranded-api', 'stranded.example.com');
       await kept(target, 'stranded-api', 'stranded.example.com');
