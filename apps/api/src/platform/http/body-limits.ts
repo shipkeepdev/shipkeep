@@ -17,6 +17,17 @@ const LARGE_JSON_ROUTES = new RegExp(
   `^${ENVIRONMENT}/(?:secrets|applications|applications/${ID}/config)$`,
 );
 const JSON_MEDIA_TYPE = /^application\/json\s*(?:;|$)/i;
+const WEBHOOK_ROUTES = new RegExp(`^${API_PREFIX}/webhooks/github/${ID}$`);
+
+/** GitHub's webhook bodies: read raw, since the signature covers their exact bytes (ADR 0031). */
+export const WEBHOOK_BODY_LIMIT = '1mb';
+
+/** Selects the raw parser: POST requests to a GitHub webhook route, whatever their media type. */
+export function acceptsWebhook(request: IncomingMessage): boolean {
+  if (request.method !== 'POST') return false;
+  const path = (request.url ?? '').split('?', 1)[0] ?? '';
+  return WEBHOOK_ROUTES.test(path);
+}
 
 /**
  * Selects the large JSON parser: POST requests with a JSON body to one of the large routes.

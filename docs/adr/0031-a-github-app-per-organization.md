@@ -40,8 +40,9 @@ Each GitHub call uses an installation token, minted when it is needed, for the o
 ### Webhooks
 
 - **Signature.** The control plane checks `X-Hub-Signature-256`, an HMAC-SHA256 of the raw body with the App's webhook secret, in constant time, before it parses anything. A body over 1 MiB is refused unread.
-- **Replay.** GitHub signs the body without a timestamp, so THREAT_MODEL T3's five-minute window cannot apply, and a signed body stays valid forever. Two checks replace it:
-  - each `X-GitHub-Delivery` identifier is recorded, unique, for 30 days, and a delivery recorded before answers `200` and does nothing;
+- **Replay.** GitHub signs the body without a timestamp, so THREAT_MODEL T3's five-minute window cannot apply, and a signed body stays valid forever. GitHub does not sign `X-GitHub-Delivery` either. These checks replace the window:
+  - each delivery identifier and the SHA-256 of each body are recorded, both unique, for 30 days; a delivery whose identifier or body was recorded answers `204` and does nothing;
+  - an installation event applies only when GitHub's time of the change is newer than the last one applied to that installation, so an older event, replayed even past 30 days, changes nothing;
   - before queuing, the control plane asks GitHub for the branch's head, and deploys the pushed commit only while it is still that head. A replayed old push, even past 30 days, therefore deploys nothing.
 - **Redelivery.** GitHub redelivers with the same identifier. The identifier is recorded in the same transaction that queues the deployment, so a delivery that failed before that point is recorded nowhere, and its redelivery is processed.
 - **Deployment.** A verified `push` to an application's branch queues that commit's deployment, as the actor `system` with the pusher's GitHub login in the payload. In a protected environment (SPEC 7), a push deploys nothing by itself: the commit waits for an administrator to deploy it.
@@ -58,7 +59,7 @@ GitLab, Gitea, Bitbucket and personal access tokens are left for after v0.1.0. G
 
 - No new external service: GitHub calls the installation directly, so the control plane's name must be public, as it is for HTTPS already.
 - Each organization creates its App once, in about a minute, from the interface.
-- A replayed webhook can only ask again for the commit its branch already points to, within the organization's own App.
+- A replayed webhook can only ask again for the commit its branch already points to, or for an installation state no older than the one recorded, within the organization's own App.
 - THREAT_MODEL T3 changes for GitHub: deduplication of delivery identifiers and the branch head check replace the timestamp window.
 
 ## Alternatives considered
