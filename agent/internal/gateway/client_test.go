@@ -208,6 +208,37 @@ func TestUntrustedGatewayNeverReceivesToken(t *testing.T) {
 	}
 }
 
+// A gateway that is not up yet (docker-proxy accepts, then closes) is an outage, not a trust
+// failure: the error says what happened, and a real verification failure still says so.
+func TestEnrollmentErrorsKeepTheirCause(t *testing.T) {
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = listener.Close() })
+	go func() {
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+	address, server := startGateway(t, true)
+	for _, test := range []struct{ address, fingerprint, want, not string }{
+		{listener.Addr().String(), nodecredentials.Fingerprint(server.ca), "EOF", "verification"},
+		{address, "sha256:" + strings.Repeat("0", 64), "installation CA fingerprint mismatch", ""},
+	} {
+		ctx, cancel := context.WithTimeout(t.Context(), time.Second)
+		_, err := Enroll(ctx, Endpoint{Address: test.address}, test.fingerprint, false, testToken, nil, "test")
+		cancel()
+		if err == nil || !strings.Contains(err.Error(), test.want) || (test.not != "" && strings.Contains(err.Error(), test.not)) {
+			t.Fatalf("enrollment error %v, want it to say %q", err, test.want)
+		}
+	}
+}
+
 func TestEnrollmentErrorsNeverEchoTokens(t *testing.T) {
 	address, server := startGateway(t, true)
 	rejected := secret.NewString(strings.Repeat("b", 43))
