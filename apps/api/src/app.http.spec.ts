@@ -1,4 +1,5 @@
 import type { Server } from 'node:http';
+import { brotliCompressSync, deflateSync, gzipSync, zstdCompressSync } from 'node:zlib';
 
 import type { INestApplication } from '@nestjs/common';
 import { ModulesContainer, Reflector } from '@nestjs/core';
@@ -97,6 +98,42 @@ describe('HTTP pipeline', () => {
       code: 'not_found',
       instance: '/api/v1/nope',
     });
+  });
+
+  // No client sends compressed bodies, and decompressing them runs the zlib, brotli and zstd copies
+  // bundled in Node on input anyone can send (zstd 1.5.7 is affected by CVE-2026-124851). Each
+  // parser refuses them before reading: the default and large JSON routes, and webhooks.
+  it('refuses compressed request bodies before reading them', async () => {
+    const id = '01900000-0000-7000-8000-000000000001';
+    const routes = [
+      '/api/v1/auth/login',
+      `/api/v1/organizations/${id}/projects/${id}/environments/${id}/secrets`,
+      `/api/v1/webhooks/github/${id}`,
+    ];
+    const json = Buffer.from(
+      JSON.stringify({ email: 'person@example.com', password: 'x'.repeat(20) }),
+    );
+    const encodings: [string, (body: Buffer) => Buffer][] = [
+      ['zstd', (body) => zstdCompressSync(body)],
+      ['gzip', (body) => gzipSync(body)],
+      ['deflate', (body) => deflateSync(body)],
+      ['br', (body) => brotliCompressSync(body)],
+    ];
+    for (const route of routes) {
+      for (const [encoding, encode] of encodings) {
+        const response = await http()
+          .post(route)
+          .set('Content-Type', 'application/json')
+          .set('Content-Encoding', encoding)
+          .send(encode(json));
+        expect({ route, encoding, status: response.status }).toEqual({
+          route,
+          encoding,
+          status: 415,
+        });
+        expect(response.headers['content-type']).toContain(PROBLEM_MEDIA_TYPE);
+      }
+    }
   });
 
   it('does not reflect malformed JSON credentials or query strings in errors', async () => {

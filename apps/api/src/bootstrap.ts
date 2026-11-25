@@ -41,14 +41,16 @@ export function configureApp(app: INestApplication): INestApplication {
     next();
   });
   // Webhooks are read raw and the large parser reads only its routes; the default one skips
-  // bodies already read.
-  http.useBodyParser('raw', { limit: WEBHOOK_BODY_LIMIT, type: acceptsWebhook });
-  http.useBodyParser('json', { limit: LARGE_JSON_LIMIT, type: acceptsLargeJson });
-  http.useBodyParser('json', { limit: DEFAULT_BODY_LIMIT });
+  // bodies already read. No parser inflates: no client sends compressed bodies, and inflating would
+  // run Node's bundled zlib, brotli and zstd on input anyone can send (415 instead).
+  http.useBodyParser('raw', { limit: WEBHOOK_BODY_LIMIT, type: acceptsWebhook, inflate: false });
+  http.useBodyParser('json', { limit: LARGE_JSON_LIMIT, type: acceptsLargeJson, inflate: false });
+  http.useBodyParser('json', { limit: DEFAULT_BODY_LIMIT, inflate: false });
   http.useBodyParser('urlencoded', {
     limit: DEFAULT_BODY_LIMIT,
     extended: false,
     parameterLimit: 32,
+    inflate: false,
   });
   app.useGlobalPipes(createValidationPipe());
   app.useGlobalFilters(new ProblemDetailsFilter());
