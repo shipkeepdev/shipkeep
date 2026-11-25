@@ -19,6 +19,7 @@ import { PrismaNodeCredentialStore } from './infrastructure/prisma-node-credenti
 import { AppConfig } from '../../platform/config/app-config';
 import { AgentGateway } from './interface/agent-gateway';
 import { EnrollmentAdmission } from './interface/enrollment-admission';
+import { LogStreams } from './interface/log-stream';
 import { NodeStream } from './interface/node-stream';
 
 import { EnrollNode } from './application/enroll-node';
@@ -45,6 +46,7 @@ import { PrismaAgentActionStore } from './infrastructure/prisma-agent-action.sto
 import { PrismaAgentUpgradeStore } from './infrastructure/prisma-agent-upgrade.store';
 import { AgentActions } from './application/agent-actions';
 import { NodeLiveness } from './application/node-liveness';
+import { LogBatches } from './application/log-batches';
 import { MetricsReports } from './application/metrics-reports';
 import { StateReports } from './application/state-reports';
 
@@ -71,6 +73,7 @@ import { StateReports } from './application/state-reports';
       inject: [AppConfig],
     },
     NodeStream,
+    LogStreams,
     ExecSessionRegistry,
     AuthenticateNode,
     RenewNodeCertificate,
@@ -90,6 +93,7 @@ import { StateReports } from './application/state-reports';
     NodeLiveness,
     StateReports,
     MetricsReports,
+    LogBatches,
     IssueJoinToken,
     EnrollNode,
   ],
@@ -105,6 +109,7 @@ import { StateReports } from './application/state-reports';
     AgentUpgradeWorker,
     StateReports,
     MetricsReports,
+    LogBatches,
     ExecSessionRegistry,
   ],
 })
