@@ -49,7 +49,7 @@ gh api -X POST "repos/$OWNER/$REPO/rulesets" --input - <<'JSON'
 JSON
 ```
 
-The scans of the pinned PostgreSQL, Caddy and VictoriaMetrics images (`Trivy pinned images (postgres, linux/amd64)` and the same for `caddy`, `victoriametrics` and `linux/arm64`) are left out of the required checks on purpose: a flaw disclosed upstream would block every pull request until a new image exists. Their weekly run reports it instead.
+The scans of the pinned PostgreSQL, Caddy, VictoriaMetrics and VictoriaLogs images (`Trivy pinned images (postgres, linux/amd64)` and the same for `caddy`, `victoriametrics`, `victorialogs` and `linux/arm64`) are left out of the required checks on purpose: a flaw disclosed upstream would block every pull request until a new image exists. Their weekly run reports it instead.
 
 Zero required approvals: with one maintainer, GitHub does not let an author approve their own pull request. When a second maintainer joins, raise the count to 1 and enable code owner review.
 
