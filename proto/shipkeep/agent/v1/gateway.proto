@@ -10,6 +10,7 @@ import "google/protobuf/duration.proto";
 import "google/protobuf/timestamp.proto";
 import "shipkeep/agent/v1/actions.proto";
 import "shipkeep/agent/v1/exec.proto";
+import "shipkeep/agent/v1/logs.proto";
 
 service AgentGatewayService {
   // Enrollment with a one-time join token. Server-side TLS only; the agent pins the CA afterwards.
@@ -20,6 +21,8 @@ service AgentGatewayService {
   rpc Connect(stream ConnectRequest) returns (stream ConnectResponse);
   // Interactive exec frames for one ExecSession.
   rpc ExecStream(stream ExecStreamRequest) returns (stream ExecStreamResponse);
+  // Container logs, in acknowledged batches (ADR 0029). Opened after Welcome says they are kept.
+  rpc ShipLogs(stream ShipLogsRequest) returns (stream ShipLogsResponse);
 }
 
 message EnrollRequest {
@@ -234,6 +237,8 @@ message Welcome {
   // The control plane accepts MetricsReport on this stream (ADR 0024). An older one does not, and
   // the agent sends none.
   bool metrics = 6;
+  // The control plane keeps logs (ADR 0029): the agent opens ShipLogs. Otherwise it ships none.
+  bool logs = 7;
 }
 
 // One action to execute. Exactly one field of `action` is set.
@@ -301,8 +306,8 @@ message ConfigUpdate {
   string log_level = 1;
   google.protobuf.Duration heartbeat_interval = 2;
   google.protobuf.Duration reconcile_interval = 3;
-  // Base URL of VictoriaLogs for log shipping (ADR 0011).
-  string logs_endpoint = 4;
+  // Deprecated: logs go through ShipLogs (ADR 0029). Never set.
+  string logs_endpoint = 4 [deprecated = true];
   // Base URL of VictoriaMetrics for metric shipping.
   string metrics_endpoint = 5;
 }
