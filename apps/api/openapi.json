@@ -5570,7 +5570,7 @@
             "name": "text",
             "required": false,
             "in": "query",
-            "description": "Text the lines contain.",
+            "description": "Text the lines contain, matched with its case.",
             "schema": {
               "maxLength": 256,
               "type": "string"
@@ -5603,7 +5603,7 @@
             "name": "from",
             "required": false,
             "in": "query",
-            "description": "One hour ago by default.",
+            "description": "One hour ago by default. With its offset (`Z` or `±hh:mm`).",
             "schema": {
               "format": "date-time",
               "type": "string"
@@ -5613,10 +5613,23 @@
             "name": "to",
             "required": false,
             "in": "query",
-            "description": "Now by default.",
+            "description": "Now by default. With its offset (`Z` or `±hh:mm`).",
             "schema": {
               "format": "date-time",
               "type": "string"
+            }
+          },
+          {
+            "name": "order",
+            "required": false,
+            "in": "query",
+            "description": "`newest` first by default. A live view reads `oldest` first from its last line, and again at once while an answer is full, so that no line is skipped.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "newest",
+                "oldest"
+              ]
             }
           },
           {

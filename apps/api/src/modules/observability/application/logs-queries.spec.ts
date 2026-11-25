@@ -58,7 +58,7 @@ describe('log searches', () => {
       kept: true,
       lines: [
         {
-          time: '2026-11-24T11:30:00Z',
+          time: '2026-11-24T11:30:00.000000000Z',
           stream: 'stdout',
           instance: 1,
           line: 'x happened',

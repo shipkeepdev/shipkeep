@@ -6,14 +6,14 @@ import type { ApplicationTarget } from '../../apps/domain/application';
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
 import { type ResourceSecurityContext as SecurityContext } from '../../identity/application/resource-security-context';
 import { TenantAccess } from '../../organizations/application/tenant-access';
-import { type LogLine, logLineOf, logsQuery } from '../domain/logs';
+import { distinctLines, type LogLine, logLineOf, logsQuery } from '../domain/logs';
 
 import { LOGS_STORE, type LogsStore, METRICS_TRANSACTION, type MetricsTransaction } from './ports';
 
 export interface LogsAnswer {
   /** False when no log store is configured: no line is kept. */
   readonly kept: boolean;
-  /** Newest first. */
+  /** In the order the search asked: newest first by default. */
   readonly lines: readonly LogLine[];
 }
 
@@ -39,6 +39,7 @@ export class LogsQueries {
       from: Date;
       to: Date;
       limit: number;
+      order?: 'newest' | 'oldest' | undefined;
     },
   ): Promise<LogsAnswer> {
     const scope = {
@@ -61,7 +62,7 @@ export class LogsQueries {
           logsQuery({ organizationId: target.organizationId, applicationId: found.id, ...search }),
           search.limit,
         );
-        const lines = records.map(logLineOf).filter((line) => line !== undefined);
+        const lines = distinctLines(records.map(logLineOf).filter((line) => line !== undefined));
         return { kept: true, lines };
       },
       { permission: 'environment.read', target: scope },

@@ -130,6 +130,12 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		a.logger.Warn("development mode: image pulls do not require the egress proxy")
 		options = append(options, actions.WithoutEgressCheck())
 	}
+	// Exec sessions in managed containers, with their frames on an ExecStream (SPEC 3.1).
+	streams := &gateway.Streams{}
+	sessions := actions.NewExecSessions()
+	// Sessions end with this gateway run, each saying so, before the journal closes.
+	defer sessions.Close()
+	options = append(options, actions.WithExec(actions.DockerExec(engine), execStreams{streams}, sessions))
 	// Node, container and route metrics, sent on the stream when the control plane accepts them.
 	sampler := &metrics.Sampler{Containers: engine, Proc: "/proc", Sys: "/sys", Logger: a.logger}
 	if ownsCaddy(a.cfg.Node.Role) {
@@ -143,6 +149,7 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		Metrics:   sampler.Sample,
 		Connected: boot.connected,
 		Sent:      restart.delivered,
+		Streams:   streams,
 		Report: func(ctx context.Context) (*agentv1.StateReport, error) {
 			reasons, err := store.StopReasons(ctx)
 			if err != nil {
@@ -159,6 +166,14 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		},
 	}
 	return runner.Run(ctx, bundle)
+}
+
+// execStreams opens exec sessions' streams on the gateway session's connection.
+type execStreams struct{ streams *gateway.Streams }
+
+// OpenExec opens an ExecStream, which ends with ctx or with the session's connection.
+func (e execStreams) OpenExec(ctx context.Context) (actions.ExecStream, error) {
+	return e.streams.OpenExec(ctx)
 }
 
 func readJoinToken(path string) (secret.String, error) {

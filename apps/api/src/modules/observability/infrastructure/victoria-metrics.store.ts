@@ -2,6 +2,8 @@ import { ServiceUnavailableException } from '@nestjs/common';
 
 import type { MetricsStore, Series } from '../application/ports';
 
+import { discard, readBounded } from './bounded-read';
+
 /** Answers larger than this are not read: the queries of a chart return a few series. */
 const MAX_ANSWER = 4 << 20;
 const TIMEOUT_MS = 5000;
@@ -9,26 +11,6 @@ const TIMEOUT_MS = 5000;
 /** What a caller learns of any failure of the store: its text and status stay private. */
 function unavailable(): ServiceUnavailableException {
   return new ServiceUnavailableException('Metrics temporarily unavailable.');
-}
-
-/** The body of a response, read up to max bytes: past them reading stops and the answer fails. */
-async function readLimited(response: Response, max: number): Promise<string> {
-  // Node's fetch types its body loosely: it is a stream of bytes.
-  const reader = (response.body as ReadableStream<Uint8Array> | null)?.getReader();
-  if (!reader) return '';
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > max) {
-      await reader.cancel();
-      throw unavailable();
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString('utf8');
 }
 
 /**
@@ -48,7 +30,7 @@ export class VictoriaMetricsStore implements MetricsStore {
     }).catch(() => {
       throw unavailable();
     });
-    await response.body?.cancel();
+    await discard(response);
     if (!response.ok) throw unavailable();
   }
 
@@ -74,12 +56,10 @@ export class VictoriaMetricsStore implements MetricsStore {
       throw unavailable();
     });
     if (!response.ok) {
-      await response.body?.cancel();
+      await discard(response);
       throw unavailable();
     }
-    const text = await readLimited(response, MAX_ANSWER).catch(() => {
-      throw unavailable();
-    });
+    const text = await readBounded(response, MAX_ANSWER, unavailable);
     try {
       return JSON.parse(text) as unknown;
     } catch {

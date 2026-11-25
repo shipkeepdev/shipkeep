@@ -1,6 +1,6 @@
 import { create } from '@bufbuild/protobuf';
 import { timestampFromDate } from '@bufbuild/protobuf/wkt';
-import { LogBatchSchema, LogStream } from '@shipkeep/proto-ts';
+import { LogBatchSchema, LogEntrySchema, LogStream } from '@shipkeep/proto-ts';
 import { describe, expect, it } from 'vitest';
 
 import { LogBatches } from '../../fleet/application/log-batches';
@@ -86,7 +86,7 @@ describe('log ingestion (ADR 0029)', () => {
     expect(written).toEqual([
       [
         {
-          _time: NOW.toISOString(),
+          _time: '2026-11-24T12:00:00.000000000Z',
           _msg: 'ready',
           org: 'o1',
           project: 'p',
@@ -97,7 +97,7 @@ describe('log ingestion (ADR 0029)', () => {
           stream: 'stdout',
         },
         {
-          _time: NOW.toISOString(),
+          _time: '2026-11-24T12:00:00.000000000Z',
           _msg: 'oops',
           org: 'o1',
           project: 'p',
@@ -109,6 +109,34 @@ describe('log ingestion (ADR 0029)', () => {
         },
       ],
     ]);
+  });
+
+  it('charges a node in bytes before any lookup, even for lines it drops', async () => {
+    const w = world({ write: () => Promise.resolve(), query: () => Promise.resolve([]) });
+    // 8192 characters of two bytes each: 16 KiB, for a container that is not the node's.
+    const wide = 'é'.repeat(8192);
+    for (let i = 0; i < 300; i++)
+      await w.ingest.record(node, batchOf({ container: 'sk-other-r1-0', line: wide }), NOW);
+    expect(w.slept.length).toBeGreaterThan(0);
+  });
+
+  it('drops an entry whose stream is neither stdout nor stderr', async () => {
+    const written: LogRecord[][] = [];
+    const w = world({
+      write: (records) => (written.push([...records]), Promise.resolve()),
+      query: () => Promise.resolve([]),
+    });
+    const batch = batchOf({ container: 'sk-web-r1-0', line: 'kept' });
+    batch.entries.push(
+      create(LogEntrySchema, {
+        container: 'sk-web-r1-0',
+        stream: LogStream.UNSPECIFIED,
+        time: timestampFromDate(NOW),
+        line: 'no stream',
+      }),
+    );
+    await w.ingest.record(node, batch, NOW);
+    expect(written.flat().map((record) => record._msg)).toEqual(['kept']);
   });
 
   it('makes a node past its rate wait before writing, and fails when the store does', async () => {
