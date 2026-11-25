@@ -117,6 +117,10 @@ export class GithubAppCommands {
   ): Promise<GithubAppMetadata> {
     githubManifestCode(input.code, input.state);
     const stateHash = hash(input.state);
+    // GitHub's answer takes its time: the flow is consumed, and its expiry judged, when it is,
+    // measured on a monotonic clock from the request's own time.
+    const began = performance.now();
+    const at = () => new Date(now.getTime() + (performance.now() - began));
     await this.scoped(context, organizationId, MANAGE, async () => {
       if (await this.store.find(organizationId)) throw appExists();
       const flow = await this.store.flow(organizationId);
@@ -133,7 +137,7 @@ export class GithubAppCommands {
     // From here the App exists on GitHub: if it cannot be stored, the owner learns which one to
     // delete there, since its secrets cannot be asked for again.
     try {
-      return await this.keep(context, organizationId, stateHash, createdGithubApp(raw), now);
+      return await this.keep(context, organizationId, stateHash, createdGithubApp(raw), at());
     } catch (error) {
       this.logger.warn(
         { organizationId, reason: error instanceof DomainError ? error.code : 'store_failed' },
