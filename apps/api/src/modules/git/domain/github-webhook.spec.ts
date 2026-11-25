@@ -1,7 +1,14 @@
 import { InvalidInputError } from '@shipkeep/domain';
 import { describe, expect, it } from 'vitest';
 
-import { deliveryHeaders, installationChange, pingedApp, WebhookRejected } from './github-webhook';
+import {
+  changeApplies,
+  deliveryHeaders,
+  type InstallationChange,
+  installationChange,
+  pingedApp,
+  WebhookRejected,
+} from './github-webhook';
 
 const signature = `sha256=${'ab'.repeat(32)}`;
 const delivery = '72d3162e-cc78-11e3-81ab-4c9367dc0958';
@@ -103,5 +110,43 @@ describe('GitHub deliveries (ADR 0031)', () => {
     expect(pingedApp({ hook: { app_id: 7 } })).toBe(7);
     expect(pingedApp({ hook: { app_id: '7' } })).toBeUndefined();
     expect(pingedApp({})).toBeUndefined();
+  });
+
+  describe("the order of an installation's changes (#475, #476)", () => {
+    const at = (minute: number) => new Date(Date.UTC(2026, 10, 25, 9, minute));
+    const change = (action: InstallationChange['action'], minute: number): InstallationChange => ({
+      action,
+      installationId: 77,
+      accountLogin: 'acme-corp',
+      accountType: 'Organization',
+      repositorySelection: 'selected',
+      updatedAt: at(minute),
+    });
+    const active = { updatedAt: at(10), suspendedAt: null, deletedAt: null };
+    const suspended = { updatedAt: at(10), suspendedAt: at(10), deletedAt: null };
+    const removed = { updatedAt: at(10), suspendedAt: null, deletedAt: at(12) };
+
+    it('applies a first change, a newer one, never an older one', () => {
+      expect(changeApplies(change('unsuspend', 5), undefined)).toBe(true);
+      expect(changeApplies(change('repositories', 5), null)).toBe(true);
+      expect(changeApplies(change('suspend', 11), active)).toBe(true);
+      expect(changeApplies(change('unsuspend', 9), suspended)).toBe(false);
+    });
+
+    it('keeps the more restrictive state at equal times', () => {
+      expect(changeApplies(change('suspend', 10), active)).toBe(true);
+      for (const action of ['created', 'unsuspend', 'repositories', 'suspend'] as const)
+        expect(changeApplies(change(action, 10), suspended), action).toBe(false);
+      for (const action of ['created', 'unsuspend', 'repositories'] as const)
+        expect(changeApplies(change(action, 10), active), action).toBe(false);
+    });
+
+    it('applies a removal whatever its time, and nothing after it', () => {
+      expect(changeApplies(change('deleted', 1), active)).toBe(true);
+      expect(changeApplies(change('deleted', 1), undefined)).toBe(true);
+      for (const action of ['created', 'unsuspend', 'repositories', 'suspend', 'deleted'] as const)
+        for (const minute of [11, 13])
+          expect(changeApplies(change(action, minute), removed), action).toBe(false);
+    });
   });
 });

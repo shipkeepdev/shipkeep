@@ -55,6 +55,34 @@ export interface InstallationChange {
   readonly updatedAt: Date;
 }
 
+/** What an installation's order keeps: GitHub's time of its last change, and its states. */
+export interface RecordedInstallation {
+  readonly updatedAt: Date;
+  readonly suspendedAt: Date | null;
+  /** Set once removed: the row stays as a tombstone. */
+  readonly deletedAt: Date | null;
+}
+
+/**
+ * Whether a change applies after the state recorded (#475, #476). A removed installation never
+ * comes back, since installing the App again makes a new one: nothing applies to it any more. A
+ * removal applies whatever its time. Any other change applies when it is newer, or at the same
+ * time when it is more restrictive: a suspension of an active installation. Any other change at
+ * the same time, a replay among them, changes nothing, so the state kept is never the less
+ * restrictive one.
+ */
+export function changeApplies(
+  change: InstallationChange,
+  recorded: RecordedInstallation | null | undefined,
+): boolean {
+  if (recorded?.deletedAt) return false;
+  if (change.action === 'deleted' || !recorded) return true;
+  const at = change.updatedAt.getTime();
+  const last = recorded.updatedAt.getTime();
+  if (at !== last) return at > last;
+  return change.action === 'suspend' && recorded.suspendedAt === null;
+}
+
 const ACTIONS = new Set(['created', 'deleted', 'suspend', 'unsuspend']);
 /** GitHub's clock may run a little ahead of this one, never much. */
 const MAX_AHEAD_MS = 5 * 60_000;
