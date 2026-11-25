@@ -13,6 +13,7 @@ import {
 import type { AgentActions } from '../application/agent-actions';
 import { AuthenticateNode } from '../application/authenticate-node';
 import type { NodeLiveness } from '../application/node-liveness';
+import { LogBatches } from '../application/log-batches';
 import { MetricsReports } from '../application/metrics-reports';
 import type { StateReports } from '../application/state-reports';
 import { NodeStream } from './node-stream';
@@ -70,6 +71,7 @@ describe('stream timeouts and failure boundaries', () => {
       liveness,
       reports,
       new MetricsReports(),
+      new LogBatches(),
     ).connect(input, context, identity);
     const rejected = expect(stream.next()).rejects.toMatchObject({ code: 4 });
     await vi.advanceTimersByTimeAsync(15_000);
@@ -87,7 +89,14 @@ describe('stream timeouts and failure boundaries', () => {
       [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(new Error('socket closed')) }),
     };
     await expect(
-      new NodeStream(authenticate, queue(idle), liveness, reports, new MetricsReports())
+      new NodeStream(
+        authenticate,
+        queue(idle),
+        liveness,
+        reports,
+        new MetricsReports(),
+        new LogBatches(),
+      )
         .connect(input, context, identity)
         .next(),
     ).rejects.toMatchObject({ code: 13, rawMessage: 'agent stream failed' });
@@ -148,6 +157,7 @@ describe('stream timeouts and failure boundaries', () => {
       liveness,
       reports,
       new MetricsReports(),
+      new LogBatches(),
     ).connect(input, context, identity))
       responses.push(response.msg.case);
     expect(responses).toEqual(['welcome', 'actionRequest']);
@@ -193,6 +203,7 @@ describe('stream timeouts and failure boundaries', () => {
       liveness,
       reports,
       metrics,
+      new LogBatches(),
     ).connect(input, new AbortController(), identity))
       if (response.msg.case === 'welcome') welcome.push(String(response.msg.value.metrics));
     return welcome;

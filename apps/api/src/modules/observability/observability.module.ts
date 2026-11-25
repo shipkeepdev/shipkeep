@@ -9,8 +9,15 @@ import { TenantAccessModule } from '../organizations/tenant-access.module';
 
 import { MetricsIngest } from './application/metrics-ingest';
 import { MetricsQueries } from './application/metrics-queries';
-import { METRICS_STORE, METRICS_TARGETS, METRICS_TRANSACTION } from './application/ports';
+import { LogsIngest } from './application/logs-ingest';
+import {
+  LOGS_STORE,
+  METRICS_STORE,
+  METRICS_TARGETS,
+  METRICS_TRANSACTION,
+} from './application/ports';
 import { PrismaMetricsTargets } from './infrastructure/prisma-metrics-targets.store';
+import { VictoriaLogsStore } from './infrastructure/victoria-logs.store';
 import { VictoriaMetricsStore } from './infrastructure/victoria-metrics.store';
 import { MetricsController } from './interface/metrics.controller';
 
@@ -21,6 +28,15 @@ import { MetricsController } from './interface/metrics.controller';
   providers: [
     MetricsIngest,
     MetricsQueries,
+    LogsIngest,
+    {
+      provide: LOGS_STORE,
+      useFactory: (config: AppConfig) => {
+        const url = config.get('VICTORIALOGS_URL');
+        return url ? new VictoriaLogsStore(url) : null;
+      },
+      inject: [AppConfig],
+    },
     { provide: METRICS_TARGETS, useClass: PrismaMetricsTargets },
     { provide: METRICS_TRANSACTION, useExisting: PrismaUnitOfWork },
     {
