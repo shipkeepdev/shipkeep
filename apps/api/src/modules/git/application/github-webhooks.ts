@@ -52,7 +52,9 @@ export class GithubWebhooks {
     body: Buffer,
     now = new Date(),
   ): Promise<DeliveryOutcome> {
-    if (!isTenantId(organizationId) || body.length > MAX_WEBHOOK_BYTES) throw new WebhookRejected();
+    // `byteLength`, not `length`: the body is bytes, never a string or an array.
+    if (!isTenantId(organizationId) || body.byteLength > MAX_WEBHOOK_BYTES)
+      throw new WebhookRejected();
     const delivery = deliveryHeaders(headers);
     const app = await this.transaction.runTenant(organizationId, () =>
       this.store.webhookSecret(organizationId),

@@ -261,6 +261,19 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
     ).rejects.toMatchObject({
       code: Code.Unauthenticated,
     });
+    // An authenticated agent still names a session opened for it (SPEC 3.1).
+    const unknownSession = {
+      frame: {
+        case: 'open' as const,
+        value: { sessionId: '019d0000-0000-7000-8000-000000000000' },
+      },
+    };
+    await expect(
+      client(enrolled)
+        .execStream(messages([unknownSession]))
+        [Symbol.asyncIterator]()
+        .next(),
+    ).rejects.toMatchObject({ code: Code.NotFound });
   });
 
   it('rejects forged Hello identities, stale epochs and out-of-order frames', async () => {

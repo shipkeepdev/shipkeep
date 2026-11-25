@@ -196,7 +196,7 @@ func (e *Exec) Next(max int) (int, []byte, error) {
 	for len(e.rest) == 0 {
 		stream, data, err := readFrame(e.reader)
 		if err != nil {
-			return 0, nil, err
+			return 0, nil, fmt.Errorf("docker exec: %w", err)
 		}
 		e.rest, e.restStream = data, stream
 	}
@@ -220,27 +220,32 @@ func (e *Exec) Close() error {
 	return err
 }
 
-// readFrame reads one frame of Docker's multiplexed stream: a header of the stream (1 byte),
-// three zero bytes and the length (4 bytes, big endian), then that many bytes.
+// readFrame reads one frame of Docker's multiplexed stream, which exec and logs both use: a
+// header of the stream (1 byte), three zero bytes and the length (4 bytes, big endian), then
+// that many bytes.
 func readFrame(reader io.Reader) (int, []byte, error) {
 	var header [8]byte
 	if _, err := io.ReadFull(reader, header[:]); err != nil {
 		if errors.Is(err, io.ErrUnexpectedEOF) {
-			return 0, nil, fmt.Errorf("docker exec output ended inside a frame header: %w", err)
+			return 0, nil, fmt.Errorf("docker output ended inside a frame header: %w", err)
 		}
-		return 0, nil, fmt.Errorf("docker exec output: %w", err)
+		return 0, nil, fmt.Errorf("docker output: %w", err)
 	}
 	stream := int(header[0])
 	if (stream != Stdout && stream != Stderr) || header[1] != 0 || header[2] != 0 || header[3] != 0 {
-		return 0, nil, errors.New("docker exec output has an invalid frame header")
+		return 0, nil, errors.New("docker output has an invalid frame header")
 	}
 	size := binary.BigEndian.Uint32(header[4:])
 	if size > maxFrame {
-		return 0, nil, errors.New("docker exec output frame too large")
+		return 0, nil, errors.New("docker output frame too large")
 	}
 	data := make([]byte, size)
 	if _, err := io.ReadFull(reader, data); err != nil {
-		return 0, nil, fmt.Errorf("docker exec output ended inside a frame: %w", err)
+		// A header promised these bytes: their absence is a cut stream, never its clean end.
+		if errors.Is(err, io.EOF) {
+			err = io.ErrUnexpectedEOF
+		}
+		return 0, nil, fmt.Errorf("docker output ended inside a frame: %w", err)
 	}
 	return stream, data, nil
 }
