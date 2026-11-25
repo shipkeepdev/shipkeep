@@ -21,8 +21,15 @@ import {
 } from '../../fleet/application/exec-relay';
 import { SessionCommands } from '../../identity/application/session-commands';
 import { AuthenticationError } from '../../identity/domain/identity-policy';
-import { assertOrigin, cookiePolicy, readCredential } from '../../identity/interface/session-http';
+import {
+  assertOrigin,
+  cookiePolicy,
+  readCredential,
+  upgradeClientIp,
+} from '../../identity/interface/session-http';
 import { TenantAccess } from '../../organizations/application/tenant-access';
+
+import { controlFrame } from './exec-socket.dto';
 
 /** The path that joins a session, under the API prefix (SPEC 3.1). */
 const EXEC_PATH =
@@ -35,7 +42,6 @@ const ACCESS_CHECK_MS = 60_000;
 const KEEPALIVE_MS = 30_000;
 /** Failed joins one network may make per minute, each of which costs a database lookup. */
 const FAILED_JOINS_PER_MINUTE = 20;
-const TERMINAL_SIDE = 1000;
 
 type Scope = { organizationId: string; projectId: string; environmentId: string };
 
@@ -87,6 +93,9 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
   /** Ends the open sessions, and waits for their audit events, before the database closes. */
   async onModuleDestroy(): Promise<void> {
     this.server?.off('upgrade', this.onUpgrade);
+    // Every session ends here, those still waiting for their browser included, so that each
+    // audit write has started before the wait below takes its snapshot.
+    this.registry.endAll('shutdown');
     for (const client of this.sockets.clients) client.terminate();
     this.sockets.close();
     await this.registry.settle(5000);
@@ -111,7 +120,8 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
       if (this.server?.listenerCount('upgrade') === 1) refuse(socket, 404);
       return;
     }
-    const ip = request.socket.remoteAddress ?? '';
+    // Behind Caddy every request comes from loopback: the client is the address it forwarded.
+    const ip = upgradeClientIp(request, this.config.get('TRUST_PROXY'));
     if (this.throttled(ip)) {
       refuse(socket, 429);
       return;
@@ -143,6 +153,11 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
     try {
       await this.tenants.require(userId, 'container.exec', scope);
     } catch {
+      refuse(socket, 404);
+      return;
+    }
+    // Another request may have joined it meanwhile: it is refused over HTTP, like any other.
+    if (!this.registry.joinable(id, userId)) {
       refuse(socket, 404);
       return;
     }
@@ -293,18 +308,5 @@ export function browserFrame(data: RawData, binary: boolean): BrowserFrame | und
   } catch {
     return undefined;
   }
-  if (!message || typeof message !== 'object') return undefined;
-  const value = message as Record<string, unknown>;
-  if (value['type'] === 'resize') {
-    const { cols, rows } = value;
-    if (side(cols) && side(rows)) return { kind: 'resize', cols, rows };
-    return undefined;
-  }
-  if (value['type'] === 'close' && typeof value['kill'] === 'boolean')
-    return { kind: 'close', kill: value['kill'] };
-  return undefined;
-}
-
-function side(value: unknown): value is number {
-  return Number.isInteger(value) && (value as number) >= 1 && (value as number) <= TERMINAL_SIDE;
+  return controlFrame(message);
 }

@@ -54,7 +54,8 @@ export type ExecEnd =
   | 'browser_left'
   | 'flooded'
   | 'signed_out'
-  | 'access_removed';
+  | 'access_removed'
+  | 'shutdown';
 
 /** The agent's fixed error texts (agent/internal/actions/exec.go), and what they mean. */
 const AGENT_ERRORS: ReadonlyMap<string, ExecEnd> = new Map([
@@ -294,6 +295,14 @@ export class ExecSessionRegistry {
     return (
       relay !== undefined && relay.session.userId === userId && !relay.browserJoined && !relay.over
     );
+  }
+
+  /**
+   * Ends every session, joined or still waiting for a side, with `reason`: their audit writes
+   * start at once, so that `settle` waits for them.
+   */
+  endAll(reason: ExecEnd): void {
+    for (const relay of [...this.relays.values()]) relay.end(reason, null);
   }
 
   /** Waits for the audit writes of the sessions that ended, at most `ms`. */

@@ -42,7 +42,14 @@ afterEach(async () => {
 });
 
 async function world(
-  options: { user?: string; denied?: boolean; signedOut?: boolean; slow?: Promise<void> } = {},
+  options: {
+    user?: string;
+    denied?: boolean;
+    signedOut?: boolean;
+    slow?: Promise<void>;
+    slowAccess?: Promise<void>;
+    trust?: string;
+  } = {},
 ) {
   const published: DomainEvent[] = [];
   const registry = new ExecSessionRegistry(
@@ -72,7 +79,9 @@ async function world(
   );
   const socket = new ExecSocket(
     {} as HttpAdapterHost,
-    { get: () => PUBLIC } as unknown as AppConfig,
+    {
+      get: (key: string) => (key === 'TRUST_PROXY' ? (options.trust ?? 'none') : PUBLIC),
+    } as unknown as AppConfig,
     {
       authenticate: async () => {
         await options.slow;
@@ -83,7 +92,10 @@ async function world(
       assertLive: () => Promise.resolve(),
     } as unknown as SessionCommands,
     {
-      require: () => (options.denied ? Promise.reject(new Error('denied')) : Promise.resolve()),
+      require: async () => {
+        await options.slowAccess;
+        if (options.denied) throw new Error('denied');
+      },
     } as unknown as TenantAccess,
     registry,
   );
@@ -95,6 +107,7 @@ async function world(
   return {
     registry,
     published,
+    socket,
     url: `ws://127.0.0.1:${String(port)}/api/v1/exec/${SESSION}`,
     port,
   };
@@ -254,6 +267,43 @@ describe('the WebSocket handshake', () => {
     const w = await world({ signedOut: true });
     for (let i = 0; i < 20; i++) expect(await connect(w.url, allowed)).toBe(401);
     expect(await connect(w.url, allowed)).toBe(429);
+  });
+
+  it('counts failed joins by the client a trusted proxy forwarded, not by the proxy', async () => {
+    const w = await world({ signedOut: true, trust: 'loopback' });
+    const from = (client: string) => ({ ...allowed, 'X-Forwarded-For': client });
+    for (let i = 0; i < 20; i++) expect(await connect(w.url, from('203.0.113.5'))).toBe(401);
+    expect(await connect(w.url, from('203.0.113.5'))).toBe(429);
+    // Another browser behind the same proxy is not refused for it.
+    expect(await connect(w.url, from('203.0.113.6'))).toBe(401);
+  });
+
+  it('refuses over HTTP a join that another one overtook while its access was checked', async () => {
+    let release = (): void => undefined;
+    const slowAccess = new Promise<void>((resolve) => (release = resolve));
+    const w = await world({ slowAccess });
+    const first = connect(w.url, allowed);
+    const second = connect(w.url, allowed);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    release();
+    const answers = await Promise.all([first, second]);
+    expect(answers.filter((answer) => typeof answer !== 'number')).toHaveLength(1);
+    expect(answers.filter((answer) => answer === 404)).toHaveLength(1);
+    for (const answer of answers) if (typeof answer !== 'number') answer.terminate();
+  });
+
+  it('ends every session at shutdown, joined or not, and waits for its audit', async () => {
+    const w = await world();
+    const ws = await connect(w.url, allowed);
+    if (typeof ws === 'number') throw new Error(`refused: ${String(ws)}`);
+    const unjoined = await world();
+    await Promise.all([w.socket.onModuleDestroy(), unjoined.socket.onModuleDestroy()]);
+    expect(w.published.at(-1)).toMatchObject({
+      type: 'exec.session.ended',
+      payload: { reason: 'shutdown' },
+    });
+    expect(unjoined.published.at(-1)).toMatchObject({ payload: { reason: 'shutdown' } });
+    expect(w.registry.pending(SESSION)).toBeUndefined();
   });
 
   it('tells the browser why its session ended', async () => {
