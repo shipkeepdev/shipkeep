@@ -61,12 +61,17 @@ const batchOf = (...lines: { container: string; line: string; stderr?: boolean }
 describe('log ingestion (ADR 0029)', () => {
   it('registers only with a store', () => {
     expect(world(null).batches.accepting).toBe(false);
-    expect(world({ write: () => Promise.resolve() }).batches.accepting).toBe(true);
+    expect(
+      world({ write: () => Promise.resolve(), query: () => Promise.resolve([]) }).batches.accepting,
+    ).toBe(true);
   });
 
   it('writes the node lines with the allocation labels, and drops the others', async () => {
     const written: LogRecord[][] = [];
-    const w = world({ write: (records) => (written.push([...records]), Promise.resolve()) });
+    const w = world({
+      write: (records) => (written.push([...records]), Promise.resolve()),
+      query: () => Promise.resolve([]),
+    });
     await w.ingest.record(
       node,
       batchOf(
@@ -81,7 +86,7 @@ describe('log ingestion (ADR 0029)', () => {
     expect(written).toEqual([
       [
         {
-          _time: NOW.toISOString(),
+          _time: '2026-11-24T12:00:00.000000000Z',
           _msg: 'ready',
           org: 'o1',
           project: 'p',
@@ -92,7 +97,7 @@ describe('log ingestion (ADR 0029)', () => {
           stream: 'stdout',
         },
         {
-          _time: NOW.toISOString(),
+          _time: '2026-11-24T12:00:00.000000000Z',
           _msg: 'oops',
           org: 'o1',
           project: 'p',
@@ -107,7 +112,7 @@ describe('log ingestion (ADR 0029)', () => {
   });
 
   it('charges a node in bytes before any lookup, even for lines it drops', async () => {
-    const w = world({ write: () => Promise.resolve() });
+    const w = world({ write: () => Promise.resolve(), query: () => Promise.resolve([]) });
     // 8192 characters of two bytes each: 16 KiB, for a container that is not the node's.
     const wide = 'é'.repeat(8192);
     for (let i = 0; i < 300; i++)
@@ -117,7 +122,10 @@ describe('log ingestion (ADR 0029)', () => {
 
   it('drops an entry whose stream is neither stdout nor stderr', async () => {
     const written: LogRecord[][] = [];
-    const w = world({ write: (records) => (written.push([...records]), Promise.resolve()) });
+    const w = world({
+      write: (records) => (written.push([...records]), Promise.resolve()),
+      query: () => Promise.resolve([]),
+    });
     const batch = batchOf({ container: 'sk-web-r1-0', line: 'kept' });
     batch.entries.push(
       create(LogEntrySchema, {
@@ -132,12 +140,15 @@ describe('log ingestion (ADR 0029)', () => {
   });
 
   it('makes a node past its rate wait before writing, and fails when the store does', async () => {
-    const w = world({ write: () => Promise.resolve() });
+    const w = world({ write: () => Promise.resolve(), query: () => Promise.resolve([]) });
     const big = 'x'.repeat(16 * 1024);
     for (let i = 0; i < 300; i++)
       await w.ingest.record(node, batchOf({ container: 'sk-web-r1-0', line: big }), NOW);
     expect(w.slept.length).toBeGreaterThan(0);
-    const failing = world({ write: () => Promise.reject(new Error('down')) });
+    const failing = world({
+      write: () => Promise.reject(new Error('down')),
+      query: () => Promise.resolve([]),
+    });
     await expect(
       failing.batches.deliver(node, batchOf({ container: 'sk-web-r1-0', line: 'x' })),
     ).rejects.toThrow();
