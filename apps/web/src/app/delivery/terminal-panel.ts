@@ -82,6 +82,9 @@ type State = 'idle' | 'connecting' | 'open' | 'ended';
               <span class="text-rose">$ </span>
             }
             {{ l.text }}
+            @if (l.truncated) {
+              <span class="text-dim"> …</span>
+            }
           </div>
         }
         @if (state() === 'open') {

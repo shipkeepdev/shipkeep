@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   appendLine,
   appendOutput,
+  MAX_LINE_CHARS,
+  MAX_SCREEN_CHARS,
   MAX_TERMINAL_LINES,
   plain,
   serverMessage,
@@ -48,5 +50,36 @@ describe('the terminal view', () => {
     expect(serverMessage('{"type":"end","reason":"time_limit"}')).toEqual({ reason: 'time_limit' });
     for (const data of ['not json', '{"type":"exit","code":"3"}', '{"type":"other"}', '[]', 'null'])
       expect(serverMessage(data)).toBeUndefined();
+  });
+
+  it('bounds a line that never ends, keeping its start, marked truncated', () => {
+    let screen: ReturnType<typeof appendOutput> = empty;
+    // 32 KiB at a time without a newline, as the audit's probe sent (#477).
+    for (let i = 0; i < 64; i++) screen = appendOutput(screen, 'stdout', 'x'.repeat(32 * 1024));
+    expect(screen.lines).toHaveLength(1);
+    expect(screen.lines[0]?.text).toHaveLength(MAX_LINE_CHARS);
+    expect(screen.lines[0]?.truncated).toBe(true);
+    // The rest of that line is dropped up to its newline; the next line starts afresh.
+    screen = appendOutput(screen, 'stdout', 'tail\nnext\n');
+    expect(screen.lines.map((l) => [l.text.slice(0, 4), l.truncated ?? false])).toEqual([
+      ['xxxx', true],
+      ['next', false],
+    ]);
+  });
+
+  it('never cuts a character in two', () => {
+    const screen = appendOutput(empty, 'stdout', `${'x'.repeat(MAX_LINE_CHARS - 1)}🚀end\n`);
+    expect(screen.lines[0]?.text).toBe('x'.repeat(MAX_LINE_CHARS - 1));
+  });
+
+  it('bounds the whole screen in characters as well as in lines', () => {
+    let screen: ReturnType<typeof appendOutput> = empty;
+    const line = `${'y'.repeat(MAX_LINE_CHARS - 1)}\n`;
+    for (let i = 0; i < 1000; i++) screen = appendOutput(screen, 'stdout', line);
+    const total = screen.lines.reduce((sum, l) => sum + l.text.length, 0);
+    expect(total).toBeLessThanOrEqual(MAX_SCREEN_CHARS);
+    expect(screen.lines.length).toBeLessThan(1000);
+    // The newest lines are the ones kept.
+    expect(screen.lines.at(-1)?.text).toBe('y'.repeat(MAX_LINE_CHARS - 1));
   });
 });
