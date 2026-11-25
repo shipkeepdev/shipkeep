@@ -201,6 +201,9 @@ export class ExecRelay {
     // An exit already received is the session's end, whatever closes it during its delivery.
     if (this.outcome) ({ reason, exitCode } = this.outcome);
     this.ended = reason;
+    // Input not sent yet is dropped, whatever the end: a person who lost access or signed out,
+    // or a browser that left, sends nothing more, and the agent's next frame stops the command.
+    this.waiting.length = 0;
     clearTimeout(this.timer);
     clearTimeout(this.limit);
     this.settle?.(false);
