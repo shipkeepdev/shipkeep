@@ -106,7 +106,7 @@ func (s *Shipper) Run(ctx context.Context, stream Stream, epoch uint64) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		case err := <-acked:
-			return err
+			return stopped(ctx, err)
 		}
 		if err := stream.Send(&agentv1.ShipLogsRequest{Frame: &agentv1.ShipLogsRequest_Batch{Batch: &agentv1.LogBatch{Seq: seq, Entries: pending}}}); err != nil {
 			return fmt.Errorf("send log batch: %w", err)
@@ -119,16 +119,16 @@ func (s *Shipper) Run(ctx context.Context, stream Stream, epoch uint64) error {
 		case <-ctx.Done():
 			return nil
 		case err := <-acked:
-			return err
+			return stopped(ctx, err)
 		case <-flush.C:
 			if err := send(); err != nil {
-				return err
+				return stopped(ctx, err)
 			}
 		case next := <-lines:
 			cost := proto.Size(next.entry) + 8
 			if len(pending) == MaxEntries || size+cost > MaxBatch {
 				if err := send(); err != nil {
-					return err
+					return stopped(ctx, err)
 				}
 			}
 			pending = append(pending, next.entry)
@@ -262,4 +262,15 @@ func (s *Shipper) every(value, fallback time.Duration) time.Duration {
 		return value
 	}
 	return fallback
+}
+
+// stopped is what Run returns when the stream stops: nothing when its context ended, since the
+// stream then fails with it, and the stream's error otherwise.
+func stopped(ctx context.Context, err error) error {
+	select {
+	case <-ctx.Done():
+		return nil
+	default:
+		return err
+	}
 }
