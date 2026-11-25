@@ -245,42 +245,79 @@ describe('deleting an application over HTTP', () => {
       await fixture.get(target.application, 'owner').expect(200);
     };
 
-    it('keeps the application and its domain until its cleanup is confirmed', async () => {
+    /** The removals the deletions asked for, oldest first. */
+    const requested = async (applicationId: string) =>
+      (
+        await admin.query<{ id: string; kind: string; state: string; key: string }>(
+          `SELECT id, kind, state, idempotency_key AS key FROM agent_actions
+           WHERE application_id = $1 AND idempotency_key LIKE 'c:%' ORDER BY created_at, id`,
+          [applicationId],
+        )
+      ).rows;
+
+    it('asks the server to remove what it may hold, and deletes once it confirmed', async () => {
       const target = await failedFirst('leftover-api', 'leftover.example.com');
-      // Queued, under way, failed or of unknown outcome: the container may still be there.
-      for (const state of ['queued', 'running', 'failed', 'expired', 'cancelled']) {
-        await set(target.cleanup, state);
-        await kept(target, 'leftover-api', 'leftover.example.com');
-      }
-      // A route change that never ran may still serve the domain.
-      const route = await admin.query<{ id: string }>(
-        `INSERT INTO agent_actions (id, organization_id, node_id, kind, idempotency_key, payload_enc,
-           lease_epoch, deadline, state, attempts, application_id, deployment_id, created_at, updated_at)
-         SELECT gen_random_uuid(), organization_id, node_id, 'removeRoute',
-           idempotency_key || '-unroute', payload_enc, lease_epoch, deadline, 'expired', 1,
-           application_id, deployment_id, now(), now()
-         FROM agent_actions WHERE id = $1 RETURNING id`,
-        [target.cleanup],
-      );
-      await set(target.cleanup, 'succeeded');
+      // Its cleanup is still queued: nothing more is asked, the deletion waits.
       await kept(target, 'leftover-api', 'leftover.example.com');
-      // Settled: the route removal succeeded, the container is confirmed gone.
-      await set(route.rows[0]?.id ?? '', 'succeeded');
+      expect(await requested(target.id)).toEqual([]);
+      // The cleanup failed: the deletion asks for the removal again, under a new key.
+      await set(target.cleanup, 'failed');
+      await kept(target, 'leftover-api', 'leftover.example.com');
+      const first = await requested(target.id);
+      expect(first).toMatchObject([{ kind: 'removeContainer', state: 'queued' }]);
+      expect(first[0]?.key).toMatch(/^c:[0-9a-f-]{36}:remove:sk-[a-z0-9-]+$/);
+      // While it is queued, a new attempt asks nothing more.
+      await kept(target, 'leftover-api', 'leftover.example.com');
+      expect(await requested(target.id)).toHaveLength(1);
+      // It expired on the server: asked once more.
+      await set(first[0]?.id ?? '', 'expired');
+      await kept(target, 'leftover-api', 'leftover.example.com');
+      const second = await requested(target.id);
+      expect(second).toHaveLength(2);
+      // Confirmed gone: the deletion goes through, and the domain is free.
+      await set(second[1]?.id ?? '', 'succeeded');
       await remove(target, await issue(target, 'leftover-api')).expect(204);
       expect(await count('domains', target.id)).toBe(0);
       await create('leftover-api-claimer', 'leftover.example.com');
+      const events = await auditLog().findMany({
+        where: { targetId: target.id, action: 'application.cleanup_requested' },
+      });
+      expect(events).toHaveLength(2);
     });
 
-    it('keeps an application whose created container no removal confirmed', async () => {
+    it('asks for the route removal when the last route change may still serve', async () => {
+      const target = await failedFirst('routed-api', 'routed.example.com');
+      await set(target.cleanup, 'succeeded');
+      // A route the server installed, which no removal followed.
+      await admin.query(
+        `INSERT INTO agent_actions (id, organization_id, node_id, kind, idempotency_key, payload_enc,
+           lease_epoch, deadline, state, attempts, application_id, deployment_id, created_at, updated_at)
+         SELECT gen_random_uuid(), organization_id, node_id, 'upsertRoute',
+           idempotency_key || '-route', payload_enc, lease_epoch, deadline, 'succeeded', 1,
+           application_id, deployment_id, now(), now()
+         FROM agent_actions WHERE id = $1`,
+        [target.cleanup],
+      );
+      await kept(target, 'routed-api', 'routed.example.com');
+      const asked = await requested(target.id);
+      expect(asked).toMatchObject([{ kind: 'removeRoute', state: 'queued' }]);
+      await set(asked[0]?.id ?? '', 'succeeded');
+      await remove(target, await issue(target, 'routed-api')).expect(204);
+    });
+
+    it('asks for the removal of a created container that no removal confirmed', async () => {
       const target = await failedFirst('orphan-api', 'orphan.example.com');
-      // No removal at all, for a container created or whose creation may have run.
       await admin.query('DELETE FROM agent_actions WHERE id = $1', [target.cleanup]);
       await kept(target, 'orphan-api', 'orphan.example.com');
-      await set(target.creation, 'expired');
-      await kept(target, 'orphan-api', 'orphan.example.com');
-      // A creation that never reached the server left nothing behind.
-      await set(target.creation, 'expired', 0);
+      const asked = await requested(target.id);
+      expect(asked).toMatchObject([{ kind: 'removeContainer' }]);
+      await set(asked[0]?.id ?? '', 'succeeded');
       await remove(target, await issue(target, 'orphan-api')).expect(204);
+      // A creation that never reached the server left nothing behind.
+      const unsent = await failedFirst('unsent-api', 'unsent.example.com');
+      await admin.query('DELETE FROM agent_actions WHERE id = $1', [unsent.cleanup]);
+      await set(unsent.creation, 'expired', 0);
+      await remove(unsent, await issue(unsent, 'unsent-api')).expect(204);
     });
 
     it('lets a removed server stop holding the deletion', async () => {

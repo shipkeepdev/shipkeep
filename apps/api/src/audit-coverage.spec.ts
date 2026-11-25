@@ -95,7 +95,7 @@ const AUDITED: Readonly<Record<string, readonly string[]>> = {
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/maintenance/leave':
     ['deployment.queued'],
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/delete':
-    ['application.deleted'],
+    ['application.deleted', 'application.cleanup_requested'],
   'POST /webhooks/github/:organizationId': [
     'github.installation_added',
     'github.installation_removed',

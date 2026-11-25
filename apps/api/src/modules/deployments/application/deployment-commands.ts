@@ -1,4 +1,7 @@
+import { create } from '@bufbuild/protobuf';
 import { Inject, Injectable } from '@nestjs/common';
+import { RemoveContainerSchema, RemoveRouteSchema } from '@shipkeep/proto-ts';
+import { v7 as uuidv7 } from 'uuid';
 import {
   ConflictError,
   createEvent,
@@ -64,7 +67,9 @@ import {
   ACTION_HISTORY,
   DEPLOYMENT_STEPS,
   type DeploymentStepStore,
+  ACTION_QUEUE,
   type ActionHistory,
+  type ActionQueue,
   DEPLOYMENT_STORE,
   DEPLOYMENT_TRANSACTION,
   DEPLOYMENT_WAKER,
@@ -73,6 +78,7 @@ import {
   type DeploymentWaker,
   OBSERVATION_STORE,
   type ObservationStore,
+  type Leftovers,
   PIPELINE_STORE,
   type PipelineStore,
 } from './ports';
@@ -87,6 +93,9 @@ export const NODE_REPLICAS = 200;
  * it forward is M3.4c. Deploying and cancelling need `deploy.run`; reading needs
  * `environment.read`.
  */
+/** How long a server has to remove what a deletion asked for (#474) before it is asked again. */
+const CLEANUP_DEADLINE_MS = 60 * 60_000;
+
 @Injectable()
 export class DeploymentCommands {
   constructor(
@@ -104,6 +113,7 @@ export class DeploymentCommands {
     private readonly confirmations: ConfirmationVerifier,
     private readonly events: DomainEventBus,
     @Inject(CONTROL_PLANE_HOST) private readonly controlPlaneHost: string,
+    @Inject(ACTION_QUEUE) private readonly queue: ActionQueue,
   ) {}
 
   deploy(
@@ -356,19 +366,19 @@ export class DeploymentCommands {
    * confirmed that its containers and routes are gone (#474). Its releases, deployments and
    * claimed domains go with it; the audit log and the servers' action history stay.
    */
-  remove(
+  async remove(
     context: SecurityContext,
     target: ApplicationTarget,
     applicationId: string,
     confirmation: Secret,
     now = new Date(),
   ): Promise<void> {
-    return this.scoped(
+    const outcome = await this.scoped(
       context,
       'environment.update',
       target,
       applicationId,
-      async (application) => {
+      async (application): Promise<'deleted' | 'cleanup_requested'> => {
         // Locked first: a deployment queued at this moment is then either seen or refused.
         if (!(await this.applications.lock(application))) throw new NotFoundError('application');
         const running = await this.store.active(application.id);
@@ -376,7 +386,13 @@ export class DeploymentCommands {
         if ((await this.observations.forApplication(application.id)).length)
           throw applicationRunning();
         // Its domains go with it: not while a server may still route them to its containers.
-        if (await this.store.cleanupPending(application)) throw applicationCleanupPending();
+        // What a server may still hold is asked for removal, and the deletion waits for it.
+        const left = await this.store.leftovers(application);
+        if (left.underway) throw applicationCleanupPending();
+        if (left.containers.length || left.routes.length) {
+          await this.requestCleanup(context, application, left, now);
+          return 'cleanup_requested';
+        }
         const confirmationId = await this.confirmations.consume(
           confirmation,
           {
@@ -394,8 +410,63 @@ export class DeploymentCommands {
             confirmationId,
           }),
         ]);
+        return 'deleted';
       },
     );
+    // Committed with the removals it asked for: the deletion itself is refused for now.
+    if (outcome === 'cleanup_requested') throw applicationCleanupPending();
+  }
+
+  /**
+   * Asks each server for the removal of what it may still hold of the application (#474), under
+   * new keys: a removal that failed or expired is asked again. A container no action names cannot
+   * be asked for: it holds the deletion until the server is removed. Audited as
+   * `application.cleanup_requested`.
+   */
+  private async requestCleanup(
+    context: SecurityContext,
+    application: Application,
+    left: Leftovers,
+    now: Date,
+  ): Promise<void> {
+    const request = uuidv7();
+    const deadline = new Date(now.getTime() + CLEANUP_DEADLINE_MS);
+    const actor = resourceActor(context);
+    const origin = (deploymentId: string) => ({ applicationId: application.id, deploymentId });
+    for (const leftover of left.containers)
+      if (leftover.container)
+        await this.queue.enqueue({
+          organizationId: application.organizationId,
+          nodeId: leftover.nodeId,
+          idempotencyKey: `c:${request}:remove:${leftover.container}`,
+          action: {
+            case: 'removeContainer',
+            value: create(RemoveContainerSchema, { containerId: leftover.container }),
+          },
+          deadline,
+          actor,
+          origin: origin(leftover.deploymentId),
+        });
+    for (const route of left.routes)
+      await this.queue.enqueue({
+        organizationId: application.organizationId,
+        nodeId: route.nodeId,
+        idempotencyKey: `c:${request}:unroute:${route.nodeId}`,
+        action: {
+          case: 'removeRoute',
+          value: create(RemoveRouteSchema, { routeId: application.id }),
+        },
+        deadline,
+        actor,
+        origin: origin(route.deploymentId),
+      });
+    await this.events.publish([
+      this.event('application.cleanup_requested', context, application, application.id, now, {
+        name: application.name,
+        containers: left.containers.length,
+        routes: left.routes.length,
+      }),
+    ]);
   }
 
   /** Cancels an unfinished deployment; the pipeline (M3.4c) restores routing if needed. */
@@ -587,7 +658,12 @@ export class DeploymentCommands {
   }
 
   private event(
-    type: 'release.created' | 'deployment.queued' | 'deployment.cancelled' | 'application.deleted',
+    type:
+      | 'release.created'
+      | 'deployment.queued'
+      | 'deployment.cancelled'
+      | 'application.deleted'
+      | 'application.cleanup_requested',
     context: SecurityContext,
     application: Application,
     id: string,

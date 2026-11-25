@@ -692,12 +692,11 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - While the application is in maintenance, a deployment and a rollback are refused with 409 `application_in_maintenance`, so no new release starts behind the page unseen. A stop is allowed.
   - `POST …/applications/{applicationId}/delete` (204, `environment.update`) deletes an application. Destructive: the body carries a `confirmation` token for `application.delete` on this application (section 3.6), spent in the same transaction, and the command is audited as `application.deleted` with the confirmation id.
     - Refused with 409 `application_running` while a replica is placed and 409 `deployment_in_progress` while a deployment runs, so no container is left on a server: stop the application first. A refusal does not spend the confirmation.
-    - Refused with 409 `application_cleanup_pending` while a server that is not removed has not confirmed that the application's containers and routes are gone (#474), since its domains go with it and a route may still serve them. That covers:
-      - a container or route action still under way;
-      - a route change that ended without effect and was not followed by a successful one on that server (as for releasing a domain, #302);
-      - a container created, or sent for creation with an unknown outcome, or whose removal did not succeed, with no later successful removal of that container on that server.
+    - Refused with 409 `application_cleanup_pending` while a server that is not removed may still hold the application's containers or routes (#474), since its domains go with it and a route may still serve them:
+      - while one of its container, route or release-task actions is still under way, nothing more is asked;
+      - otherwise, for each container that may be there (created, or sent and not undone, or whose removal was sent and did not succeed, with no later successful removal of that container on that server), and each server whose last route change that may have run is not a successful removal, the deletion asks that server for the removal under a new key, with an hour to do it, audited as `application.cleanup_requested`, and answers 409. A removal that fails or expires is asked again by the next attempt.
 
-      A creation that never reached the server holds nothing. For a server that will not come back, remove it (a confirmed action): its actions then hold nothing either.
+      An action that never reached its server did nothing. Once each server confirms, the deletion goes through. A server that will not come back is removed (a confirmed action), and its actions then hold nothing.
 
     - The application's row is locked first, so a deployment queued at the same moment is either seen or refused.
     - Its releases, deployments, stopped allocations and claimed domains are deleted with it by cascade. The audit log and the servers' action history stay; the history loses only its link to the application.

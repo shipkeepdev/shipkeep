@@ -99,7 +99,7 @@ export function applicationRunning(): ConflictError {
 export function applicationCleanupPending(): ConflictError {
   return new ConflictError(
     'application_cleanup_pending',
-    "A server has not confirmed yet that this application's containers and routes are gone. Retry once it has, or remove that server.",
+    "A server has not confirmed yet that this application's containers and routes are gone; it has been asked to remove them. Retry in a moment, or remove that server.",
   );
 }
 
