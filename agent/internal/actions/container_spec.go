@@ -37,7 +37,10 @@ const (
 	// ProbePortLabel records the one TCP port the spec declares, the application's own. An HTTP
 	// health probe uses it rather than guessing among the ports the image also exposes (a whoami
 	// image exposes 80 while the application listens on 8080). Only the agent sets it.
-	ProbePortLabel  = "sk.probe_port"
+	ProbePortLabel = "sk.probe_port"
+	// SecretEnvLabel names the container's secret environment variables, comma-separated, so that
+	// its log lines can be redacted (ADR 0029). Names are not secret; values never leave Docker.
+	SecretEnvLabel  = "sk.secret_env" //nolint:gosec // a label name, not a credential
 	minDiskBytes    = 64 << 20
 	maxDiskBytes    = 1 << 40
 	maxWorkingDir   = 1024
@@ -82,6 +85,9 @@ func containerConfig(spec *agentv1.ContainerSpec, workloads Workloads) (string, 
 		return "", docker.ContainerConfig{}, err
 	}
 	labels[identityLabel] = spec.GetName()
+	if names := secretNames(spec); names != "" {
+		labels[SecretEnvLabel] = names
+	}
 	disk, err := diskBudget(spec.GetResources())
 	if err != nil {
 		return "", docker.ContainerConfig{}, err
@@ -162,6 +168,17 @@ func argv(command []string) ([]string, error) {
 		}
 	}
 	return slices.Clone(command), nil
+}
+
+// secretNames is the sorted, comma-separated list of the spec's secret variables, which
+// environment has validated.
+func secretNames(spec *agentv1.ContainerSpec) string {
+	names := make([]string, 0, len(spec.GetSecrets()))
+	for _, secret := range spec.GetSecrets() {
+		names = append(names, secret.GetName())
+	}
+	slices.Sort(names)
+	return strings.Join(names, ",")
 }
 
 func environment(spec *agentv1.ContainerSpec) ([]string, error) {

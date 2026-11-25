@@ -23,6 +23,7 @@ import (
 	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
 	"github.com/shipkeepdev/shipkeep/agent/internal/gateway"
 	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
+	"github.com/shipkeepdev/shipkeep/agent/internal/logship"
 	"github.com/shipkeepdev/shipkeep/agent/internal/metrics"
 	"github.com/shipkeepdev/shipkeep/agent/internal/reporting"
 	"github.com/shipkeepdev/shipkeep/agent/internal/upgrade"
@@ -150,6 +151,7 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		Connected: boot.connected,
 		Sent:      restart.delivered,
 		Streams:   streams,
+		Logs:      shipLogs(streams, &logship.Shipper{Engine: engine, Cursors: store, Logger: a.logger}, a.logger),
 		Report: func(ctx context.Context) (*agentv1.StateReport, error) {
 			reasons, err := store.StopReasons(ctx)
 			if err != nil {
@@ -166,6 +168,28 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 		},
 	}
 	return runner.Run(ctx, bundle)
+}
+
+// shipLogs ships logs for one gateway session, on a stream of their own (ADR 0029). A stream that
+// fails is opened again after a pause: the shipper resends from each container's cursor.
+func shipLogs(streams *gateway.Streams, shipper *logship.Shipper, logger *slog.Logger) func(context.Context, uint64) {
+	return func(ctx context.Context, epoch uint64) {
+		for ctx.Err() == nil {
+			streamCtx, cancel := context.WithCancel(ctx)
+			stream, err := streams.OpenLogs(streamCtx)
+			if err == nil {
+				err = shipper.Run(streamCtx, stream, epoch)
+			}
+			cancel()
+			if err != nil && ctx.Err() == nil {
+				logger.Warn("log stream ended; opening it again", "error", err)
+			}
+			select {
+			case <-ctx.Done():
+			case <-time.After(5 * time.Second):
+			}
+		}
+	}
 }
 
 // execStreams opens exec sessions' streams on the gateway session's connection.
