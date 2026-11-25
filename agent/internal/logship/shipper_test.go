@@ -18,6 +18,9 @@ type fakeEngine struct {
 	lines []docker.LogLine
 	mu    sync.Mutex
 	since []time.Time
+	// labels and env replace the container's defaults when set.
+	labels map[string]string
+	env    []string
 }
 
 func (f *fakeEngine) ManagedContainers(context.Context) ([]docker.ContainerSummary, error) {
@@ -29,6 +32,12 @@ func (f *fakeEngine) Container(_ context.Context, id string) (docker.Container, 
 	container.ID = id
 	container.Config.Labels = map[string]string{NameLabel: "sk-web-r1-0", SecretEnvLabel: "TOKEN"}
 	container.Config.Env = []string{"TOKEN=sk_fake_abcdefgh"}
+	if f.labels != nil {
+		container.Config.Labels = f.labels
+	}
+	if f.env != nil {
+		container.Config.Env = f.env
+	}
 	return container, nil
 }
 
@@ -208,5 +217,62 @@ func TestShipperStopsOnAnAcknowledgementOutOfOrder(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("the shipper went on")
+	}
+}
+
+// shipped runs the shipper over one container's lines and returns what it sent.
+func shipped(t *testing.T, labels map[string]string, env []string, lines ...docker.LogLine) []*agentv1.LogEntry {
+	t.Helper()
+	shipper, engine, _, stream, ctx, cancel := world(0)
+	engine.labels, engine.env, engine.lines = labels, env, lines
+	done := make(chan error, 1)
+	go func() { done <- shipper.Run(ctx, stream, 1) }()
+	eventually(t, func() bool { return len(stream.batches()) == 1 })
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	return stream.batches()[0].GetEntries()
+}
+
+func output(text string, truncated bool) docker.LogLine {
+	return docker.LogLine{Stream: docker.Stdout, Time: base, Resume: base, Text: text, Truncated: truncated}
+}
+
+// A container created before its secret names were recorded has no label: any value may be a
+// secret, so all of them are redacted, from its backlog as from new lines (#470).
+func TestShipperRedactsEveryValueOfAContainerWithoutTheLabel(t *testing.T) {
+	entries := shipped(t, map[string]string{NameLabel: "sk-web-r1-0"}, []string{"TOKEN=sk_fake_upgrade_secret", "MODE=production"},
+		output("token=sk_fake_upgrade_secret mode=production", false))
+	if got := entries[0].GetLine(); got != "token=[redacted] mode=[redacted]" {
+		t.Fatalf("line %q", got)
+	}
+}
+
+// An empty label is known: the container has no secret, and its values are shipped as written.
+func TestShipperKeepsTheValuesOfAContainerWithAnEmptyLabel(t *testing.T) {
+	entries := shipped(t, map[string]string{NameLabel: "sk-web-r1-0", SecretEnvLabel: ""}, []string{"MODE=production"},
+		output("mode=production", false))
+	if got := entries[0].GetLine(); got != "mode=production" {
+		t.Fatalf("line %q", got)
+	}
+}
+
+// Each line of a multiline secret is redacted on its own line of output, CRLF included (#471).
+func TestShipperRedactsEachLineOfAMultilineSecret(t *testing.T) {
+	entries := shipped(t, map[string]string{NameLabel: "sk-web-r1-0", SecretEnvLabel: "KEY"}, []string{"KEY=fake-key-line-one\r\nfake-key-line-two"},
+		output("fake-key-line-one\r", false), output("fake-key-line-two", false))
+	if entries[0].GetLine() != Redacted+"\r" || entries[1].GetLine() != Redacted {
+		t.Fatalf("lines %q %q", entries[0].GetLine(), entries[1].GetLine())
+	}
+}
+
+// A line cut at its bound that ends inside a secret loses that start too, even when a shorter
+// secret sits inside it (#471).
+func TestShipperRedactsTheStartOfASecretAtTheEndOfACutLine(t *testing.T) {
+	entries := shipped(t, map[string]string{NameLabel: "sk-web-r1-0", SecretEnvLabel: "LONG,SHORT"}, []string{"LONG=sk_fake_long_secret_value", "SHORT=sk_fake_"},
+		output(strings.Repeat("x", 32)+"sk_fake_long_sec", true))
+	if got := entries[0].GetLine(); got != strings.Repeat("x", 32)+Redacted || !entries[0].GetTruncated() {
+		t.Fatalf("line %q truncated %v", got, entries[0].GetTruncated())
 	}
 }

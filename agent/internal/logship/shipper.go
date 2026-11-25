@@ -224,13 +224,24 @@ func (s *Shipper) followOne(ctx context.Context, id string, lines chan<- line) e
 	if err != nil {
 		return err
 	}
-	redactor := NewRedactor(container.Config.Env, container.Config.Labels[SecretEnvLabel])
+	names, known := container.Config.Labels[SecretEnvLabel]
+	redactor := NewRedactor(container.Config.Env, names)
+	if !known {
+		// Created before its secret names were recorded: any value may be a secret.
+		redactor = LegacyRedactor(container.Config.Env)
+		s.Logger.Info("container predates its secret names: every environment value is redacted from its logs until it is redeployed", "container", name)
+	}
 	err = s.Engine.FollowLogs(ctx, id, since, func(output docker.LogLine) error {
 		stream := agentv1.LogStream_LOG_STREAM_STDOUT
 		if output.Stream == docker.Stderr {
 			stream = agentv1.LogStream_LOG_STREAM_STDERR
 		}
-		text := redactor.Redact(output.Text)
+		text := output.Text
+		if output.Truncated {
+			// Cut at its bound, the line may end with the start of a secret.
+			text = redactor.RedactCutEnd(text)
+		}
+		text = redactor.Redact(text)
 		entry := &agentv1.LogEntry{Container: name, Stream: stream, Time: timestamppb.New(output.Time), Line: cut(text), Truncated: output.Truncated || len(text) > docker.MaxLogLine}
 		select {
 		case lines <- line{container: name, entry: entry, at: output.Resume}:

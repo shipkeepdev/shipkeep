@@ -339,8 +339,12 @@ func TestCreateContainerLabelsTheSecretNamesOnly(t *testing.T) {
 			t.Fatalf("label %s carries a secret value", key)
 		}
 	}
+	// Without secrets the label is still set, empty: its absence means a container that predates
+	// it, whose values are all redacted (#470).
 	spec.Secrets = nil
 	if _, config, _ := containerConfig(spec, Workloads{}); config.Labels[SecretEnvLabel] != "" {
-		t.Fatal("a container without secrets got the label")
+		t.Fatalf("label %q", config.Labels[SecretEnvLabel])
+	} else if _, set := config.Labels[SecretEnvLabel]; !set {
+		t.Fatal("a container without secrets has no label")
 	}
 }
