@@ -230,7 +230,9 @@ export class AgentGateway implements OnModuleDestroy {
               ? Code.Unauthenticated
               : error.kind === 'conflict'
                 ? Code.AlreadyExists
-                : Code.InvalidArgument,
+                : error.kind === 'unavailable'
+                  ? Code.Unavailable
+                  : Code.InvalidArgument,
           );
         throw new ConnectError('agent gateway request failed', Code.Internal);
       }

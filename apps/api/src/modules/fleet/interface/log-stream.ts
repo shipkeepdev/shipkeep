@@ -75,11 +75,26 @@ export class LogStreams {
         } else {
           if (frame.case !== 'batch' || frame.value.seq !== expected)
             throw new ConnectError('log batch out of order', Code.InvalidArgument);
+          const seen = epoch;
           try {
-            await this.batches.deliver(node, frame.value);
-          } catch {
+            await this.batches.deliver(node, frame.value, {
+              signal,
+              // After a wait for its quota: a node revoked or a lease moved meanwhile writes nothing.
+              stillAllowed: async () => {
+                const now = BigInt((await this.authenticate.execute(node)).leaseEpoch);
+                if (now !== seen)
+                  throw new ConnectError('the lease epoch moved', Code.FailedPrecondition);
+              },
+            });
+          } catch (error: unknown) {
+            if (signal.aborted) throw ended(signal);
+            if (error instanceof ConnectError || error instanceof NodeAuthenticationError)
+              throw error;
             throw new ConnectError('log batch not kept', Code.Unavailable);
           }
+          // Ended while its batch was written: no acknowledgement, the agent sends it again from
+          // its cursor, and searches drop the repeated lines.
+          if (signal.aborted) throw ended(signal);
           yield create(ShipLogsResponseSchema, {
             frame: { case: 'ack', value: { seq: frame.value.seq } },
           });
@@ -97,4 +112,12 @@ export class LogStreams {
       // Do not await return() on an iterator blocked on a silent peer.
     }
   }
+}
+
+/** Why a stream ended, as its signal says: replaced, or its transport gone (the process stopping too). */
+function ended(signal: AbortSignal): ConnectError {
+  const reason: unknown = signal.reason;
+  return reason instanceof ConnectError
+    ? reason
+    : new ConnectError('log stream ended', Code.Canceled);
 }
