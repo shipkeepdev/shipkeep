@@ -228,6 +228,37 @@ describe('the control plane side of the time limit', () => {
     }
   });
 
+  it('keeps the exit it received when the time limit falls during its delivery', async () => {
+    vi.useFakeTimers();
+    try {
+      const w = world();
+      const s = session();
+      w.registry.add(s, NOW);
+      let delivered: () => void = () => undefined;
+      const slow = {
+        send: (frame: AgentFrame) => {
+          w.received.push(frame);
+          return frame.kind === 'exit'
+            ? new Promise<void>((resolve) => (delivered = resolve))
+            : Promise.resolve();
+        },
+        close: () => undefined,
+      };
+      const relay = w.registry.joinBrowser(s.id, USER, slow);
+      w.registry.joinAgent(s.id, node);
+      vi.advanceTimersByTime(s.endsAt.getTime() - NOW.getTime() + 29_000);
+      const exit = relay?.fromAgent({ kind: 'exit', code: 4 });
+      // The limit passes while the browser still receives the exit.
+      vi.advanceTimersByTime(2_000);
+      delivered();
+      await exit;
+      await vi.runAllTimersAsync();
+      expect(w.published[0]).toMatchObject({ payload: { reason: 'exited', exitCode: 4 } });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('counts the sessions being opened, so concurrent opens cannot pass the caps', () => {
     const w = world();
     const release = w.registry.reserve({ userId: USER, organizationId: ORG });

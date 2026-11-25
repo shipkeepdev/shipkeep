@@ -60,6 +60,10 @@ export class ExecSessions {
     now = new Date(),
   ): Promise<ExecSession> {
     const request = execRequest(input);
+    // Time passes while the request waits on the database: freshness and deadlines are decided
+    // when they are, measured on a monotonic clock from the request's own time.
+    const began = performance.now();
+    const at = () => new Date(now.getTime() + (performance.now() - began));
     const scope = {
       organizationId: target.organizationId,
       projectId: target.projectId,
@@ -85,6 +89,7 @@ export class ExecSessions {
             const application = await this.applications.find(target, applicationId);
             if (!application) throw new NotFoundError('application');
             const replicas = await this.observations.forApplication(application.id);
+            const decidedAt = at();
             // During a rollout two releases share a replica number: the running one, newest first.
             const replica = replicas
               .filter(
@@ -93,7 +98,7 @@ export class ExecSessions {
                   found.state === 'running' &&
                   // An old observation may describe a server that is down.
                   found.observedAt !== null &&
-                  now.getTime() - found.observedAt.getTime() <= EXEC_FRESH_MS,
+                  decidedAt.getTime() - found.observedAt.getTime() <= EXEC_FRESH_MS,
               )
               .sort((a, b) => b.releaseId.localeCompare(a.releaseId))
               .at(0);
@@ -113,8 +118,8 @@ export class ExecSessions {
               nodeId: replica.nodeId,
               container: replica.container,
               tty: request.tty,
-              attachBy: new Date(now.getTime() + EXEC_ATTACH_MS),
-              endsAt: new Date(now.getTime() + EXEC_ATTACH_MS + limitMs),
+              attachBy: new Date(decidedAt.getTime() + EXEC_ATTACH_MS),
+              endsAt: new Date(decidedAt.getTime() + EXEC_ATTACH_MS + limitMs),
             };
             await this.actions.enqueue({
               organizationId: application.organizationId,
@@ -157,7 +162,8 @@ export class ExecSessions {
             return session;
           });
           // Joinable once its action and audit event are committed.
-          this.registry.add(opened, now);
+          // Its timers are armed from the time they are, not from the request's.
+          this.registry.add(opened, at());
           return opened;
         } finally {
           release();
