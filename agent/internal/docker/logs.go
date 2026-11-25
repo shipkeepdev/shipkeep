@@ -87,7 +87,6 @@ func (c *Client) FollowLogs(ctx context.Context, ref string, since time.Time, em
 type lineReader struct {
 	emit    func(LogLine) error
 	pending [Stderr + 1]*LogLine
-	size    [Stderr + 1]int
 	// dropping says the stream's current line was sent once full: its rest, up to its
 	// newline, is dropped.
 	dropping [Stderr + 1]bool
@@ -101,7 +100,7 @@ func (r *lineReader) frame(stream int, data []byte) error {
 	}
 	for {
 		part, rest, complete := strings.Cut(message, "\n")
-		if err := r.add(stream, at, part); err != nil {
+		if err := r.add(stream, at, part, complete); err != nil {
 			return err
 		}
 		if !complete {
@@ -124,9 +123,12 @@ func stampedMessage(data []byte) (time.Time, string, bool) {
 	return at, message, ok && err == nil
 }
 
-// add appends a part to the stream's open line. A part that does not fit is cut on a
-// character, and the line is sent at once, marked truncated.
-func (r *lineReader) add(stream int, at time.Time, part string) error {
+// add appends a part to the stream's open line; complete says that its newline follows. A line
+// that is full is sent at once, marked truncated, and the rest of it, up to its newline, dropped:
+// a line of exactly MaxLogLine bytes whose newline comes in a later frame is marked truncated too,
+// since nothing tells it apart sooner. The cut falls on a character, which may have begun in an
+// earlier part of the line.
+func (r *lineReader) add(stream int, at time.Time, part string, complete bool) error {
 	if r.dropping[stream] {
 		return nil
 	}
@@ -134,19 +136,17 @@ func (r *lineReader) add(stream int, at time.Time, part string) error {
 	if line == nil {
 		line = &LogLine{Stream: stream, Time: at}
 		r.pending[stream] = line
-		r.size[stream] = 0
 	}
-	room := MaxLogLine - r.size[stream]
-	if len(part) <= room {
-		line.Text += part
-		r.size[stream] += len(part)
+	text := line.Text + part
+	if len(text) < MaxLogLine || (len(text) == MaxLogLine && complete) {
+		line.Text = text
 		return nil
 	}
-	cut := room
-	for cut > 0 && !utf8.RuneStart(part[cut]) {
+	cut := MaxLogLine
+	for cut > 0 && cut < len(text) && !utf8.RuneStart(text[cut]) {
 		cut--
 	}
-	line.Text += part[:cut]
+	line.Text = text[:cut]
 	line.Truncated = true
 	r.dropping[stream] = true
 	return r.send(stream)
