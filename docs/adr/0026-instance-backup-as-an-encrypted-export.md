@@ -70,7 +70,7 @@ A backup from a newer version is refused: its newest migration must be one this 
 
 ## Consequences
 
-- The agents keep their certificates, and the restored database holds the same certificate authority and server identities. Once the domain points to the new machine, they reconnect without being enrolled again.
+- The agents keep their certificates, and the restored database holds the same certificate authority and server identities. Once the domain points to the new machine, they reconnect without being enrolled again. A server whose certificate was renewed after the backup presents one the restored registry does not know: the gateway refuses it and records it, and an administrator re-adopts that server with their password (#487, SPEC 3.1). Its applications keep running meanwhile.
 - The operator copies archives off the server or sends them to S3, and keeps the identity somewhere else again.
 - A restore brings back the state of the backup's time. Sessions are in the archive, but the restore ends them all. What else changed since the backup comes back as it was: a password changed since works no more, the previous one works again, an API token revoked since is valid again, a member removed since is a member again. After a restore that follows a compromise, change those passwords again, revoke those tokens and remove those members. Metrics (VictoriaMetrics) and Caddy's certificates are not in the archive: they are history, or obtained again.
 - Running `keygen` again replaces the server's backup key for the backups that follow. Earlier archives open with the identity they were made for.

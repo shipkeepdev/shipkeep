@@ -33,6 +33,9 @@ import {
   NodePageQueryDto,
   NodeDto,
   NodePathDto,
+  NodeReadoptedDto,
+  NodeReadoptionPageDto,
+  nodeReadoptionDto,
   RemoveNodeDto,
   SetNodePublicAddressesDto,
   StartAgentUpgradeDto,
@@ -112,6 +115,47 @@ export class FleetAdministrationController {
       // The name agents verify in the gateway certificate, with the gateway's port.
       `${this.config.get('AGENT_GATEWAY_SERVER_NAME')}:${this.config.get('AGENT_GATEWAY_ADDR').split(':').at(-1) ?? '7443'}`,
     );
+  }
+
+  /**
+   * Registers the certificate the node presented after a restore rolled its registered one back
+   * (#487, SPEC 3.1): the caller's password and second factor, like a join token. Session only.
+   */
+  @Post(':organizationId/nodes/:nodeId/readopt')
+  @HttpCode(200)
+  @RequireTenant('node.manage', 'organization')
+  @IdentityAttemptLimit('token')
+  @ApiHeader({ name: 'Origin', required: true })
+  @ApiHeader({ name: 'X-Shipkeep-CSRF', required: true })
+  @ApiOkResponse({ type: NodeReadoptedDto })
+  async readoptNode(
+    @Req() request: IdentityRequest,
+    @Param() path: NodePathDto,
+    @Body() body: ReauthenticateMfaDto,
+  ): Promise<NodeReadoptedDto> {
+    const readopted = await this.fleet.readoptNode(
+      resourceContext(request),
+      path.organizationId,
+      path.nodeId,
+      new Secret(body.password),
+      factorInput(body),
+    );
+    return {
+      certificateSerial: readopted.serial,
+      certificateNotAfter: readopted.notAfter.toISOString(),
+    };
+  }
+
+  /** The certificates waiting to be re-adopted, one per server at most (#487). */
+  @Get(':organizationId/node-readoptions')
+  @RequireTenant('node.manage', 'organization')
+  @ApiOkResponse({ type: NodeReadoptionPageDto })
+  async listReadoptions(
+    @Req() request: IdentityRequest,
+    @Param() path: FleetOrganizationPathDto,
+  ): Promise<NodeReadoptionPageDto> {
+    const pending = await this.fleet.listReadoptions(resourceContext(request), path.organizationId);
+    return { items: pending.map(nodeReadoptionDto) };
   }
 
   /** Destructive: requires a confirmation token for this node (SPEC 3.6, rule 7). */

@@ -112,7 +112,11 @@ func TestControlPlaneLifecycle(t *testing.T) {
 	if err := os.WriteFile(path+".reconnected", nil, 0o600); err != nil { // #nosec G703 -- marker beside the harness-owned temporary fixture.
 		t.Fatal(err)
 	}
-	wait(func() bool { return strings.Contains(logs.String(), "credentials rejected") })
+	// Revoked: refused, and presented again later unchanged, never enrolled again (#487).
+	wait(func() bool { return strings.Contains(logs.String(), "refused this agent's certificate") })
+	if strings.Count(logs.String(), "agent enrolled") > 1 {
+		t.Fatal("a refused agent enrolled again")
+	}
 	if strings.Contains(logs.String(), fixture.Token.Expose()) || strings.Contains(logs.String(), first.Key.Expose()) {
 		t.Fatal("secret leaked in agent logs")
 	}

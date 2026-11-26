@@ -49,10 +49,12 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | POST | `/organizations/:organizationId/members/:membershipId/role` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/members/:membershipId/transfer-ownership` | member.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/metrics` | organization.read @ organization | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
+| GET | `/organizations/:organizationId/node-readoptions` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/nodes` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/nodes/:nodeId` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/nodes/:nodeId/metrics` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/nodes/:nodeId/public-addresses` | node.manage @ organization | node.manage | yes | yes | no | no | no | no | no | no | no | no | no |
+| POST | `/organizations/:organizationId/nodes/:nodeId/readopt` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/nodes/:nodeId/remove` | node.manage @ organization | node.manage | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/nodes/:nodeId/replicas` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/projects` | organization.read @ organization | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |

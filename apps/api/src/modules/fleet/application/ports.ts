@@ -11,6 +11,7 @@ import type {
 import type { JoinTokenRecord } from '../domain/join-token';
 import type { NodeCertificateRecord, NodeFacts, NodeRecord, NodeStatus } from '../domain/node';
 import type { NodeCredential, NodeIdentity } from '../domain/node-identity';
+import type { ReadoptionRequest } from '../domain/node-readoption';
 
 export interface NodeCredentialStore {
   /** Looks the serial up inside `organizationId` only (the organization of the TLS identity). */
@@ -27,7 +28,21 @@ export interface FleetTransaction {
   runEnrollment<T>(tokenHash: string, work: () => Promise<T>): Promise<T>;
 }
 
+/** Certificates waiting to be re-adopted (#487); every method runs under `runTenant`. */
+export interface NodeReadoptionStore {
+  find(organizationId: string, nodeId: string): Promise<ReadoptionRequest | undefined>;
+  list(organizationId: string): Promise<ReadoptionRequest[]>;
+  /** Records the node's request, or replaces it. */
+  save(request: ReadoptionRequest): Promise<void>;
+  /**
+   * Registers the request's certificate for its node, revokes every other current certificate of
+   * the node and deletes the request, in the caller's transaction. Returns the revoked serials.
+   */
+  adopt(request: ReadoptionRequest, certificateId: string, now: Date): Promise<string[]>;
+}
+
 export const NODE_CREDENTIAL_STORE = Symbol('NodeCredentialStore');
+export const NODE_READOPTION_STORE = Symbol('NodeReadoptionStore');
 export const FLEET_TRANSACTION = Symbol('FleetTransaction');
 
 export interface JoinTokenStore {

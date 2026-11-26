@@ -171,6 +171,42 @@ func TestRunnerStopsRetryingRejectedCredentials(t *testing.T) {
 	}
 }
 
+// #487: after a restore the control plane refuses the agent's renewed certificate until an
+// administrator re-adopts the node. The agent presents the same certificate again later, and
+// connects once it is accepted, without enrolling again.
+func TestRunnerPresentsARefusedCertificateAgainLater(t *testing.T) {
+	address, server := startGateway(t, true)
+	bundle, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.rejected.Store(true)
+	runner := Runner{Endpoint: Endpoint{Address: address}, StateDir: t.TempDir(), Logger: slog.New(slog.NewTextHandler(io.Discard, nil)), RefusedRetry: 20 * time.Millisecond}
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan error, 1)
+	go func() { done <- runner.Run(ctx, bundle) }()
+	time.Sleep(100 * time.Millisecond)
+	if server.connects.Load() != 0 {
+		t.Fatal("a refused agent was let in")
+	}
+	// An administrator re-adopted the node.
+	server.rejected.Store(false)
+	deadline := time.Now().Add(5 * time.Second)
+	for server.connects.Load() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if server.connects.Load() == 0 {
+		t.Fatal("the agent did not present its certificate again")
+	}
+	if enrolls := server.enrolls.Load(); enrolls != 1 {
+		t.Fatalf("enrollments = %d: a refused agent enrolled again", enrolls)
+	}
+}
+
 func TestBackoffIsBoundedAndJittered(t *testing.T) {
 	values := map[time.Duration]bool{}
 	for attempt := 0; attempt < 20; attempt++ {

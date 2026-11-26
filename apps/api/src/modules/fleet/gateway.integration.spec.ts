@@ -422,6 +422,81 @@ describe('agent gateway over real HTTP/2 TLS and PostgreSQL', () => {
     ).rejects.toMatchObject({ code: Code.Unauthenticated });
   });
 
+  // #487: after a restore from a backup older than a renewal, the agent presents a certificate the
+  // CA signed and the restored registry never saw.
+  it('records a CA-signed certificate of a node that its registry lost, and still refuses it', async () => {
+    const enrolled = await enroll('tls-readopt');
+    const nodeId = enrolled.result.nodeId;
+    const request = await requestCertificate();
+    const lost = await app
+      .get(X509CertificateAuthority)
+      .issueNodeCertificate(request.csrPem, { organizationId: org, nodeId });
+    // The agent retries: each attempt is refused, and the request is audited once.
+    for (const attempt of [1, 2])
+      await expect(
+        client({ cert: lost.certificatePem, key: request.key }).renewCertificate({
+          csrPem: request.csrPem,
+        }),
+        `attempt ${String(attempt)}`,
+      ).rejects.toMatchObject({ code: Code.Unauthenticated });
+    expect(await rows('SELECT serial FROM node_readoptions WHERE node_id=$1', [nodeId])).toEqual([
+      { serial: lost.serial },
+    ]);
+    expect(
+      await rows(
+        "SELECT actor_id FROM audit_events WHERE target_id=$1 AND action='fleet.node.readoption_requested'",
+        [nodeId],
+      ),
+    ).toEqual([{ actor_id: nodeId }]);
+    // The registered certificate still works, and nothing about it changed.
+    await expect(
+      client({ cert: enrolled.cert, key: enrolled.key }).renewCertificate({ csrPem: 'bad CSR' }),
+    ).rejects.toMatchObject({ code: Code.InvalidArgument });
+  });
+
+  it('records no re-adoption for a revoked serial, a removed node or another organization', async () => {
+    const ca = app.get(X509CertificateAuthority);
+    const refused = async (cert: string, key: string) =>
+      expect(client({ cert, key }).renewCertificate({ csrPem: 'bad CSR' })).rejects.toMatchObject({
+        code: Code.Unauthenticated,
+      });
+    // A known serial that was revoked stays refused: revocation holds.
+    const revoked = await enroll('tls-readopt-revoked');
+    await revoke(revoked.result.nodeId);
+    await refused(revoked.cert, revoked.key);
+    // A removed node gets no new certificate, even one the CA signed.
+    const removed = await enroll('tls-readopt-removed');
+    await db.admin.query("UPDATE nodes SET status='removed' WHERE id=$1", [removed.result.nodeId]);
+    const forRemoved = await requestCertificate();
+    await refused(
+      (
+        await ca.issueNodeCertificate(forRemoved.csrPem, {
+          organizationId: org,
+          nodeId: removed.result.nodeId,
+        })
+      ).certificatePem,
+      forRemoved.key,
+    );
+    // A certificate naming another organization finds no such node there.
+    const other = '0192f0c0-0000-7000-8000-0000000000ef';
+    await db.createOrganization(other);
+    const elsewhere = await requestCertificate();
+    await refused(
+      (
+        await ca.issueNodeCertificate(elsewhere.csrPem, {
+          organizationId: other,
+          nodeId: revoked.result.nodeId,
+        })
+      ).certificatePem,
+      elsewhere.key,
+    );
+    expect(
+      await rows('SELECT node_id FROM node_readoptions WHERE node_id = ANY($1::uuid[])', [
+        [revoked.result.nodeId, removed.result.nodeId],
+      ]),
+    ).toEqual([]);
+  });
+
   it('rejects a rogue CA even when the certificate copies a registered node identity and serial', async () => {
     const enrolled = await enroll('tls-rogue-ca');
     const request = await requestCertificate();

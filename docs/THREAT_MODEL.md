@@ -93,7 +93,7 @@ Build containers (untrusted code) inside rootless BuildKit
 
 - Enrollment consumes a bounded, non-symlink 0600 token file only after credential persistence succeeds. The real Go daemon/NestJS/PostgreSQL integration test covers enrollment, token reuse, API restart, live revocation, persisted identity and log redaction. Its test-only helper launches a fixed Go test argv without a shell; it is excluded from the production API build.
 
-- The agent connection loop never adopts an unexpected node/epoch or silently re-enrolls after rejection. Unsupported control frames fail explicitly until their journaled handlers exist. Renewal persistence failure halts connection attempts because the old serial has already been revoked; remote error text is excluded from reconnect logs.
+- The agent connection loop never adopts an unexpected node/epoch or silently re-enrolls after rejection. A certificate the gateway refused is presented again every 5 minutes, unchanged: only an administrator's confirmation registers an unknown certificate the CA signed (re-adoption after a restore, #487), and a known serial that was revoked or expired is never recorded for it. Unsupported control frames fail explicitly until their journaled handlers exist. Renewal persistence failure halts connection attempts because the old serial has already been revoked; remote error text is excluded from reconnect logs.
 
 - Agent credential loading rejects symlinks, oversized files, loose permissions, key/certificate mismatches and tenant/node identity substitutions. Keys use the redacting Go `Secret` wrapper; only the explicit atomic persistence boundary writes private material.
 

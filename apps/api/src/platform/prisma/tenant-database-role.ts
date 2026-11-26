@@ -14,6 +14,7 @@ export const TENANT_TABLES = [
   'role_bindings',
   'nodes',
   'node_certificates',
+  'node_readoptions',
   'join_tokens',
   'audit_events',
   'confirmation_tokens',
