@@ -176,3 +176,44 @@ export function agentVersionChanged(input: {
     payload: { from: input.from, to: input.to },
   });
 }
+
+/**
+ * The gateway refused a certificate the installation CA signed for this node, which the registry
+ * does not know (#487): recorded for an administrator to re-adopt. Once per certificate.
+ */
+export function nodeReadoptionRequested(input: {
+  organizationId: string;
+  nodeId: string;
+  serial: string;
+  notAfter: Date;
+}): DomainEvent {
+  return createEvent({
+    type: 'fleet.node.readoption_requested',
+    organizationId: input.organizationId,
+    actor: { kind: 'node', id: input.nodeId },
+    target: { type: 'node', id: input.nodeId },
+    payload: { certificateSerial: input.serial, certificateNotAfter: input.notAfter.toISOString() },
+  });
+}
+
+/** An administrator registered the node's waiting certificate and revoked its others (#487). */
+export function nodeReadopted(input: {
+  organizationId: string;
+  nodeId: string;
+  serial: string;
+  notAfter: Date;
+  revokedSerials: readonly string[];
+  actor: Actor;
+}): DomainEvent {
+  return createEvent({
+    type: 'fleet.node.readopted',
+    organizationId: input.organizationId,
+    actor: input.actor,
+    target: { type: 'node', id: input.nodeId },
+    payload: {
+      certificateSerial: input.serial,
+      certificateNotAfter: input.notAfter.toISOString(),
+      revokedSerials: [...input.revokedSerials],
+    },
+  });
+}

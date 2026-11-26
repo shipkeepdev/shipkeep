@@ -178,7 +178,7 @@ case ${1:-} in
     fi
     # Migrations bring an older backup to this version; the database login gets its grants again.
     compose up -d
-    printf 'Restored. Servers reconnect on their own once the domain of this installation points to this machine. Every session was ended: everyone signs in again.\n' >&2
+    printf 'Restored. Servers reconnect on their own once the domain of this installation points to this machine; one whose certificate was renewed after this backup waits to be re-adopted (INSTALL.md, Back up and restore). Every session was ended: everyone signs in again.\n' >&2
     printf 'The previous database is kept as %s; drop it once you are satisfied:\n  docker compose exec postgres dropdb --username=shipkeep_admin %s\n' "$previous" "$previous" >&2
     ;;
   *)

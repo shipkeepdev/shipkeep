@@ -6,15 +6,19 @@ import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { auditLog } from '../../testing/audit-log';
 import { tenantHttpFixture } from '../../testing/tenant-http';
 
+import { AuthenticateNode } from './application/authenticate-node';
 import { EnrollNode } from './application/enroll-node';
 import { NodeLiveness } from './application/node-liveness';
 import { NODE_STORE, type NodeStore } from './application/ports';
+import { NodeReadoptions } from './application/readopt-node';
+import { NodeAuthenticationError } from './domain/node-identity';
 import {
   generateEd25519KeyPair,
   importPrivateKey,
   importPublicKey,
   SIGNING_ALGORITHM,
 } from './infrastructure/ca/x509';
+import { X509CertificateAuthority } from './infrastructure/ca/x509-certificate-authority';
 
 async function agentCsr(): Promise<string> {
   const pair = await generateEd25519KeyPair();
@@ -317,5 +321,104 @@ describe('fleet administration over HTTP', () => {
     } finally {
       await admin.end();
     }
+  });
+
+  // #487: a restore from a backup older than the node's last renewal rolled its registered
+  // certificate back; the agent holds the renewed one, which the restored registry never saw.
+  it('re-adopts a server whose renewed certificate a restore rolled back, after a fresh proof', async () => {
+    await resetLimits();
+    const issued = await fixture
+      .post(`${fixture.root}/join-tokens`, 'owner', { password: fixture.password.expose() })
+      .expect(201);
+    const enrolled = await fixture.app.get(EnrollNode).execute({
+      joinToken: new Secret((issued.body as { token: string }).token),
+      csrPem: await agentCsr(),
+      facts: { hostname: 'edge-readopt.example.com' },
+      agentVersion: '0.1.0',
+    });
+    const admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+    const registered = await admin
+      .query<{ serial: string }>('SELECT serial FROM node_certificates WHERE node_id = $1', [
+        enrolled.nodeId,
+      ])
+      .then((result) => result.rows)
+      .finally(() => admin.end());
+    expect(registered).toHaveLength(1);
+    const lost = await fixture.app
+      .get(X509CertificateAuthority)
+      .issueNodeCertificate(await agentCsr(), {
+        organizationId: fixture.organizationId,
+        nodeId: enrolled.nodeId,
+      });
+    const presented = {
+      organizationId: fixture.organizationId,
+      nodeId: enrolled.nodeId,
+      serial: lost.serial,
+    };
+    const authenticate = fixture.app.get(AuthenticateNode);
+    await expect(authenticate.execute(presented)).rejects.toBeInstanceOf(NodeAuthenticationError);
+    // What the gateway does with a certificate TLS verified and the registry refused.
+    await fixture.app
+      .get(NodeReadoptions)
+      .notice(presented, { notBefore: lost.notBefore, notAfter: lost.notAfter });
+
+    const listed = await fixture.get(`${fixture.root}/node-readoptions`, 'admin').expect(200);
+    expect(listed.body).toEqual({
+      items: [
+        {
+          nodeId: enrolled.nodeId,
+          certificateSerial: lost.serial,
+          certificateNotAfter: lost.notAfter.toISOString(),
+          firstSeenAt: expect.any(String) as string,
+          lastSeenAt: expect.any(String) as string,
+        },
+      ],
+    });
+    for (const actor of ['member', 'projectAdmin', 'outsider'] as const)
+      await fixture.get(`${fixture.root}/node-readoptions`, actor).expect(404);
+
+    const path = `${fixture.root}/nodes/${enrolled.nodeId}/readopt`;
+    const proof = { password: fixture.password.expose() };
+    await resetLimits();
+    await fixture.post(path, 'admin', { password: 'incorrect fixture password' }).expect(401);
+    for (const actor of ['member', 'projectAdmin', 'outsider'] as const) {
+      await resetLimits();
+      await fixture.post(path, actor, proof).expect(404);
+    }
+    await expect(authenticate.execute(presented)).rejects.toBeInstanceOf(NodeAuthenticationError);
+    await resetLimits();
+    const readopted = await fixture.post(path, 'admin', proof).expect(200);
+    expect(readopted.body).toEqual({
+      certificateSerial: lost.serial,
+      certificateNotAfter: lost.notAfter.toISOString(),
+    });
+
+    // The same node comes back with the certificate it holds; the one the backup knew is revoked.
+    await expect(authenticate.execute(presented)).resolves.toMatchObject({
+      nodeId: enrolled.nodeId,
+    });
+    for (const certificate of registered)
+      await expect(
+        authenticate.execute({ ...presented, serial: certificate.serial }),
+      ).rejects.toBeInstanceOf(NodeAuthenticationError);
+    const events = await auditLog().findMany({
+      where: { action: 'fleet.node.readopted', targetId: enrolled.nodeId },
+    });
+    expect(events.map((event) => [event.actorId, event.metadata])).toEqual([
+      [
+        fixture.actors.admin.id,
+        {
+          certificateSerial: lost.serial,
+          certificateNotAfter: lost.notAfter.toISOString(),
+          revokedSerials: registered.map((certificate) => certificate.serial),
+        },
+      ],
+    ]);
+    // Nothing waits any more: a second confirmation is refused, and the list is empty.
+    await resetLimits();
+    await fixture.post(path, 'admin', proof).expect(409);
+    const after = await fixture.get(`${fixture.root}/node-readoptions`, 'admin').expect(200);
+    expect(after.body).toEqual({ items: [] });
   });
 });
