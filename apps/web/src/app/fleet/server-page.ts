@@ -23,6 +23,7 @@ import { Notice } from '../ui/notice';
 
 import { FleetApi, type FleetNode, type NodeReplicaList } from './fleet-api';
 import { NodeMetricsPanel } from './node-metrics';
+import { UntrackedContainers } from './untracked-containers';
 import { serverView, type Text } from './server-view';
 
 interface ServerSection {
@@ -48,7 +49,15 @@ const COLUMNS =
 /** 12 Server (#264): one server's facts, agent and replicas, read from the API. */
 @Component({
   selector: 'sk-server-page',
-  imports: [Icon, LocalDate, NgTemplateOutlet, NodeMetricsPanel, RouterLink, T],
+  imports: [
+    Icon,
+    LocalDate,
+    NgTemplateOutlet,
+    NodeMetricsPanel,
+    RouterLink,
+    T,
+    UntrackedContainers,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @switch (state()) {
@@ -225,6 +234,10 @@ const COLUMNS =
                         <span>{{ 'Only the first 200 replicas are listed.' | t }}</span>
                       </div>
                     }
+                    <sk-untracked-containers
+                      [organizationId]="organizationId()"
+                      [nodeId]="nodeId()"
+                    />
                   }
                   @default {
                     <h2 class="sec-title">{{ 'General' | t }}</h2>

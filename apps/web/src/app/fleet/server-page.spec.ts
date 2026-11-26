@@ -54,6 +54,7 @@ describe('server page (#264)', () => {
       [`GET ${BASE}/nodes`]: () => json({ items: [node], nextCursor: null }),
       [`GET ${BASE}/nodes/${NODE}`]: () => json(node),
       [`GET ${BASE}/nodes/${NODE}/replicas`]: () => json({ items: [replica], truncated: false }),
+      [`GET ${BASE}/nodes/${NODE}/untracked-containers`]: () => json({ items: [] }),
       [`GET ${BASE}/nodes/${NODE}/metrics`]: () => json({ kept: false }),
     };
     TestBed.configureTestingModule({

@@ -704,13 +704,28 @@ export const FR: Readonly<Record<string, string>> = {
   'Identity and build of the application. Every value comes from its shipkeep.yml.':
     "Identité et build de l'application. Chaque valeur vient de son shipkeep.yml.",
   'If a server fails': 'En cas de panne',
+  'Untracked containers': 'Conteneurs non suivis',
+  'The untracked containers could not be read.': 'Les conteneurs non suivis n’ont pas pu être lus.',
+  'Try again': 'Réessayer',
+  'This server runs them for an application of this organization, but no deployment it knows placed them here: after a restore from an older backup, they belong to deployments the backup does not know. Remove one once you have checked that it is no longer needed; its volumes stay.':
+    "Ce serveur les fait tourner pour une application de cette organisation, mais aucun déploiement connu ne les y a placés : après la restauration d'une sauvegarde plus ancienne, ils appartiennent à des déploiements que la sauvegarde ne connaît pas. Supprimez-en un une fois vérifié qu'il ne sert plus ; ses volumes restent.",
+  'The server removes {name} within a minute.': 'Le serveur supprime {name} dans la minute.',
+  'application {app} · release {release} · unmatched since {since}':
+    'application {app} · version {release} · non rattaché depuis le {since}',
+  'Container name': 'Nom du conteneur',
+  'Remove the container': 'Supprimer le conteneur',
+  'The server stops and removes this container of {app}. Its volumes stay.':
+    'Le serveur arrête et supprime ce conteneur de {app}. Ses volumes restent.',
+  exited: 'arrêté',
+  dead: 'hors service',
+  created: 'créé',
+  restarting: 'redémarre',
   'Servers to re-adopt': 'Serveurs à réadopter',
   'These servers present a certificate this installation does not know, as after a restore from a backup older than their last certificate renewal. Their applications keep running. Re-adopt a server you recognize: it connects again within 5 minutes, or, with an agent of 0.1.0-alpha.7 or earlier, once its agent is restarted (sudo systemctl restart shipkeep-agent).':
     "Ces serveurs présentent un certificat que cette installation ne connaît pas, comme après la restauration d'une sauvegarde plus ancienne que le dernier renouvellement de leur certificat. Leurs applications continuent de tourner. Réadoptez un serveur que vous reconnaissez : il se reconnecte dans les 5 minutes, ou, avec un agent 0.1.0-alpha.7 ou antérieur, une fois son agent redémarré (sudo systemctl restart shipkeep-agent).",
   '{name} is re-adopted: it connects again within 5 minutes, or once its agent is restarted if it runs 0.1.0-alpha.7 or earlier.':
     '{name} est réadopté : il se reconnecte dans les 5 minutes, ou une fois son agent redémarré s’il exécute 0.1.0-alpha.7 ou antérieur.',
   'The servers to re-adopt could not be read.': 'Les serveurs à réadopter n’ont pas pu être lus.',
-  'Try again': 'Réessayer',
   'refused since {since} · certificate valid until {until}':
     "refusé depuis le {since} · certificat valable jusqu'au {until}",
   'Re-adopt': 'Réadopter',
