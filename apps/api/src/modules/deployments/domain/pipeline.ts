@@ -70,6 +70,12 @@ export interface PipelineContext {
    * replica of the application, and `allocations` is empty.
    */
   readonly previous: readonly Allocation[];
+  /**
+   * The hostnames the route matched before this deployment: the domains of the newest release in
+   * `previous`, or of this release for a maintenance change. Restoring the previous route needs
+   * them, since a deployment can change `domains` (issue #485). Empty when nothing was routed.
+   */
+  readonly previousHosts: readonly string[];
   /** Outcomes of this deployment's agent actions, by idempotency key. */
   readonly steps: ReadonlyMap<string, StepOutcome>;
 }
@@ -176,27 +182,31 @@ export function plan(context: PipelineContext): PipelineDecision {
 export function recovery(context: PipelineContext, routing: RoutingOutcome): PipelineStep[] {
   if (routing === 'new_release_serving') return [];
   const steps: PipelineStep[] = [];
-  const hosts = domains(context.release.config);
-  if (routing === 'restore_previous' && hosts.length) {
+  if (routing === 'restore_previous') {
+    // The route as it was: the previous release's hostnames, not this release's (issue #485).
+    const hosts = context.previousHosts;
     const previous = byNode(context.previous);
+    const added = byNode(context.allocations);
     // Leaving maintenance was interrupted: the page goes back on every node, as it was.
     const page = context.deployment.plan.maintenance === 'leave';
-    for (const [nodeId, replicas] of previous)
-      steps.push({
-        kind: 'upsert_route',
-        key: key(context, `restore:${nodeId}`),
-        nodeId,
-        routeId: context.application.id,
-        hosts,
-        upstreams: page
-          ? []
-          : replicas.map((replica) => ({ container: replica.container, port: replica.port })),
-        drainMs: 0,
-        ...(page ? { maintenance: true } : {}),
-      });
-    // Nodes that only host new replicas lose the route the interrupted switch may have added.
-    for (const nodeId of byNode(context.allocations).keys())
-      if (!previous.has(nodeId))
+    if (hosts.length)
+      for (const [nodeId, replicas] of previous)
+        steps.push({
+          kind: 'upsert_route',
+          key: key(context, `restore:${nodeId}`),
+          nodeId,
+          routeId: context.application.id,
+          hosts: [...hosts],
+          upstreams: page
+            ? []
+            : replicas.map((replica) => ({ container: replica.container, port: replica.port })),
+          drainMs: 0,
+          ...(page ? { maintenance: true } : {}),
+        });
+    // A node the switch may have routed loses that route when it had none before: it hosts only
+    // new replicas, or nothing was routed before this deployment.
+    for (const nodeId of added.keys())
+      if (!hosts.length || !previous.has(nodeId))
         steps.push({
           kind: 'remove_route',
           key: key(context, `unroute-new:${nodeId}`),

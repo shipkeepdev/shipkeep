@@ -72,6 +72,7 @@ export function plannedActions(): ActionRequest['action'][] {
       },
       allocations,
       previous,
+      previousHosts: ['api.acme.example.com'],
       steps,
     };
     const decision = plan(context);
@@ -150,6 +151,7 @@ export function maintenanceActions(): ActionRequest['action'][] {
         },
         allocations: [],
         previous: serving,
+        previousHosts: ['api.acme.example.com'],
         steps,
       });
       if (decision.kind === 'done') break;
