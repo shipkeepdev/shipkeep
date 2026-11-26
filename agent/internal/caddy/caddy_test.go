@@ -565,3 +565,31 @@ func TestTLSHostsListsHTTPSNamesOnly(t *testing.T) {
 		t.Fatalf("hosts = %v, %v", hosts, err)
 	}
 }
+
+func TestRoutesListsTheShipkeepServerRoutesInOrder(t *testing.T) {
+	client, _ := admin(t)
+	ctx := context.Background()
+	// No server yet: Caddy answers 400 below it, which means no route, not a failure.
+	if routes, err := client.Routes(ctx); err != nil || len(routes) != 0 {
+		t.Fatalf("routes without a server = %v, %v", routes, err)
+	}
+	if err := client.EnsureServer(ctx); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"b", "a"} {
+		route := Route{ID: RouteID(id), Match: []Match{HostMatch([]string{id + ".example.com"}, HTTPS)}, Handle: []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{{Dial: "10.0.0.2:80"}}}}, Terminal: true}
+		if err := client.UpsertRoute(ctx, route); err != nil {
+			t.Fatal(err)
+		}
+	}
+	routes, err := client.Routes(ctx)
+	if err != nil || len(routes) != 2 || routes[0].ID != RouteID("b") || routes[1].ID != RouteID("a") {
+		t.Fatalf("routes = %v, %v", routes, err)
+	}
+	if name, ok := RouteName(routes[1].ID); !ok || name != "a" {
+		t.Fatalf("RouteName(%q) = %q, %v", routes[1].ID, name, ok)
+	}
+	if _, ok := RouteName("shipkeep-control-plane"); ok {
+		t.Fatal("an id without the route prefix was read as a Shipkeep route")
+	}
+}
