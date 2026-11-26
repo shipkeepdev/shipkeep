@@ -57,9 +57,14 @@ const STATE_COLORS: Readonly<Record<string, string>> = {
           </p>
         }
         @if (runner.problem(); as problem) {
-          @if (!removing()) {
-            <p class="alert" role="alert">{{ problem | t }}</p>
-          }
+          <div class="alert flex-col items-start gap-2" role="alert">
+            <span>{{ problem | t }}</span>
+            @if (runner.restartRequired()) {
+              <button type="button" class="btn btn-sm" (click)="startAgain()">
+                {{ 'Start again' | t }}
+              </button>
+            }
+          </div>
         }
         @if (shown().length) {
           <ul class="card m-0 flex list-none flex-col p-0">
@@ -115,7 +120,7 @@ const STATE_COLORS: Readonly<Record<string, string>> = {
         [keepLabel]="i18n.t('Keep it')"
         [typeLabel]="i18n.t('This cannot be undone. Type its name to confirm:')"
         [busy]="runner.busy()"
-        [blocked]="!!runner.cooldown()"
+        [blocked]="!!runner.cooldown() || runner.restartRequired()"
         (confirmed)="remove(c, $event)"
         (cancelled)="keep()"
       >
@@ -187,6 +192,13 @@ export class UntrackedContainers {
     this.runner.reset();
     this.asked.set(null);
     this.removing.set(container);
+  }
+
+  /** After a refusal that needs a fresh attempt: the list is read again, and a removal can be asked. */
+  protected startAgain(): void {
+    this.runner.reset();
+    this.removing.set(null);
+    void this.load();
   }
 
   protected keep(): void {

@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 
+import { IdentityRequestError } from '../identity/identity-api';
 import { I18n } from '../ui/i18n';
 
 import { FleetApi, type UntrackedContainer } from './fleet-api';
@@ -128,5 +129,26 @@ describe('untracked containers on the server page', () => {
     await page.settle();
     expect(page.text()).not.toContain('could not be read');
     expect(page.text()).toContain(lost.name);
+  });
+  it('shows a refusal while the dialog is open, and offers to start again', async () => {
+    const page = setup([lost]);
+    page.api.removeUntrackedContainer.mockImplementationOnce(() =>
+      Promise.reject(new IdentityRequestError(409, 0, { code: 'container_not_untracked' })),
+    );
+    await page.settle();
+    page.button('Remove')?.click();
+    await page.settle();
+    page.type(lost.name);
+    await page.settle();
+    page.button('Remove the container')?.click();
+    await page.settle();
+    // The refusal is said, and the dialog cannot send a request the runner would drop.
+    expect(page.button('Start again')).toBeDefined();
+    expect(page.button('Remove the container')?.disabled).toBe(true);
+    page.button('Start again')?.click();
+    await page.settle();
+    expect(page.button('Start again')).toBeUndefined();
+    expect(page.api.untrackedContainers).toHaveBeenCalledTimes(2);
+    expect(page.api.removeUntrackedContainer).toHaveBeenCalledTimes(1);
   });
 });
