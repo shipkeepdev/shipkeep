@@ -171,3 +171,106 @@ describe('MetricsQueries.organization', () => {
     expect((await service.organization(context, ORG, '24h')).partial).toBe(false);
   });
 });
+
+// Issue #488: no account lock or transaction is held while the store answers, and access is
+// checked again before any series leaves.
+describe('MetricsQueries and the account lock', () => {
+  /** An authority that counts its runs and says whether a store call happens inside one. */
+  function locked() {
+    let inside = 0;
+    let runs = 0;
+    const authority = {
+      run: async <T>(_context: unknown, operation: () => Promise<T>) => {
+        runs++;
+        inside++;
+        try {
+          return await operation();
+        } finally {
+          inside--;
+        }
+      },
+    } as unknown as AccountMutationAuthority;
+    return { authority, inside: () => inside, runs: () => runs };
+  }
+  /** A store that records whether it was called inside a run, and runs `during` when it is. */
+  function store(lock: ReturnType<typeof locked>, during: () => void = () => undefined) {
+    const calls: number[] = [];
+    const answer: MetricsStore = {
+      write: () => Promise.resolve(),
+      queryRange: () => {
+        calls.push(lock.inside());
+        during();
+        return Promise.resolve([]);
+      },
+      queryInstant: () => {
+        calls.push(lock.inside());
+        during();
+        return Promise.resolve([{ labels: {}, points: [[1_795_000_000, 1]] }]);
+      },
+    };
+    return { answer, calls };
+  }
+  const application = {
+    find: () =>
+      Promise.resolve({ id: HIDDEN, organizationId: ORG, projectId: PROJECT, environmentId: READ }),
+  } as unknown as ApplicationStore;
+  const appTarget = { organizationId: ORG, projectId: PROJECT, environmentId: READ };
+
+  it('reads application, server and organization series outside the lock, then checks again', async () => {
+    const lock = locked();
+    const metrics = store(lock);
+    const service = new MetricsQueries(
+      lock.authority,
+      access('admin'),
+      application,
+      targets,
+      transaction,
+      metrics.answer,
+    );
+    await service.application(context, appTarget, HIDDEN, '24h');
+    await service.node(context, ORG, HIDDEN, '24h');
+    await service.organization(context, ORG, '24h');
+    expect(metrics.calls.length).toBeGreaterThan(0);
+    expect(metrics.calls.every((inside) => inside === 0)).toBe(true);
+    // Each answer was authorized twice: before the store, and before it left.
+    expect(lock.runs()).toBe(6);
+  });
+
+  it('returns nothing when access is lost while the store answers', async () => {
+    let allowed = true;
+    const lock = locked();
+    const metrics = store(lock, () => {
+      allowed = false;
+    });
+    const gate = {
+      allows: () => Promise.resolve(allowed),
+      require: () => (allowed ? Promise.resolve() : Promise.reject(new Error('not found'))),
+    } as unknown as TenantAccess;
+    const service = new MetricsQueries(
+      lock.authority,
+      gate,
+      application,
+      targets,
+      transaction,
+      metrics.answer,
+    );
+    await expect(service.application(context, appTarget, HIDDEN, '24h')).rejects.toThrow();
+    allowed = true;
+    await expect(service.node(context, ORG, HIDDEN, '24h')).rejects.toThrow();
+  });
+
+  it('returns nothing when an environment read becomes unreadable during the read', async () => {
+    const grants = new Set([READ, HIDDEN]);
+    const lock = locked();
+    const metrics = store(lock, () => grants.delete(HIDDEN));
+    const service = new MetricsQueries(
+      lock.authority,
+      access('member', grants),
+      application,
+      targets,
+      transaction,
+      metrics.answer,
+    );
+    await expect(service.organization(context, ORG, '24h')).rejects.toThrow('resource');
+  });
+});
