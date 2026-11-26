@@ -11,6 +11,7 @@ export type NodeReplicaList = Schema<'NodeReplicaListDto'>;
 export type AgentUpgradeOverview = Schema<'AgentUpgradeOverviewDto'>;
 export type AgentUpgrade = Schema<'AgentUpgradeDto'>;
 export type UntrackedContainer = Schema<'UntrackedContainerDto'>;
+export type NodeReadoption = Schema<'NodeReadoptionDto'>;
 
 /**
  * Servers of an organization: listing, enrollment tokens, declared public addresses and confirmed
@@ -98,6 +99,29 @@ export class FleetApi extends WorkspaceApi {
           params: { path: { organizationId, nodeId, name }, header: this.browser() },
         },
       ),
+    );
+  }
+  /** Certificates the gateway refused for a server after a restore, waiting for an administrator (#487). */
+  async readoptions(organizationId: string): Promise<readonly NodeReadoption[]> {
+    return (
+      await this.required(() =>
+        this.client.GET('/api/v1/organizations/{organizationId}/node-readoptions', {
+          params: { path: { organizationId } },
+        }),
+      )
+    ).items;
+  }
+  /** Registers the server's waiting certificate: the caller's password and second factor (#487). */
+  async readopt(
+    organizationId: string,
+    nodeId: string,
+    body: Schema<'ReauthenticateMfaDto'>,
+  ): Promise<void> {
+    await this.required(() =>
+      this.client.POST('/api/v1/organizations/{organizationId}/nodes/{nodeId}/readopt', {
+        body,
+        params: { path: { organizationId, nodeId }, header: this.browser() },
+      }),
     );
   }
   /** Single-use token proving the user typed the server's exact name (SPEC 3.6). */

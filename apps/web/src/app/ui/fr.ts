@@ -720,6 +720,19 @@ export const FR: Readonly<Record<string, string>> = {
   dead: 'hors service',
   created: 'créé',
   restarting: 'redémarre',
+  'Servers to re-adopt': 'Serveurs à réadopter',
+  'These servers present a certificate this installation does not know, as after a restore from a backup older than their last certificate renewal. Their applications keep running. Re-adopt a server you recognize: it connects again within 5 minutes, or, with an agent of 0.1.0-alpha.7 or earlier, once its agent is restarted (sudo systemctl restart shipkeep-agent).':
+    "Ces serveurs présentent un certificat que cette installation ne connaît pas, comme après la restauration d'une sauvegarde plus ancienne que le dernier renouvellement de leur certificat. Leurs applications continuent de tourner. Réadoptez un serveur que vous reconnaissez : il se reconnecte dans les 5 minutes, ou, avec un agent 0.1.0-alpha.7 ou antérieur, une fois son agent redémarré (sudo systemctl restart shipkeep-agent).",
+  '{name} is re-adopted: it connects again within 5 minutes, or once its agent is restarted if it runs 0.1.0-alpha.7 or earlier.':
+    '{name} est réadopté : il se reconnecte dans les 5 minutes, ou une fois son agent redémarré s’il exécute 0.1.0-alpha.7 ou antérieur.',
+  'The servers to re-adopt could not be read.': 'Les serveurs à réadopter n’ont pas pu être lus.',
+  'refused since {since} · certificate valid until {until}':
+    "refusé depuis le {since} · certificat valable jusqu'au {until}",
+  'Re-adopt': 'Réadopter',
+  'Re-adopt {name}': 'Réadopter {name}',
+  'Re-adopting…': 'Réadoption…',
+  'Your password is required: {name} gets back what this organization lets a server do.':
+    'Votre mot de passe est requis : {name} retrouve ce que cette organisation permet à un serveur.',
   'If this address can receive email, a verification code is on its way. Check your inbox and spam folder.':
     'Si cette adresse peut recevoir des e-mails, un code de vérification arrive. Vérifiez la boîte de réception et les spams.',
   'Ignored at startup': 'Ignoré au lancement',
