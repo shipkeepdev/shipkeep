@@ -22,6 +22,7 @@ import {
 } from '../domain/agent-upgrade';
 import { type NodeRecord, observedStatus } from '../domain/node';
 import { MAX_NODE_PUBLIC_ADDRESSES } from '../domain/node-address';
+import type { ReadoptionRequest } from '../domain/node-readoption';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
@@ -108,6 +109,36 @@ export class NodeDto {
   @ApiProperty({ format: 'date-time' }) createdAt!: string;
   @ApiProperty({ type: String, format: 'date-time', nullable: true })
   lastHeartbeatAt!: string | null;
+}
+/** A certificate the gateway refused for this server, waiting for an administrator (#487). */
+export class NodeReadoptionDto {
+  @ApiProperty({ format: 'uuid' }) nodeId!: string;
+  @ApiProperty({ description: 'Serial of the waiting certificate, lower-case hexadecimal.' })
+  certificateSerial!: string;
+  @ApiProperty({ format: 'date-time' }) certificateNotAfter!: string;
+  @ApiProperty({ format: 'date-time', description: 'When the gateway first refused it.' })
+  firstSeenAt!: string;
+  @ApiProperty({
+    format: 'date-time',
+    description: 'When the gateway last refused it, refreshed at most once a minute.',
+  })
+  lastSeenAt!: string;
+}
+export class NodeReadoptionPageDto {
+  @ApiProperty({ type: [NodeReadoptionDto] }) items!: NodeReadoptionDto[];
+}
+export class NodeReadoptedDto {
+  @ApiProperty() certificateSerial!: string;
+  @ApiProperty({ format: 'date-time' }) certificateNotAfter!: string;
+}
+export function nodeReadoptionDto(request: ReadoptionRequest): NodeReadoptionDto {
+  return {
+    nodeId: request.nodeId,
+    certificateSerial: request.serial,
+    certificateNotAfter: request.notAfter.toISOString(),
+    firstSeenAt: request.firstSeenAt.toISOString(),
+    lastSeenAt: request.lastSeenAt.toISOString(),
+  };
 }
 export class NodePageDto {
   @ApiProperty({ type: [NodeDto] }) items!: NodeDto[];

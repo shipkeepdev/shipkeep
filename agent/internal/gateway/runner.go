@@ -65,12 +65,26 @@ type Runner struct {
 
 	// save persists renewed credentials; nil means Bundle.Save. Tests inject disk failures here.
 	save func(nodecredentials.Bundle) error
+
+	// RefusedRetry is how long a refused agent waits before it presents its certificate again;
+	// zero means refusedRetryDefault. Tests shorten it.
+	RefusedRetry time.Duration
+}
+
+// refusedRetryDefault: a refused certificate is presented again this long after the refusal.
+const refusedRetryDefault = 5 * time.Minute
+
+func (r *Runner) refusedRetry() time.Duration {
+	if r.RefusedRetry > 0 {
+		return r.RefusedRetry
+	}
+	return refusedRetryDefault
 }
 
 // Run preserves local credentials during outages and never silently re-enrolls a rejected node.
 func (r *Runner) Run(ctx context.Context, bundle nodecredentials.Bundle) error {
 	defer r.inflight.Wait()
-	attempt := 0
+	attempt, refused := 0, false
 	for ctx.Err() == nil {
 		started := time.Now()
 		updated, err := r.cycle(ctx, bundle)
@@ -79,14 +93,31 @@ func (r *Runner) Run(ctx context.Context, bundle nodecredentials.Bundle) error {
 		}
 		if err == nil {
 			bundle = updated
-			attempt = 0
+			attempt, refused = 0, false
 			continue
 		}
-		if errors.Is(err, errIdentity) || status.Code(err) == codes.Unauthenticated || status.Code(err) == codes.FailedPrecondition {
+		if errors.Is(err, errIdentity) {
 			r.Logger.Error("agent credentials rejected; operator recovery is required")
 			<-ctx.Done()
 			return nil
 		}
+		if status.Code(err) == codes.Unauthenticated || status.Code(err) == codes.FailedPrecondition {
+			// The same certificate, later: after a restore an administrator may re-adopt this node
+			// (#487), and it then connects by itself. It never enrolls again.
+			if !refused {
+				r.Logger.Error("the control plane refused this agent's certificate; an administrator can re-adopt this server, or its certificate was revoked", "retry_in", r.refusedRetry().String())
+				refused = true
+			}
+			timer := time.NewTimer(r.refusedRetry())
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				return nil
+			case <-timer.C:
+			}
+			continue
+		}
+		refused = false
 		// Remote error text is deliberately omitted; it can contain hostile or sensitive content.
 		r.Logger.Warn("agent connection interrupted", "code", status.Code(err).String())
 		if time.Since(started) >= time.Minute {

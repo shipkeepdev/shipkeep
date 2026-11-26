@@ -44,6 +44,7 @@ type testGateway struct {
 	ca         *x509.Certificate
 	key        ed25519.PrivateKey
 	calls      atomic.Int32
+	enrolls    atomic.Int32
 	connects   atomic.Int32
 	heartbeats atomic.Int32
 	disconnect atomic.Bool
@@ -95,6 +96,7 @@ func (g *testGateway) certificate(csrPEM string) (string, error) {
 
 func (g *testGateway) Enroll(ctx context.Context, request *agentv1.EnrollRequest) (*agentv1.EnrollResponse, error) {
 	g.calls.Add(1)
+	g.enrolls.Add(1)
 	if values := metadata.ValueFromIncomingContext(ctx, ":authority"); len(values) == 1 {
 		g.authority.Store(&values[0])
 	}

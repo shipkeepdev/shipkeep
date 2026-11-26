@@ -580,6 +580,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/node-readoptions": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listReadoptions"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/nodes": {
         readonly parameters: {
             readonly query?: never;
@@ -638,6 +654,22 @@ export type paths = {
         readonly get?: never;
         readonly put?: never;
         readonly post: operations["setNodePublicAddresses"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}/readopt": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["readoptNode"];
         readonly delete?: never;
         readonly options?: never;
         readonly head?: never;
@@ -2082,6 +2114,32 @@ export type components = {
             /** Format: uuid */
             readonly nextCursor: string | null;
         };
+        readonly NodeReadoptedDto: {
+            /** Format: date-time */
+            readonly certificateNotAfter: string;
+            readonly certificateSerial: string;
+        };
+        readonly NodeReadoptionDto: {
+            /** Format: date-time */
+            readonly certificateNotAfter: string;
+            /** @description Serial of the waiting certificate, lower-case hexadecimal. */
+            readonly certificateSerial: string;
+            /**
+             * Format: date-time
+             * @description When the gateway first refused it.
+             */
+            readonly firstSeenAt: string;
+            /**
+             * Format: date-time
+             * @description When the gateway last refused it, refreshed at most once a minute.
+             */
+            readonly lastSeenAt: string;
+            /** Format: uuid */
+            readonly nodeId: string;
+        };
+        readonly NodeReadoptionPageDto: {
+            readonly items: readonly components["schemas"]["NodeReadoptionDto"][];
+        };
         readonly NodeReplicaDto: {
             readonly application: components["schemas"]["NamedRefDto"];
             readonly container: string;
@@ -3523,6 +3581,27 @@ export interface operations {
             };
         };
     };
+    readonly listReadoptions: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["NodeReadoptionPageDto"];
+                };
+            };
+        };
+    };
     readonly listNodes: {
         readonly parameters: {
             readonly query?: {
@@ -3620,6 +3699,35 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["NodeDto"];
+                };
+            };
+        };
+    };
+    readonly readoptNode: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                readonly Origin: string;
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                readonly nodeId: string;
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["ReauthenticateMfaDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["NodeReadoptedDto"];
                 };
             };
         };

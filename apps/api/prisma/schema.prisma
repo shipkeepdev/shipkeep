@@ -323,6 +323,7 @@ model Node {
   createdAt          DateTime            @map("created_at") @db.Timestamptz(6)
   lastHeartbeatAt    DateTime?           @map("last_heartbeat_at") @db.Timestamptz(6)
   certificates       NodeCertificate[]
+  readoption         NodeReadoption?
   domainCertificates DomainCertificate[]
   actions            AgentAction[]
   allocations        Allocation[]
@@ -346,6 +347,23 @@ model NodeCertificate {
 
   @@index([organizationId, nodeId])
   @@map("node_certificates")
+}
+
+/// A certificate the installation CA signed for this node, presented to the gateway but absent from
+/// the registry: after a restore from a backup older than the node's last renewal (#487). The latest
+/// presentation only; an administrator's confirmation registers it (SPEC 3.1).
+model NodeReadoption {
+  organizationId String   @map("organization_id") @db.Uuid
+  nodeId         String   @map("node_id") @db.Uuid
+  serial         String   @db.VarChar(64)
+  notBefore      DateTime @map("not_before") @db.Timestamptz(6)
+  notAfter       DateTime @map("not_after") @db.Timestamptz(6)
+  firstSeenAt    DateTime @map("first_seen_at") @db.Timestamptz(6)
+  lastSeenAt     DateTime @map("last_seen_at") @db.Timestamptz(6)
+  node           Node     @relation(fields: [organizationId, nodeId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([organizationId, nodeId])
+  @@map("node_readoptions")
 }
 
 /// Issued confirmation token (SPEC 3.6): binding and single-use state, never the signed token.

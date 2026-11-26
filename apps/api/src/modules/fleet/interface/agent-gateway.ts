@@ -1,3 +1,4 @@
+import type { X509Certificate } from 'node:crypto';
 import { createSecureServer, type Http2SecureServer, type ServerHttp2Session } from 'node:http2';
 import { TLSSocket } from 'node:tls';
 
@@ -20,6 +21,7 @@ import { AppConfig } from '../../../platform/config/app-config';
 import { AuthenticateNode } from '../application/authenticate-node';
 import { EnrollNode } from '../application/enroll-node';
 import { factsFromProto } from '../application/node-facts';
+import { NodeReadoptions } from '../application/readopt-node';
 import { RenewNodeCertificate } from '../application/renew-node-certificate';
 import { parseNodeSpiffeId } from '../domain/node';
 import { ExecSessionRegistry } from '../application/exec-relay';
@@ -52,6 +54,7 @@ export class AgentGateway implements OnModuleDestroy {
     private readonly admission: EnrollmentAdmission,
     private readonly logStreams: LogStreams,
     private readonly exec: ExecSessionRegistry,
+    private readonly readoptions: NodeReadoptions,
   ) {}
 
   /** Called explicitly after Nest initialization; OpenAPI generation never opens this listener. */
@@ -215,7 +218,13 @@ export class AgentGateway implements OnModuleDestroy {
             ...parsed,
             serial: certificate.serialNumber.toLowerCase().padStart(32, '0'),
           };
-          await this.authenticate.execute(authenticated);
+          try {
+            await this.authenticate.execute(authenticated);
+          } catch (error: unknown) {
+            if (error instanceof NodeAuthenticationError)
+              await this.noticeRefused(authenticated, certificate);
+            throw error;
+          }
           request.contextValues.set(identity, authenticated);
         }
         return await next(request);
@@ -237,6 +246,22 @@ export class AgentGateway implements OnModuleDestroy {
         throw new ConnectError('agent gateway request failed', Code.Internal);
       }
     };
+  }
+
+  /**
+   * A certificate TLS verified against the installation CA, which the registry refused: after a
+   * restore it may be a node's renewed one (#487). Recorded for an administrator; never accepted
+   * here, and a failure to record it changes nothing in the answer.
+   */
+  private async noticeRefused(node: NodeIdentity, certificate: X509Certificate): Promise<void> {
+    try {
+      await this.readoptions.notice(node, {
+        notBefore: new Date(certificate.validFrom),
+        notAfter: new Date(certificate.validTo),
+      });
+    } catch {
+      this.logger.warn('a refused node certificate could not be recorded for re-adoption');
+    }
   }
 
   private async refreshCertificate(): Promise<void> {

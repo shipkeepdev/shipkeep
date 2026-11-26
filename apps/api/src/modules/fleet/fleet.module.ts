@@ -17,8 +17,10 @@ import { NodeConfirmationTarget } from './application/node-confirmation-target';
 import { FleetAdministrationController } from './interface/fleet-administration.controller';
 import { InstallationKeysModule } from './installation-keys.module';
 import { AuthenticateNode } from './application/authenticate-node';
+import { NodeReadoptions } from './application/readopt-node';
 import { RenewNodeCertificate } from './application/renew-node-certificate';
 import { PrismaNodeCredentialStore } from './infrastructure/prisma-node-credential.store';
+import { PrismaNodeReadoptionStore } from './infrastructure/prisma-node-readoption.store';
 import { AppConfig } from '../../platform/config/app-config';
 import { AgentGateway } from './interface/agent-gateway';
 import { EnrollmentAdmission } from './interface/enrollment-admission';
@@ -39,6 +41,7 @@ import {
   JOIN_TOKEN_STORE,
   NODE_STORE,
   NODE_CREDENTIAL_STORE,
+  NODE_READOPTION_STORE,
   FLEET_TRANSACTION,
   EXEC_SESSION_CHECKS,
 } from './application/ports';
@@ -86,6 +89,8 @@ import { StateReports } from './application/state-reports';
     RenewNodeCertificate,
     { provide: FLEET_TRANSACTION, useExisting: PrismaUnitOfWork },
     { provide: NODE_CREDENTIAL_STORE, useClass: PrismaNodeCredentialStore },
+    { provide: NODE_READOPTION_STORE, useClass: PrismaNodeReadoptionStore },
+    NodeReadoptions,
     { provide: JOIN_TOKEN_STORE, useClass: PrismaJoinTokenStore },
     { provide: NODE_STORE, useClass: PrismaNodeStore },
     { provide: AGENT_ACTION_STORE, useClass: PrismaAgentActionStore },

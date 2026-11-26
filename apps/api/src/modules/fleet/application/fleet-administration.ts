@@ -14,9 +14,11 @@ import { TenantAccess } from '../../organizations/application/tenant-access';
 import { nodePublicAddressesChanged, nodeRemoved } from '../domain/events';
 import type { NodeRecord } from '../domain/node';
 import { nodePublicAddresses, samePublicAddresses } from '../domain/node-address';
+import type { ReadoptionRequest } from '../domain/node-readoption';
 
 import { IssueJoinToken, type IssueJoinTokenResult } from './issue-join-token';
 import { FLEET_TRANSACTION, type FleetTransaction, NODE_STORE, type NodeStore } from './ports';
+import { NodeReadoptions } from './readopt-node';
 
 /**
  * Organization administration of the fleet over HTTP (PLAN M2.7a). Every operation requires live
@@ -33,6 +35,7 @@ export class FleetAdministration {
     private readonly access: TenantAccess,
     private readonly confirmations: ConfirmationVerifier,
     private readonly events: DomainEventBus,
+    private readonly readoptions: NodeReadoptions,
   ) {}
 
   /**
@@ -162,6 +165,42 @@ export class FleetAdministration {
       );
       if (!node) throw new NotFoundError('resource');
       return node;
+    });
+  }
+
+  /**
+   * Registers the certificate a node presented after a restore rolled its registered one back
+   * (#487): needs `node.manage`, the caller's password and second factor. Audited; the node's other
+   * certificates are revoked.
+   */
+  readoptNode(
+    context: SecurityContext,
+    organizationId: string,
+    nodeId: string,
+    password: Secret,
+    factor: MfaProofInput,
+    now = new Date(),
+  ): Promise<{ serial: string; notAfter: Date }> {
+    return this.accounts.reauthenticated(
+      context,
+      password,
+      factor,
+      async () => {
+        await this.access.require(context.userId, 'node.manage', { organizationId });
+        return this.readoptions.confirm(
+          { organizationId, nodeId, actor: resourceActor(context) },
+          now,
+        );
+      },
+      now,
+    );
+  }
+
+  /** The certificates waiting to be re-adopted, one per node at most (#487). */
+  listReadoptions(context: SecurityContext, organizationId: string): Promise<ReadoptionRequest[]> {
+    return this.accounts.run(context, async () => {
+      await this.access.require(context.userId, 'node.manage', { organizationId });
+      return this.readoptions.pending(organizationId);
     });
   }
 

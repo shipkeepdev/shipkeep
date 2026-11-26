@@ -1618,6 +1618,113 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/nodes/{nodeId}/readopt": {
+      "post": {
+        "operationId": "readoptNode",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReauthenticateMfaDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeReadoptedDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/node-readoptions": {
+      "get": {
+        "operationId": "listReadoptions",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NodeReadoptionPageDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/nodes/{nodeId}/remove": {
       "post": {
         "operationId": "removeNode",
@@ -7055,6 +7162,70 @@
           "expiresAt",
           "caFingerprint",
           "gatewayAddress"
+        ]
+      },
+      "NodeReadoptedDto": {
+        "type": "object",
+        "properties": {
+          "certificateSerial": {
+            "type": "string"
+          },
+          "certificateNotAfter": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "certificateSerial",
+          "certificateNotAfter"
+        ]
+      },
+      "NodeReadoptionDto": {
+        "type": "object",
+        "properties": {
+          "nodeId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "certificateSerial": {
+            "type": "string",
+            "description": "Serial of the waiting certificate, lower-case hexadecimal."
+          },
+          "certificateNotAfter": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "firstSeenAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the gateway first refused it."
+          },
+          "lastSeenAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the gateway last refused it, refreshed at most once a minute."
+          }
+        },
+        "required": [
+          "nodeId",
+          "certificateSerial",
+          "certificateNotAfter",
+          "firstSeenAt",
+          "lastSeenAt"
+        ]
+      },
+      "NodeReadoptionPageDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NodeReadoptionDto"
+            }
+          }
+        },
+        "required": [
+          "items"
         ]
       },
       "RemoveNodeDto": {
