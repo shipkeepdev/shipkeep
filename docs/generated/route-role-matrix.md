@@ -57,6 +57,8 @@ domain policy. Do not edit by hand: run the API unit tests with `-u` and review 
 | POST | `/organizations/:organizationId/nodes/:nodeId/readopt` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | POST | `/organizations/:organizationId/nodes/:nodeId/remove` | node.manage @ organization | node.manage | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/nodes/:nodeId/replicas` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
+| GET | `/organizations/:organizationId/nodes/:nodeId/untracked-containers` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
+| POST | `/organizations/:organizationId/nodes/:nodeId/untracked-containers/:name/remove` | node.manage @ organization | - | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/projects` | organization.read @ organization | - | yes | yes | yes | yes | yes | yes | yes | yes | yes | yes | no |
 | POST | `/organizations/:organizationId/projects` | project.create @ organization | project.create | yes | yes | no | no | no | no | no | no | no | no | no |
 | GET | `/organizations/:organizationId/projects/:projectId` | project.read @ project | project.read | yes | yes | no | yes | yes | yes | yes | yes | yes | yes | no |

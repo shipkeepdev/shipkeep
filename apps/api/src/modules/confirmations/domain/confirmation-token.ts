@@ -13,6 +13,10 @@ const MAX_TOKEN_LENGTH = 2048;
  */
 export const CONFIRMABLE_ACTIONS = {
   'node.remove': { permission: 'node.manage', scope: 'organization' },
+  // An untracked container of a server (#501): the target is `<node id>/<container name>`, the
+  // name typed is the container's. Checked by the control plane only: the removal it asks for
+  // keeps the container's volumes, which needs no token on the agent.
+  'node.container.remove': { permission: 'node.manage', scope: 'organization' },
   // The target is the application id; the permission is checked on its environment.
   'application.delete': { permission: 'environment.update', scope: 'environment' },
 } as const satisfies Record<

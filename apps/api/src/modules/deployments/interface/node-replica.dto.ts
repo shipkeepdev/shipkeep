@@ -1,8 +1,9 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { Length, Matches } from 'class-validator';
+import { IsString, Length, Matches } from 'class-validator';
 
 import { OrganizationPathDto } from '../../organizations/interface/resource.dto';
 import { type NodeReplica, OBSERVED_STATES, STOP_REASONS } from '../domain/observations';
+import type { UntrackedContainer } from '../domain/untracked-containers';
 
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-7[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 
@@ -67,5 +68,59 @@ export function nodeReplicaDto(replica: NodeReplica): NodeReplicaDto {
     state: replica.state,
     stopReason: replica.stopReason,
     observedAt: replica.observedAt?.toISOString() ?? null,
+  };
+}
+
+/** A container the server runs that no placed replica matches, of a known application (#501). */
+export class UntrackedContainerDto {
+  @ApiProperty({ description: 'The container name, as the server reports it.' }) name!: string;
+  @ApiProperty({ description: 'The full Docker container id.' }) containerId!: string;
+  @ApiProperty({ enum: OBSERVED_STATES.filter((state) => state !== 'missing') }) state!: string;
+  @ApiProperty({
+    format: 'date-time',
+    description: "Since when the server's reports hold this set of unmatched containers.",
+  })
+  observedAt!: string;
+  @ApiProperty({ type: NamedRefDto }) application!: NamedRefDto;
+  @ApiProperty({ format: 'uuid' }) projectId!: string;
+  @ApiProperty({ format: 'uuid' }) environmentId!: string;
+  @ApiProperty({ type: 'integer', description: 'The release number its name carries.' })
+  release!: number;
+  @ApiProperty({
+    type: String,
+    description: 'The replica index its name carries, or `task` for a release task.',
+  })
+  replica!: string;
+}
+export class UntrackedContainerListDto {
+  @ApiProperty({ type: [UntrackedContainerDto] }) items!: UntrackedContainerDto[];
+}
+export class UntrackedContainerPathDto extends NodeReplicaPathDto {
+  @ApiProperty({ description: 'The container name.' })
+  @Length(4, 63)
+  @Matches(/^sk-[a-z0-9-]{1,60}$/)
+  name!: string;
+}
+export class RemoveUntrackedContainerDto {
+  @ApiProperty({ description: 'A confirmation token for `node.container.remove` (SPEC 3.6).' })
+  @IsString()
+  @Length(1, 2048)
+  confirmation!: string;
+}
+export class UntrackedRemovalDto {
+  @ApiProperty({ format: 'uuid', description: 'The agent action that removes it.' })
+  actionId!: string;
+}
+export function untrackedContainerDto(container: UntrackedContainer): UntrackedContainerDto {
+  return {
+    name: container.name,
+    containerId: container.containerId,
+    state: container.state,
+    observedAt: container.observedAt.toISOString(),
+    application: { id: container.application.id, name: container.application.name },
+    projectId: container.application.projectId,
+    environmentId: container.application.environmentId,
+    release: container.release,
+    replica: String(container.replica),
   };
 }
