@@ -402,6 +402,16 @@ describe('deployment pipeline', () => {
       );
     });
 
+    // After a restore from an older backup, the next release reuses a number, and its name is
+    // held by the container of a deployment the backup does not know (issue #501).
+    it('says what to do when the container name is taken', () => {
+      expect(
+        failing('create_container', { state: 'compensated', reason: 'container_name_taken' }),
+      ).toBe(
+        'The server did not create the container: another container already has its name. After a restore from an older backup, it is likely the container of a deployment that the backup does not know, and each such deployment makes one more attempt fail: deploy again until one succeeds. Before removing such a container on the server, check that it belongs to this application and is no longer needed.',
+      );
+    });
+
     it('keeps the step and its fixed text for the other reasons', () => {
       expect(failing('pull_image', { state: 'failed', reason: 'invalid_input' })).toBe(
         'Step pull failed: invalid action input',

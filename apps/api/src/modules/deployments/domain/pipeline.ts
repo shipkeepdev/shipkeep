@@ -424,6 +424,7 @@ function failedStep(context: PipelineContext): string | undefined {
     const pull = step === 'pull' && outcome.reason ? PULL_FAILURES[outcome.reason] : undefined;
     if (pull) return pull;
     if (outcome.reason === 'image_volume_undeclared') return IMAGE_VOLUME_UNDECLARED;
+    if (outcome.reason === 'container_name_taken') return CONTAINER_NAME_TAKEN;
     const text = outcome.reason ? reasonText(outcome.reason) : null;
     return `Step ${step} ${outcome.state}${text ? `: ${text}` : '.'}`;
   }
@@ -433,6 +434,13 @@ function failedStep(context: PipelineContext): string | undefined {
 /** A read-only root refused because the image declares a volume nothing mounts (ADR 0022). */
 const IMAGE_VOLUME_UNDECLARED =
   'The server did not create the container: the image declares a volume that the configuration does not mount, and with run.read_only_root Docker would give it an unbounded anonymous volume. Declare that path under volumes, or turn off run.read_only_root.';
+
+/**
+ * A create refused because another container holds the name. After a restore from a backup older
+ * than the last deployment, a release number is reused (issue #501).
+ */
+const CONTAINER_NAME_TAKEN =
+  'The server did not create the container: another container already has its name. After a restore from an older backup, it is likely the container of a deployment that the backup does not know, and each such deployment makes one more attempt fail: deploy again until one succeeds. Before removing such a container on the server, check that it belongs to this application and is no longer needed.';
 
 /** What a failed pull says, by cause: what happened, in words that tell what to check. */
 const PULL_FAILURES: Partial<Record<ActionReason, string>> = {

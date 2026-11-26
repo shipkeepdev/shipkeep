@@ -54,6 +54,7 @@ describe('summarizeAction', () => {
       'registry certificate not trusted by the server': 'registry_untrusted',
       'no space left on the server': 'disk_full',
       "the server's Docker does not go through its egress proxy": 'egress_unguarded',
+      'a container with this name already exists on the server': 'container_name_taken',
       // UpgradeAgent (ADR 0028)
       'a development build of the agent is not upgraded': 'upgrade_dev_build',
       'the agent already runs this version or a later one': 'upgrade_not_newer',

@@ -1320,6 +1320,8 @@ export const FR: Readonly<Record<string, string>> = {
     "Le serveur n'a pas pu récupérer l'image : il ne reconnaît pas le certificat du registre.",
   'The server did not create the container: the image declares a volume that the configuration does not mount, and with run.read_only_root Docker would give it an unbounded anonymous volume. Declare that path under volumes, or turn off run.read_only_root.':
     "Le serveur n'a pas créé le conteneur : l'image déclare un volume que la configuration ne monte pas, et avec run.read_only_root Docker lui donnerait un volume anonyme sans limite. Déclarez ce chemin sous volumes, ou désactivez run.read_only_root.",
+  'The server did not create the container: another container already has its name. After a restore from an older backup, it is likely the container of a deployment that the backup does not know, and each such deployment makes one more attempt fail: deploy again until one succeeds. Before removing such a container on the server, check that it belongs to this application and is no longer needed.':
+    "Le serveur n'a pas créé le conteneur : un autre conteneur porte déjà son nom. Après la restauration d'une sauvegarde plus ancienne, c'est sans doute le conteneur d'un déploiement que la sauvegarde ne connaît pas, et chacun de ces déploiements fait échouer une tentative de plus : redéployez jusqu'à ce qu'une tentative réussisse. Avant de supprimer un tel conteneur sur le serveur, vérifiez qu'il appartient à cette application et qu'il ne sert plus.",
   "The server refused to pull the image: its Docker daemon does not go through Shipkeep's egress proxy, which keeps a registry from reaching the server's own network. Run the server installer again to restore it.":
     "Le serveur a refusé de récupérer l'image : son démon Docker ne passe pas par le proxy de sortie de Shipkeep, qui empêche un registre d'atteindre le réseau du serveur lui-même. Relancez l'installeur du serveur pour le rétablir.",
   'The server could not pull the image: its disk is full.':
@@ -1559,6 +1561,7 @@ export const FR: Readonly<Record<string, string>> = {
   'disk full': 'disque plein',
   'image volume not declared': "volume d'image non déclaré",
   'egress proxy missing': 'proxy de sortie absent',
+  'container name already in use': 'nom de conteneur déjà utilisé',
   'development build, not upgraded': 'build de développement, non mis à jour',
   'already on this version or a later one': 'déjà sur cette version ou une plus récente',
   'service predates upgrades': 'service antérieur aux mises à jour',
