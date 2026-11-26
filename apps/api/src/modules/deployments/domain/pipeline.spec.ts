@@ -64,6 +64,10 @@ interface World {
   allocations: Allocation[];
   steps: Map<string, StepOutcome>;
   routes: Map<string, string[]>;
+  /** The hostnames each node's route matches: a restored route must match the previous ones. */
+  hosts: Map<string, string[]>;
+  /** The domains of the release serving before the deployment. */
+  previousHosts: string[];
   stopped: Set<string>;
   executed: PipelineStep[];
   states: DeploymentState[];
@@ -81,6 +85,7 @@ function context(world: World, config: ShipkeepConfig): PipelineContext {
     },
     allocations: world.allocations,
     previous,
+    previousHosts: world.previousHosts,
     steps: world.steps,
   };
 }
@@ -105,12 +110,17 @@ function execute(
         : step.kind === 'run_release_task'
           ? { state: 'succeeded', exitCode: 0 }
           : { state: 'succeeded' };
-  if (step.kind === 'upsert_route')
+  if (step.kind === 'upsert_route') {
     world.routes.set(
       step.nodeId,
       step.maintenance ? [PAGE] : step.upstreams.map((u) => u.container),
     );
-  if (step.kind === 'remove_route') world.routes.delete(step.nodeId);
+    world.hosts.set(step.nodeId, [...step.hosts]);
+  }
+  if (step.kind === 'remove_route') {
+    world.routes.delete(step.nodeId);
+    world.hosts.delete(step.nodeId);
+  }
   if (step.kind === 'stop_container' || step.kind === 'remove_container')
     world.stopped.add(step.container);
   world.steps.set(step.key, outcome);
@@ -122,6 +132,8 @@ function simulate(
   planned: DeploymentRecord['plan'] = { build: false, release: config.release !== undefined },
   /** What the routes serve before the deployment: the replicas, or the maintenance page. */
   serving: 'replicas' | 'page' = 'replicas',
+  /** The domains of the release serving before the deployment: by default, the same ones. */
+  previousHosts: string[] = config.domains ?? [],
 ) {
   const world: World = {
     deployment: {
@@ -140,10 +152,23 @@ function simulate(
     pinned: null,
     allocations: [],
     steps: new Map(),
-    routes: new Map([
-      [NODES[0], serving === 'page' ? [PAGE] : [previous[0]?.container ?? '']],
-      [OLD_NODE, serving === 'page' ? [PAGE] : [previous[1]?.container ?? '']],
-    ]),
+    routes: new Map(
+      previousHosts.length
+        ? [
+            [NODES[0], serving === 'page' ? [PAGE] : [previous[0]?.container ?? '']],
+            [OLD_NODE, serving === 'page' ? [PAGE] : [previous[1]?.container ?? '']],
+          ]
+        : [],
+    ),
+    hosts: new Map(
+      previousHosts.length
+        ? [
+            [NODES[0], previousHosts],
+            [OLD_NODE, previousHosts],
+          ]
+        : [],
+    ),
+    previousHosts,
     stopped: new Set(),
     executed: [],
     states: ['queued'],
@@ -463,6 +488,47 @@ describe('deployment pipeline', () => {
         if (world.steps.get(step.key)?.state === 'succeeded')
           expect(world.stopped.has(step.container.name), target.key).toBe(true);
     }
+  });
+
+  // Issue #485: the restored route matches the previous release's hostnames, never the new ones.
+  it('restores the previous hostnames when a deployment that changes its domains fails', () => {
+    const renamed: ShipkeepConfig = { ...full, domains: ['new.acme.example.com'] };
+    // The switch reached NODES[0], then failed on NODES[1].
+    const world = simulate(
+      renamed,
+      (step) =>
+        step.kind === 'upsert_route' && step.nodeId === NODES[1]
+          ? { state: 'failed', reason: 'action_failed' }
+          : undefined,
+      undefined,
+      'replicas',
+      ['old.acme.example.com'],
+    );
+    expect(world.deployment.state).toBe('failed');
+    expect(Object.fromEntries(world.hosts)).toEqual({
+      [NODES[0]]: ['old.acme.example.com'],
+      [OLD_NODE]: ['old.acme.example.com'],
+    });
+    expect(Object.fromEntries(world.routes)).toEqual({
+      [NODES[0]]: [previous[0]?.container],
+      [OLD_NODE]: [previous[1]?.container],
+    });
+  });
+
+  it('removes the route a failed deployment added when the previous release had no domain', () => {
+    const world = simulate(
+      full,
+      (step) =>
+        step.kind === 'upsert_route' && step.nodeId === NODES[1]
+          ? { state: 'failed', reason: 'action_failed' }
+          : undefined,
+      undefined,
+      'replicas',
+      [],
+    );
+    expect(world.deployment.state).toBe('failed');
+    expect(Object.fromEntries(world.hosts)).toEqual({});
+    expect(Object.fromEntries(world.routes)).toEqual({});
   });
 
   it('fails on a non-zero release exit, an unhealthy replica or a missing container id', () => {
