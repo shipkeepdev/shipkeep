@@ -441,8 +441,18 @@ func containerDial(ctx context.Context, containers Containers, name string, port
 	if err != nil {
 		return "", fmt.Errorf("inspect upstream container: %w", err)
 	}
-	if container.Config.Labels[docker.ManagedLabel] != "true" || !container.State.Running {
+	address, ok := serviceAddress(container)
+	if !ok {
 		return "", errNotServing
+	}
+	return netip.AddrPortFrom(address, port).String(), nil
+}
+
+// serviceAddress is the address routes reach a container at: for a running managed container, its
+// private address on its first Shipkeep network, by name order (ADR 0017).
+func serviceAddress(container docker.Container) (netip.Addr, bool) {
+	if container.Config.Labels[docker.ManagedLabel] != "true" || !container.State.Running {
+		return netip.Addr{}, false
 	}
 	networks := []string{}
 	for network := range container.NetworkSettings.Networks {
@@ -454,10 +464,10 @@ func containerDial(ctx context.Context, containers Containers, name string, port
 	for _, network := range networks {
 		address, err := netip.ParseAddr(container.NetworkSettings.Networks[network].IPAddress)
 		if err == nil && address.IsPrivate() {
-			return netip.AddrPortFrom(address, port).String(), nil
+			return address, true
 		}
 	}
-	return "", errNotServing
+	return netip.Addr{}, false
 }
 
 // askedUpstreams lists a validated route's upstreams as the journal records them: containers by
