@@ -3,7 +3,12 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
-import type { INestApplication, InjectionToken, NestApplicationOptions } from '@nestjs/common';
+import type {
+  INestApplication,
+  InjectionToken,
+  NestApplicationOptions,
+  Type,
+} from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { PostgreSqlContainer } from '@testcontainers/postgresql';
 
@@ -18,8 +23,12 @@ import { POSTGRES_TEST_IMAGE } from './postgres-image';
  * file: configuration is read once per module graph, so a second app in a file would still look
  * for the first one's deleted KEK file.
  */
+/** A provider replaced in the API: by a value, or by a class Nest builds with its dependencies. */
+export type ProviderOverride =
+  { token: InjectionToken; value: unknown } | { token: InjectionToken; useClass: Type };
+
 export async function integrationApp(
-  overrides: { token: InjectionToken; value: unknown }[] = [],
+  overrides: ProviderOverride[] = [],
   options: {
     isolatedDatabase?: boolean;
     restrictedDatabase?: boolean;
@@ -73,8 +82,11 @@ export async function integrationApp(
     const { AppModule } = await import('../app.module.js');
     const { configureApp } = await import('../bootstrap.js');
     let builder = Test.createTestingModule({ imports: [AppModule] });
-    for (const { token, value } of overrides)
-      builder = builder.overrideProvider(token).useValue(value);
+    for (const override of overrides)
+      builder =
+        'useClass' in override
+          ? builder.overrideProvider(override.token).useClass(override.useClass)
+          : builder.overrideProvider(override.token).useValue(override.value);
     const module = await builder.compile();
     const app = configureApp(
       module.createNestApplication({ bufferLogs: true, httpsOptions: options.httpsOptions }),

@@ -1,5 +1,6 @@
 import type { DomainEvent } from '@shipkeep/domain';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { AuditEventReader } from '../../audit/application/audit-event-reader';
 
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
 
@@ -42,6 +43,7 @@ function world() {
     {
       publish: (batch: DomainEvent[]) => (published.push(...batch), Promise.resolve()),
     } as unknown as DomainEventBus,
+    { page: () => Promise.resolve([]) } as unknown as AuditEventReader,
   );
   const received: AgentFrame[] = [];
   let closed = false;
@@ -250,6 +252,7 @@ describe('the exec relay (SPEC 3.1)', () => {
     const registry = new ExecSessionRegistry(
       { runTenant: () => Promise.reject(new Error('down')) } as unknown as FleetTransaction,
       { publish: () => Promise.resolve() } as unknown as DomainEventBus,
+      { page: () => Promise.resolve([]) } as unknown as AuditEventReader,
     );
     const s = session();
     registry.add(s, NOW);
@@ -257,6 +260,47 @@ describe('the exec relay (SPEC 3.1)', () => {
     // The rejected write is caught: flushed here, it raises nothing.
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(registry.pending(s.id)).toBeUndefined();
+  });
+
+  // Issue #489: a closing that could not be written is tried again until the store answers, and
+  // recorded once, even when a write that seemed to fail had committed.
+  it('records the end once the audit store answers again, and only once', async () => {
+    vi.useFakeTimers();
+    try {
+      let attempts = 0;
+      const recorded: DomainEvent[] = [];
+      const registry = new ExecSessionRegistry(
+        {
+          runTenant: async (_org: string, work: () => Promise<unknown>) => {
+            attempts++;
+            // Down the first time; the second time the write commits but its answer is lost.
+            if (attempts === 1) throw new Error('down');
+            const result = await work();
+            if (attempts === 2) throw new Error('lost answer');
+            return result;
+          },
+        } as unknown as FleetTransaction,
+        {
+          publish: (batch: DomainEvent[]) => {
+            recorded.push(...batch);
+            return Promise.resolve();
+          },
+        } as unknown as DomainEventBus,
+        {
+          page: () => Promise.resolve(recorded.map((event) => ({ action: event.type }))),
+        } as unknown as AuditEventReader,
+      );
+      const s = session();
+      registry.add(s, NOW);
+      registry.joinAgent(s.id, node)?.agentLeft();
+      // The connections went at once, whatever the store does.
+      expect(registry.pending(s.id)).toBeUndefined();
+      await vi.advanceTimersByTimeAsync(60_000);
+      expect(attempts).toBe(3);
+      expect(recorded.map((event) => event.type)).toEqual(['exec.session.ended']);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
