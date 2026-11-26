@@ -222,6 +222,20 @@ func RouteID(routeID string) string {
 	return idPrefix + routeID
 }
 
+// RouteName is the Shipkeep route id of a Caddy object id, when it is one.
+func RouteName(id string) (string, bool) {
+	return strings.CutPrefix(id, idPrefix)
+}
+
+// Routes lists the routes of the Shipkeep server, in order: none when it does not exist.
+func (c *Client) Routes(ctx context.Context) ([]Route, error) {
+	var routes []Route
+	if _, err := c.get(ctx, "/config/apps/http/servers/"+Server+"/routes", &routes); err != nil && !errors.Is(err, errUnreachablePath) {
+		return nil, fmt.Errorf("read caddy routes: %w", err)
+	}
+	return routes, nil
+}
+
 // EnsureServer creates the Shipkeep server when missing. It creates only the deepest missing
 // level of apps/http/servers, never replaces existing configuration, and never uses /load (which
 // would also reset the admin endpoint the installer configured on a Unix socket). On an existing
