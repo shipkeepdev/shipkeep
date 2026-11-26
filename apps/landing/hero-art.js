@@ -46,7 +46,19 @@
     a[2] * b[0] - a[0] * b[2],
     a[0] * b[1] - a[1] * b[0],
   ];
-  const unit = (a) => scale(a, 1 / Math.hypot(...a));
+  const unit = (a) => scale(a, 1 / (Math.hypot(...a) || 1));
+  const newell = (points) =>
+    points.reduce(
+      (n, a, i) => {
+        const b = points[(i + 1) % points.length];
+        return [
+          n[0] + (a[1] - b[1]) * (a[2] + b[2]),
+          n[1] + (a[2] - b[2]) * (a[0] + b[0]),
+          n[2] + (a[0] - b[0]) * (a[1] + b[1]),
+        ];
+      },
+      [0, 0, 0],
+    );
 
   // The ship, in metres: x from the bow (0) to the stern, y up from the waterline, z to port.
   const LENGTH = 300;
@@ -125,9 +137,9 @@
     seed = 7919;
     // A flat face, lit by the sun and seen from the eye.
     const face = (points, tone) => {
-      const normal0 = unit(
-        cross(sub(points[1], points[0]), sub(points[points.length - 1], points[0])),
-      );
+      // Newell's normal: sound for any outline, even one that starts and ends on the same point,
+      // as the deck does at the stem.
+      const normal0 = unit(newell(points));
       const centre = scale(points.reduce(add), 1 / points.length);
       const normal = dot(normal0, sub(eye, centre)) < 0 ? scale(normal0, -1) : normal0;
       const lit = 0.25 + 0.75 * Math.max(0, dot(normal, light));
