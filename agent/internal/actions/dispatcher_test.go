@@ -218,3 +218,73 @@ func TestDispatcherReportsWhyAFinalStateIsNotSuccess(t *testing.T) {
 		t.Fatalf("no final update among %d", len(sent.updates))
 	}
 }
+
+// Issue #483: a delivery of an action that is still running, on a replacement stream, attaches
+// to it. The latest delivery gets its current state at once and its outcome when it ends, an
+// earlier one stops hearing from it, and the step runs once.
+func TestDispatcherReattachesARunningActionToItsLatestDelivery(t *testing.T) {
+	store := open(t)
+	var applied atomic.Int32
+	started := make(chan struct{})
+	release := make(chan struct{})
+	d := dispatcher(store, &applied, func(ctx context.Context) (journal.Outcome, error) {
+		applied.Add(1)
+		close(started)
+		select {
+		case <-release:
+			return journal.Outcome{ResourceID: "net-1"}, nil
+		case <-ctx.Done():
+			return journal.Outcome{}, ctx.Err()
+		}
+	})
+	first := &recorder{}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		d.Handle(context.Background(), request("sk-app"), first.send)
+	}()
+	<-started
+	// The first stream ended; the control plane delivers the action again on the next one, twice.
+	second, third := &recorder{}, &recorder{}
+	for _, stream := range []*recorder{second, third} {
+		attached := make(chan struct{})
+		go func() {
+			defer close(attached)
+			d.Handle(context.Background(), request("sk-app"), stream.send)
+		}()
+		select {
+		case <-attached:
+		case <-time.After(10 * time.Second):
+			t.Fatal("a delivery of a running action waited for it to end")
+		}
+		if got := stream.last(t).GetState(); got != agentv1.OperationState_OPERATION_STATE_RUNNING {
+			t.Fatalf("an attached delivery did not get the current state at once: %v", got)
+		}
+	}
+	heardBefore := len(second.updates)
+	close(release)
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the action did not finish")
+	}
+	final := third.last(t)
+	if final.GetState() != agentv1.OperationState_OPERATION_STATE_SUCCEEDED || final.GetResult().GetContainerId() != "net-1" {
+		t.Fatalf("the latest delivery did not get the outcome with its result: %v", final)
+	}
+	second.mu.Lock()
+	heardAfter := len(second.updates)
+	second.mu.Unlock()
+	if heardAfter != heardBefore {
+		t.Fatalf("a replaced delivery kept hearing from the action: %d updates after it was replaced", heardAfter-heardBefore)
+	}
+	// After the end, a delivery replays the journaled outcome; the step never ran twice.
+	replay := &recorder{}
+	d.Handle(context.Background(), request("sk-app"), replay.send)
+	if got := replay.last(t); got.GetState() != agentv1.OperationState_OPERATION_STATE_SUCCEEDED || got.GetResult().GetContainerId() != "net-1" {
+		t.Fatalf("replay after the end: %v", got)
+	}
+	if applied.Load() != 1 {
+		t.Fatalf("the step ran %d times", applied.Load())
+	}
+}

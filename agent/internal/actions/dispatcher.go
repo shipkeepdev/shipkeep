@@ -78,8 +78,9 @@ type Executor interface {
 }
 
 // Dispatcher runs actions with their own contexts, independent of any one stream connection, so
-// an interrupted connection never interrupts an action. Updates are best effort: the control plane
-// redelivers the request with the same idempotency key and receives the journaled outcome.
+// an interrupted connection never interrupts an action. Updates go to the latest delivery of the
+// action: the control plane redelivers it on a new stream, and a delivery while it runs attaches
+// to it (issue #483), one after it ended replays the journaled outcome.
 type Dispatcher struct {
 	Journal  Executor
 	Handlers map[string]Handler
@@ -88,7 +89,37 @@ type Dispatcher struct {
 	Now   func() time.Time
 
 	mu      sync.Mutex
-	running map[string]context.CancelFunc
+	running map[string]*inflight
+}
+
+// inflight is a running action: how to cancel it, where its updates go, and the last one sent.
+type inflight struct {
+	cancel context.CancelFunc
+
+	mu   sync.Mutex
+	send func(*agentv1.ActionUpdate)
+	last *agentv1.ActionUpdate
+}
+
+// publish sends an update to the action's current delivery and keeps it for a later one.
+func (a *inflight) publish(update *agentv1.ActionUpdate) {
+	a.mu.Lock()
+	a.last = update
+	send := a.send
+	a.mu.Unlock()
+	send(update)
+}
+
+// attach makes send the action's delivery: an earlier one hears nothing more. The new one gets
+// the last update at once, then every later one, the final state included.
+func (a *inflight) attach(send func(*agentv1.ActionUpdate)) {
+	a.mu.Lock()
+	a.send = send
+	last := a.last
+	a.mu.Unlock()
+	if last != nil {
+		send(last)
+	}
 }
 
 // Handle executes req and reports every transition through send. It returns when the action has
@@ -127,11 +158,15 @@ func (d *Dispatcher) Handle(ctx context.Context, req *agentv1.ActionRequest, sen
 	}
 	actionCtx, cancel := context.WithDeadline(ctx, deadline)
 	defer cancel()
-	if !d.track(id, cancel) {
-		// The same action is already executing; its own updates will report the outcome.
+	action, fresh := d.track(id, cancel, send)
+	if !fresh {
+		// The same action is already executing, for an earlier delivery: its updates and its
+		// outcome now go to this one.
+		action.attach(send)
 		return
 	}
 	defer d.untrack(id)
+	send = action.publish
 	// Every update of a final state carries its outcome. The control plane closes an action on the
 	// first final update it receives, so a result sent only afterwards would be dropped.
 	report := func(op journal.Operation) *agentv1.ActionUpdate {
@@ -170,24 +205,26 @@ func (d *Dispatcher) Handle(ctx context.Context, req *agentv1.ActionRequest, sen
 func (d *Dispatcher) Cancel(id string) bool {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	cancel, ok := d.running[id]
+	action, ok := d.running[id]
 	if ok {
-		cancel()
+		action.cancel()
 	}
 	return ok
 }
 
-func (d *Dispatcher) track(id string, cancel context.CancelFunc) bool {
+// track registers a new running action, or returns the one already running under this id.
+func (d *Dispatcher) track(id string, cancel context.CancelFunc, send func(*agentv1.ActionUpdate)) (*inflight, bool) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	if d.running == nil {
-		d.running = map[string]context.CancelFunc{}
+		d.running = map[string]*inflight{}
 	}
-	if _, busy := d.running[id]; busy {
-		return false
+	if action, busy := d.running[id]; busy {
+		return action, false
 	}
-	d.running[id] = cancel
-	return true
+	action := &inflight{cancel: cancel, send: send}
+	d.running[id] = action
+	return action, true
 }
 
 func (d *Dispatcher) untrack(id string) {
