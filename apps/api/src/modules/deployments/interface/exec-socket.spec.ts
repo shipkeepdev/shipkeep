@@ -1,5 +1,6 @@
 import { createServer, type Server } from 'node:http';
 import { type AddressInfo, createConnection, type Socket } from 'node:net';
+import type { AuditEventReader } from '../../audit/application/audit-event-reader';
 
 import type { HttpAdapterHost } from '@nestjs/core';
 import type { DomainEvent } from '@shipkeep/domain';
@@ -61,6 +62,7 @@ async function world(
     {
       publish: (batch: DomainEvent[]) => (published.push(...batch), Promise.resolve()),
     } as unknown as DomainEventBus,
+    { page: () => Promise.resolve([]) } as unknown as AuditEventReader,
   );
   const now = new Date();
   for (const id of [SESSION, SECOND])

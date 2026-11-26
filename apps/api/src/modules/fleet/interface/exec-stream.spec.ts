@@ -2,6 +2,7 @@ import { create } from '@bufbuild/protobuf';
 import { Code, ConnectError } from '@connectrpc/connect';
 import { type ExecStreamRequest, ExecStreamRequestSchema } from '@shipkeep/proto-ts';
 import { describe, expect, it, vi } from 'vitest';
+import type { AuditEventReader } from '../../audit/application/audit-event-reader';
 
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { type AgentFrame, ExecSessionRegistry } from '../application/exec-relay';
@@ -24,6 +25,7 @@ function registry(): ExecSessionRegistry {
       runTenant: (_org: string, work: () => Promise<unknown>) => work(),
     } as unknown as FleetTransaction,
     { publish: () => Promise.resolve() } as unknown as DomainEventBus,
+    { page: () => Promise.resolve([]) } as unknown as AuditEventReader,
   );
   value.add(
     {
