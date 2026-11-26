@@ -786,7 +786,15 @@ export class ApplicationPage {
     this.deployments.items().find((deployment) => !FINISHED.has(deployment.state)),
   );
   private timer: ReturnType<typeof setTimeout> | undefined;
+  /**
+   * The load in force: a response to an earlier one, success or failure, is dropped, so another
+   * application's or environment's data never shows under this one (issue #491).
+   */
   private loadRevision = 0;
+  /** Only the latest release list request answers: an older one never replaces a newer list. */
+  private releasesRequest = 0;
+  /** The environment and application whose data the page holds. */
+  private loadedKey = '';
   /**
    * The time the sections are drawn at, moved on every minute: a certificate's days left change on
    * a page left open, even when no data does.
@@ -879,29 +887,38 @@ export class ApplicationPage {
 
   private async load(environment: EnvironmentRef, applicationId: string): Promise<void> {
     const revision = ++this.loadRevision;
+    const current = () => revision === this.loadRevision;
     this.application.set(null);
     this.missing.set(null);
+    // Another application or environment: what was shown for the previous one goes at once.
+    const key = `${environment.environmentId}/${applicationId}`;
+    if (key !== this.loadedKey) {
+      this.loadedKey = key;
+      this.secrets.set([]);
+      this.releases.set([]);
+      this.environmentInfo.set(null);
+    }
     try {
       const application = await this.api.application(environment, applicationId);
-      if (revision !== this.loadRevision) return;
+      if (!current()) return;
       this.application.set(application);
       void this.domains.refresh();
       void this.api
         .secrets(environment)
         .then((items) => {
-          this.secrets.set(items);
+          if (current()) this.secrets.set(items);
         })
         .catch(() => {
-          this.secrets.set([]);
+          if (current()) this.secrets.set([]);
         });
       this.loadReleases(environment, applicationId);
       void this.workspace
         .environment(environment.organizationId, environment.projectId, environment.environmentId)
         .then((env) => {
-          this.environmentInfo.set(env);
+          if (current()) this.environmentInfo.set(env);
         })
         .catch(() => {
-          this.environmentInfo.set(null);
+          if (current()) this.environmentInfo.set(null);
         });
       await this.refresh();
     } catch (error: unknown) {
@@ -916,13 +933,16 @@ export class ApplicationPage {
   }
 
   private loadReleases(environment: EnvironmentRef, applicationId: string): void {
+    const revision = this.loadRevision;
+    const request = ++this.releasesRequest;
+    const current = () => revision === this.loadRevision && request === this.releasesRequest;
     void this.api
       .releases(environment, applicationId)
       .then((items) => {
-        this.releases.set(items);
+        if (current()) this.releases.set(items);
       })
       .catch(() => {
-        this.releases.set([]);
+        if (current()) this.releases.set([]);
       });
   }
 
