@@ -33,6 +33,12 @@ const testOrg = "0192f0c0-0000-7000-8000-000000000001"
 
 var testToken = secret.NewString(strings.Repeat("a", 43))
 
+// streamUpdate is an action update and the connection, counted from 1, that carried it.
+type streamUpdate struct {
+	connection int32
+	update     *agentv1.ActionUpdate
+}
+
 type testGateway struct {
 	agentv1.UnimplementedAgentGatewayServiceServer
 	ca         *x509.Certificate
@@ -47,6 +53,10 @@ type testGateway struct {
 	action  atomic.Pointer[agentv1.ActionRequest]
 	cancel  atomic.Pointer[agentv1.CancelAction]
 	updates chan *agentv1.ActionUpdate
+	// streamUpdates, when set, gets each update with the number of the connection it came on.
+	streamUpdates chan streamUpdate
+	// drop ends the current stream after its next message, as a control plane restart would.
+	drop    chan struct{}
 	reports chan *agentv1.StateReport
 	// acceptsMetrics is announced in Welcome; metrics reports are forwarded to metrics, and one
 	// received without it counts in unexpected, as a gateway that does not know them would refuse.
