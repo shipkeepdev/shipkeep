@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -13,7 +14,9 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
 
+	"github.com/shipkeepdev/shipkeep/agent/internal/actions"
 	nodecredentials "github.com/shipkeepdev/shipkeep/agent/internal/credentials"
+	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
 	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
 
@@ -28,7 +31,7 @@ func (g *testGateway) Connect(stream grpc.BidiStreamingServer[agentv1.ConnectReq
 	if request.GetHello() == nil {
 		return status.Error(codes.InvalidArgument, "missing Hello")
 	}
-	g.connects.Add(1)
+	connection := g.connects.Add(1)
 	if err := stream.Send(&agentv1.ConnectResponse{Msg: &agentv1.ConnectResponse_Welcome{Welcome: &agentv1.Welcome{NodeId: testNode, LeaseEpoch: 1, HeartbeatInterval: durationpb.New(time.Second), Metrics: g.acceptsMetrics.Load()}}}); err != nil {
 		return err
 	}
@@ -49,6 +52,15 @@ func (g *testGateway) Connect(stream grpc.BidiStreamingServer[agentv1.ConnectReq
 		request, err := stream.Recv()
 		if err != nil {
 			return err
+		}
+		select {
+		case <-g.drop:
+			return status.Error(codes.Unavailable, "simulated stream loss")
+		default:
+		}
+		if update := request.GetActionUpdate(); update != nil && g.streamUpdates != nil {
+			g.streamUpdates <- streamUpdate{connection: connection, update: update}
+			continue
 		}
 		if update := request.GetActionUpdate(); update != nil && g.updates != nil {
 			g.updates <- update
@@ -327,5 +339,100 @@ func TestRunnerSendsMetricsOnlyWhenTheControlPlaneAcceptsThem(t *testing.T) {
 		if err := <-stopped; err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+// Issue #483, over real gRPC: an action still running when its stream ends reports its outcome
+// on the replacement stream, once the control plane delivers it there again, without a third
+// connection and without running its step twice.
+func TestRunnerReattachesARunningActionToTheReplacementStream(t *testing.T) {
+	address, server := startGateway(t, true)
+	bundle, err := Enroll(t.Context(), Endpoint{Address: address}, nodecredentials.Fingerprint(server.ca), false, testToken, nil, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server.streamUpdates = make(chan streamUpdate, 64)
+	server.drop = make(chan struct{}, 1)
+	request := &agentv1.ActionRequest{
+		ActionId:       "019d0000-0000-7000-8000-0000000000aa",
+		IdempotencyKey: "d:483:net",
+		DeadlineUnixMs: time.Now().Add(time.Minute).UnixMilli(),
+		LeaseEpoch:     1,
+		Action:         &agentv1.ActionRequest_EnsureNetwork{EnsureNetwork: &agentv1.EnsureNetwork{Name: "sk-483"}},
+	}
+	server.action.Store(request)
+	store, err := journal.Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+	var applied atomic.Int32
+	started, release := make(chan struct{}), make(chan struct{})
+	dispatcher := &actions.Dispatcher{
+		Journal: store,
+		Epoch:   func() uint64 { return 1 },
+		Handlers: map[string]actions.Handler{"ensure_network": {
+			Plan: func(*agentv1.ActionRequest) (journal.Plan, error) {
+				return journal.Plan{Version: "test-v1", Steps: []journal.Step{{
+					Name: "create", RetrySafe: true,
+					Apply: func(ctx context.Context) (journal.Outcome, error) {
+						if applied.Add(1) == 1 {
+							close(started)
+						}
+						select {
+						case <-release:
+							return journal.Outcome{ResourceID: "net-483"}, nil
+						case <-ctx.Done():
+							return journal.Outcome{}, ctx.Err()
+						}
+					},
+					Compensate: func(context.Context) error { return nil },
+				}}}, nil
+			},
+			Result: func(outcome journal.Outcome) *agentv1.ActionResult {
+				return &agentv1.ActionResult{Result: &agentv1.ActionResult_ContainerId{ContainerId: outcome.ResourceID}}
+			},
+		}},
+	}
+	runner := Runner{Endpoint: Endpoint{Address: address}, StateDir: t.TempDir(), Actions: dispatcher, Logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	ctx, cancel := context.WithCancel(t.Context())
+	stopped := make(chan error, 1)
+	go func() { stopped <- runner.Run(ctx, bundle) }()
+	defer func() {
+		cancel()
+		if err := <-stopped; err != nil {
+			t.Error(err)
+		}
+	}()
+	waitFor := func(connection int32, state agentv1.OperationState) *agentv1.ActionUpdate {
+		t.Helper()
+		deadline := time.After(20 * time.Second)
+		for {
+			select {
+			case got := <-server.streamUpdates:
+				if got.connection == connection && got.update.GetState() == state {
+					return got.update
+				}
+				if got.update.GetState() == agentv1.OperationState_OPERATION_STATE_SUCCEEDED && got.connection != connection {
+					t.Fatalf("the outcome came on connection %d, not %d", got.connection, connection)
+				}
+			case <-deadline:
+				t.Fatalf("no %v update on connection %d", state, connection)
+			}
+		}
+	}
+	<-started
+	waitFor(1, agentv1.OperationState_OPERATION_STATE_RUNNING)
+	// The first stream ends while the step runs; the control plane delivers the action again.
+	server.action.Store(request)
+	server.drop <- struct{}{}
+	waitFor(2, agentv1.OperationState_OPERATION_STATE_RUNNING)
+	close(release)
+	final := waitFor(2, agentv1.OperationState_OPERATION_STATE_SUCCEEDED)
+	if final.GetResult().GetContainerId() != "net-483" {
+		t.Fatalf("the outcome came without its result: %v", final)
+	}
+	if applied.Load() != 1 || server.connects.Load() != 2 {
+		t.Fatalf("step ran %d times over %d connections", applied.Load(), server.connects.Load())
 	}
 }
