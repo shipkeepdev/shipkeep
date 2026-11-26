@@ -5,6 +5,7 @@ import { ContainerStatus_State, StateReportSchema } from '@shipkeep/proto-ts';
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { StateReports } from '../../fleet/application/state-reports';
 import type { ObservationChange, ObservedAllocation } from '../domain/observations';
+import type { UnmatchedContainer } from '../domain/untracked-containers';
 
 import { AllocationObservations, reportedContainers } from './allocation-observations';
 import type { DeploymentTransaction, ObservationStore } from './ports';
@@ -35,9 +36,23 @@ function setup(allocations: ObservedAllocation[]) {
   const applied: ObservationChange[][] = [];
   const events: DomainEvent[] = [];
   const nodes: string[] = [];
+  let unmatched: UnmatchedContainer[] = [];
+  const replaced: string[][] = [];
   const store: ObservationStore = {
     forApplication: () => Promise.resolve([]),
     onNode: () => Promise.resolve([]),
+    unmatchedOnNode: () => Promise.resolve(unmatched),
+    replaceUnmatched: (_organization, _node, containers, now) => {
+      unmatched = containers.map(({ name, containerId, state }) => ({
+        name,
+        containerId,
+        state,
+        observedAt: now,
+      }));
+      replaced.push(containers.map((container) => container.name));
+      return Promise.resolve();
+    },
+    owningApplications: () => Promise.resolve([]),
     placedOnNode: (_organization, nodeId) => {
       nodes.push(nodeId);
       return Promise.resolve(allocations);
@@ -56,7 +71,7 @@ function setup(allocations: ObservedAllocation[]) {
   } as unknown as DomainEventBus;
   const registry = new StateReports();
   const service = new AllocationObservations(store, transaction, registry, bus);
-  return { service, registry, applied, events, nodes };
+  return { service, registry, applied, events, nodes, replaced };
 }
 const placed = (observation: ObservedAllocation['observation']): ObservedAllocation => ({
   id: 'a1',
@@ -176,5 +191,39 @@ describe('AllocationObservations', () => {
     service.onModuleInit();
     await registry.deliver(identity, report([]));
     expect(nodes).toEqual([NODE]);
+  });
+  // #501: what matches no placed replica is kept for the server's page, written and audited only
+  // when the set changes.
+  it('keeps the containers that match no placed replica, and audits each change once', async () => {
+    const { service, events, replaced } = setup([placed(null)]);
+    const lost = 'sk-web-00000000a1b2-r2-0';
+    await service.record(identity, report([{}, { name: lost, containerId: 'e'.repeat(64) }]), NOW);
+    await service.record(identity, report([{}, { name: lost, containerId: 'e'.repeat(64) }]), NOW);
+    expect(replaced).toEqual([[lost]]);
+    const changed = events.filter((event) => event.type === 'node.unmatched_containers_changed');
+    expect(changed.map((event) => [event.actor, event.target, event.payload])).toEqual([
+      [
+        { kind: 'node', id: NODE },
+        { type: 'node', id: NODE },
+        { added: [lost], gone: [], count: 1 },
+      ],
+    ]);
+    // The container was removed: the set empties once.
+    await service.record(identity, report([{}]), NOW);
+    expect(replaced).toEqual([[lost], []]);
+    expect(
+      events
+        .filter((event) => event.type === 'node.unmatched_containers_changed')
+        .map((event) => event.payload),
+    ).toEqual([
+      { added: [lost], gone: [], count: 1 },
+      { added: [], gone: [lost], count: 0 },
+    ]);
+  });
+
+  it('keeps nothing from an invalid report', async () => {
+    const { service, replaced } = setup([placed(null)]);
+    await service.record(identity, report([{ name: 'not a name' }]), NOW);
+    expect(replaced).toEqual([]);
   });
 });

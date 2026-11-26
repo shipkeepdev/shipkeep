@@ -36,6 +36,7 @@ import { RegistryResolver } from './infrastructure/registry/registry-resolver';
 import { DeploymentController } from './interface/deployment.controller';
 import { ExecSessionController } from './interface/exec-session.controller';
 import { ExecSocket } from './interface/exec-socket';
+import { UntrackedContainers } from './application/untracked-containers';
 import { NodeReplicasController } from './interface/node-replicas.controller';
 
 /** Releases, deployments and their pipeline (SPEC 4, 5.1; PLAN M3.4b2, M3.4c). */
@@ -53,6 +54,7 @@ import { NodeReplicasController } from './interface/node-replicas.controller';
   controllers: [DeploymentController, NodeReplicasController, ExecSessionController],
   providers: [
     DeploymentCommands,
+    UntrackedContainers,
     ExecSessions,
     ExecSocket,
     { provide: DEPLOYMENT_STORE, useClass: PrismaDeploymentStore },

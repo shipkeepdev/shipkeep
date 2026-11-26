@@ -5590,6 +5590,131 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/nodes/{nodeId}/untracked-containers": {
+      "get": {
+        "operationId": "listUntrackedContainers",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UntrackedContainerListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/nodes/{nodeId}/untracked-containers/{name}/remove": {
+      "post": {
+        "operationId": "removeUntrackedContainer",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "nodeId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "name",
+            "required": true,
+            "in": "path",
+            "description": "The container name.",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "X-Shipkeep-CSRF",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "Origin",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RemoveUntrackedContainerDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UntrackedRemovalDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "fleet"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/exec-sessions": {
       "post": {
         "operationId": "open",
@@ -7352,6 +7477,7 @@
             "type": "string",
             "enum": [
               "node.remove",
+              "node.container.remove",
               "application.delete"
             ]
           },
@@ -9568,6 +9694,104 @@
         "required": [
           "items",
           "truncated"
+        ]
+      },
+      "UntrackedContainerDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The container name, as the server reports it."
+          },
+          "containerId": {
+            "type": "string",
+            "description": "The full Docker container id."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "created",
+              "running",
+              "paused",
+              "restarting",
+              "exited",
+              "dead"
+            ]
+          },
+          "observedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "Since when the server's reports hold this set of unmatched containers."
+          },
+          "application": {
+            "$ref": "#/components/schemas/NamedRefDto"
+          },
+          "projectId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "environmentId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "release": {
+            "type": "integer",
+            "description": "The release number its name carries."
+          },
+          "replica": {
+            "type": "string",
+            "description": "The replica index its name carries, or `task` for a release task."
+          }
+        },
+        "required": [
+          "name",
+          "containerId",
+          "state",
+          "observedAt",
+          "application",
+          "projectId",
+          "environmentId",
+          "release",
+          "replica"
+        ]
+      },
+      "UntrackedContainerListDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UntrackedContainerDto"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ]
+      },
+      "RemoveUntrackedContainerDto": {
+        "type": "object",
+        "properties": {
+          "confirmation": {
+            "type": "string",
+            "description": "A confirmation token for `node.container.remove` (SPEC 3.6)."
+          }
+        },
+        "required": [
+          "confirmation"
+        ]
+      },
+      "UntrackedRemovalDto": {
+        "type": "object",
+        "properties": {
+          "actionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The agent action that removes it."
+          }
+        },
+        "required": [
+          "actionId"
         ]
       },
       "OpenExecSessionDto": {

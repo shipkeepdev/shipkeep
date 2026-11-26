@@ -10,7 +10,9 @@ import type {
   ObservationChange,
   ObservedAllocation,
   ReplicaStatus,
+  ReportedContainer,
 } from '../domain/observations';
+import type { OwningApplication, UnmatchedContainer } from '../domain/untracked-containers';
 import type { Allocation, StepOutcome } from '../domain/pipeline';
 import type { NodeLoad, NodeView, ReplacingRelease } from '../domain/placement';
 import type { DeploymentRecord, DeploymentTrigger, Release, ReleaseDraft } from '../domain/release';
@@ -141,6 +143,23 @@ export interface ObservationStore {
    * application name then replica, or undefined when the server is not in the organization.
    */
   onNode(organizationId: string, nodeId: string, limit: number): Promise<NodeReplica[] | undefined>;
+  /** The managed containers the node reported that match no placed replica (#501), by name. */
+  unmatchedOnNode(organizationId: string, nodeId: string): Promise<UnmatchedContainer[]>;
+  /** Replaces the node's unmatched containers with the reported ones. */
+  replaceUnmatched(
+    organizationId: string,
+    nodeId: string,
+    containers: readonly ReportedContainer[],
+    now: Date,
+  ): Promise<void>;
+  /**
+   * The organization's applications whose id ends with one of these 12-character suffixes, with
+   * whether one of their deployments is underway.
+   */
+  owningApplications(
+    organizationId: string,
+    suffixes: readonly string[],
+  ): Promise<OwningApplication[]>;
 }
 
 export const DEPLOYMENT_WAKER = Symbol('DeploymentWaker');
