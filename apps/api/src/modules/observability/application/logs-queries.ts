@@ -28,7 +28,7 @@ export class LogsQueries {
     @Optional() @Inject(LOGS_STORE) private readonly store: LogsStore | null,
   ) {}
 
-  search(
+  async search(
     context: SecurityContext,
     target: ApplicationTarget,
     applicationId: string,
@@ -48,25 +48,32 @@ export class LogsQueries {
       projectId: target.projectId,
       environmentId: target.environmentId,
     };
-    return this.accounts.run(
-      context,
-      async () => {
-        await this.access.require(context.userId, 'environment.read', scope);
-        const found = await this.transaction.runTenant(target.organizationId, () =>
-          this.applications.find(target, applicationId),
-        );
-        if (!found) throw new NotFoundError('application');
-        const store = this.store;
-        if (!store) return { kept: false, lines: [] };
-        // A failure of the store is a 503 whose text never names the store's (the store says so).
-        const records = await store.query(
-          logsQuery({ organizationId: target.organizationId, applicationId: found.id, ...search }),
-          search.limit,
-        );
-        const lines = distinctLines(records.map(logLineOf).filter((line) => line !== undefined));
-        return { kept: true, lines };
-      },
-      { permission: 'environment.read', target: scope },
+    // Authorized in a short transaction, read with neither a lock nor a transaction held, then
+    // authorized again before any line leaves: a slow store never holds the account's lock, and
+    // access lost during the read returns nothing (issue #488).
+    const authorize = () =>
+      this.accounts.run(
+        context,
+        async () => {
+          await this.access.require(context.userId, 'environment.read', scope);
+          const found = await this.transaction.runTenant(target.organizationId, () =>
+            this.applications.find(target, applicationId),
+          );
+          if (!found) throw new NotFoundError('application');
+          return found;
+        },
+        { permission: 'environment.read', target: scope },
+      );
+    const found = await authorize();
+    const store = this.store;
+    if (!store) return { kept: false, lines: [] };
+    // A failure of the store is a 503 whose text never names the store's (the store says so).
+    const records = await store.query(
+      logsQuery({ organizationId: target.organizationId, applicationId: found.id, ...search }),
+      search.limit,
     );
+    await authorize();
+    const lines = distinctLines(records.map(logLineOf).filter((line) => line !== undefined));
+    return { kept: true, lines };
   }
 }

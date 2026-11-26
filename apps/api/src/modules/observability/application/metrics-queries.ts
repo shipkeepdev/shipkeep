@@ -66,7 +66,7 @@ export class MetricsQueries {
     @Optional() @Inject(METRICS_STORE) private readonly store: MetricsStore | null,
   ) {}
 
-  application(
+  async application(
     context: SecurityContext,
     target: ApplicationTarget,
     applicationId: string,
@@ -78,21 +78,30 @@ export class MetricsQueries {
       projectId: target.projectId,
       environmentId: target.environmentId,
     };
-    return this.accounts.run(
-      context,
-      async () => {
-        await this.access.require(context.userId, 'environment.read', scope);
-        const found = await this.transaction.runTenant(target.organizationId, () =>
-          this.applications.find(target, applicationId),
-        );
-        if (!found) throw new NotFoundError('application');
-        return this.answer(applicationQueries(target.organizationId, found.id, range), range, now);
-      },
-      { permission: 'environment.read', target: scope },
+    const authorize = () =>
+      this.accounts.run(
+        context,
+        async () => {
+          await this.access.require(context.userId, 'environment.read', scope);
+          const found = await this.transaction.runTenant(target.organizationId, () =>
+            this.applications.find(target, applicationId),
+          );
+          if (!found) throw new NotFoundError('application');
+          return found;
+        },
+        { permission: 'environment.read', target: scope },
+      );
+    const found = await authorize();
+    const answer = await this.answer(
+      applicationQueries(target.organizationId, found.id, range),
+      range,
+      now,
     );
+    await authorize();
+    return answer;
   }
 
-  node(
+  async node(
     context: SecurityContext,
     organizationId: string,
     nodeId: string,
@@ -101,14 +110,18 @@ export class MetricsQueries {
   ): Promise<
     MetricsAnswer<'cpu' | 'memory' | 'memoryTotal' | 'disk' | 'diskTotal' | 'received' | 'sent'>
   > {
-    return this.accounts.run(context, async () => {
-      await this.access.require(context.userId, 'node.manage', { organizationId });
-      const exists = await this.transaction.runTenant(organizationId, () =>
-        this.targets.nodeExists(organizationId, nodeId),
-      );
-      if (!exists) throw new NotFoundError('resource');
-      return this.answer(nodeQueries(organizationId, nodeId, range), range, now);
-    });
+    const authorize = () =>
+      this.accounts.run(context, async () => {
+        await this.access.require(context.userId, 'node.manage', { organizationId });
+        const exists = await this.transaction.runTenant(organizationId, () =>
+          this.targets.nodeExists(organizationId, nodeId),
+        );
+        if (!exists) throw new NotFoundError('resource');
+      });
+    await authorize();
+    const answer = await this.answer(nodeQueries(organizationId, nodeId, range), range, now);
+    await authorize();
+    return answer;
   }
 
   /**
@@ -116,36 +129,38 @@ export class MetricsQueries {
    * member reads the environments `observability.read` allows, among the first 100 of the
    * organization (SPEC 12), and none at all reads no series.
    */
-  organization(
+  async organization(
     context: SecurityContext,
     organizationId: string,
     range: Range,
     now = new Date(),
   ): Promise<OrganizationAnswer> {
-    return this.accounts.run(context, async () => {
-      await this.access.require(context.userId, 'organization.read', { organizationId });
-      const { environments, partial } = await this.readableEnvironments(
-        context.userId,
-        organizationId,
-      );
-      const store = this.store;
-      if (environments?.length === 0 || !store) {
-        const answer = await this.answer({ requests: null, duration: null }, range, now);
-        return { ...answer, totalRequests: store ? 0 : null, meanSeconds: null, partial };
-      }
-      const totals = organizationTotals(organizationId, environments, range);
-      const [answer, requests, seconds] = await Promise.all([
-        this.answer(organizationQueries(organizationId, environments, range), range, now),
-        store.queryInstant(totals.requests, now).then(single),
-        store.queryInstant(totals.seconds, now).then(single),
-      ]);
-      return {
-        ...answer,
-        totalRequests: requests,
-        meanSeconds: requests > 0 ? seconds / requests : null,
-        partial,
-      };
-    });
+    const authorize = () =>
+      this.accounts.run(context, async () => {
+        await this.access.require(context.userId, 'organization.read', { organizationId });
+        return this.readableEnvironments(context.userId, organizationId);
+      });
+    const { environments, partial } = await authorize();
+    const store = this.store;
+    if (environments?.length === 0 || !store) {
+      const answer = await this.answer({ requests: null, duration: null }, range, now);
+      return { ...answer, totalRequests: store ? 0 : null, meanSeconds: null, partial };
+    }
+    const totals = organizationTotals(organizationId, environments, range);
+    const [answer, requests, seconds] = await Promise.all([
+      this.answer(organizationQueries(organizationId, environments, range), range, now),
+      store.queryInstant(totals.requests, now).then(single),
+      store.queryInstant(totals.seconds, now).then(single),
+    ]);
+    // Every environment read must still be readable: a narrowed access returns nothing.
+    const still = await authorize();
+    if (!covers(still.environments, environments)) throw new NotFoundError('resource');
+    return {
+      ...answer,
+      totalRequests: requests,
+      meanSeconds: requests > 0 ? seconds / requests : null,
+      partial,
+    };
   }
 
   /**
@@ -228,4 +243,10 @@ export class MetricsQueries {
 function single(series: readonly Series[]): number {
   const value = series.at(0)?.points.at(0)?.[1];
   return value !== undefined && Number.isFinite(value) && value > 0 ? value : 0;
+}
+
+/** Whether the environments readable now include those read before; null means every one. */
+function covers(now: readonly string[] | null, before: readonly string[] | null): boolean {
+  if (now === null) return true;
+  return before !== null && before.every((id) => now.includes(id));
 }
