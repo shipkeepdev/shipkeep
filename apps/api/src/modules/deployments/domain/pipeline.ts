@@ -462,7 +462,7 @@ const PULL_FAILURES: Partial<Record<ActionReason, string>> = {
     "The server could not pull the image: it does not trust the registry's certificate.",
   disk_full: 'The server could not pull the image: its disk is full.',
   egress_unguarded:
-    "The server refused to pull the image: its Docker daemon does not go through Shipkeep's egress proxy, which keeps a registry from reaching the server's own network. Run the server installer again to restore it.",
+    "The server refused to pull the image: its Docker daemon does not go through Shipkeep's egress proxy, which keeps a registry from reaching the server's own network. Run the server installer again with --migrate yes to restore it.",
 };
 
 function prepare(context: PipelineContext, nodeId: string, image: string): PipelineStep[] {

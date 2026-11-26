@@ -226,6 +226,62 @@ UMask=0077
 WantedBy=multi-user.target
 UNIT
 }
+# The agent's unit as the installers of 0.1.0-alpha.1 to 0.1.0-alpha.3 wrote it: no upgrade guard,
+# and no wait for a READY the agents of then never send. --migrate recognizes it (#490).
+legacy_agent_unit() {
+  cat <<'UNIT'
+[Unit]
+Description=Shipkeep node agent
+After=network-online.target docker.service shipkeep-caddy.service systemd-tmpfiles-setup.service
+Wants=network-online.target shipkeep-caddy.service
+Requires=docker.service
+[Service]
+User=shipkeep
+Group=shipkeep
+SupplementaryGroups=docker
+ExecStart=/var/lib/shipkeep/bin/shipkeep-agent --config /etc/shipkeep/agent.yaml
+Restart=always
+RestartSec=5
+# No capabilities: Caddy owns the ports, and WireGuard adds what it needs with M4.1.
+CapabilityBoundingSet=
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/etc/shipkeep /var/lib/shipkeep /run/shipkeep
+UMask=0077
+[Install]
+WantedBy=multi-user.target
+UNIT
+}
+# Prints which installer wrote the server agent's unit $1: legacy (0.1.0-alpha.3 or earlier) or
+# current. Any other text fails: a unit changed by hand is reconciled by hand, never overwritten.
+agent_unit_layout() {
+  local unit
+  [[ -f $1 && ! -L $1 ]] || return 1
+  unit=$(<"$1")
+  if [[ $unit == "$(legacy_agent_unit)" ]]; then
+    printf 'legacy\n'
+  elif [[ $unit == "$(agent_unit)" ]]; then
+    printf 'current\n'
+  else
+    return 1
+  fi
+}
+# True when the agent configuration $1 is the one this installer writes for a server of the
+# control plane at the gateway address $2, with the CA fingerprint $3: not another control plane's,
+# and not a control plane machine's, which connects over loopback and has a role.
+server_config_of() {
+  [[ -f $1 && ! -L $1 ]] && grep -qxF "  address: '$2'" "$1" && grep -qxF "  ca_fingerprint: '$3'" "$1" &&
+    ! grep -Eq '^[[:space:]]*(connect|role):' "$1"
+}
+# True when the Docker daemon already runs in the slice with cgroup $1, behind the egress proxy and
+# its guard (ADR 0023): restarting it would change nothing.
+docker_guarded() {
+  [[ $(systemctl show --property ControlGroup --value docker.service) == "$1/docker.service" ]] &&
+    nft list table inet shipkeep_egress >/dev/null 2>&1 &&
+    curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/v1.47/info | egress_proxies_applied
+}
 # Prints the unit of Caddy, the edge proxy of a server. Its admin API is a socket that only the
 # agent's group reaches.
 caddy_unit() {
@@ -367,8 +423,13 @@ UNIT
     ((attempt < 20)) || fail 'The egress proxy did not start; inspect journalctl -u shipkeep-egress.'
     sleep 0.5
   done
-  printf 'Restarting Docker so that it pulls through the egress proxy; running containers restart with it.\n'
-  systemctl restart docker
+  if docker_guarded "$slice"; then
+    # A migration run again: Docker keeps running, with the guard as just written.
+    nft --file /etc/shipkeep-egress.nft
+  else
+    printf 'Restarting Docker so that it pulls through the egress proxy; running containers restart with it.\n'
+    systemctl restart docker
+  fi
   [[ $(systemctl show --property ControlGroup --value docker.service) == "$slice/docker.service" ]] || fail 'Docker does not run in shipkeep.slice.'
   nft list table inet shipkeep_egress >/dev/null || fail 'The egress guard of the Docker daemon is not loaded.'
   curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/v1.47/info | egress_proxies_applied || fail 'Docker does not report the egress proxy; check the proxy settings of its other drop-ins (systemctl cat docker).'
@@ -400,7 +461,7 @@ REPO
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
 umask 077
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-control_plane='' fingerprint='' origin='' amd64='' arm64='' local_control_plane='' agent_file='' control_plane_only=''
+control_plane='' fingerprint='' origin='' amd64='' arm64='' local_control_plane='' agent_file='' control_plane_only='' migrate=''
 while (($#)); do
   (($# >= 2)) || fail 'Missing option value.'
   case "$1" in
@@ -416,6 +477,9 @@ while (($#)); do
     # Set by the control plane installer on its own machine when applications run elsewhere
     # (ADR 0028): an agent only, with no Caddy, egress proxy or application of its own.
     --control-plane-only) control_plane_only=$2 ;;
+    # Brings a server set up by an earlier version of this installer to the current layout, and
+    # keeps its identity, journal, applications and Caddy state (#490, ADR 0028).
+    --migrate) migrate=$2 ;;
     *) fail 'Unknown option.' ;;
   esac
   shift 2
@@ -431,6 +495,8 @@ port=${control_plane##*:}
 [[ -z $control_plane_only || $control_plane_only == yes ]] || fail 'Invalid --control-plane-only: yes is the only value.'
 [[ -z $control_plane_only || -z $local_control_plane ]] || fail 'A control-plane-only machine runs no application: give --local-control-plane on a single machine only.'
 [[ -z $control_plane_only || -n $agent_file ]] || fail 'A control plane machine installs the agent of its control plane image: pass --agent-file.'
+[[ -z $migrate || $migrate == yes ]] || fail 'Invalid --migrate: yes is the only value.'
+[[ -z $migrate || -z $local_control_plane$agent_file$control_plane_only ]] || fail 'Only a server for applications migrates: a control plane machine was set up by its own installer, with the current layout.'
 # The control plane's name, the host of the gateway address, is the name its route serves.
 control_plane_host=${control_plane%:*}
 ((EUID == 0)) || fail 'Run with sudo.'
@@ -439,8 +505,100 @@ control_plane_host=${control_plane%:*}
 . /etc/os-release
 [[ $ID == ubuntu && $VERSION_ID == 24.04 ]] || fail 'This installer supports Ubuntu 24.04.'
 case $(uname -m) in x86_64) digest=$amd64 ;; aarch64) digest=$arm64 ;; *) fail 'Unsupported architecture.' ;; esac
+if [[ -n $migrate ]]; then
+  # Only a server this installer set up for applications, from 0.1.0-alpha.1 on, and nothing else:
+  # every check runs before the first change, and anything unexpected is left for the operator.
+  for account in shipkeep shipkeep-caddy; do
+    [[ $(id -gn "$account" 2>/dev/null) == shipkeep ]] || fail "No $account account in the shipkeep group: this is not a Shipkeep server. Install it without --migrate."
+  done
+  id -nG shipkeep | tr ' ' '\n' | grep -qx docker || fail 'The shipkeep account is not in the docker group; reconcile it manually.'
+  if getent passwd shipkeep-egress >/dev/null; then
+    [[ $(id -gn shipkeep-egress) == shipkeep-egress ]] || fail 'The shipkeep-egress account is not in its own group; reconcile it manually.'
+  elif getent group shipkeep-egress >/dev/null; then
+    fail 'A shipkeep-egress group exists without its account; reconcile it manually.'
+  fi
+  for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep/bin; do
+    [[ -d $path && ! -L $path && $(stat -c %U:%G -- "$path") == shipkeep:shipkeep ]] || fail "$path is not the agent's directory; reconcile it manually."
+  done
+  for path in /etc/shipkeep/agent.yaml /var/lib/shipkeep/bin/shipkeep-agent /etc/shipkeep-caddy.json /etc/tmpfiles.d/shipkeep.conf /usr/bin/caddy /etc/apt/sources.list.d/shipkeep-caddy.sources; do
+    [[ -f $path && ! -L $path ]] || fail "$path is missing: this is not a server this installer set up."
+  done
+  layout=$(agent_unit_layout /etc/systemd/system/shipkeep-agent.service) || fail 'shipkeep-agent.service is not the unit an installer wrote; reconcile it manually.'
+  [[ -f /etc/systemd/system/shipkeep-caddy.service && ! -L /etc/systemd/system/shipkeep-caddy.service && $(</etc/systemd/system/shipkeep-caddy.service) == "$(caddy_unit)" ]] ||
+    fail 'shipkeep-caddy.service is not the unit an installer wrote; reconcile it manually.'
+  for path in /etc/systemd/system/shipkeep-agent.service.d /etc/systemd/system/shipkeep-caddy.service.d; do
+    [[ ! -e $path && ! -L $path ]] || fail "$path changes a Shipkeep unit; reconcile it manually."
+  done
+  [[ ! -e /etc/systemd/system/shipkeep-workloads.slice ]] || fail 'This machine also hosts the control plane, whose installer set it up with the current layout: there is nothing to migrate.'
+  server_config_of /etc/shipkeep/agent.yaml "$control_plane" "$fingerprint" ||
+    fail "/etc/shipkeep/agent.yaml names another control plane or CA than this command, or a control plane machine. Run the command that this server's control plane shows."
+  # What an earlier migration or a current installation wrote is a regular file, rewritten below.
+  for path in /usr/local/libexec/shipkeep-egress /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf; do
+    [[ ! -L $path && (! -e $path || -f $path) ]] || fail "$path is not a regular file; reconcile it manually."
+  done
+  # Its upgrade guard would put the previous binary back over the one installed here.
+  if [[ -e /var/lib/shipkeep/upgrade.json ]] && grep -q '"state":"pending"' /var/lib/shipkeep/upgrade.json; then
+    fail 'An agent upgrade is not confirmed yet. Wait until Servers shows it ended, then run this command again.'
+  fi
+  command -v ss >/dev/null || fail 'Install iproute2 before running this installer.'
+  if ! systemctl is-active --quiet shipkeep-egress; then
+    listeners=$(ss -H -ltn 'sport = :7480') || fail 'Cannot inspect TCP ports.'
+    [[ -z $listeners ]] || fail 'Port 7480 is occupied; the egress proxy of the Docker daemon listens there.'
+  fi
+  curl --fail --silent --unix-socket /var/run/docker.sock http://localhost/v1.47/info -o /dev/null || fail 'Docker API 1.47 is unavailable.'
+  work=$(mktemp -d /var/lib/shipkeep-install.XXXXXX)
+  agent_stopped=''
+  # Whatever stops the migration, the agent runs again: the old one, or the new one under the old or
+  # the new unit, which all run with what is on disk at that point.
+  # shellcheck disable=SC2329 # run by the EXIT trap below
+  migration_cleanup() {
+    rm -rf -- "$work"
+    if [[ -n $agent_stopped ]]; then systemctl start shipkeep-agent || true; fi
+  }
+  trap migration_cleanup EXIT
+  export DEBIAN_FRONTEND=noninteractive
+  curl --fail --silent --show-error --proto '=https' --max-time 300 --max-filesize 50331648 "$origin/install/agent-$digest.bin" -o "$work/agent"
+  printf '%s  %s\n' "$digest" "$work/agent" | sha256sum --check --status || fail 'Agent checksum mismatch.'
+  chmod 0700 "$work/agent"
+  "$work/agent" --validate --config /etc/shipkeep/agent.yaml >/dev/null || fail 'The new agent refuses /etc/shipkeep/agent.yaml (see above); nothing was changed.'
+  # Changes start here. Each step leaves a server that runs: the old agent, or the new one under
+  # the old or the guarded unit, Docker with or without the egress proxy. Running this again goes on.
+  prepare_egress "$work"
+  getent passwd shipkeep-egress >/dev/null || useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin shipkeep-egress
+  install_guard "$work"
+  if systemctl is-active --quiet shipkeep-egress; then systemctl restart shipkeep-egress; fi
+  # Docker's restart below gives containers new addresses. The routes an agent of 0.1.0-alpha.3 or
+  # earlier wrote have no record to follow them (ADR 0017): they are recorded first, while each
+  # container still has its address, with the agent stopped so that nothing changes them meanwhile.
+  agent_stopped=yes
+  systemctl stop shipkeep-agent
+  printf 'Recording the routes of this server before Docker restarts.\n'
+  if ! setpriv --reuid=shipkeep --regid=shipkeep --init-groups -- /usr/local/libexec/shipkeep-egress adopt-routes --config /etc/shipkeep/agent.yaml; then
+    fail 'Stopped before the agent and Docker changed: the agent runs as before. Deploy again each application named above (a restart since its route was written sent its traffic elsewhere, or none of its containers runs), then run this command again.'
+  fi
+  install -m 0755 -o shipkeep -g shipkeep "$work/agent" /var/lib/shipkeep/bin/.shipkeep-agent.migrate
+  mv -fT /var/lib/shipkeep/bin/.shipkeep-agent.migrate /var/lib/shipkeep/bin/shipkeep-agent
+  # The unit waits for the new agent's READY, which the old agent never sends: binary first.
+  agent_unit >"$work/agent.service"
+  install -m 0644 "$work/agent.service" /etc/systemd/system/.shipkeep-agent.service.migrate
+  mv -fT /etc/systemd/system/.shipkeep-agent.service.migrate /etc/systemd/system/shipkeep-agent.service
+  systemctl daemon-reload
+  systemctl start shipkeep-agent || fail 'The new agent did not start; inspect journalctl -u shipkeep-agent, then run this command again.'
+  agent_stopped=''
+  # Restarts Docker unless it already pulls through the proxy; the agent restarts with it, and its
+  # first pass moves each recorded route to its container's new address.
+  install_egress "$work"
+  # Docker's restart restarts the agent too: it may still be starting.
+  for attempt in {1..120}; do
+    systemctl is-active --quiet shipkeep-agent && break
+    ((attempt < 120)) || fail 'The agent did not come back after Docker; inspect journalctl -u shipkeep-agent, then run this command again.'
+    sleep 1
+  done
+  printf 'Migrated (from the %s layout). Refresh Servers to verify ready; the agent can now be upgraded.\n' "$layout"
+  exit 0
+fi
 for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep /etc/shipkeep-caddy.json /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-workloads.slice /usr/local/libexec/shipkeep-egress /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf /etc/tmpfiles.d/shipkeep.conf; do
-  [[ ! -e $path && ! -L $path ]] || fail 'Existing Shipkeep installation; refusing to overwrite it.'
+  [[ ! -e $path && ! -L $path ]] || fail 'Existing Shipkeep installation; refusing to overwrite it. To bring a server an earlier version set up to the current layout, run the same command with --migrate yes.'
 done
 for account in shipkeep shipkeep-caddy shipkeep-egress; do
   ! getent passwd "$account" >/dev/null || fail 'An installation service account already exists.'
