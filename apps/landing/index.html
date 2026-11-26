@@ -62,6 +62,7 @@
 <link rel="stylesheet" href="/site.css">
 <script src="/theme.js"></script>
 <script src="/site.js" defer></script>
+<script src="/hero-art.js" defer></script>
 </head>
 <body>
 <p id="sk-status" role="status">Shipkeep is in development. A <a href="https://github.com/shipkeepdev/shipkeep/blob/main/docs/INSTALL.md" rel="noopener">first prerelease</a> can be installed to try it, on servers you can afford to lose. This page describes the release we are building: not all of it is there yet.</p>
@@ -85,6 +86,7 @@
 <main>
 <section class="frame hero" aria-labelledby="hero-t"><div class="card">
   <div class="hb">
+    <canvas class="art" aria-hidden="true"></canvas>
     <a class="pill" href="https://github.com/shipkeepdev/shipkeep" rel="noopener"><i class="ti ti-brand-open-source" aria-hidden="true"></i>Open source · Apache-2.0</a>
     <h1 id="hero-t">Your servers. Your keys.</h1>
     <p class="lead">The open source PaaS that deploys to your machines, without a root key in a panel.</p>

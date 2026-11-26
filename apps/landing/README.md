@@ -3,7 +3,7 @@
 Static marketing page, deployed on Vercel at <https://shipkeep.vercel.app> (project `shipkeep`, not linked to Git).
 
 - `index.html` (English, the default, at `/`) and `fr/index.html` (French, at `/fr`) are static pages. Edit them directly: they have no build step. `/en`, the English page's former address, redirects to `/` (`vercel.json`).
-- `site.css` holds the styles and `site.js` the interactions, with no dependency. `theme.js` applies the saved light or dark theme before the page is painted, the only thing the page stores. The page is dark unless the visitor chose light. `vercel.json` sets the Content-Security-Policy.
+- `site.css` holds the styles and `site.js` the interactions, with no dependency. `hero-art.js` draws the hero's watermark on a canvas: a container ship, modelled in 3D, painted in greys and written in faint characters, fading behind the text. Only the sea moves, about three times a second, and the masthead light blinks; it is still under reduced motion and paused off screen. `theme.js` applies the saved light or dark theme before the page is painted, the only thing the page stores. The page is dark unless the visitor chose light. `vercel.json` sets the Content-Security-Policy.
 - The page follows the "Shipkeep Landing Cadre" design. Its examples use reserved names (`example.com`, `srv-par-1`) and the `shipkeep.yml` lines are valid against the JSON Schema.
 - `og.jpg` is the image shown when a link to the site is shared: a 1200 × 630 screenshot of the top of the English page, in English like the shared page's title and description. The French page uses `og-fr.jpg`, the same from the French page. Both show the status line, so take them again whenever the status line, the navigation or the hero changes.
 
