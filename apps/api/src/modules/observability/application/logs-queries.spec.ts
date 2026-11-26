@@ -81,4 +81,54 @@ describe('log searches', () => {
       service({ denied: true }).search(context, target, APP, search),
     ).rejects.toBeInstanceOf(NotFoundError);
   });
+
+  // Issue #488: the account's lock and transaction are never held while the store answers, and
+  // access is checked again before any line leaves.
+  it('reads the store outside the account lock, and authorizes again before answering', async () => {
+    let inside = 0;
+    let runs = 0;
+    const reads: number[] = [];
+    let allowed = true;
+    let revoke = true;
+    const queries = new LogsQueries(
+      {
+        run: async (_c: unknown, work: () => Promise<unknown>) => {
+          runs++;
+          inside++;
+          try {
+            return await work();
+          } finally {
+            inside--;
+          }
+        },
+      } as unknown as AccountMutationAuthority,
+      {
+        require: () =>
+          allowed ? Promise.resolve() : Promise.reject(new NotFoundError('resource')),
+      } as unknown as TenantAccess,
+      { find: () => Promise.resolve({ id: APP, ...target }) } as unknown as ApplicationStore,
+      { runTenant: (_o: string, work: () => Promise<unknown>) => work() } as MetricsTransaction,
+      {
+        write: () => Promise.resolve(),
+        query: () => {
+          reads.push(inside);
+          // Access is withdrawn while the store answers, the first time.
+          if (revoke) allowed = false;
+          return Promise.resolve([
+            { _time: '2026-11-24T11:30:00Z', _msg: 'x happened', stream: 'stdout', instance: '1' },
+          ]);
+        },
+      },
+    );
+    await expect(queries.search(context, target, APP, search)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    expect(reads).toEqual([0]);
+    expect(runs).toBe(2);
+    allowed = true;
+    revoke = false;
+    const answer = await queries.search(context, target, APP, search);
+    // Allowed throughout? Then the lines come back: the second check passes.
+    expect(answer.kept).toBe(true);
+  });
 });
