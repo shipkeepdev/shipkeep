@@ -93,6 +93,8 @@ type Dispatcher struct {
 	// Epoch returns the lease epoch this node holds; requests for another epoch are fenced.
 	Epoch func() uint64
 	Now   func() time.Time
+	// RecoveryTimeout bounds one recovery; zero means recoveryTimeout. Tests shorten it.
+	RecoveryTimeout time.Duration
 
 	mu      sync.Mutex
 	running map[string]*inflight
@@ -218,7 +220,11 @@ func (d *Dispatcher) Handle(ctx context.Context, req *agentv1.ActionRequest, sen
 // it. Its final update says the deadline passed, unless a failed step named a cause.
 func (d *Dispatcher) recover(ctx context.Context, req *agentv1.ActionRequest, kind string, hash [sha256.Size]byte, plan journal.Plan, handler Handler, send func(*agentv1.ActionUpdate)) {
 	id := req.GetActionId()
-	recoveryCtx, cancel := context.WithTimeout(ctx, recoveryTimeout)
+	bound := recoveryTimeout
+	if d.RecoveryTimeout > 0 {
+		bound = d.RecoveryTimeout
+	}
+	recoveryCtx, cancel := context.WithTimeout(ctx, bound)
 	defer cancel()
 	action, fresh := d.track(id, cancel, send)
 	if !fresh {
@@ -234,8 +240,17 @@ func (d *Dispatcher) recover(ctx context.Context, req *agentv1.ActionRequest, ki
 			if handler.Result != nil {
 				next.Result = handler.Result(op.Result)
 			}
-		case journal.Failed, journal.Compensated, journal.Cancelled:
+		case journal.Cancelled:
+			// Nothing of it ever ran: the control plane keeps it expired.
 			next.Error = errDeadline
+		case journal.Compensated:
+			next.Error = errDeadline
+			if op.Cause != "" {
+				next.Error = failureText(op.Cause)
+			}
+		case journal.Failed:
+			// It ran and could not be undone: never reported as an action that never ran.
+			next.Error = errFailed
 			if op.Cause != "" {
 				next.Error = failureText(op.Cause)
 			}
@@ -254,7 +269,8 @@ func (d *Dispatcher) recover(ctx context.Context, req *agentv1.ActionRequest, ki
 	case errors.Is(err, journal.ErrConflict):
 		send(failure(id, errConflict, d.now()))
 	case op.ID == "":
-		send(failure(id, errDeadline, d.now()))
+		// The journal could not be locked or read in time: nothing is reported, and the control
+		// plane delivers the action again, while its recovery window lasts.
 	default:
 		send(final(op))
 	}
