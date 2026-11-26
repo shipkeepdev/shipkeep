@@ -433,7 +433,7 @@ describe('deployment pipeline', () => {
       expect(
         failing('create_container', { state: 'compensated', reason: 'container_name_taken' }),
       ).toBe(
-        'The server did not create the container: another container already has its name. After a restore from an older backup, it is likely the container of a deployment that the backup does not know, and each such deployment makes one more attempt fail: deploy again until one succeeds. Before removing such a container on the server, check that it belongs to this application and is no longer needed.',
+        'The server did not create the container: another container already has its name. After a restore from an older backup, it is likely the container of a deployment that the backup does not know, and each such deployment makes one more attempt fail: deploy again until one succeeds. That container then shows as untracked on the page of its server, where it can be removed once you have checked that it is no longer needed.',
       );
     });
 

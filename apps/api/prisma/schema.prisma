@@ -311,23 +311,24 @@ model JoinToken {
 
 /// A server running shipkeep-agent (SPEC 4, 5.2).
 model Node {
-  id                 String              @id @db.Uuid
-  organizationId     String              @map("organization_id") @db.Uuid
-  name               String              @db.VarChar(40)
-  status             String              @db.VarChar(16)
-  labels             Json
-  facts              Json
+  id                  String               @id @db.Uuid
+  organizationId      String               @map("organization_id") @db.Uuid
+  name                String               @db.VarChar(40)
+  status              String               @db.VarChar(16)
+  labels              Json
+  facts               Json
   /// Canonical public IP addresses declared by an administrator (PLAN M3.6b1), at most 8.
-  publicAddresses    String[]            @default([]) @map("public_addresses") @db.VarChar(45)
-  leaseEpoch         Int                 @map("lease_epoch")
-  createdAt          DateTime            @map("created_at") @db.Timestamptz(6)
-  lastHeartbeatAt    DateTime?           @map("last_heartbeat_at") @db.Timestamptz(6)
-  certificates       NodeCertificate[]
-  readoption         NodeReadoption?
-  domainCertificates DomainCertificate[]
-  actions            AgentAction[]
-  allocations        Allocation[]
-  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  publicAddresses     String[]             @default([]) @map("public_addresses") @db.VarChar(45)
+  leaseEpoch          Int                  @map("lease_epoch")
+  createdAt           DateTime             @map("created_at") @db.Timestamptz(6)
+  lastHeartbeatAt     DateTime?            @map("last_heartbeat_at") @db.Timestamptz(6)
+  certificates        NodeCertificate[]
+  readoption          NodeReadoption?
+  domainCertificates  DomainCertificate[]
+  actions             AgentAction[]
+  allocations         Allocation[]
+  unmatchedContainers UnmatchedContainer[]
+  organization        Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([organizationId, name])
   @@unique([organizationId, id])
@@ -637,6 +638,23 @@ model Allocation {
   @@index([applicationId, state])
   @@index([organizationId, nodeId, state])
   @@map("allocations")
+}
+
+/// A managed container a node's agent reported that matches no replica placed on it (#501), as its
+/// last state report said. Replaced when the set changes; the containers of a known application
+/// among them are listed as untracked on the server's page.
+model UnmatchedContainer {
+  organizationId String   @map("organization_id") @db.Uuid
+  nodeId         String   @map("node_id") @db.Uuid
+  name           String   @db.VarChar(63)
+  containerId    String   @map("container_id") @db.Char(64)
+  state          String   @db.VarChar(16)
+  observedAt     DateTime @map("observed_at") @db.Timestamptz(6)
+  node           Node     @relation(fields: [organizationId, nodeId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([nodeId, name])
+  @@index([organizationId, nodeId])
+  @@map("unmatched_containers")
 }
 
 /// What the agent last observed for an allocation; never changes the scheduler's reservation.

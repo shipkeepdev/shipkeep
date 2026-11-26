@@ -450,7 +450,7 @@ const IMAGE_VOLUME_UNDECLARED =
  * than the last deployment, a release number is reused (issue #501).
  */
 const CONTAINER_NAME_TAKEN =
-  'The server did not create the container: another container already has its name. After a restore from an older backup, it is likely the container of a deployment that the backup does not know, and each such deployment makes one more attempt fail: deploy again until one succeeds. Before removing such a container on the server, check that it belongs to this application and is no longer needed.';
+  'The server did not create the container: another container already has its name. After a restore from an older backup, it is likely the container of a deployment that the backup does not know, and each such deployment makes one more attempt fail: deploy again until one succeeds. That container then shows as untracked on the page of its server, where it can be removed once you have checked that it is no longer needed.';
 
 /** What a failed pull says, by cause: what happened, in words that tell what to check. */
 const PULL_FAILURES: Partial<Record<ActionReason, string>> = {

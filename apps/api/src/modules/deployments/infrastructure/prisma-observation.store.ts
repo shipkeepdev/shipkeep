@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+import { Prisma } from '../../../platform/prisma/generated/client';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { ObservationStore } from '../application/ports';
 import {
@@ -9,8 +10,10 @@ import {
   type ObservedAllocation,
   type ObservedState,
   type ReplicaStatus,
+  type ReportedContainer,
   stopReason,
 } from '../domain/observations';
+import type { OwningApplication, UnmatchedContainer } from '../domain/untracked-containers';
 
 @Injectable()
 export class PrismaObservationStore implements ObservationStore {
@@ -90,6 +93,66 @@ export class PrismaObservationStore implements ObservationStore {
     }));
   }
 
+  async unmatchedOnNode(organizationId: string, nodeId: string): Promise<UnmatchedContainer[]> {
+    const rows = await this.database.client.unmatchedContainer.findMany({
+      where: { organizationId, nodeId },
+      orderBy: { name: 'asc' },
+    });
+    return rows.map((row) => ({
+      name: row.name,
+      containerId: row.containerId,
+      state: reportedState(row.state),
+      observedAt: row.observedAt,
+    }));
+  }
+
+  async replaceUnmatched(
+    organizationId: string,
+    nodeId: string,
+    containers: readonly ReportedContainer[],
+    now: Date,
+  ): Promise<void> {
+    await this.database.client.unmatchedContainer.deleteMany({ where: { organizationId, nodeId } });
+    if (!containers.length) return;
+    await this.database.client.unmatchedContainer.createMany({
+      data: containers.map((container) => ({
+        organizationId,
+        nodeId,
+        name: container.name,
+        containerId: container.containerId,
+        state: container.state,
+        observedAt: now,
+      })),
+    });
+  }
+
+  async owningApplications(
+    organizationId: string,
+    suffixes: readonly string[],
+  ): Promise<OwningApplication[]> {
+    if (!suffixes.length) return [];
+    // The pipeline names a container after the last 12 characters of its application's id.
+    const rows = await this.database.client.$queryRaw<
+      { id: string; name: string; project_id: string; environment_id: string; deploying: boolean }[]
+    >`
+      SELECT a.id::text, a.name, a.project_id::text, a.environment_id::text,
+             EXISTS (
+               SELECT 1 FROM deployments d
+               WHERE d.application_id = a.id
+                 AND d.state NOT IN ('succeeded', 'failed', 'cancelled', 'rolled_back')
+             ) AS deploying
+      FROM applications a
+      WHERE a.organization_id = ${organizationId}::uuid
+        AND right(a.id::text, 12) IN (${Prisma.join([...suffixes])})`;
+    return rows.map((row) => ({
+      id: row.id,
+      name: row.name,
+      projectId: row.project_id,
+      environmentId: row.environment_id,
+      deploying: row.deploying,
+    }));
+  }
+
   async apply(
     organizationId: string,
     changes: readonly ObservationChange[],
@@ -135,4 +198,10 @@ function replica(row: {
 
 function observedState(value: string): ObservedState {
   return OBSERVED_STATES.find((state) => state === value) ?? 'missing';
+}
+
+/** A stored unmatched container's state; a value written by a later version reads as exited. */
+function reportedState(value: string): Exclude<ObservedState, 'missing'> {
+  const state = observedState(value);
+  return state === 'missing' ? 'exited' : state;
 }

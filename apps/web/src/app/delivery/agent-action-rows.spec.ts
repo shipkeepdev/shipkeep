@@ -156,7 +156,7 @@ describe('agent action rows', () => {
     expect(FR['container name already in use']).toBeTruthy();
     expect(
       FR[
-        'The server did not create the container: another container already has its name. After a restore from an older backup, it is likely the container of a deployment that the backup does not know, and each such deployment makes one more attempt fail: deploy again until one succeeds. Before removing such a container on the server, check that it belongs to this application and is no longer needed.'
+        'The server did not create the container: another container already has its name. After a restore from an older backup, it is likely the container of a deployment that the backup does not know, and each such deployment makes one more attempt fail: deploy again until one succeeds. That container then shows as untracked on the page of its server, where it can be removed once you have checked that it is no longer needed.'
       ],
     ).toMatch(/^Le serveur n'a pas créé le conteneur : /);
   });

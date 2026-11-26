@@ -6,6 +6,7 @@ import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { StateReports } from '../../fleet/application/state-reports';
 import type { NodeIdentity } from '../../fleet/domain/node-identity';
 import { observationChanges, type ReportedContainer, stopReason } from '../domain/observations';
+import { type UnmatchedContainer, unmatchedChanged } from '../domain/untracked-containers';
 
 import {
   DEPLOYMENT_TRANSACTION,
@@ -81,6 +82,15 @@ export class AllocationObservations implements OnModuleInit {
     }
     await this.transaction.runTenant(identity.organizationId, async () => {
       const allocations = await this.store.placedOnNode(identity.organizationId, identity.nodeId);
+      // What matches no placed replica is kept for the server's page (#501): after a restore, the
+      // containers of deployments the backup does not know. Written only when the set changed.
+      const placed = new Set(allocations.map((allocation) => allocation.container));
+      const unmatched = containers.filter((container) => !placed.has(container.name));
+      const stored = await this.store.unmatchedOnNode(identity.organizationId, identity.nodeId);
+      if (unmatchedChanged(stored, unmatched)) {
+        await this.store.replaceUnmatched(identity.organizationId, identity.nodeId, unmatched, now);
+        await this.events.publish([unmatchedContainersChanged(identity, stored, unmatched, now)]);
+      }
       const changes = observationChanges(allocations, containers, now);
       if (!changes.length) return;
       await this.store.apply(identity.organizationId, changes, now);
@@ -108,4 +118,30 @@ export class AllocationObservations implements OnModuleInit {
       if (events.length) await this.events.publish(events);
     });
   }
+}
+
+/**
+ * The node's unmatched containers changed: audited by name, added and gone, as the node reported
+ * them. Names only: a container's name says its application and release, nothing it holds.
+ */
+function unmatchedContainersChanged(
+  identity: NodeIdentity,
+  stored: readonly UnmatchedContainer[],
+  reported: readonly ReportedContainer[],
+  now: Date,
+) {
+  const before = new Set(stored.map((container) => container.name));
+  const after = new Set(reported.map((container) => container.name));
+  return createEvent({
+    type: 'node.unmatched_containers_changed',
+    organizationId: identity.organizationId,
+    actor: { kind: 'node', id: identity.nodeId },
+    target: { type: 'node', id: identity.nodeId },
+    payload: {
+      added: [...after].filter((name) => !before.has(name)).sort(),
+      gone: [...before].filter((name) => !after.has(name)).sort(),
+      count: after.size,
+    },
+    occurredAt: now,
+  });
 }

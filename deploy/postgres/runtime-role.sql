@@ -30,6 +30,8 @@ GRANT SELECT,INSERT,UPDATE,DELETE ON applications TO shipkeep_runtime;
 GRANT SELECT,INSERT,UPDATE ON deployments,allocations,allocation_observations TO shipkeep_runtime;
 -- A node's unknown certificate is refreshed in place, and goes once an administrator registers it.
 GRANT SELECT,INSERT,UPDATE,DELETE ON node_readoptions TO shipkeep_runtime;
+-- A node's unmatched containers are replaced as its reports change (#501), and go with the node.
+GRANT SELECT,INSERT,UPDATE,DELETE ON unmatched_containers TO shipkeep_runtime;
 -- Certificate readings are replaced in place and go with their domain or node by cascade.
 GRANT SELECT,INSERT,UPDATE ON domain_certificates TO shipkeep_runtime;
 -- An organization's GitHub App and its encrypted secrets: replacing it will be a confirmed command

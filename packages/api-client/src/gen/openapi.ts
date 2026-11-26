@@ -708,6 +708,38 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}/untracked-containers": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["listUntrackedContainers"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/nodes/{nodeId}/untracked-containers/{name}/remove": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["removeUntrackedContainer"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects": {
         readonly parameters: {
             readonly query?: never;
@@ -2381,6 +2413,10 @@ export type components = {
             /** @description Confirmation token for `node.remove` on this node (SPEC 3.6). */
             readonly confirmation: string;
         };
+        readonly RemoveUntrackedContainerDto: {
+            /** @description A confirmation token for `node.container.remove` (SPEC 3.6). */
+            readonly confirmation: string;
+        };
         readonly ReplicaDto: {
             readonly container: string;
             /** Format: uuid */
@@ -2409,7 +2445,7 @@ export type components = {
         };
         readonly RequestConfirmationDto: {
             /** @enum {string} */
-            readonly action: "node.remove" | "application.delete";
+            readonly action: "node.remove" | "node.container.remove" | "application.delete";
             /** @description The resource's exact current name, typed by the user. */
             readonly name: string;
             readonly target: string;
@@ -2486,6 +2522,38 @@ export type components = {
             readonly password: string;
             readonly recovery?: string;
             readonly totp?: string;
+        };
+        readonly UntrackedContainerDto: {
+            readonly application: components["schemas"]["NamedRefDto"];
+            /** @description The full Docker container id. */
+            readonly containerId: string;
+            /** Format: uuid */
+            readonly environmentId: string;
+            /** @description The container name, as the server reports it. */
+            readonly name: string;
+            /**
+             * Format: date-time
+             * @description Since when the server's reports hold this set of unmatched containers.
+             */
+            readonly observedAt: string;
+            /** Format: uuid */
+            readonly projectId: string;
+            /** @description The release number its name carries. */
+            readonly release: number;
+            /** @description The replica index its name carries, or `task` for a release task. */
+            readonly replica: string;
+            /** @enum {string} */
+            readonly state: "created" | "running" | "paused" | "restarting" | "exited" | "dead";
+        };
+        readonly UntrackedContainerListDto: {
+            readonly items: readonly components["schemas"]["UntrackedContainerDto"][];
+        };
+        readonly UntrackedRemovalDto: {
+            /**
+             * Format: uuid
+             * @description The agent action that removes it.
+             */
+            readonly actionId: string;
         };
         readonly UpdateApplicationConfigDto: {
             /** @description The shipkeep.yml document as JSON (SPEC 2), validated against the schema. Only build.type image is accepted for now. Secrets are listed by name; values are set through the secrets API. */
@@ -3779,6 +3847,59 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["NodeReplicaListDto"];
+                };
+            };
+        };
+    };
+    readonly listUntrackedContainers: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly nodeId: string;
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["UntrackedContainerListDto"];
+                };
+            };
+        };
+    };
+    readonly removeUntrackedContainer: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header: {
+                readonly Origin: string;
+                readonly "X-Shipkeep-CSRF": string;
+            };
+            readonly path: {
+                /** @description The container name. */
+                readonly name: string;
+                readonly nodeId: string;
+                readonly organizationId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RemoveUntrackedContainerDto"];
+            };
+        };
+        readonly responses: {
+            readonly 202: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["UntrackedRemovalDto"];
                 };
             };
         };

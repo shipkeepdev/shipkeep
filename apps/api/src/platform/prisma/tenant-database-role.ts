@@ -27,6 +27,7 @@ export const TENANT_TABLES = [
   'allocation_observations',
   'domains',
   'domain_certificates',
+  'unmatched_containers',
   'registry_credentials',
   'agent_upgrades',
   'github_apps',
