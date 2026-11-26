@@ -5,6 +5,7 @@ import {
   NotFoundError,
 } from '@shipkeep/domain';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { AuditEventReader } from '../../audit/application/audit-event-reader';
 
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import type { ApplicationStore } from '../../apps/application/ports';
@@ -60,12 +61,14 @@ function world(
 ) {
   const queued: Parameters<ActionQueue['enqueue']>[0][] = [];
   const published: DomainEvent[] = [];
+  const checks: { id: string; endsAt: Date }[] = [];
   const order: string[] = [];
   const registry = new ExecSessionRegistry(
     {
       runTenant: (_org: string, work: () => Promise<unknown>) => work(),
     } as unknown as FleetTransaction,
     { publish: () => Promise.resolve() } as unknown as DomainEventBus,
+    { page: () => Promise.resolve([]) } as unknown as AuditEventReader,
   );
   const service = new ExecSessions(
     {
@@ -103,8 +106,15 @@ function world(
         return Promise.resolve();
       },
     } as unknown as DomainEventBus,
+    {
+      schedule: (session: { id: string; endsAt: Date }) => {
+        order.push('check');
+        checks.push(session);
+        return Promise.resolve();
+      },
+    },
   );
-  return { service, queued, published, registry, order };
+  return { service, queued, published, registry, order, checks };
 }
 
 describe('opening an exec session (SPEC 3.1)', () => {
@@ -136,7 +146,11 @@ describe('opening an exec session (SPEC 3.1)', () => {
       attachBy: new Date(NOW.getTime() + 60_000),
       endsAt: new Date(NOW.getTime() + 60_000 + 30 * 60_000),
     });
-    expect(w.order).toEqual(['action', 'audit']);
+    // Its closing check is queued with its opening, for after the time it must end (issue #489).
+    expect(w.order).toEqual(['action', 'audit', 'check']);
+    expect(w.checks).toEqual([
+      { id: session.id, organizationId: ORG, userId: USER, endsAt: session.endsAt },
+    ]);
     const action = w.queued.at(0);
     expect(action).toMatchObject({
       organizationId: ORG,
@@ -285,6 +299,7 @@ describe('opening an exec session (SPEC 3.1)', () => {
       } as unknown as AccountMutationAuthority,
       { require: () => Promise.resolve() } as unknown as TenantAccess,
       { publish: () => Promise.resolve() } as unknown as DomainEventBus,
+      { schedule: () => Promise.resolve() },
     );
     await expect(failing.open(context, target, APP, {}, NOW)).rejects.toThrow('commit failed');
     expect(w.registry.pending('anything')).toBeUndefined();

@@ -1,7 +1,11 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { createEvent, type DomainEvent } from '@shipkeep/domain';
+import { createEvent, type DomainEvent, SYSTEM_ACTOR } from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
+import {
+  AUDIT_EVENT_READER,
+  type AuditEventReader,
+} from '../../audit/application/audit-event-reader';
 
 import { FLEET_TRANSACTION, type FleetTransaction } from './ports';
 
@@ -220,6 +224,17 @@ export class ExecRelay {
   }
 }
 
+/** A closing audit write that failed is tried again, the delay doubling from 1 s up to 1 min. */
+const CLOSE_RETRY_FIRST_MS = 1000;
+const CLOSE_RETRY_MAX_MS = 60_000;
+/** About 15 minutes of attempts: beyond that, the session's check records it interrupted. */
+const CLOSE_ATTEMPTS = 20;
+/** The audit actions that close a session: one of them, once, ends its lifecycle (issue #489). */
+export const EXEC_SESSION_CLOSINGS: ReadonlySet<string> = new Set([
+  'exec.session.ended',
+  'exec.session.interrupted',
+]);
+
 /**
  * Sessions opened on this API process. A session lives only as long as both its connections,
  * which both reach this process, so it is never stored: a restart ends it, and the agent's
@@ -235,7 +250,19 @@ export class ExecSessionRegistry {
   constructor(
     @Inject(FLEET_TRANSACTION) private readonly transaction: FleetTransaction,
     private readonly events: DomainEventBus,
+    @Inject(AUDIT_EVENT_READER) private readonly audit: AuditEventReader,
   ) {}
+
+  /** Whether the session's closing is recorded already, as an end or an interruption. */
+  async closed(session: { id: string; organizationId: string }): Promise<boolean> {
+    const records = await this.audit.page(
+      session.organizationId,
+      { targetType: 'exec_session', targetId: session.id },
+      undefined,
+      10,
+    );
+    return records.some((record) => EXEC_SESSION_CLOSINGS.has(record.action));
+  }
 
   add(session: ExecSession, now = new Date()): void {
     const relay = new ExecRelay(
@@ -324,21 +351,43 @@ export class ExecSessionRegistry {
   }
 
   private ended(relay: ExecRelay, reason: ExecEnd, exitCode: number | null, ms: number): void {
+    // The connections are released at once, whatever the audit store does.
     this.relays.delete(relay.session.id);
     const event = execSessionEnded(relay.session, reason, exitCode, ms);
-    // The end comes from a connection, not a request: nothing waits to fail, so a failed write
-    // is logged, with identifiers only.
-    const write = this.transaction
-      .runTenant(relay.session.organizationId, () => this.events.publish([event]))
-      .catch((error: unknown) => {
-        // Nothing waits on the end to fail it: the failure is logged, with its kind only.
-        const kind = error instanceof Error ? error.name : 'unknown';
-        this.logger.error(
-          `exec session ${relay.session.id} ended without its audit event (${kind})`,
-        );
-      })
-      .finally(() => this.writes.delete(write));
+    const write = this.record(relay.session, event).finally(() => this.writes.delete(write));
     this.writes.add(write);
+  }
+
+  /**
+   * Records a session's end, trying again while the audit store fails (issue #489). A retry first
+   * looks for the event: a write whose answer was lost may have committed, and the end is
+   * recorded once. Past the last attempt, the session's check records it interrupted.
+   */
+  private async record(session: ExecSession, event: DomainEvent): Promise<void> {
+    for (let attempt = 0; attempt < CLOSE_ATTEMPTS; attempt++) {
+      try {
+        await this.transaction.runTenant(session.organizationId, async () => {
+          if (attempt > 0 && (await this.closed(session))) return;
+          await this.events.publish([event]);
+        });
+        return;
+      } catch (error: unknown) {
+        // The end comes from a connection, not a request: nothing waits to fail. Logged with
+        // identifiers and the error's kind only.
+        const kind = error instanceof Error ? error.name : 'unknown';
+        if (attempt + 1 === CLOSE_ATTEMPTS) {
+          this.logger.error(`exec session ${session.id} ended without its audit event (${kind})`);
+          return;
+        }
+        this.logger.warn(`exec session ${session.id}: its audit event is tried again (${kind})`);
+        await new Promise((resolve) =>
+          setTimeout(
+            resolve,
+            Math.min(CLOSE_RETRY_FIRST_MS * 2 ** attempt, CLOSE_RETRY_MAX_MS),
+          ).unref(),
+        );
+      }
+    }
   }
 }
 
@@ -362,5 +411,23 @@ export function execSessionEnded(
       exitCode,
       durationMs,
     },
+  });
+}
+
+/**
+ * The closing of a session whose end was never recorded: its process stopped, or its audit
+ * writes kept failing. What happened in it is unknown (issue #489).
+ */
+export function execSessionInterrupted(session: {
+  readonly id: string;
+  readonly organizationId: string;
+  readonly userId: string;
+}): DomainEvent {
+  return createEvent({
+    type: 'exec.session.interrupted',
+    organizationId: session.organizationId,
+    actor: SYSTEM_ACTOR,
+    target: { type: 'exec_session', id: session.id },
+    payload: { userId: session.userId, reason: 'unknown' },
   });
 }

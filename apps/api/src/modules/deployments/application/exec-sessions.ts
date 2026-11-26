@@ -15,6 +15,7 @@ import {
 } from '../../identity/application/resource-security-context';
 import { TenantAccess } from '../../organizations/application/tenant-access';
 import { type ExecSession, ExecSessionRegistry } from '../../fleet/application/exec-relay';
+import { EXEC_SESSION_CHECKS, type ExecSessionCheckScheduler } from '../../fleet/application/ports';
 import {
   auditedCommand,
   EXEC_ATTACH_MS,
@@ -45,6 +46,7 @@ export class ExecSessions {
     private readonly accounts: AccountMutationAuthority,
     private readonly access: TenantAccess,
     private readonly events: DomainEventBus,
+    @Inject(EXEC_SESSION_CHECKS) private readonly checks: ExecSessionCheckScheduler,
   ) {}
 
   /**
@@ -159,6 +161,13 @@ export class ExecSessions {
                 occurredAt: now,
               }),
             ]);
+            // With its opening: whatever happens to this process, its closing gets recorded.
+            await this.checks.schedule({
+              id,
+              organizationId: application.organizationId,
+              userId: context.userId,
+              endsAt: session.endsAt,
+            });
             return session;
           });
           // Joinable once its action and audit event are committed.
