@@ -8,7 +8,10 @@ import { TenantAccessModule } from '../organizations/tenant-access.module';
 
 import { ConfirmationsModule } from '../confirmations/confirmations.module';
 
+import { AuditModule } from '../audit/audit.module';
+
 import { ExecSessionRegistry } from './application/exec-relay';
+import { ExecSessionChecks } from './infrastructure/exec-session-checks';
 import { FleetAdministration } from './application/fleet-administration';
 import { NodeConfirmationTarget } from './application/node-confirmation-target';
 import { FleetAdministrationController } from './interface/fleet-administration.controller';
@@ -37,6 +40,7 @@ import {
   NODE_STORE,
   NODE_CREDENTIAL_STORE,
   FLEET_TRANSACTION,
+  EXEC_SESSION_CHECKS,
 } from './application/ports';
 import { PrismaJoinTokenStore, PrismaNodeStore } from './infrastructure/prisma-fleet.stores';
 import { AgentUpgradeQueue } from './infrastructure/agent-upgrade-queue';
@@ -61,6 +65,7 @@ import { StateReports } from './application/state-reports';
     InstallationKeysModule,
     ConfirmationsModule,
     JobsModule,
+    AuditModule,
   ],
   controllers: [FleetAdministrationController],
   providers: [
@@ -75,6 +80,8 @@ import { StateReports } from './application/state-reports';
     NodeStream,
     LogStreams,
     ExecSessionRegistry,
+    ExecSessionChecks,
+    { provide: EXEC_SESSION_CHECKS, useExisting: ExecSessionChecks },
     AuthenticateNode,
     RenewNodeCertificate,
     { provide: FLEET_TRANSACTION, useExisting: PrismaUnitOfWork },
@@ -111,6 +118,8 @@ import { StateReports } from './application/state-reports';
     MetricsReports,
     LogBatches,
     ExecSessionRegistry,
+    ExecSessionChecks,
+    EXEC_SESSION_CHECKS,
   ],
 })
 export class FleetModule {}

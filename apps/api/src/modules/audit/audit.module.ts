@@ -27,5 +27,7 @@ import { EnvironmentEventsController } from './interface/environment-events.cont
     AuditQueries,
     EnvironmentEvents,
   ],
+  // Fleet reads whether an exec session's closing is recorded (issue #489).
+  exports: [AUDIT_EVENT_READER],
 })
 export class AuditModule {}

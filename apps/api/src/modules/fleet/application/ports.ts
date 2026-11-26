@@ -210,3 +210,17 @@ export interface AgentUpgradeStore {
   ): Promise<AgentUpgradeRecord | undefined>;
 }
 export const AGENT_UPGRADE_STORE = Symbol('AgentUpgradeStore');
+
+export const EXEC_SESSION_CHECKS = Symbol('ExecSessionChecks');
+/**
+ * Queues an exec session's audit check, in the transaction that records its opening: once the
+ * session must have ended, a missing end is recorded as an interruption (issue #489).
+ */
+export interface ExecSessionCheckScheduler {
+  schedule(session: {
+    id: string;
+    organizationId: string;
+    userId: string;
+    endsAt: Date;
+  }): Promise<void>;
+}
