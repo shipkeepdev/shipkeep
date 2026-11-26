@@ -268,7 +268,10 @@ func TestWithinKeepsTheInventoryAndTheSoonestExpiries(t *testing.T) {
 			StopReason:  "disk_limit",
 		})
 	}
-	base := time.Now()
+	// A fixed sub-second part: the budget leaves 128 bytes of margin, and a timestamp's nanoseconds
+	// take 3 to 5 bytes. Read from the clock, a time in the first 2.1 ms of a second made every
+	// certificate 2 bytes shorter, all 64 fitted, and the test failed about once in 500 runs.
+	base := time.Now().Truncate(time.Second).Add(600 * time.Millisecond)
 	statuses := make([]*agentv1.CertificateStatus, 0, MaxHosts)
 	for i := range MaxHosts {
 		statuses = append(statuses, &agentv1.CertificateStatus{
