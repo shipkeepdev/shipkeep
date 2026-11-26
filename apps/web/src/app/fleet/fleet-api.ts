@@ -10,6 +10,7 @@ export type NodeReplica = Schema<'NodeReplicaDto'>;
 export type NodeReplicaList = Schema<'NodeReplicaListDto'>;
 export type AgentUpgradeOverview = Schema<'AgentUpgradeOverviewDto'>;
 export type AgentUpgrade = Schema<'AgentUpgradeDto'>;
+export type UntrackedContainer = Schema<'UntrackedContainerDto'>;
 
 /**
  * Servers of an organization: listing, enrollment tokens, declared public addresses and confirmed
@@ -48,6 +49,55 @@ export class FleetApi extends WorkspaceApi {
         body,
         params: { path: { organizationId }, header: this.browser() },
       }),
+    );
+  }
+  /** Containers the server runs that no placed replica matches, of known applications (#501). */
+  async untrackedContainers(
+    organizationId: string,
+    nodeId: string,
+  ): Promise<readonly UntrackedContainer[]> {
+    return (
+      await this.required(() =>
+        this.client.GET(
+          '/api/v1/organizations/{organizationId}/nodes/{nodeId}/untracked-containers',
+          {
+            params: { path: { organizationId, nodeId } },
+          },
+        ),
+      )
+    ).items;
+  }
+  /** Single-use token proving the user typed the container's exact name (SPEC 3.6, #501). */
+  async confirmContainerRemoval(
+    organizationId: string,
+    nodeId: string,
+    container: string,
+    name: string,
+  ): Promise<string> {
+    return (
+      await this.required(() =>
+        this.client.POST('/api/v1/organizations/{organizationId}/confirmations', {
+          body: { action: 'node.container.remove', target: `${nodeId}/${container}`, name },
+          params: { path: { organizationId }, header: this.browser() },
+        }),
+      )
+    ).token;
+  }
+  /** Asks the server to remove an untracked container, without its volumes (#501). */
+  async removeUntrackedContainer(
+    organizationId: string,
+    nodeId: string,
+    name: string,
+    confirmation: string,
+  ): Promise<void> {
+    await this.required(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/nodes/{nodeId}/untracked-containers/{name}/remove',
+        {
+          body: { confirmation },
+          params: { path: { organizationId, nodeId, name }, header: this.browser() },
+        },
+      ),
     );
   }
   /** Single-use token proving the user typed the server's exact name (SPEC 3.6). */

@@ -704,6 +704,20 @@ export const FR: Readonly<Record<string, string>> = {
   'Identity and build of the application. Every value comes from its shipkeep.yml.':
     "Identité et build de l'application. Chaque valeur vient de son shipkeep.yml.",
   'If a server fails': 'En cas de panne',
+  'Untracked containers': 'Conteneurs non suivis',
+  'This server runs them for an application of this organization, but no deployment it knows placed them here: after a restore from an older backup, they belong to deployments the backup does not know. Remove one once you have checked that it is no longer needed; its volumes stay.':
+    "Ce serveur les fait tourner pour une application de cette organisation, mais aucun déploiement connu ne les y a placés : après la restauration d'une sauvegarde plus ancienne, ils appartiennent à des déploiements que la sauvegarde ne connaît pas. Supprimez-en un une fois vérifié qu'il ne sert plus ; ses volumes restent.",
+  'The server removes {name} within a minute.': 'Le serveur supprime {name} dans la minute.',
+  'application {app} · release {release} · unmatched since {since}':
+    'application {app} · version {release} · non rattaché depuis le {since}',
+  'Container name': 'Nom du conteneur',
+  'Remove the container': 'Supprimer le conteneur',
+  'The server stops and removes this container of {app}. Its volumes stay.':
+    'Le serveur arrête et supprime ce conteneur de {app}. Ses volumes restent.',
+  exited: 'arrêté',
+  dead: 'hors service',
+  created: 'créé',
+  restarting: 'redémarre',
   'If this address can receive email, a verification code is on its way. Check your inbox and spam folder.':
     'Si cette adresse peut recevoir des e-mails, un code de vérification arrive. Vérifiez la boîte de réception et les spams.',
   'Ignored at startup': 'Ignoré au lancement',
