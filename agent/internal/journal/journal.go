@@ -40,6 +40,9 @@ const (
 // ErrConflict rejects incompatible idempotency replays and stale checkpoint writers.
 var ErrConflict = errors.New("journal operation conflicts with recorded intent")
 
+// ErrNotFound reports that no operation was recorded for a request: recovery has nothing to do.
+var ErrNotFound = errors.New("journal operation not found")
+
 // Request contains only stable metadata and a payload hash, never the action payload or secrets.
 type Request struct {
 	ID, Key, Kind string
@@ -208,6 +211,22 @@ func (s *Store) Begin(ctx context.Context, request Request) (Operation, error) {
 	}
 	if err := tx.Commit(); err != nil {
 		return Operation{}, fmt.Errorf("commit operation intent: %w", err)
+	}
+	return op, nil
+}
+
+// Existing returns the operation recorded for request, never recording one: ErrNotFound when there
+// is none, ErrConflict when its key holds another kind or payload.
+func (s *Store) Existing(ctx context.Context, request Request) (Operation, error) {
+	op, err := scan(s.db.QueryRowContext(ctx, "SELECT "+columns+" FROM operations WHERE idempotency_key=?", request.Key))
+	if errors.Is(err, sql.ErrNoRows) {
+		return Operation{}, ErrNotFound
+	}
+	if err != nil {
+		return Operation{}, fmt.Errorf("read operation: %w", err)
+	}
+	if op.Kind != request.Kind || op.PayloadHash != request.PayloadHash {
+		return Operation{}, ErrConflict
 	}
 	return op, nil
 }

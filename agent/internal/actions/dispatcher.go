@@ -75,7 +75,13 @@ type Handler struct {
 // Executor is the journal: it records intent before running a plan and replays stored results.
 type Executor interface {
 	Execute(context.Context, journal.Request, journal.Plan, journal.Notify) (journal.Operation, error)
+	// Recover ends an operation past its deadline with no forward effect (issue #484).
+	Recover(context.Context, journal.Request, journal.Plan, journal.Notify) (journal.Operation, error)
 }
+
+// recoveryTimeout bounds the undoing of an operation whose deadline passed: its own context, since
+// the action's deadline is gone.
+const recoveryTimeout = 2 * time.Minute
 
 // Dispatcher runs actions with their own contexts, independent of any one stream connection, so
 // an interrupted connection never interrupts an action. Updates go to the latest delivery of the
@@ -87,6 +93,8 @@ type Dispatcher struct {
 	// Epoch returns the lease epoch this node holds; requests for another epoch are fenced.
 	Epoch func() uint64
 	Now   func() time.Time
+	// RecoveryTimeout bounds one recovery; zero means recoveryTimeout. Tests shorten it.
+	RecoveryTimeout time.Duration
 
 	mu      sync.Mutex
 	running map[string]*inflight
@@ -142,7 +150,7 @@ func (d *Dispatcher) Handle(ctx context.Context, req *agentv1.ActionRequest, sen
 		return
 	}
 	deadline := time.UnixMilli(req.GetDeadlineUnixMs())
-	if req.GetDeadlineUnixMs() <= 0 || !deadline.After(now) {
+	if req.GetDeadlineUnixMs() <= 0 {
 		send(failure(id, errDeadline, now))
 		return
 	}
@@ -154,6 +162,12 @@ func (d *Dispatcher) Handle(ctx context.Context, req *agentv1.ActionRequest, sen
 	hash, err := payloadHash(req)
 	if err != nil {
 		send(failure(id, errMalformed, now))
+		return
+	}
+	if !deadline.After(now) {
+		// Past its deadline, an action never starts, and one the journal holds unfinished is undone
+		// (issue #484).
+		d.recover(ctx, req, kind, hash, plan, handler, send)
 		return
 	}
 	actionCtx, cancel := context.WithDeadline(ctx, deadline)
@@ -198,6 +212,67 @@ func (d *Dispatcher) Handle(ctx context.Context, req *agentv1.ActionRequest, sen
 		send(failure(id, message, d.now()))
 	default:
 		send(report(op))
+	}
+}
+
+// recover ends an overdue action: attached to its execution when it still runs here, otherwise
+// undone from the journal with a bounded context of its own, or refused when the journal never saw
+// it. Its final update says the deadline passed, unless a failed step named a cause.
+func (d *Dispatcher) recover(ctx context.Context, req *agentv1.ActionRequest, kind string, hash [sha256.Size]byte, plan journal.Plan, handler Handler, send func(*agentv1.ActionUpdate)) {
+	id := req.GetActionId()
+	bound := recoveryTimeout
+	if d.RecoveryTimeout > 0 {
+		bound = d.RecoveryTimeout
+	}
+	recoveryCtx, cancel := context.WithTimeout(ctx, bound)
+	defer cancel()
+	action, fresh := d.track(id, cancel, send)
+	if !fresh {
+		action.attach(send)
+		return
+	}
+	defer d.untrack(id)
+	send = action.publish
+	final := func(op journal.Operation) *agentv1.ActionUpdate {
+		next := update(op, nil, d.now())
+		switch op.State {
+		case journal.Succeeded:
+			if handler.Result != nil {
+				next.Result = handler.Result(op.Result)
+			}
+		case journal.Cancelled:
+			// Nothing of it ever ran: the control plane keeps it expired.
+			next.Error = errDeadline
+		case journal.Compensated:
+			next.Error = errDeadline
+			if op.Cause != "" {
+				next.Error = failureText(op.Cause)
+			}
+		case journal.Failed:
+			// It ran and could not be undone: never reported as an action that never ran.
+			next.Error = errFailed
+			if op.Cause != "" {
+				next.Error = failureText(op.Cause)
+			}
+		case journal.Pending, journal.Running, journal.Compensating:
+		}
+		return next
+	}
+	notify := func(_ context.Context, op journal.Operation) error {
+		send(final(op))
+		return nil
+	}
+	op, err := d.Journal.Recover(recoveryCtx, journal.Request{ID: id, Key: req.GetIdempotencyKey(), Kind: kind, PayloadHash: hash}, plan, notify)
+	switch {
+	case errors.Is(err, journal.ErrNotFound):
+		send(failure(id, errDeadline, d.now()))
+	case errors.Is(err, journal.ErrConflict):
+		send(failure(id, errConflict, d.now()))
+	case op.ID == "":
+		// The journal could not be locked or read in time: nothing is reported, and the control
+		// plane delivers the action again, while its recovery window lasts.
+	default:
+		send(final(op))
 	}
 }
 

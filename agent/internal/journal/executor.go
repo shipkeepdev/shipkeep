@@ -40,6 +40,18 @@ type Notify func(context.Context, Operation) error
 // Execute records intent, executes/resumes a plan, or compensates an uncertain non-idempotent step.
 // The caller reconstructs the same plan/inputs from desired state or a replay; no payload is stored.
 func (s *Store) Execute(ctx context.Context, request Request, plan Plan, notify Notify) (Operation, error) {
+	return s.execute(ctx, request, plan, notify, false)
+}
+
+// Recover ends an operation whose deadline passed (issue #484) without any forward effect: it
+// records nothing new (ErrNotFound when no operation exists), returns a finished one as it is, and
+// undoes an unfinished one. One never started is cancelled; one that ran steps is compensated, the
+// step that was in progress included, whatever its retry policy.
+func (s *Store) Recover(ctx context.Context, request Request, plan Plan, notify Notify) (Operation, error) {
+	return s.execute(ctx, request, plan, notify, true)
+}
+
+func (s *Store) execute(ctx context.Context, request Request, plan Plan, notify Notify, recovery bool) (Operation, error) {
 	if !identifier.MatchString(plan.Version) || len(plan.Steps) == 0 || len(plan.Steps) > 64 {
 		return Operation{}, errors.New("invalid operation plan")
 	}
@@ -57,7 +69,11 @@ func (s *Store) Execute(ctx context.Context, request Request, plan Plan, notify 
 		return Operation{}, fmt.Errorf("wait for executor: %w", ctx.Err())
 	}
 	request.PayloadHash = planHash(request.PayloadHash, plan)
-	op, err := s.Begin(ctx, request)
+	begin := s.Begin
+	if recovery {
+		begin = s.Existing
+	}
+	op, err := begin(ctx, request)
 	if err != nil {
 		return Operation{}, err
 	}
@@ -105,10 +121,22 @@ func (s *Store) Execute(ctx context.Context, request Request, plan Plan, notify 
 	interrupted := func() error { return fmt.Errorf("operation interrupted: %w", ctx.Err()) }
 	next := op
 	next.Attempts++
-	if op.State == Pending {
+	switch {
+	case recovery && op.State == Pending:
+		// Nothing was applied: there is nothing to undo.
+		next.State = Cancelled
+		if err := checkpoint(next); err != nil {
+			return op, err
+		}
+		return op, ErrOperationFailed
+	case recovery && op.State == Running:
+		next.State = Compensating
+		if op.Step != "" {
+			next.Completed++ // Include the uncertain in-progress side effect.
+		}
+	case op.State == Pending:
 		next.State = Running
-	}
-	if op.State == Running && op.Step != "" && !plan.Steps[op.Completed].RetrySafe {
+	case op.State == Running && op.Step != "" && !plan.Steps[op.Completed].RetrySafe:
 		next.State = Compensating
 		next.Completed++ // Include the uncertain in-progress side effect.
 	}
