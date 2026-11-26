@@ -15,6 +15,8 @@ const PIPELINE_KEY = /^d:([0-9a-f-]{36}):/;
 export interface DeploymentJob {
   readonly organizationId: string;
   readonly deploymentId: string;
+  /** Runs that failed in a row, which space out the next one (issue #486). */
+  readonly failures?: number;
 }
 
 /**
@@ -51,8 +53,17 @@ export class DeploymentQueue implements DeploymentWaker, OnModuleInit, OnModuleD
     this.unsubscribe?.();
   }
 
-  async wake(organizationId: string, deploymentId: string, delaySeconds = 0): Promise<void> {
-    const job: DeploymentJob = { organizationId, deploymentId };
+  async wake(
+    organizationId: string,
+    deploymentId: string,
+    delaySeconds = 0,
+    failures = 0,
+  ): Promise<void> {
+    const job: DeploymentJob = {
+      organizationId,
+      deploymentId,
+      ...(failures > 0 ? { failures } : {}),
+    };
     await this.jobs.send(DEPLOYMENT_QUEUE, job, {
       singletonKey: deploymentId,
       ...(delaySeconds > 0 ? { startAfter: delaySeconds } : {}),

@@ -5,6 +5,7 @@ import { enrollTestNode } from '../../testing/enroll-test-node';
 import { tenantHttpFixture } from '../../testing/tenant-http';
 
 import { DeploymentPipeline } from './application/deployment-pipeline';
+import { DeploymentWorker } from './infrastructure/deployment-worker';
 
 /** PLAN M3.4c4c: a queued deployment gets its pipeline job and starts on a ready node. */
 describe('deployment pipeline with PostgreSQL and pg-boss', () => {
@@ -217,6 +218,64 @@ describe('deployment pipeline with PostgreSQL and pg-boss', () => {
     expect(events.at(-1)?.action).toBe('deployment.failed');
     // The application's single active deployment is released: another one can be queued.
     await fixture.post(deployments, 'owner', {}).expect(201);
+  });
+
+  // Issue #486: pg-boss gave up on a deployment's run; the sweep queues it again, once.
+  it('wakes a deployment whose last run failed for good', async () => {
+    const application = await fixture
+      .post(`${fixture.environment}/applications`, 'owner', {
+        config: {
+          version: 1,
+          name: 'stranded-api',
+          build: { type: 'image', image: `ghcr.io/acme/billing@sha256:${'c'.repeat(64)}` },
+          run: { port: 3000 },
+        },
+      })
+      .expect(201);
+    const applicationId = (application.body as { id: string }).id;
+    const queued = await fixture
+      .post(`${fixture.environment}/applications/${applicationId}/deployments`, 'owner', {})
+      .expect(201);
+    const deploymentId = (queued.body as { deployment: { id: string } }).deployment.id;
+    const admin = new Client({ connectionString: fixture.databaseUrl });
+    await admin.connect();
+    const jobs = async () =>
+      (
+        await admin.query<{ state: string }>(
+          "SELECT state FROM shipkeep_jobs.job WHERE name = 'deployment-run' AND singleton_key = $1 ORDER BY created_on",
+          [deploymentId],
+        )
+      ).rows.map((row) => row.state);
+    const issued = async () =>
+      (
+        await admin.query<{ idempotency_key: string }>(
+          'SELECT idempotency_key FROM agent_actions WHERE deployment_id = $1 ORDER BY id',
+          [deploymentId],
+        )
+      ).rows.map((row) => row.idempotency_key);
+    try {
+      // A first run issued an agent action, then the job ran out of retries.
+      const pipeline = fixture.app.get(DeploymentPipeline);
+      expect(await pipeline.run(fixture.organizationId, deploymentId)).toBe('wait');
+      const before = await issued();
+      expect(before).toHaveLength(1);
+      await admin.query(
+        "UPDATE shipkeep_jobs.job SET state = 'failed', completed_on = now() WHERE name = 'deployment-run' AND singleton_key = $1",
+        [deploymentId],
+      );
+      expect(await jobs()).toEqual(['failed']);
+      const worker = fixture.app.get(DeploymentWorker);
+      expect(await worker.sweep()).toBeGreaterThanOrEqual(1);
+      expect(await jobs()).toEqual(['failed', 'created']);
+      // Its latest job is queued now: a second sweep adds nothing.
+      await worker.sweep();
+      expect(await jobs()).toEqual(['failed', 'created']);
+      // The run that resumes it issues nothing twice.
+      expect(await pipeline.run(fixture.organizationId, deploymentId)).toBe('wait');
+      expect(await issued()).toEqual(before);
+    } finally {
+      await admin.end();
+    }
   });
 
   it('places on the ready node when another node has reported no capacity', async () => {
