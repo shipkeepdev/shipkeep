@@ -172,7 +172,52 @@ for options in "--control-plane-only no --agent-file $work/agent" '--control-pla
   if grep -q "$token" "$work/output"; then die 'the token was shown'; fi
   grep -Eq 'control-plane-only|control plane machine' "$work/output" || die "refused $options for another reason: $(cat "$work/output")"
 done
+# --migrate (#490) recognizes the agent unit of 0.1.0-alpha.1 to 0.1.0-alpha.3: today's unit
+# without the five lines the upgrade guard brought (ADR 0028), and nothing else.
+guard_lines=$'Type=notify\nNotifyAccess=main\nStartLimitIntervalSec=0\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config /etc/shipkeep/agent.yaml\nTimeoutStartSec=360'
+[[ $(grep -vxF -- "$guard_lines" <<<"$unit") == "$(legacy_agent_unit)" ]] || die 'the legacy unit is not the current one without the guard'
+[[ $(legacy_agent_unit | sha256sum) == '77e93a552bd905e07030fc50a5ed95d0f838551cc3baac7da910b13bf1d36f23  -' ]] || die 'the legacy unit is not the one 0.1.0-alpha.1 to alpha.3 wrote'
+legacy_agent_unit >"$work/legacy.service"
+agent_unit >"$work/current.service"
+[[ $(agent_unit_layout "$work/legacy.service") == legacy ]] || die 'the legacy unit was not recognized'
+[[ $(agent_unit_layout "$work/current.service") == current ]] || die 'the current unit was not recognized'
+{ legacy_agent_unit; printf 'Environment=EXTRA=1\n'; } >"$work/edited.service"
+sed 's/^RestartSec=5$/RestartSec=1/' "$work/current.service" >"$work/changed.service"
+sed 's/^# No capabilities.*/# edited/' "$work/legacy.service" >"$work/comment.service"
+ln -s "$work/legacy.service" "$work/link.service"
+for file in edited changed comment link missing; do
+  refused agent_unit_layout "$work/$file.service" || die "recognized the $file unit"
+done
+config=$'control_plane:\n  address: \'cp.example.com:7443\'\n  ca_fingerprint: \'sha256:'"$pin"$'\'\n  join_token_file: /etc/shipkeep/join-token'
+printf '%s\n' "$config" >"$work/agent.yaml"
+server_config_of "$work/agent.yaml" cp.example.com:7443 "sha256:$pin" || die 'the server configuration was refused'
+other=$(printf 'b%.0s' {1..64})
+for args in "other.example.com:7443 sha256:$pin" "cp.example.com:7444 sha256:$pin" "cp.example.com:7443 sha256:$other" "cp.example.com sha256:$pin"; do
+  # shellcheck disable=SC2086 # two words on purpose
+  refused server_config_of "$work/agent.yaml" $args || die "accepted the configuration for $args"
+done
+# A control plane machine's agent connects over loopback with a role: not a server's to migrate.
+for extra in "  connect: '127.0.0.1:7443'" $'node:\n  role: control-plane-only' $'node:\n  role: control-plane'; do
+  printf '%s\n%s\n' "$config" "$extra" >"$work/machine.yaml"
+  refused server_config_of "$work/machine.yaml" cp.example.com:7443 "sha256:$pin" || die "accepted a control plane machine: $extra"
+done
+sed "s/'cp.example.com:7443'/\"cp.example.com:7443\"/" "$work/agent.yaml" >"$work/quoted.yaml"
+ln -s "$work/agent.yaml" "$work/link.yaml"
+for file in quoted link missing; do
+  refused server_config_of "$work/$file.yaml" cp.example.com:7443 "sha256:$pin" || die "accepted the $file configuration"
+done
+# A refused --migrate stops before anything else, and never shows the token.
+# shellcheck disable=SC2016 # $(id) is the input under test
+for options in '--migrate no' '--migrate $(id)' "--migrate yes --control-plane-only yes --agent-file $work/agent" \
+  "--migrate yes --local-control-plane 127.0.0.1:3000 --agent-file $work/agent" "--migrate yes --agent-file $work/agent"; do
+  # shellcheck disable=SC2086 # the options are words on purpose
+  if printf '%s\n' "$token" | bash deploy/install.sh --control-plane example.com:7443 --ca-fingerprint "sha256:$pin" --origin https://example.com --amd64-sha256 "$pin" --arm64-sha256 "$pin" $options >"$work/output" 2>&1; then
+    die "accepted $options"
+  fi
+  if grep -q "$token" "$work/output"; then die 'the token was shown'; fi
+  grep -Eq -- '--migrate|server for applications' "$work/output" || die "refused $options for another reason: $(cat "$work/output")"
+done
 # shellcheck source=/dev/null
 . deploy/docker-repository-test.sh
 check_docker_repository deploy/install.sh "$work/apt"
-printf 'Installer input, redaction, signing-key, egress, single-machine and control-plane-only checks passed.\n'
+printf 'Installer input, redaction, signing-key, egress, single-machine, control-plane-only and migration checks passed.\n'

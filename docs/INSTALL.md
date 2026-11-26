@@ -262,7 +262,16 @@ The installer does not upgrade. In the installation directory, replace `compose.
 A server's agent can replace itself with a signed release (ADR 0028). After a control plane upgrade, **Servers** lists the agents that run an older release, and **Upgrade agents** upgrades them to the control plane's version, one server at a time. The first server that fails stops the rollout, and the page names it with the reason.
 
 - **How it goes.** The agent checks the release's signature and keeps its running binary as `/var/lib/shipkeep/bin/shipkeep-agent.previous`. It restarts on the new one, which has 5 minutes to reach the control plane. A new binary that fails 3 starts is replaced by the previous one, and `journalctl -u shipkeep-agent` says that the upgrade was rolled back.
-- **Servers installed before this release.** Their agent refuses the upgrade, saying that its service predates upgrades: its unit lacks the step that puts the previous binary back. An agent of `v0.1.0-alpha.3` or earlier does not know the upgrade at all: the rollout stops on its server with "not supported by this agent", and nothing changes there. Install the server again to get it; [`deploy/README.md`](../deploy/README.md) lists what to remove first. Until then that agent keeps running applications for the upgraded control plane.
+- **Servers installed with `v0.1.0-alpha.3` or earlier.** Their agent does not know the upgrade: the rollout stops on its server with "not supported by this agent", and nothing changes there. Until it is migrated, that agent keeps running applications for the upgraded control plane. Migrate it in place, keeping its identity, its applications, their routes and Caddy's certificates:
+  1. In **Servers**, choose **Create a join token**. The page then shows the installation command. The migration does not ask for the token, which expires after 15 minutes.
+  2. Run that command on the server, with `--migrate yes` added at the end of the `sudo bash` line.
+  3. Refresh **Servers**: the server is `ready` again, on the control plane's version, and can be upgraded from then on.
+
+  The migration checks everything before changing anything. It accepts only a server this installer set up for applications, for the control plane that shows the command. Its units must be unchanged. Otherwise it refuses and names what to reconcile.
+
+  It records the route of each application on the server, then installs the new agent, its service with the upgrade guard, and the egress proxy of the Docker daemon (ADR 0023). Docker restarts once, and running containers restart with it. Routes follow them to their new addresses. A route whose traffic already goes elsewhere stops the migration before the agent or Docker changes. So does an application none of whose containers runs. Deploy that application again, then run the command again.
+
+  If the migration stops, the agent runs again, and running the same command again goes on from where it stopped. An agent that says its service predates upgrades is migrated the same way.
 
 ## Troubleshooting
 
