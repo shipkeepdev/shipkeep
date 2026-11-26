@@ -1,66 +1,83 @@
-// Hero drawing: your servers and their control plane, written in characters. Racks stand under and
-// beside the text, their status lights blink, and their agents call out: packets climb from each rack,
-// run along the cables around the text and reach the control plane at the top, never the other way.
-// No dependency and no network; still when the visitor asks for reduced motion, and paused while the
-// hero is out of sight.
+// Hero drawing: a container ship seen from ahead, written in faint characters behind the text, like
+// a watermark. The ship is a small 3D model painted in shades of grey on a hidden canvas, then read
+// back cell by cell and written with the page's monospaced font. Only the sea moves, slowly, and
+// the masthead light blinks. No dependency and no network; still when the visitor asks for reduced
+// motion, and paused while the hero is out of sight.
 (() => {
   const canvas = document.querySelector('.hero .art');
   if (!canvas) return;
   const host = canvas.parentElement;
   const motion = matchMedia('(prefers-reduced-motion: reduce)');
-  const FPS = 12;
-  const SHADES = 12;
+  const TICK = 350; // the sea moves about three times a second, slowly
+  const SHADES = 10;
   const INK = '242,242,243';
   const FONT = '"Geist Mono", ui-monospace, monospace';
-  // The page's example servers and control plane (reserved names, as in the rest of the page).
-  const NAMES = ['srv-par-1', 'srv-fra-2', 'srv-ams-3'];
-  const CONTROL_PLANE = 'cp.example.com:7443';
-  const CABLE = 0.32;
+  // Characters for flat surfaces, from dark to lit, and the strongest a character gets: a
+  // watermark, never a picture.
+  const FILL = ':-=+*#%';
+  const STRONGEST = 0.36;
 
   const context = canvas.getContext('2d');
   const base = document.createElement('canvas');
   const baseContext = base.getContext('2d');
+  const source = document.createElement('canvas');
+  const sourceContext = source.getContext('2d', { willReadFrequently: true });
 
   let art = null;
-  let lights = [];
-  let routes = [];
-  let packets = [];
-  let inbox = null;
-  let frame = 0;
+  let time = 0;
   let visible = true;
   let running = false;
   let seed = 1;
   const random = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
-  const between = (min, max) => min + Math.floor(random() * (max - min + 1));
   const smooth = (edge0, edge1, x) => {
     const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
     return t * t * (3 - 2 * t);
   };
-
-  // Fronts of a server, by the width they fill inside the rack.
-  const FRONTS = [
-    (n) => `[${':'.repeat(Math.max(0, n - 2))}]`,
-    (n) => '[__]'.repeat(Math.ceil(n / 4)).slice(0, n),
-    (n) => '='.repeat(n),
-    (n) => ' o'.repeat(Math.ceil(n / 2)).slice(0, n),
-    (n) => `|${'.'.repeat(Math.max(0, n - 2))}|`,
-    (n) => '#'.repeat(Math.ceil(n / 3)).padEnd(n, '-'),
+  const grey = (value) => {
+    const v = Math.round(Math.min(1, Math.max(0, value)) * 255);
+    return `rgb(${v},${v},${v})`;
+  };
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const scale = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [
+    a[1] * b[2] - a[2] * b[1],
+    a[2] * b[0] - a[0] * b[2],
+    a[0] * b[1] - a[1] * b[0],
   ];
+  const unit = (a) => scale(a, 1 / Math.hypot(...a));
+
+  // The ship, in metres: x from the bow (0) to the stern, y up from the waterline, z to port.
+  const LENGTH = 300;
+  const BEAM = 46;
+  const FREEBOARD = 15;
+  const TIER = 2.6;
+  const BOX = 12.2;
+  const half = (x, flare) => {
+    if (x <= 0) return 0;
+    if (x < 52) return (BEAM / 2) * (1 - Math.pow((52 - x) / 52, flare));
+    if (x > LENGTH - 18) return (BEAM / 2) * (1 - 0.25 * Math.pow((x - LENGTH + 18) / 18, 2));
+    return BEAM / 2;
+  };
+  const deckHalf = (x) => half(x + 7, 1.6); // the bow flares: the deck reaches further than the water
+  const waterHalf = (x) => half(x, 2.4);
+  const deckY = (x) => FREEBOARD + 4.5 * Math.pow(Math.max(0, (46 - x) / 53), 2);
 
   function measure() {
     const width = host.clientWidth;
     const height = host.clientHeight;
     if (!width || !height) return null;
     const narrow = width < 640;
-    const size = narrow ? 8 : 9;
-    const line = narrow ? 9 : 10;
+    const size = narrow ? 6 : 7;
+    const line = narrow ? 7 : 8;
     baseContext.font = `${size}px ${FONT}`;
     const cell = baseContext.measureText('M').width;
     const rows = Math.floor(height / line);
-    // The last row stands on the bottom edge, on the deployment rail.
     return {
       width,
       height,
+      narrow,
       size,
       line,
       cell,
@@ -70,227 +87,520 @@
     };
   }
 
-  // Where the text is, in cells, with a margin: nothing is drawn there.
+  // A camera close to the bow, to starboard and just above the deck: the bow stands tall beside the
+  // title, and the ship runs away to the left, under the buttons, to the horizon.
+  function cameraFor(view) {
+    const eye = [-150, 30, -150];
+    const forward = unit(sub([150, 4, 0], eye));
+    const right = unit(cross(forward, [0, 1, 0]));
+    const up = cross(right, forward);
+    const raw = (p) => {
+      const d = sub(p, eye);
+      const z = dot(d, forward);
+      return [dot(d, right) / z, -dot(d, up) / z];
+    };
+    // Two anchors: the stem head, and the stern far away; the scale follows from their distance.
+    const [bowAt, sternAt] = view.narrow ? [[0.97, 0.8], [-0.15]] : [[0.95, 0.6], [0.03]];
+    const stemHead = raw([-7, deckY(-7), 0]);
+    const sternEnd = raw([LENGTH, 0, -BEAM / 2]);
+    const k = ((bowAt[0] - sternAt[0]) * view.width) / (stemHead[0] - sternEnd[0]);
+    const ox = bowAt[0] * view.width - k * stemHead[0];
+    const oy = bowAt[1] * view.height - k * stemHead[1];
+    const project = (p) => {
+      const [x, y] = raw(p);
+      return [ox + k * x, oy + k * y];
+    };
+    // The horizon: where a level line far ahead lands.
+    const ahead = unit([forward[0], 0, forward[2]]);
+    const horizon = oy + k * (-dot(ahead, up) / dot(ahead, forward));
+    return { eye, project, horizon };
+  }
+
+  // Paints the ship in shades of grey on black, far parts first.
+  function paint(ctx, view, camera) {
+    const { project, eye } = camera;
+    const light = unit([-0.55, 0.8, -0.35]);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, -view.line, view.width, view.height + 2 * view.line);
+    seed = 7919;
+    // A flat face, lit by the sun and seen from the eye.
+    const face = (points, tone) => {
+      const normal0 = unit(
+        cross(sub(points[1], points[0]), sub(points[points.length - 1], points[0])),
+      );
+      const centre = scale(points.reduce(add), 1 / points.length);
+      const normal = dot(normal0, sub(eye, centre)) < 0 ? scale(normal0, -1) : normal0;
+      const lit = 0.25 + 0.75 * Math.max(0, dot(normal, light));
+      ctx.fillStyle = grey(tone * lit);
+      ctx.strokeStyle = ctx.fillStyle;
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      points.forEach((p, i) => {
+        const [x, y] = project(p);
+        if (i) ctx.lineTo(x, y);
+        else ctx.moveTo(x, y);
+      });
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke(); // no seam between neighbouring faces
+    };
+    // A rectangle on a face: origin, two edges, and the part of each edge it covers.
+    const patch = (origin, u, v, u0, u1, v0, v1, tone) =>
+      face(
+        [
+          add(origin, add(scale(u, u0), scale(v, v0))),
+          add(origin, add(scale(u, u1), scale(v, v0))),
+          add(origin, add(scale(u, u1), scale(v, v1))),
+          add(origin, add(scale(u, u0), scale(v, v1))),
+        ],
+        tone,
+      );
+
+    // The deck, from side to side.
+    const stations = [];
+    for (let x = -7; x <= LENGTH; x += 2) stations.push(x);
+    face(
+      [
+        ...stations.map((x) => [x, deckY(x), -deckHalf(x)]),
+        ...stations.reverse().map((x) => [x, deckY(x), deckHalf(x)]),
+      ],
+      0.55,
+    );
+    stations.reverse();
+
+    // The starboard side of the hull, from the stern forward: light topsides, a dark boot-top.
+    for (let i = stations.length - 2; i >= 0; i--) {
+      const x0 = stations[i];
+      const x1 = stations[i + 1];
+      const top0 = [x0, deckY(x0), -deckHalf(x0)];
+      const top1 = [x1, deckY(x1), -deckHalf(x1)];
+      const low0 = [Math.max(0, x0), 0, -waterHalf(x0)];
+      const low1 = [Math.max(0, x1), 0, -waterHalf(x1)];
+      const band = (p, q, t) => add(p, scale(sub(q, p), t));
+      const split = 3 / FREEBOARD;
+      const aft = 1 - 0.45 * smooth(20, LENGTH, x0);
+      face([top0, top1, band(low1, top1, split), band(low0, top0, split)], 0.66 * aft);
+      face([band(low0, top0, split), band(low1, top1, split), low1, low0], 0.24);
+      // Strakes: thin dark seams along the flank, which run away to the horizon.
+      for (const y of [5.5, 9, 12.4]) {
+        const t0 = y / deckY(x0);
+        const t1 = y / deckY(x1);
+        const d0 = 0.22 / deckY(x0);
+        face(
+          [
+            band(low0, top0, t0),
+            band(low1, top1, t1),
+            band(low1, top1, t1 + d0),
+            band(low0, top0, t0 + d0),
+          ],
+          0.3,
+        );
+      }
+      // The sheer strake, bright along the deck's edge.
+      face([top0, top1, band(top1, low1, 0.05), band(top0, low0, 0.05)], 1);
+    }
+    // The anchor in its pocket.
+    patch([9, deckY(9) - 5, -deckHalf(9) - 0.2], [1, 0, 0.35], [0, 1, 0], 0, 3, 0, 3, 0.15);
+
+    // A stack of containers: its top, its side to starboard and its end towards the bow.
+    const tones = [0.6, 0.72, 0.84];
+    const stack = (x0, tiers) => {
+      const width = Math.min(deckHalf(x0), deckHalf(x0 + BOX)) - 1.2;
+      const floor = deckY(x0 + BOX) + 0.6;
+      const height = tiers * TIER;
+      const across = Math.round((2 * width) / 2.5);
+      const gap = 0.32;
+      // The stack's body in shadow, so that the gaps between boxes read as lines.
+      face(
+        [
+          [x0, floor, -width],
+          [x0 + BOX, floor, -width],
+          [x0 + BOX, floor + height, -width],
+          [x0, floor + height, -width],
+        ],
+        0.12,
+      );
+      face(
+        [
+          [x0, floor, -width],
+          [x0, floor, width],
+          [x0, floor + height, width],
+          [x0, floor + height, -width],
+        ],
+        0.12,
+      );
+      // Top, then one box per tier on the side, and a grid of box ends towards the bow.
+      face(
+        [
+          [x0, floor + height, -width],
+          [x0 + BOX, floor + height, -width],
+          [x0 + BOX, floor + height, width],
+          [x0, floor + height, width],
+        ],
+        0.9,
+      );
+      const origin = [x0, floor, -width];
+      for (let k = 0; k < tiers; k++) {
+        const tone = tones[Math.floor(random() * tones.length)];
+        patch(
+          origin,
+          [1, 0, 0],
+          [0, 1, 0],
+          gap,
+          BOX - gap,
+          k * TIER + gap,
+          (k + 1) * TIER - gap,
+          tone,
+        );
+      }
+      const w = (2 * width) / across;
+      for (let k = 0; k < tiers; k++)
+        for (let n = 0; n < across; n++)
+          patch(
+            origin,
+            [0, 0, 1],
+            [0, 1, 0],
+            n * w + gap,
+            (n + 1) * w - gap,
+            k * TIER + gap,
+            (k + 1) * TIER - gap,
+            tones[Math.floor(random() * tones.length)],
+          );
+    };
+
+    // Aft containers, funnel and deckhouse first: they are the furthest from the eye.
+    for (let x = LENGTH - 10 - BOX; x > 262; x -= BOX + 0.8) stack(x, 3 + Math.floor(random() * 2));
+    // Funnel, with a light band and a dark cap.
+    const funnel = (y0, y1, tone) => {
+      const lean = (y) => (y - FREEBOARD) * 0.08;
+      const at = (x, y, z) => [x + lean(y), y, z];
+      face([at(250, y0, -5), at(259, y0, -5), at(259, y1, -5), at(250, y1, -5)], tone);
+      face([at(250, y0, -5), at(250, y0, 5), at(250, y1, 5), at(250, y1, -5)], tone);
+      face([at(250, y1, -5), at(259, y1, -5), at(259, y1, 5), at(250, y1, 5)], tone);
+    };
+    funnel(FREEBOARD, FREEBOARD + 50, 0.62);
+    funnel(FREEBOARD + 43, FREEBOARD + 47, 0.95);
+    funnel(FREEBOARD + 48, FREEBOARD + 51, 0.15);
+    // Deckhouse: a tall block with rows of windows, the bridge across its top, wings to the sides.
+    const house = { x0: 228, x1: 242, z: 13, top: FREEBOARD + 40 };
+    face(
+      [
+        [house.x0, FREEBOARD, -house.z],
+        [house.x1, FREEBOARD, -house.z],
+        [house.x1, house.top, -house.z],
+        [house.x0, house.top, -house.z],
+      ],
+      0.9,
+    );
+    face(
+      [
+        [house.x0, FREEBOARD, -house.z],
+        [house.x0, FREEBOARD, house.z],
+        [house.x0, house.top, house.z],
+        [house.x0, house.top, -house.z],
+      ],
+      0.95,
+    );
+    for (let y = FREEBOARD + 3; y < house.top - 3; y += 2.8) {
+      for (let z = -house.z + 1.2; z < house.z - 1; z += 2.2)
+        patch([house.x0 - 0.05, y, z], [0, 0, 1], [0, 1, 0], 0, 1.1, 0, 1.1, 0.2);
+      for (let x = house.x0 + 1; x < house.x1 - 1; x += 2.2)
+        patch([x, y, -house.z - 0.05], [1, 0, 0], [0, 1, 0], 0, 1.1, 0, 1.1, 0.2);
+    }
+    const bridge = { x0: 227, x1: 237, z: BEAM / 2 + 1, y0: house.top, y1: house.top + 4.6 };
+    face(
+      [
+        [bridge.x0, bridge.y0, -bridge.z],
+        [bridge.x0, bridge.y0, bridge.z],
+        [bridge.x0, bridge.y1, bridge.z],
+        [bridge.x0, bridge.y1, -bridge.z],
+      ],
+      1,
+    );
+    face(
+      [
+        [bridge.x0, bridge.y1, -bridge.z],
+        [bridge.x1, bridge.y1, -bridge.z],
+        [bridge.x1, bridge.y1, bridge.z],
+        [bridge.x0, bridge.y1, bridge.z],
+      ],
+      0.9,
+    );
+    patch(
+      [bridge.x0 - 0.05, bridge.y0 + 1.6, -bridge.z + 1],
+      [0, 0, 1],
+      [0, 1, 0],
+      0,
+      2 * bridge.z - 2,
+      0,
+      1.8,
+      0.12,
+    );
+    // The wings' starboard end.
+    face(
+      [
+        [bridge.x0, bridge.y0, -bridge.z],
+        [bridge.x1, bridge.y0, -bridge.z],
+        [bridge.x1, bridge.y1, -bridge.z],
+        [bridge.x0, bridge.y1, -bridge.z],
+      ],
+      0.8,
+    );
+    // Mast and radar on the bridge's roof.
+    const mastTop = [231, bridge.y1 + 11, 0];
+    patch([231, bridge.y1, -0.3], [0, 0, 1], [0, 1, 0], 0, 0.6, 0, 11, 0.9);
+    patch([231, bridge.y1 + 7, -4], [0, 0, 1], [0, 1, 0], 0, 8, 0, 0.4, 0.9);
+    patch([234, bridge.y1 + 1.5, -3], [0, 0, 1], [0, 1, 0], 0, 6, 0, 0.5, 0.9);
+    // A lifeboat on the deckhouse's side.
+    patch([house.x0 + 2, FREEBOARD + 12, -house.z - 1.5], [1, 0, 0], [0, 1, 0], 0, 9, 0, 2.2, 1);
+
+    // Containers forward of the deckhouse, from the deckhouse to the breakwater.
+    for (let x = 226 - BOX; x > 30; x -= BOX + 0.8) {
+      const mid = x > 70 && x < 200;
+      stack(x, (mid ? 6 : x <= 70 ? 4 : 5) + Math.floor(random() * 2));
+    }
+    // The breakwater on the forecastle, then the foremast and its light.
+    const breakwater = 28;
+    face(
+      [
+        [breakwater, deckY(breakwater), -deckHalf(breakwater) + 1],
+        [breakwater, deckY(breakwater), deckHalf(breakwater) - 1],
+        [breakwater, deckY(breakwater) + 2.4, deckHalf(breakwater) - 1],
+        [breakwater, deckY(breakwater) + 2.4, -deckHalf(breakwater) + 1],
+      ],
+      0.6,
+    );
+    patch([6, deckY(6), -0.3], [0, 0, 1], [0, 1, 0], 0, 0.7, 0, 17, 0.95);
+    patch([6, deckY(6) + 13, -3], [0, 0, 1], [0, 1, 0], 0, 6, 0, 0.4, 0.95);
+
+    return {
+      mast: project(mastTop),
+      stem: project([0, 0, 0]),
+      name: (() => {
+        const x = 16;
+        const y = FREEBOARD * 0.7;
+        return project([
+          x,
+          y,
+          -(waterHalf(x) + (deckHalf(x) - waterHalf(x)) * (y / deckY(x))) - 0.3,
+        ]);
+      })(),
+    };
+  }
+
+  // Where the text is, in pixels of the hero, so that the drawing fades behind it.
   function textZones(view) {
     const box = host.getBoundingClientRect();
     // A zoomed page reports boxes zoomed, and sizes not: bring the boxes back to the canvas's scale.
-    const scale = box.width / view.width || 1;
+    const ratio = box.width / view.width || 1;
     return [...host.children]
       .filter((element) => element !== canvas)
       .map((element) => element.getBoundingClientRect())
       .filter((rect) => rect.width && rect.height)
       .map((rect) => ({
-        c0: Math.floor((rect.left - box.left) / scale / view.cell) - 3,
-        c1: Math.ceil((rect.right - box.left) / scale / view.cell) + 2,
-        r0: Math.floor(((rect.top - box.top) / scale - view.top) / view.line) - 1,
-        r1: Math.ceil(((rect.bottom - box.top) / scale - view.top) / view.line),
+        left: (rect.left - box.left) / ratio,
+        right: (rect.right - box.left) / ratio,
+        top: (rect.top - box.top) / ratio,
+        bottom: (rect.bottom - box.top) / ratio,
       }));
   }
 
   function compose(view) {
-    const { cols, rows } = view;
+    const { cols, rows, cell, line } = view;
+    const S = 3;
+    source.width = cols * S;
+    source.height = rows * S;
+    // One source pixel per third of a cell; the grid starts `top` pixels down the hero.
+    sourceContext.setTransform(S / cell, 0, 0, S / line, 0, (-view.top * S) / line);
+    const camera = cameraFor(view);
+    const marks = paint(sourceContext, view, camera);
+    const pixels = sourceContext.getImageData(0, 0, source.width, source.height).data;
+    const level = new Float32Array(cols * rows);
+    for (let r = 0; r < rows; r++)
+      for (let c = 0; c < cols; c++) {
+        let sum = 0;
+        for (let dy = 0; dy < S; dy++)
+          for (let dx = 0; dx < S; dx++)
+            sum += pixels[((r * S + dy) * source.width + c * S + dx) * 4];
+        level[r * cols + c] = sum / (S * S * 255);
+      }
+    const zones = textZones(view);
+    const fade = (x, y) => {
+      let distance = Infinity;
+      for (const zone of zones) {
+        const dx = Math.max(zone.left - x, 0, x - zone.right);
+        const dy = Math.max(zone.top - y, 0, y - zone.bottom);
+        distance = Math.min(distance, Math.hypot(dx, dy));
+      }
+      return 0.35 + 0.65 * smooth(0, 56, distance);
+    };
+    const value = (c, r) =>
+      level[Math.min(rows - 1, Math.max(0, r)) * cols + Math.min(cols - 1, Math.max(0, c))];
+    const horizonRow = Math.max(
+      0,
+      Math.min(rows - 1, Math.round((camera.horizon - view.top) / line)),
+    );
     const chars = new Array(cols * rows).fill(' ');
     const alpha = new Float32Array(cols * rows);
-    const blocked = new Uint8Array(cols * rows);
-    const zones = textZones(view);
-    for (const zone of zones)
-      for (let r = Math.max(0, zone.r0); r <= Math.min(rows - 1, zone.r1); r++)
-        for (let c = Math.max(0, zone.c0); c <= Math.min(cols - 1, zone.c1); c++)
-          blocked[r * cols + c] = 1;
-    const set = (c, r, char, strength) => {
-      if (c < 0 || r < 0 || c >= cols || r >= rows) return false;
-      const i = r * cols + c;
-      if (blocked[i]) return false;
-      chars[i] = char;
-      alpha[i] = strength;
-      return true;
-    };
-    const write = (c, r, text, strength) =>
-      [...text].forEach((char, k) => set(c + k, r, char, strength));
-    // The highest row a drawing may reach in each column without touching the text.
-    const free = new Int32Array(cols);
-    for (let c = 0; c < cols; c++) {
-      let r = rows - 1;
-      while (r >= 0 && !blocked[r * cols + c]) r--;
-      free[c] = r + 1;
-    }
-    const bottom = rows - 1;
-    const room = (c0, w) => {
-      let top = 0;
-      for (let c = Math.max(0, c0); c < Math.min(cols, c0 + w); c++) top = Math.max(top, free[c]);
-      return bottom - top + 1;
-    };
-    // Racks under the text are fainter than those beside it, which frame the title; on a phone,
-    // where the text takes the whole width, they all stay clear.
-    const middle = cols / 2;
-    const left = Math.min(...zones.map((zone) => zone.c0), cols);
-    const right = Math.max(...zones.map((zone) => zone.c1), 0);
-    const floor = right - left > cols * 0.75 ? 0.85 : 0.5;
-    const fade = (c) => floor + (1 - floor) * smooth(0.25, 0.75, Math.abs(c - middle) / middle);
-
-    // The cables: a bus under the text, a riser on each side of it, and a bus over it that leads to
-    // the control plane, when the hero has room for it above the text.
-    const textTop = Math.min(...zones.map((zone) => zone.r0), rows);
-    const riserLeft = Math.max(1, left - 2);
-    const riserRight = Math.min(cols - 2, right + 2);
-    let busRow = 0;
-    for (let c = riserLeft; c <= riserRight; c++) busRow = Math.max(busRow, free[c]);
-    busRow = Math.min(bottom - 6, busRow + 1);
-    // The box's title is the page's own words (data-title), its address the page's example.
-    const title = ` ${canvas.dataset.title || 'control plane'}`;
-    const address = ` * ${CONTROL_PLANE} `;
-    const boxWidth = Math.max(title.length, address.length) + 3;
-    const boxLeft = Math.round(middle - boxWidth / 2);
-    const topRow = textTop >= 7 ? 3 : -1;
-    const ceiling = topRow >= 0 ? topRow + 2 : 0;
-
-    seed = 7919;
-    // A sparse dust, thicker near the floor, as in the background of a long exposure.
+    const mask = new Float32Array(cols * rows);
+    const ship = new Uint8Array(cols * rows);
+    seed = 104729;
     for (let r = 0; r < rows; r++)
-      for (let c = 0; c < cols; c++)
-        if (random() < 0.012 + 0.03 * (r / rows)) set(c, r, '.', 0.05 + 0.13 * (r / rows));
-    for (let c = 0; c < cols; c++) set(c, bottom, '_', 0.28);
-
-    lights = [];
-    const rack = (c0, w, h, strength, detailed) => {
-      const t = bottom - h + 1;
-      const tone = strength * fade(c0 + w / 2);
-      const edge = tone * 0.85;
-      for (let c = c0; c < c0 + w; c++) set(c, t, c === c0 || c === c0 + w - 1 ? '.' : '-', edge);
-      for (let r = t + 1; r <= bottom; r++) {
-        set(c0, r, '|', edge);
-        set(c0 + w - 1, r, '|', edge);
-      }
-      for (let c = c0 + 1; c < c0 + w - 1; c++) set(c, bottom, '_', edge);
-      const width = detailed ? w - 5 : w - 3;
-      let r = t + 1;
-      while (r < bottom) {
-        if (random() < 0.12) {
-          r++; // an empty slot
+      for (let c = 0; c < cols; c++) {
+        const i = r * cols + c;
+        mask[i] = fade((c + 0.5) * cell, view.top + (r + 0.5) * line);
+        const v = level[i];
+        if (v < 0.04) {
+          // A sparse dust in the sky, as on a long exposure.
+          if (r < horizonRow && random() < 0.025) {
+            chars[i] = '.';
+            alpha[i] = 0.05 * mask[i];
+          }
           continue;
         }
-        const front = FRONTS[Math.floor(random() * FRONTS.length)](width);
-        const units = random() < 0.3 ? 2 : 1;
-        const lit = random() < 0.8;
-        for (let k = 0; k < units && r < bottom; k++, r++) {
-          for (let n = 0; n < width; n++) set(c0 + 2 + n, r, front[n] ?? ' ', tone * 0.5);
-          if (detailed && lit && k === 0 && set(c0 + w - 3, r, '*', tone))
-            lights.push({
-              c: c0 + w - 3,
-              r,
-              on: random() < 0.7,
-              rate: 0.03 + random() * 0.14,
-              tone,
-            });
+        ship[i] = 1;
+        const lit = smooth(0.05, 0.85, v);
+        const gx = (value(c + 1, r) - value(c - 1, r)) / cell;
+        const gy = (value(c, r + 1) - value(c, r - 1)) / line;
+        const edge = Math.hypot(gx, gy) * cell;
+        let char;
+        // Outlines carry the drawing; flat surfaces get a light texture, as in an engraving.
+        if (edge > 0.24) {
+          const ax = Math.abs(gx);
+          const ay = Math.abs(gy);
+          if (ax > ay * 2.4) char = '|';
+          else if (ay > ax * 2.4) char = gy > 0 ? '_' : '-';
+          else char = gx * gy > 0 ? '\\' : '/';
+          alpha[i] = (0.2 + 0.16 * Math.min(1, edge)) * mask[i];
+        } else {
+          char = FILL[Math.min(FILL.length - 1, Math.floor(lit * FILL.length))];
+          alpha[i] = (0.08 + 0.2 * lit) * mask[i];
         }
+        chars[i] = char;
       }
-      return { c0, w, t };
-    };
-    const row = (from, to, strength, detailed, low, high, under) => {
-      const result = [];
-      let c = from;
-      while (c < to) {
-        // Beside the text, racks are wide enough to carry a name plate.
-        const w = Math.min(detailed ? between(under ? 11 : 13, 16) : between(7, 11), to - c);
-        const space = Math.min(
-          room(c, w) - 1,
-          bottom - ceiling - 1,
-          under ? bottom - busRow - 2 : rows,
-        );
-        const h = Math.min(space, Math.round(space * (low + random() * (high - low))));
-        if (w >= (detailed ? 11 : 7) && h >= 4)
-          result.push({ ...rack(c, w, h, strength, detailed), under });
-        c += w + between(detailed ? 1 : 0, detailed ? 3 : 2);
-      }
-      return result;
-    };
-
-    // Back row first, pale and taller.
-    row(-between(0, 4), cols, 0.24, false, 0.55, 0.95, false);
-
-    // Cables over the back row.
-    for (let c = riserLeft + 1; c < riserRight; c++) set(c, busRow, '-', CABLE);
-    for (const riser of [riserLeft, riserRight]) {
-      for (let r = busRow - 1; r > Math.max(topRow, -1); r--) set(riser, r, ':', CABLE);
-      set(riser, busRow, '+', CABLE + 0.1);
-    }
-    if (topRow >= 0) {
-      for (let c = riserLeft; c <= riserRight; c++) set(c, topRow, '-', CABLE);
-      for (const riser of [riserLeft, riserRight]) set(riser, topRow, '+', CABLE + 0.1);
-    }
-
-    // Front row, which leaves the risers' columns clear.
-    const placed = [
-      ...row(-between(2, 5), riserLeft - 1, 0.95, true, 0.45, 1, false),
-      ...row(riserLeft + 2, riserRight - 1, 0.95, true, 0.3, 0.75, true),
-      ...row(riserRight + 2, cols + 4, 0.95, true, 0.45, 1, false),
-    ];
-
-    // Each rack's route out: up to the bus, along it to the nearer riser, up to the top bus and along
-    // it to the control plane; or, beside the text, straight up.
-    routes = [];
-    const boxEdge = (c) => (c < middle ? boxLeft - 1 : boxLeft + boxWidth);
-    for (const { c0, w, t } of placed) {
-      const c = c0 + Math.floor(w / 2);
-      const route = [];
-      const climb = (x, from, to) => {
-        for (let r = from; r > to; r--) route.push([x, r]);
-      };
-      const along = (r, from, to) => {
-        const way = to < from ? -1 : 1;
-        for (let x = from; x !== to; x += way) route.push([x, r]);
-      };
-      if (c > riserLeft && c < riserRight) {
-        for (let r = t - 1; r > busRow; r--) set(c, r, ':', CABLE);
-        set(c, busRow, '+', CABLE + 0.1);
-        climb(c, t - 1, busRow);
-        const riser = c - riserLeft <= riserRight - c ? riserLeft : riserRight;
-        along(busRow, c, riser);
-        if (topRow >= 0) {
-          climb(riser, busRow, topRow);
-          along(topRow, riser, boxEdge(riser));
-          route.push([boxEdge(riser), topRow]);
-        } else climb(riser, busRow, -1);
-      } else if (c > 1 && c < cols - 2 && random() < 0.7) {
-        // A rack beside the text climbs on its own, then joins the top bus.
-        const end = topRow >= 0 ? topRow : -1;
-        for (let r = t - 1; r > end; r--) set(c, r, ':', CABLE * 0.75);
-        climb(c, t - 1, end);
-        if (topRow >= 0) {
-          set(c, topRow, '+', CABLE + 0.1);
-          for (let x = Math.min(c, riserLeft); x <= Math.max(c, riserRight); x++)
-            if (chars[topRow * cols + x] === ' ') set(x, topRow, '-', CABLE);
-          along(topRow, c, boxEdge(c));
-          route.push([boxEdge(c), topRow]);
+    // The ship's name, painted on the bow.
+    const nameRow = Math.floor((marks.name[1] - view.top) / line);
+    const nameCol = Math.floor(marks.name[0] / cell) - 4;
+    [...'SHIPKEEP'].forEach((char, k) => {
+      const c = nameCol + k;
+      if (c < 0 || c >= cols || nameRow < 0 || nameRow >= rows) return;
+      chars[nameRow * cols + c] = char;
+      alpha[nameRow * cols + c] = 0.34 * mask[nameRow * cols + c];
+    });
+    // Each column's waterline: the lowest row of the ship, where its reflection starts.
+    const waterline = new Int32Array(cols).fill(-1);
+    for (let c = 0; c < cols; c++)
+      for (let r = rows - 1; r >= horizonRow; r--)
+        if (ship[r * cols + c]) {
+          waterline[c] = r;
+          break;
         }
+    const cellOf = ([x, y]) => [Math.floor(x / cell), Math.floor((y - view.top) / line)];
+    return {
+      ...view,
+      chars,
+      alpha,
+      mask,
+      level,
+      ship,
+      horizonRow,
+      waterline,
+      mast: cellOf(marks.mast),
+      stem: cellOf(marks.stem),
+    };
+  }
+
+  // Writes rows of characters: each row is read once, split by shade, and each shade present is
+  // written as one string, with blanks where another shade goes.
+  function writeRows(ctx, grid, chars, alpha, fromRow, toRow) {
+    const { cols } = grid;
+    const shades = Array.from({ length: SHADES + 1 }, () => []);
+    for (let r = fromRow; r < toRow; r++) {
+      const split = new Map();
+      for (let c = 0; c < cols; c++) {
+        const i = r * cols + c;
+        if (chars[i] === ' ' || !alpha[i]) continue;
+        const s = Math.max(1, Math.min(SHADES, Math.round((alpha[i] / STRONGEST) * SHADES)));
+        let row = split.get(s);
+        if (!row) split.set(s, (row = new Array(cols).fill(' ')));
+        row[c] = chars[i];
       }
-      if (route.length > 3) routes.push(route);
+      // Only the stretch between the first and the last character is written.
+      for (const [s, row] of split) {
+        const text = row.join('');
+        const first = text.search(/\S/);
+        shades[s].push([r, first, text.slice(first).trimEnd()]);
+      }
     }
-
-    // The control plane's box, over every cable.
-    inbox = null;
-    if (topRow >= 0) {
-      write(boxLeft, topRow - 2, `.${'-'.repeat(boxWidth - 2)}.`, 0.7);
-      write(boxLeft, topRow - 1, `|${title.padEnd(boxWidth - 2)}|`, 0.6);
-      write(boxLeft, topRow, `|${address.padEnd(boxWidth - 2)}|`, 0.9);
-      write(boxLeft, topRow + 1, `'${'-'.repeat(boxWidth - 2)}'`, 0.7);
-      inbox = { c: boxLeft + 2, r: topRow, glow: 0 };
+    for (let s = 1; s <= SHADES; s++) {
+      if (!shades[s].length) continue;
+      ctx.fillStyle = `rgba(${INK},${((s / SHADES) * STRONGEST).toFixed(3)})`;
+      for (const [r, first, text] of shades[s])
+        ctx.fillText(text, first * grid.cell, grid.top + r * grid.line);
     }
+  }
 
-    // Name plates, in the page's order: the tallest rack on the left, under the text, on the right.
-    const tallest = (racks) =>
-      racks.filter(({ w }) => w - 4 >= NAMES[0].length).sort((a, b) => a.t - b.t)[0];
-    [
-      tallest(placed.filter((rack) => !rack.under && rack.c0 < middle)),
-      tallest(placed.filter((rack) => rack.under)),
-      tallest(placed.filter((rack) => !rack.under && rack.c0 > middle)),
-    ]
-      .filter(Boolean)
-      .forEach(({ c0, w, t }, n) => {
-        const name = `[${NAMES[n]}]`;
-        write(c0 + Math.floor((w - name.length) / 2), t, name, 0.8);
-      });
-    return { ...view, chars, alpha };
+  // The sea at a given time, around the ship: its reflection broken by slow waves, a few crests that
+  // thicken towards the eye, and the bow wave.
+  function sea(grid, t) {
+    const { cols, rows, horizonRow } = grid;
+    const chars = new Array(cols * rows).fill(' ');
+    const alpha = new Float32Array(cols * rows);
+    const depth = Math.max(1, rows - horizonRow);
+    for (let r = horizonRow; r < rows; r++) {
+      const near = (r - horizonRow) / depth; // 0 at the horizon, 1 at the bottom
+      for (let c = 0; c < cols; c++) {
+        const i = r * cols + c;
+        if (grid.ship[i]) continue;
+        const wave =
+          Math.sin(c * (0.08 + 0.12 * near) + t * 0.5 + r * 1.9) +
+          0.6 * Math.sin(c * 0.037 - t * 0.27 + r * 0.7) +
+          0.35 * Math.sin(c * 0.31 + t * 0.7 - r);
+        let char = ' ';
+        let strength = 0;
+        const below = grid.waterline[c];
+        if (r === horizonRow) {
+          char = wave > 0 ? '_' : '-';
+          strength = 0.07;
+        } else if (
+          below >= 0 &&
+          r > below &&
+          r - below < (below - horizonRow) * 0.8 + 3 &&
+          wave > -0.5
+        ) {
+          // The reflection: the ship upside down, shifted by the waves.
+          const k = r - below;
+          const shift = Math.round(Math.sin(k * 1.2 + t * 0.6 + c * 0.04) * 1.5);
+          const mirrored = below - Math.floor(k * 1.25);
+          const v =
+            mirrored >= 0
+              ? grid.level[mirrored * cols + Math.min(cols - 1, Math.max(0, c + shift))]
+              : 0;
+          // Broken horizontal strokes, one row in two, as a reflection on moving water.
+          if (v > 0.12 && k % 2 === 1 && wave > 0) {
+            char = v > 0.5 ? '=' : wave > 0.9 ? '~' : '-';
+            strength = (0.03 + 0.09 * v) * (1 - k / (depth + 1));
+          }
+        } else if (wave > 1.78 - near * 0.3) {
+          char = '~';
+          strength = 0.05 + 0.06 * near;
+        } else if (wave > 1.6 - near * 0.3) {
+          char = '-';
+          strength = 0.035 + 0.04 * near;
+        }
+        // The bow wave, white along the stem.
+        const [sc, sr] = grid.stem;
+        const dc = (c - sc) / 3.2;
+        const dr = r - sr;
+        if (dr >= -1 && dr <= 2 && Math.abs(dc) < 6 && Math.sin(c * 0.9 + t * 1.6) > -0.2) {
+          char = dr <= 0 ? '~' : '-';
+          strength = Math.max(strength, 0.16 * (1 - Math.abs(dc) / 6));
+        }
+        chars[i] = char;
+        alpha[i] = strength * grid.mask[i];
+      }
+    }
+    return { chars, alpha };
   }
 
   function render() {
@@ -302,98 +612,48 @@
       target.height = Math.round(view.height * ratio);
     }
     art = compose(view);
-    packets = [];
     baseContext.setTransform(ratio, 0, 0, ratio, 0, 0);
     baseContext.clearRect(0, 0, view.width, view.height);
     baseContext.font = `${view.size}px ${FONT}`;
     baseContext.textBaseline = 'top';
-    // One pass per shade: each row is one string, with blanks where another shade goes.
-    for (let s = 1; s <= SHADES; s++) {
-      baseContext.fillStyle = `rgba(${INK},${(s / SHADES).toFixed(3)})`;
-      for (let r = 0; r < view.rows; r++) {
-        let text = '';
-        let any = false;
-        for (let c = 0; c < view.cols; c++) {
-          const i = r * view.cols + c;
-          if (art.chars[i] !== ' ' && Math.max(1, Math.round(art.alpha[i] * SHADES)) === s) {
-            text += art.chars[i];
-            any = true;
-          } else text += ' ';
-        }
-        if (any) baseContext.fillText(text, 0, view.top + r * view.line);
-      }
-    }
+    writeRows(baseContext, art, art.chars, art.alpha, 0, art.rows);
     context.setTransform(ratio, 0, 0, ratio, 0, 0);
     context.font = `${view.size}px ${FONT}`;
     context.textBaseline = 'top';
     draw();
   }
 
-  // Writes one character over the still drawing.
-  function put(c, r, char, strength) {
-    const x = c * art.cell;
-    const y = art.top + r * art.line;
-    context.clearRect(x, y, art.cell, art.line);
-    context.fillStyle = `rgba(${INK},${strength.toFixed(3)})`;
-    context.fillText(char, x, y);
-  }
-
   function draw() {
     if (!art) return;
     context.clearRect(0, 0, art.width, art.height);
     context.drawImage(base, 0, 0, art.width, art.height);
-    for (const light of lights)
-      put(light.c, light.r, light.on ? '*' : '.', light.on ? light.tone : 0.4 * light.tone);
-    if (inbox) put(inbox.c, inbox.r, inbox.glow ? '@' : '*', inbox.glow ? 1 : 0.55);
-    for (const packet of packets)
-      for (let back = 3; back >= 0; back--) {
-        const index = Math.floor(packet.at) - back;
-        const at = packet.route[index];
-        if (!at) continue;
-        const next = packet.route[index + 1] ?? at;
-        const across = next[1] === at[1] && next[0] !== at[0];
-        const head = across ? (next[0] > at[0] ? '>' : '<') : '^';
-        put(at[0], at[1], back ? (across ? '=' : '|') : head, back ? 0.75 - back * 0.18 : 1);
-      }
-  }
-
-  function step() {
-    frame++;
-    for (const light of lights) if (Math.random() < light.rate) light.on = !light.on;
-    if (inbox && inbox.glow) inbox.glow--;
-    for (const packet of packets) {
-      const at = packet.route[Math.floor(packet.at)];
-      const next = packet.route[Math.floor(packet.at) + 1];
-      // Cells are about twice as tall as wide: a packet crosses two columns in the time of one row.
-      packet.at += next && at && next[1] === at[1] ? 2 : 1;
-      if (inbox && !packet.done && packet.at >= packet.route.length - 1) {
-        packet.done = true;
-        inbox.glow = 3;
-      }
+    const water = sea(art, time);
+    writeRows(context, art, water.chars, water.alpha, art.horizonRow, art.rows);
+    // The masthead light, on for a second, off for a second and a half.
+    const [c, r] = art.mast;
+    if (c >= 0 && c < art.cols && r >= 0 && r < art.rows) {
+      const on = motion.matches || time % 2.5 < 1;
+      const x = c * art.cell;
+      const y = art.top + r * art.line;
+      context.clearRect(x, y, art.cell, art.line);
+      context.fillStyle = `rgba(${INK},${(on ? 0.6 : 0.18) * art.mask[r * art.cols + c]})`;
+      context.fillText(on ? '*' : '.', x, y);
     }
-    packets = packets.filter((packet) => packet.at < packet.route.length + 3);
-    if (frame % 4 === 0 && routes.length && packets.length < 12)
-      packets.push({
-        route: routes[Math.floor(Math.random() * routes.length)],
-        at: 0,
-        done: false,
-      });
-    draw();
   }
 
-  // One frame, then a pause until the next: the page is woken 12 times a second, not 60.
   function loop() {
     if (!visible || motion.matches || document.hidden) {
       running = false;
       return;
     }
-    step();
-    setTimeout(() => requestAnimationFrame(loop), 1000 / FPS);
+    time += TICK / 1000;
+    draw();
+    setTimeout(() => requestAnimationFrame(loop), TICK);
   }
   const start = () => {
     if (running || !visible || motion.matches || document.hidden) return;
     running = true;
-    requestAnimationFrame(loop);
+    setTimeout(() => requestAnimationFrame(loop), TICK);
   };
 
   let pending = 0;
@@ -407,7 +667,6 @@
   }).observe(host);
   document.addEventListener('visibilitychange', start);
   motion.addEventListener('change', () => {
-    packets = [];
     draw();
     start();
   });
