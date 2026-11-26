@@ -38,18 +38,18 @@ describe('route recovery with PostgreSQL', () => {
   });
 
   /**
-   * Runs the pipeline to its end. The agents succeed at every action, except the route switch of
-   * this deployment when `refuseRoute` is set.
+   * Runs the pipeline to its end. The agents succeed at every action, except this deployment's
+   * route switch (`route`) or the stops that drain the replicas it replaces (`stop`).
    */
-  async function run(deploymentId: string, refuseRoute = false): Promise<void> {
+  async function run(deploymentId: string, refuse?: 'route' | 'stop'): Promise<void> {
     const pipeline = fixture.app.get(DeploymentPipeline);
     for (let round = 0; round < 12; round++) {
       if ((await pipeline.run(fixture.organizationId, deploymentId, () => NOW)) === 'done') return;
-      if (refuseRoute)
+      if (refuse)
         await admin.query(
           `UPDATE agent_actions SET state = 'failed', error = 'action failed', completed_at = now(), updated_at = now()
            WHERE deployment_id = $1 AND state = 'queued' AND idempotency_key LIKE $2`,
-          [deploymentId, `d:${deploymentId}:route:%`],
+          [deploymentId, `d:${deploymentId}:${refuse}:%`],
         );
       // What an agent reports: a container id for a create, a healthy probe.
       await admin.query(
@@ -96,7 +96,7 @@ describe('route recovery with PostgreSQL', () => {
       })
       .expect(200);
     const second = await deploy(application);
-    await run(second, true);
+    await run(second, 'route');
     const state = await admin.query<{ state: string }>(
       'SELECT state FROM deployments WHERE id = $1',
       [second],
@@ -121,5 +121,69 @@ describe('route recovery with PostgreSQL', () => {
         (upstream) => `${upstream.container}:${String(upstream.port)}`,
       ),
     ).toEqual([`${previous}:3000`]);
+  });
+
+  // The route serves the release of the latest switch that completed, which the newest placed
+  // release is: a rollback is a new release, and a release that failed before draining is stopped.
+  it('restores the hostnames of a rollback whose draining failed, not those of the release it replaced', async () => {
+    const config = (domains: string[]) => ({
+      version: 1,
+      name: 'rolled-api',
+      build: { type: 'image', image: `ghcr.io/acme/billing@sha256:${'d'.repeat(64)}` },
+      run: { port: 3000 },
+      domains,
+    });
+    const created = await fixture
+      .post(`${fixture.environment}/applications`, 'owner', {
+        config: config(['a-485.example.com']),
+      })
+      .expect(201);
+    const app = created.body as { id: string; name: string; configSha: string };
+    const application = `${fixture.environment}/applications/${app.id}`;
+    const first = await deploy(application);
+    await run(first);
+    await fixture
+      .post(`${application}/config`, 'owner', {
+        expectedConfigSha: app.configSha,
+        config: config(['b-485.example.com']),
+      })
+      .expect(200);
+    await run(await deploy(application));
+    // Back to release 1's configuration, as release 3: its switch completes, its draining fails,
+    // so release 2 keeps its replicas while release 3 serves a-485.
+    const rollback = await fixture
+      .post(`${application}/deployments/${first}/rollback`, 'owner', {})
+      .expect(201);
+    const rolledBack = rollback.body as { deployment: { id: string }; release: { number: number } };
+    expect(rolledBack.release.number).toBe(3);
+    await run(rolledBack.deployment.id, 'stop');
+    const placed = await admin.query<{ number: number }>(
+      `SELECT DISTINCT r.number FROM allocations a JOIN releases r ON r.id = a.release_id
+       WHERE a.application_id = $1 AND a.state = 'placed' ORDER BY r.number`,
+      [app.id],
+    );
+    expect(placed.rows.map((row) => row.number)).toEqual([2, 3]);
+
+    const current = (await fixture.get(application, 'owner').expect(200)).body as {
+      configSha: string;
+    };
+    await fixture
+      .post(`${application}/config`, 'owner', {
+        expectedConfigSha: current.configSha,
+        config: config(['c-485.example.com']),
+      })
+      .expect(200);
+    const fourth = await deploy(application);
+    await run(fourth, 'route');
+    const requests = await fixture.app
+      .get(AgentActions)
+      .deliverable({ organizationId: fixture.organizationId, nodeId, serial: '' }, new Set(), NOW);
+    const restored = requests.filter((request) =>
+      request.idempotencyKey.startsWith(`d:${fourth}:restore:`),
+    );
+    expect(restored).toHaveLength(1);
+    const [{ action }] = restored;
+    if (action.case !== 'upsertRoute') throw new Error(`unexpected ${String(action.case)}`);
+    expect(action.value.route?.hosts).toEqual(['a-485.example.com']);
   });
 });
