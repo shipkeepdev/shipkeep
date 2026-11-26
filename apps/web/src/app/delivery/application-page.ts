@@ -94,6 +94,11 @@ const FINISHED = new Set(['succeeded', 'failed', 'cancelled', 'rolled_back']);
 const POLL_MS = 3000;
 /** With live updates, polling only covers an event the stream could miss. */
 const LIVE_POLL_MS = 15_000;
+/**
+ * With nothing running, the page still looks again this often: a change hint can be missed, since
+ * an event may commit after a later one the stream already sent (SPEC 8, issue #492).
+ */
+const IDLE_POLL_MS = 60_000;
 
 /** One application: its configuration, deploying it and following its deployments. */
 @Component({
@@ -786,6 +791,9 @@ export class ApplicationPage {
     this.deployments.items().find((deployment) => !FINISHED.has(deployment.state)),
   );
   private timer: ReturnType<typeof setTimeout> | undefined;
+  private refreshing = false;
+  private refreshAgain = false;
+  private destroyed = false;
   /**
    * The load in force: a response to an earlier one, success or failure, is dropped, so another
    * application's or environment's data never shows under this one (issue #491).
@@ -807,6 +815,7 @@ export class ApplicationPage {
     }, 60_000);
     inject(DestroyRef).onDestroy(() => {
       ++this.loadRevision;
+      this.destroyed = true;
       clearTimeout(this.timer);
       clearInterval(ticking);
     });
@@ -876,9 +885,16 @@ export class ApplicationPage {
       ]);
     });
     effect((onCleanup) => {
-      const events = this.liveEvents.connect(this.environment(), (applicationId) => {
-        if (applicationId === this.applicationId()) void this.refresh();
-      });
+      const events = this.liveEvents.connect(
+        this.environment(),
+        (applicationId) => {
+          if (applicationId === this.applicationId()) void this.refresh();
+        },
+        // Each time the stream opens, a hint sent while it was down is not replayed: reload.
+        () => {
+          void this.refresh();
+        },
+      );
       onCleanup(() => {
         events?.close();
       });
@@ -973,21 +989,40 @@ export class ApplicationPage {
   }
 
   protected async refresh(): Promise<void> {
+    // One at a time: a call meanwhile asks for one more right after, never for two in parallel.
+    if (this.refreshing) {
+      this.refreshAgain = true;
+      return;
+    }
+    this.refreshing = true;
     clearTimeout(this.timer);
-    void this.replicas.refresh();
-    await this.deployments.refresh();
-    // A new deployment comes with a new release: its number names it in the Agent actions section.
-    const latest = this.deployments.items().at(0);
-    if (latest && !this.releases().some((release) => release.id === latest.releaseId))
-      this.loadReleases(this.environment(), this.applicationId());
-    this.reloads.update((n) => n + 1);
-    if (this.active())
-      this.timer = setTimeout(
-        () => {
-          void this.refresh();
-        },
-        this.liveEvents.connected() ? LIVE_POLL_MS : POLL_MS,
-      );
+    try {
+      void this.replicas.refresh();
+      await this.deployments.refresh();
+      // A new deployment comes with a new release: its number names it in the Agent actions
+      // section.
+      const latest = this.deployments.items().at(0);
+      if (latest && !this.releases().some((release) => release.id === latest.releaseId))
+        this.loadReleases(this.environment(), this.applicationId());
+      this.reloads.update((n) => n + 1);
+    } finally {
+      this.refreshing = false;
+    }
+    if (this.destroyed) return;
+    if (this.refreshAgain) {
+      this.refreshAgain = false;
+      await this.refresh();
+      return;
+    }
+    // While a deployment runs, often; otherwise slowly, in case a change hint was missed.
+    const delay = this.active()
+      ? this.liveEvents.connected()
+        ? LIVE_POLL_MS
+        : POLL_MS
+      : IDLE_POLL_MS;
+    this.timer = setTimeout(() => {
+      void this.refresh();
+    }, delay);
   }
 
   protected async deploy(): Promise<void> {

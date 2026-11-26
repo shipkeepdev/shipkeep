@@ -20,10 +20,14 @@ export class LiveEvents {
   private readonly live = signal(false);
   readonly connected = this.live.asReadonly();
 
-  /** The browser reconnects by itself, resuming after the last event it received. */
+  /**
+   * The browser reconnects by itself, resuming after the last event it received. `opened` runs on
+   * each (re)connection: a page reloads then, since a hint is not a state (issue #492).
+   */
   connect(
     environment: EnvironmentRef,
     changed: (applicationId: string | undefined) => void,
+    opened: () => void = () => undefined,
   ): { close(): void } | null {
     if (!this.open) return null;
     const { organizationId, projectId, environmentId } = environment;
@@ -32,6 +36,7 @@ export class LiveEvents {
     );
     source.onopen = () => {
       this.live.set(true);
+      opened();
     };
     source.onerror = () => {
       this.live.set(false);
