@@ -288,3 +288,137 @@ func TestDispatcherReattachesARunningActionToItsLatestDelivery(t *testing.T) {
 		t.Fatalf("the step ran %d times", applied.Load())
 	}
 }
+
+// cutOff runs req until its step has started, then ends its context, as its deadline or the end
+// of the process does: the operation stays running in the journal.
+func cutOff(t *testing.T, d *Dispatcher, store *journal.Store, req *agentv1.ActionRequest, entered <-chan struct{}) {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	first := &recorder{}
+	go func() {
+		d.Handle(ctx, req, first.send)
+		close(done)
+	}()
+	<-entered
+	cancel()
+	<-done
+	unfinished, err := store.Unfinished(context.Background())
+	if err != nil || len(unfinished) != 1 || unfinished[0].State != journal.Running {
+		t.Fatalf("the cut-off operation is not left running: %+v, %v", unfinished, err)
+	}
+}
+
+// overdueHandler is an ensure_network plan whose one step waits for its context to end, and
+// whose compensation runs undo.
+func overdueHandler(applied *atomic.Int32, entered chan<- struct{}, undo func() error) map[string]Handler {
+	return map[string]Handler{"ensure_network": {
+		Plan: func(*agentv1.ActionRequest) (journal.Plan, error) {
+			return journal.Plan{Version: "ensure-network-v1", Steps: []journal.Step{{
+				Name: "create", RetrySafe: true,
+				Apply: func(ctx context.Context) (journal.Outcome, error) {
+					if applied.Add(1) == 1 {
+						close(entered)
+					}
+					<-ctx.Done()
+					return journal.Outcome{}, ctx.Err()
+				},
+				Compensate: func(context.Context) error { return undo() },
+			}}}, nil
+		},
+	}}
+}
+
+// Issue #484: an action its deadline cut off stays unfinished in the journal; delivered again
+// after the deadline, it is undone, never carried forward, and its final update says why.
+func TestDispatcherUndoesAnActionItsDeadlineCutOff(t *testing.T) {
+	store := open(t)
+	var applied, undone atomic.Int32
+	entered := make(chan struct{})
+	d := &Dispatcher{Journal: store, Epoch: func() uint64 { return 3 }, Handlers: overdueHandler(&applied, entered, func() error {
+		undone.Add(1)
+		return nil
+	})}
+	req := request("sk-app")
+	cutOff(t, d, store, req, entered)
+	// The control plane delivers it again, its deadline long past.
+	d.Now = func() time.Time { return time.UnixMilli(req.GetDeadlineUnixMs()).Add(time.Hour) }
+	again := &recorder{}
+	d.Handle(context.Background(), req, again.send)
+	final := again.last(t)
+	if final.GetState() != agentv1.OperationState_OPERATION_STATE_COMPENSATED || final.GetError() != errDeadline {
+		t.Fatalf("the overdue action was not undone with its reason: %v", final)
+	}
+	if applied.Load() != 1 || undone.Load() != 1 {
+		t.Fatalf("applied %d times, undone %d times", applied.Load(), undone.Load())
+	}
+	// An overdue action the journal never saw is refused, and nothing is recorded or run.
+	other := request("sk-other")
+	other.IdempotencyKey = "deploy:42:other"
+	other.ActionId = "019a0000-0000-7000-8000-0000000000f2"
+	refused := &recorder{}
+	d.Handle(context.Background(), other, refused.send)
+	if got := refused.last(t); got.GetState() != agentv1.OperationState_OPERATION_STATE_FAILED || got.GetError() != errDeadline {
+		t.Fatalf("an unknown overdue action was not refused: %v", got)
+	}
+	if applied.Load() != 1 {
+		t.Fatal("an overdue action ran")
+	}
+}
+
+// An overdue action whose compensation keeps failing ends failed, as an action that ran and
+// could not be undone, never as one that never ran (the control plane keeps those expired).
+func TestDispatcherReportsAnOverdueActionItCouldNotUndoAsFailed(t *testing.T) {
+	store := open(t)
+	var applied atomic.Int32
+	entered := make(chan struct{})
+	d := &Dispatcher{Journal: store, Epoch: func() uint64 { return 3 }, Handlers: overdueHandler(&applied, entered, func() error {
+		return errors.New("docker: network in use")
+	})}
+	req := request("sk-app")
+	cutOff(t, d, store, req, entered)
+	d.Now = func() time.Time { return time.UnixMilli(req.GetDeadlineUnixMs()).Add(time.Hour) }
+	var final *agentv1.ActionUpdate
+	for delivery := 0; delivery < 10; delivery++ {
+		again := &recorder{}
+		d.Handle(context.Background(), req, again.send)
+		if final = again.last(t); final.GetState() == agentv1.OperationState_OPERATION_STATE_FAILED {
+			break
+		}
+		if final.GetState() != agentv1.OperationState_OPERATION_STATE_COMPENSATING {
+			t.Fatalf("delivery %d: %v", delivery, final)
+		}
+	}
+	if final.GetState() != agentv1.OperationState_OPERATION_STATE_FAILED || final.GetError() != errFailed {
+		t.Fatalf("an overdue action that could not be undone ended %v", final)
+	}
+}
+
+// A recovery that cannot reach the journal in time reports nothing: the control plane delivers
+// the action again, rather than record an end that never happened.
+func TestDispatcherReportsNothingWhenRecoveryCannotReachTheJournal(t *testing.T) {
+	store := open(t)
+	var applied atomic.Int32
+	entered := make(chan struct{})
+	d := &Dispatcher{Journal: store, Epoch: func() uint64 { return 3 }, Handlers: overdueHandler(&applied, entered, func() error { return nil }), RecoveryTimeout: 50 * time.Millisecond}
+	// Another action holds the journal's executor.
+	busy := request("sk-busy")
+	busy.DeadlineUnixMs = time.Now().Add(time.Hour).UnixMilli()
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go d.Handle(ctx, busy, (&recorder{}).send)
+	<-entered
+	overdue := request("sk-late")
+	overdue.ActionId = "019a0000-0000-7000-8000-0000000000f3"
+	overdue.IdempotencyKey = "deploy:42:late"
+	overdue.DeadlineUnixMs = time.Now().Add(-time.Minute).UnixMilli()
+	late := &recorder{}
+	d.Handle(context.Background(), overdue, late.send)
+	late.mu.Lock()
+	defer late.mu.Unlock()
+	for _, update := range late.updates {
+		if update.GetState() == agentv1.OperationState_OPERATION_STATE_FAILED || update.GetState() == agentv1.OperationState_OPERATION_STATE_COMPENSATED {
+			t.Fatalf("a recovery that never reached the journal reported an end: %v", update)
+		}
+	}
+}

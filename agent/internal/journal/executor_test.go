@@ -316,3 +316,86 @@ func TestCauseThatIsNotACodeIsDropped(t *testing.T) {
 		_ = store.Close()
 	}
 }
+
+// Issue #484: past its deadline, an operation is only ended, never carried forward. The steps it
+// applied, the one in progress included, are undone; one never started is cancelled; none is
+// recorded for a request the journal never saw.
+func TestRecoverUndoesWithoutAnyForwardEffect(t *testing.T) {
+	store, err := Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() //nolint:errcheck // test cleanup
+	var applied, undone []string
+	step := func(name string, retrySafe bool, interrupt func()) Step {
+		return Step{
+			Name: name, RetrySafe: retrySafe,
+			Apply: func(context.Context) (Outcome, error) {
+				applied = append(applied, name)
+				if interrupt != nil {
+					interrupt()
+					return Outcome{}, context.DeadlineExceeded
+				}
+				return Outcome{}, nil
+			},
+			Compensate: func(context.Context) error {
+				undone = append(undone, name)
+				return nil
+			},
+		}
+	}
+	// Never seen: nothing is recorded, nothing runs.
+	plan := Plan{Version: "v1", Steps: []Step{step("create", true, nil)}}
+	if _, err := store.Recover(t.Context(), request(), plan, nil); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("recovered an operation the journal never saw: %v", err)
+	}
+	if pending, _ := store.Unfinished(t.Context()); len(pending) != 0 || len(applied) != 0 {
+		t.Fatal("recovery recorded or ran something")
+	}
+	// The deadline ends the second step while it runs, though it is retry-safe.
+	ctx, cancel := context.WithCancel(t.Context())
+	interrupted := Plan{Version: "v1", Steps: []Step{
+		step("network", true, nil),
+		step("create", true, cancel),
+		step("start", true, nil),
+	}}
+	if op, err := store.Execute(ctx, request(), interrupted, nil); err == nil || op.State != Running {
+		t.Fatalf("the interrupted operation is not left running: %v %v", op.State, err)
+	}
+	applied = nil
+	op, err := store.Recover(t.Context(), request(), interrupted, nil)
+	if !errors.Is(err, ErrOperationFailed) || op.State != Compensated {
+		t.Fatalf("recovery did not compensate: %v %v", op.State, err)
+	}
+	if len(applied) != 0 || fmt.Sprint(undone) != "[create network]" {
+		t.Fatalf("recovery applied %v and undid %v", applied, undone)
+	}
+	// Once ended, a later recovery returns the outcome as it is.
+	undone = nil
+	again, err := store.Recover(t.Context(), request(), interrupted, nil)
+	if !errors.Is(err, ErrOperationFailed) || again.State != Compensated || len(undone) != 0 {
+		t.Fatalf("a finished operation was recovered again: %v %v %v", again.State, err, undone)
+	}
+}
+
+func TestRecoverCancelsAnOperationThatNeverStarted(t *testing.T) {
+	store, err := Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() //nolint:errcheck // test cleanup
+	ran := false
+	plan := Plan{Version: "v1", Steps: []Step{{
+		Name: "create", RetrySafe: true,
+		Apply:      func(context.Context) (Outcome, error) { ran = true; return Outcome{}, nil },
+		Compensate: func(context.Context) error { ran = true; return nil },
+	}}}
+	// Intent recorded, then the process stopped before any step.
+	if _, err := store.Begin(t.Context(), func() Request { r := request(); r.PayloadHash = planHash(r.PayloadHash, plan); return r }()); err != nil {
+		t.Fatal(err)
+	}
+	op, err := store.Recover(t.Context(), request(), plan, nil)
+	if !errors.Is(err, ErrOperationFailed) || op.State != Cancelled || ran {
+		t.Fatalf("an operation that never started was not cancelled cleanly: %v %v %v", op.State, err, ran)
+	}
+}
