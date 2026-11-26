@@ -185,4 +185,46 @@ describe('servers to re-adopt on the Servers page', () => {
     );
     expect(field?.value).toBe('typed for the other organization');
   });
+  it('offers to start again after a refusal that needs a fresh attempt', async () => {
+    const page = setup([waiting]);
+    page.api.readopt.mockImplementationOnce(() =>
+      Promise.reject(new IdentityRequestError(409, 0, { code: 'readoption_certificate_expired' })),
+    );
+    await page.settle();
+    page.button('Re-adopt')?.click();
+    await page.settle();
+    page.type('readopt-password', 'a fixture password, long enough');
+    await page.settle();
+    page.button('Re-adopt edge-a')?.click();
+    await page.settle();
+    expect(page.button('Start again')).toBeDefined();
+    // Typing again does not make a send that the runner would silently drop.
+    page.type('readopt-password', 'a fixture password, long enough');
+    await page.settle();
+    expect(page.button('Re-adopt edge-a')?.disabled).toBe(true);
+    page.button('Start again')?.click();
+    await page.settle();
+    page.type('readopt-password', 'a fixture password, long enough');
+    await page.settle();
+    expect(page.button('Re-adopt edge-a')?.disabled).toBe(false);
+    expect(page.api.readopt).toHaveBeenCalledTimes(1);
+  });
+
+  it('forgets the typed password when its server no longer waits', async () => {
+    const page = setup([waiting]);
+    await page.settle();
+    page.button('Re-adopt')?.click();
+    await page.settle();
+    page.type('readopt-password', 'a fixture password, long enough');
+    await page.settle();
+    // Another administrator re-adopted it meanwhile.
+    page.set([]);
+    await page.fixture.componentInstance.load();
+    await page.settle();
+    expect(page.text()).toBe('');
+    const state = page.fixture.componentInstance as unknown as {
+      proof: { getRawValue(): { password: string } };
+    };
+    expect(state.proof.getRawValue().password).toBe('');
+  });
 });

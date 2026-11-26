@@ -56,7 +56,14 @@ import { FleetApi, type FleetNode, type NodeReadoption } from './fleet-api';
           </p>
         }
         @if (runner.problem(); as problem) {
-          <p class="alert" role="alert">{{ problem | t }}</p>
+          <div class="alert flex-col items-start gap-2" role="alert">
+            <span>{{ problem | t }}</span>
+            @if (runner.restartRequired()) {
+              <button type="button" class="btn btn-sm" (click)="startAgain()">
+                {{ 'Start again' | t }}
+              </button>
+            }
+          </div>
         }
         @if (unread()) {
           <div class="alert flex-wrap items-center justify-between" role="alert">
@@ -136,7 +143,12 @@ import { FleetApi, type FleetNode, type NodeReadoption } from './fleet-api';
                       <button
                         class="btn btn-primary btn-sm"
                         type="submit"
-                        [disabled]="runner.busy() || !!runner.cooldown() || proof.invalid"
+                        [disabled]="
+                          runner.busy() ||
+                          !!runner.cooldown() ||
+                          runner.restartRequired() ||
+                          proof.invalid
+                        "
                       >
                         {{
                           (runner.busy() ? 'Re-adopting…' : 'Re-adopt {name}') | t: { name: r.name }
@@ -215,6 +227,9 @@ export class NodeReadoptions {
     try {
       const pending = await this.api.readoptions(organizationId);
       if (revision !== this.revision) return;
+      // A server no longer waiting takes its open form with it: no password stays behind.
+      const open = this.open();
+      if (open && !pending.some((request) => request.nodeId === open)) this.close();
       this.pending.set(pending);
       this.unread.set(false);
     } catch {
@@ -229,6 +244,12 @@ export class NodeReadoptions {
     this.runner.reset();
     this.readopted.set(null);
     this.open.set(nodeId);
+  }
+
+  /** After a refusal that needs a fresh attempt: the form is emptied, and can be sent again. */
+  protected startAgain(): void {
+    this.proof.reset();
+    this.runner.reset();
   }
 
   protected close(): void {
