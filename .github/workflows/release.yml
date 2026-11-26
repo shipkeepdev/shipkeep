@@ -140,17 +140,16 @@ jobs:
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
           DESTINATION: ${{ env.PUBLISH == 'true' && format('ghcr.io/{0}/shipkeep', github.repository_owner) || 'localhost:5000/shipkeep-dry-run' }}
+        # The runner's own skopeo. An image of quay.io/skopeo/stable pinned by digest broke two
+        # releases (alpha.4, alpha.6): quay rebuilds the tag and drops the older digests. Whatever
+        # the tool's version, the read-back below checks that the copy is the scanned digest.
         run: |
-          skopeo() {
-            docker run --rm --network host "${mounts[@]}" \
-              quay.io/skopeo/stable:v1.25.1@sha256:4531abd9632dca34af50bd524ec46db5bcaec01d3bb0c62dc9916a02b3472bb3 "$@"
-          }
+          command -v skopeo >/dev/null || { echo 'skopeo is not installed on this runner.' >&2; exit 1; }
+          skopeo --version
           if [ "$PUBLISH" = true ]; then
-            mounts=(-v "$HOME/.docker/config.json:/auth.json:ro")
-            push=(--dest-authfile /auth.json)
-            read=(--authfile /auth.json)
+            push=(--dest-authfile "$HOME/.docker/config.json")
+            read=(--authfile "$HOME/.docker/config.json")
           else
-            mounts=()
             push=(--dest-tls-verify=false)
             read=(--tls-verify=false)
           fi
