@@ -24,6 +24,7 @@ import { AgentUpgrades } from './agent-upgrades';
 import { FleetApi, type FleetNode, type JoinToken } from './fleet-api';
 import { InstallCommand } from './install-command';
 import { NodeMetricsPanel } from './node-metrics';
+import { NodeReadoptions } from './node-readoptions';
 import { PublicAddressesEditor } from './public-addresses-editor';
 
 /** The agent configuration for a new server (deploy/agent/agent.example.yaml). */
@@ -50,6 +51,7 @@ const COLUMNS =
     AgentUpgrades,
     ConfirmByName,
     NodeMetricsPanel,
+    NodeReadoptions,
     PublicAddressesEditor,
     ReactiveFormsModule,
     RouterLink,
@@ -79,6 +81,12 @@ const COLUMNS =
         [organizationId]="organizationId()"
         [nodes]="nodes.items()"
         (rolloutEnded)="nodes.refresh()"
+      />
+
+      <sk-node-readoptions
+        [organizationId]="organizationId()"
+        [nodes]="nodes.items()"
+        (changed)="nodes.refresh()"
       />
 
       <div
