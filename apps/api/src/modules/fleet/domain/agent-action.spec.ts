@@ -58,6 +58,9 @@ describe('summarizeAction', () => {
       // UpgradeAgent (ADR 0028)
       'a development build of the agent is not upgraded': 'upgrade_dev_build',
       'the agent already runs this version or a later one': 'upgrade_not_newer',
+      "the agent's service predates upgrades: run the server installer with --migrate yes":
+        'upgrade_unit_outdated',
+      // Agents of 0.1.0-alpha.4 to alpha.7.
       "the agent's service predates upgrades: run the installer again": 'upgrade_unit_outdated',
       'the release archive did not verify': 'upgrade_unverified',
       'the release archive could not be downloaded': 'upgrade_unavailable',

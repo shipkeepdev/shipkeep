@@ -279,14 +279,14 @@ func TestUpgradeAgentRefusesWhatItCannotTrustOrDoSafely(t *testing.T) {
 			if err := os.WriteFile(n.upgrader.UnitFile, []byte("[Service]\nExecStart=/var/lib/shipkeep/bin/shipkeep-agent\n"), 0o600); err != nil {
 				t.Fatal(err)
 			}
-		}, "the agent's service predates upgrades: run the installer again"},
-		"no unit": {func(_ *testing.T, n *upgradeNode) { n.upgrader.UnitFile = filepath.Join(t.TempDir(), "absent") }, "the agent's service predates upgrades: run the installer again"},
+		}, "the agent's service predates upgrades: run the server installer with --migrate yes"},
+		"no unit": {func(_ *testing.T, n *upgradeNode) { n.upgrader.UnitFile = filepath.Join(t.TempDir(), "absent") }, "the agent's service predates upgrades: run the server installer with --migrate yes"},
 		"a commented guard": {func(t *testing.T, n *upgradeNode) {
 			unit := "[Service]\n#ExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config /etc/shipkeep/agent.yaml\n"
 			if err := os.WriteFile(n.upgrader.UnitFile, []byte(unit), 0o600); err != nil {
 				t.Fatal(err)
 			}
-		}, "the agent's service predates upgrades: run the installer again"},
+		}, "the agent's service predates upgrades: run the server installer with --migrate yes"},
 		"another archive than the digest": {func(t *testing.T, n *upgradeNode) {
 			n.github.archive = releaseArchive(t, "agent from elsewhere")
 		}, "the release archive did not verify"},

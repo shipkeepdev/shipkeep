@@ -139,7 +139,7 @@ describe('agent action rows', () => {
       expect(FR[sentence], sentence).toMatch(/^Le serveur n'a pas pu récupérer l'image : /);
     expect(
       FR[
-        "The server refused to pull the image: its Docker daemon does not go through Shipkeep's egress proxy, which keeps a registry from reaching the server's own network. Run the server installer again to restore it."
+        "The server refused to pull the image: its Docker daemon does not go through Shipkeep's egress proxy, which keeps a registry from reaching the server's own network. Run the server installer again with --migrate yes to restore it."
       ],
     ).toMatch(/^Le serveur a refusé de récupérer l'image : /);
   });

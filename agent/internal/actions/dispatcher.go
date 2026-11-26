@@ -46,7 +46,7 @@ var failureTexts = map[string]string{
 	causeEgressUnguarded:            "the server's Docker does not go through its egress proxy",
 	causeUpgradeDevBuild:            "a development build of the agent is not upgraded",
 	causeUpgradeNotNewer:            "the agent already runs this version or a later one",
-	causeUpgradeUnitOld:             "the agent's service predates upgrades: run the installer again",
+	causeUpgradeUnitOld:             "the agent's service predates upgrades: run the server installer with --migrate yes",
 	causeUpgradeUnverified:          "the release archive did not verify",
 	causeUpgradeUnavailable:         "the release archive could not be downloaded",
 	causeUpgradeInProgress:          "another upgrade of the agent is not confirmed yet",
