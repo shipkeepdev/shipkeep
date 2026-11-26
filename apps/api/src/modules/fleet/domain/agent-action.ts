@@ -118,6 +118,7 @@ export const ACTION_REASONS = [
   'disk_full',
   'image_volume_undeclared',
   'egress_unguarded',
+  'container_name_taken',
   'upgrade_dev_build',
   'upgrade_not_newer',
   'upgrade_unit_outdated',
@@ -144,6 +145,7 @@ const AGENT_ERRORS: Readonly<Record<string, ActionReason>> = {
   'no space left on the server': 'disk_full',
   'the image declares a volume the configuration does not mount': 'image_volume_undeclared',
   "the server's Docker does not go through its egress proxy": 'egress_unguarded',
+  'a container with this name already exists on the server': 'container_name_taken',
   // Why an UpgradeAgent was refused or failed (ADR 0028).
   'a development build of the agent is not upgraded': 'upgrade_dev_build',
   'the agent already runs this version or a later one': 'upgrade_not_newer',
@@ -161,6 +163,7 @@ const STEP_CAUSES: ReadonlySet<ActionReason> = new Set([
   'disk_full',
   'image_volume_undeclared',
   'egress_unguarded',
+  'container_name_taken',
   'upgrade_dev_build',
   'upgrade_not_newer',
   'upgrade_unit_outdated',

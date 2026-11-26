@@ -42,6 +42,7 @@ var failureTexts = map[string]string{
 	docker.CauseRegistryUntrusted:   "registry certificate not trusted by the server",
 	docker.CauseDiskFull:            "no space left on the server",
 	causeImageVolume:                "the image declares a volume the configuration does not mount",
+	causeContainerNameTaken:         "a container with this name already exists on the server",
 	causeEgressUnguarded:            "the server's Docker does not go through its egress proxy",
 	causeUpgradeDevBuild:            "a development build of the agent is not upgraded",
 	causeUpgradeNotNewer:            "the agent already runs this version or a later one",

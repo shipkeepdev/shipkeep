@@ -144,6 +144,23 @@ describe('agent action rows', () => {
     ).toMatch(/^Le serveur a refusé de récupérer l'image : /);
   });
 
+  it('says when a container name is taken, in French too (issue #501)', () => {
+    const row = agentActionRow({
+      ...base,
+      kind: 'createContainer',
+      state: 'compensated',
+      outcome: 'compensated',
+      reason: 'container_name_taken',
+    });
+    expect(row.reason).toBe('container name already in use');
+    expect(FR['container name already in use']).toBeTruthy();
+    expect(
+      FR[
+        'The server did not create the container: a container with its name already exists there. After a restore from an older backup, it belongs to a deployment the backup does not know: deploy again, then remove that container on the server.'
+      ],
+    ).toMatch(/^Le serveur n'a pas créé le conteneur : /);
+  });
+
   it('reports a probe or a release task that ran but did not pass', () => {
     const unhealthy = agentActionRow({
       ...base,

@@ -20,6 +20,21 @@ const specLabel = "sk.spec"
 
 var errSpecConflict = errors.New("container exists with a different specification")
 
+// causeContainerNameTaken is the cause of a create whose name another container holds: one of
+// another specification, or one Shipkeep does not manage. A restore from a backup older than the
+// last deployment reuses its release number, and so its container's name (issue #501).
+const causeContainerNameTaken = "container_name_taken"
+
+// nameTakenError keeps the error it wraps for errors.Is, and names the cause for the control plane.
+type nameTakenError struct{ err error }
+
+func (e nameTakenError) Error() string { return e.err.Error() }
+
+func (e nameTakenError) Unwrap() error { return e.err }
+
+// Cause is the code the journal keeps and the dispatcher turns into a fixed text.
+func (e nameTakenError) Cause() string { return causeContainerNameTaken }
+
 // createContainer creates (never starts) a container from a fully validated spec. A replay finds
 // the same container through its name and fingerprint; a different spec under the same name fails.
 func createContainer(engine Engine, spec *agentv1.ContainerSpec, workloads Workloads) (journal.Plan, error) {
@@ -76,9 +91,9 @@ func reuse(existing docker.Container, fingerprint string) (journal.Outcome, erro
 	labels := existing.Config.Labels
 	switch {
 	case labels[docker.ManagedLabel] != "true":
-		return journal.Outcome{}, errForeign
+		return journal.Outcome{}, nameTakenError{errForeign}
 	case labels[specLabel] != fingerprint:
-		return journal.Outcome{}, errSpecConflict
+		return journal.Outcome{}, nameTakenError{errSpecConflict}
 	default:
 		return journal.Outcome{ResourceID: existing.ID}, nil
 	}

@@ -105,15 +105,18 @@ func TestCreateContainerIsIdempotentAndRefusesConflicts(t *testing.T) {
 	if !succeeded(create(t, engine, rotated)) {
 		t.Fatal("same version was treated as a conflict")
 	}
+	// The name is taken: the control plane hears it as such (issue #501, a restore reusing a
+	// release number), not as an unexplained failure.
+	const taken = "a container with this name already exists on the server"
 	changed := validSpec()
 	changed.Command = []string{"node", "other.js"}
-	if succeeded(create(t, engine, changed)) || len(engine.created) != 1 {
-		t.Fatal("different spec reused or replaced an existing container")
+	if update := create(t, engine, changed); succeeded(update) || len(engine.created) != 1 || update.GetError() != taken {
+		t.Fatalf("different spec reused or replaced an existing container, or failed without its cause: %q", update.GetError())
 	}
 	foreign := newFakeEngine()
 	foreign.containers = append(foreign.containers, docker.Container{ID: "x", Name: "/sk-api-r42"})
-	if succeeded(create(t, foreign, validSpec())) || len(foreign.created) != 0 {
-		t.Fatal("adopted an unmanaged container")
+	if update := create(t, foreign, validSpec()); succeeded(update) || len(foreign.created) != 0 || update.GetError() != taken {
+		t.Fatalf("adopted an unmanaged container, or failed without its cause: %q", update.GetError())
 	}
 }
 

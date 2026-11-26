@@ -317,6 +317,7 @@ The agent only adopts or changes resources that carry its `sk.managed=true` labe
     | No room left on the server for the image                                                    | `no space left on the server`                                    | `disk_full`                 |
     | A read-only root whose image declares a `VOLUME` that the spec does not mount (ADR 0022)    | `the image declares a volume the configuration does not mount`   | `image_volume_undeclared`   |
     | The daemon's proxy settings are not exactly the egress proxy, read before a pull (ADR 0023) | `the server's Docker does not go through its egress proxy`       | `egress_unguarded`          |
+    | `CreateContainer` finds its name held by a container of another spec, or not Shipkeep's     | `a container with this name already exists on the server`        | `container_name_taken`      |
     | `UpgradeAgent` sent to a development build (ADR 0028)                                       | `a development build of the agent is not upgraded`               | `upgrade_dev_build`         |
     | `UpgradeAgent` to the running version or an older one                                       | `the agent already runs this version or a later one`             | `upgrade_not_newer`         |
     | The agent's systemd unit has no upgrade guard: an installation made before upgrades         | `the agent's service predates upgrades: run the installer again` | `upgrade_unit_outdated`     |
