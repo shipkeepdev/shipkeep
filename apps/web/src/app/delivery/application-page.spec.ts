@@ -65,7 +65,14 @@ interface Held {
   application(): Application | null;
 }
 
-function mount() {
+interface MountOptions {
+  /** What the deployments list answers; empty by default. */
+  deployments?: () => Promise<readonly unknown[]>;
+}
+
+function mount(options: MountOptions = {}) {
+  let deploymentCalls = 0;
+  const opened: (() => void)[] = [];
   const pending = new Map<string, Pending>();
   const pendingFor = (environmentId: string, applicationId: string) => {
     const key = `${environmentId}/${applicationId}`;
@@ -92,6 +99,10 @@ function mount() {
       pendingFor(environment.environmentId, currentApp).secrets.promise,
     releases: (environment: { environmentId: string }, id: string) =>
       pendingFor(environment.environmentId, id).releases.promise,
+    deployments: () => {
+      deploymentCalls++;
+      return options.deployments?.() ?? Promise.resolve([]);
+    },
   });
   const workspace = orEmpty({
     environment: (_organization: string, _project: string, environmentId: string) =>
@@ -105,7 +116,13 @@ function mount() {
       { provide: WorkspaceApi, useValue: workspace },
       {
         provide: LiveEvents,
-        useValue: { connected: signal(false), connect: () => ({ close: () => undefined }) },
+        useValue: {
+          connected: signal(false),
+          connect: (_environment: unknown, _changed: unknown, open?: () => void) => {
+            if (open) opened.push(open);
+            return { close: () => undefined };
+          },
+        },
       },
       {
         provide: ShellContext,
@@ -126,7 +143,15 @@ function mount() {
     fixture.detectChanges();
   };
   const page = fixture.componentInstance as unknown as Held;
-  return { show, page, pendingFor, fixture };
+  return {
+    show,
+    page,
+    pendingFor,
+    fixture,
+    deploymentCalls: () => deploymentCalls,
+    /** The event stream opens again, as after a network loss. */
+    reconnect: () => opened.at(-1)?.(),
+  };
 }
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -209,5 +234,84 @@ describe('the application page across navigation', () => {
     first.resolve([release('older')]);
     await settle();
     expect(page.releases().map((r) => r.id)).toEqual(['newer']);
+  });
+});
+
+// Issue #492: an idle page keeps looking, slowly, and reloads when its event stream opens again.
+describe('the application page refresh', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('looks again every minute while nothing runs', async () => {
+    const { show, deploymentCalls } = mount();
+    show(ENV_A, APP_A);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deploymentCalls()).toBe(1);
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(deploymentCalls()).toBe(1);
+    await vi.advanceTimersByTimeAsync(2_000);
+    expect(deploymentCalls()).toBe(2);
+  });
+
+  it('reloads when its event stream opens again, without waiting for a change event', async () => {
+    const { show, deploymentCalls, reconnect } = mount();
+    show(ENV_A, APP_A);
+    await vi.advanceTimersByTimeAsync(0);
+    reconnect();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deploymentCalls()).toBe(2);
+  });
+
+  it('keeps following a running deployment every 3 seconds without live events', async () => {
+    const running = [
+      {
+        id: '01900000-0000-7000-8000-0000000000d1',
+        releaseId: '01900000-0000-7000-8000-0000000000e1',
+        state: 'starting',
+        trigger: 'manual',
+        actorId: null,
+        startedAt: '2026-11-26T00:00:00.000Z',
+        finishedAt: null,
+        error: null,
+      },
+    ];
+    const { show, deploymentCalls } = mount({ deployments: () => Promise.resolve(running) });
+    show(ENV_A, APP_A);
+    await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(deploymentCalls()).toBe(2);
+  });
+
+  it('runs one refresh at a time, and one more for the calls made meanwhile', async () => {
+    let hold: Deferred<readonly unknown[]> | undefined;
+    const { show, deploymentCalls, reconnect } = mount({
+      deployments: () => hold?.promise ?? Promise.resolve([]),
+    });
+    show(ENV_A, APP_A);
+    await vi.advanceTimersByTimeAsync(0);
+    hold = deferred();
+    reconnect();
+    reconnect();
+    reconnect();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deploymentCalls()).toBe(2);
+    const answered = hold;
+    hold = undefined;
+    answered.resolve([]);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(deploymentCalls()).toBe(3);
+  });
+
+  it('stops looking once the page is gone', async () => {
+    const { show, deploymentCalls, fixture } = mount();
+    show(ENV_A, APP_A);
+    await vi.advanceTimersByTimeAsync(0);
+    fixture.destroy();
+    await vi.advanceTimersByTimeAsync(300_000);
+    expect(deploymentCalls()).toBe(1);
   });
 });
