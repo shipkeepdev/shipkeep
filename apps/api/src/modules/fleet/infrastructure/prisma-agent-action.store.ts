@@ -12,6 +12,14 @@ import type {
 } from '../domain/agent-action';
 
 const UNFINISHED = ['queued', 'pending', 'running', 'compensating'];
+/**
+ * How long an action that expired is still delivered, so that an agent which holds it unfinished
+ * in its journal undoes it and says how it ended (issue #484). Agents never start an action past its
+ * deadline.
+ */
+const RECOVERY_WINDOW_MS = 24 * 3600_000;
+/** What an agent answers for an overdue action its journal never recorded: nothing ran. */
+const NEVER_RAN = 'action deadline exceeded';
 
 /** Payloads are encrypted per organization and bound to the action id (SPEC 9). */
 @Injectable()
@@ -75,7 +83,19 @@ export class PrismaAgentActionStore implements AgentActionStore {
     now: Date,
   ): Promise<AgentActionRecord[]> {
     const rows = await this.database.client.agentAction.findMany({
-      where: { organizationId, nodeId, state: { in: UNFINISHED }, deadline: { gt: now } },
+      where: {
+        organizationId,
+        nodeId,
+        OR: [
+          { state: { in: UNFINISHED }, deadline: { gt: now } },
+          // Expired, and the agent has not said how it ended: delivered for recovery only.
+          {
+            state: 'expired',
+            error: null,
+            deadline: { gt: new Date(now.getTime() - RECOVERY_WINDOW_MS) },
+          },
+        ],
+      },
       orderBy: { id: 'asc' },
       take: 100,
     });
@@ -106,6 +126,8 @@ export class PrismaAgentActionStore implements AgentActionStore {
     change: AgentActionChange,
   ): Promise<AgentActionRecord | undefined> {
     const terminal = !UNFINISHED.includes(change.state);
+    if (terminal && (await this.settleExpired(organizationId, nodeId, id, change)))
+      return this.find(organizationId, nodeId, id);
     const updated = await this.database.client.agentAction.updateMany({
       where: { id, organizationId, nodeId, state: { in: UNFINISHED } },
       data: {
@@ -119,6 +141,48 @@ export class PrismaAgentActionStore implements AgentActionStore {
       },
     });
     if (updated.count !== 1) return undefined;
+    return this.find(organizationId, nodeId, id);
+  }
+
+  /**
+   * The agent's final word on an action the control plane expired (issue #484): how it ended once
+   * undone, or that it never ran, which keeps it expired and ends its recovery. True when it
+   * changed the state, which then is a terminal transition of its own.
+   */
+  private async settleExpired(
+    organizationId: string,
+    nodeId: string,
+    id: string,
+    change: AgentActionChange,
+  ): Promise<boolean> {
+    const expired = { id, organizationId, nodeId, state: 'expired', error: null };
+    if (change.state === 'failed' && change.error === NEVER_RAN) {
+      await this.database.client.agentAction.updateMany({
+        where: expired,
+        data: { error: NEVER_RAN, updatedAt: change.at },
+      });
+      return false;
+    }
+    const updated = await this.database.client.agentAction.updateMany({
+      where: expired,
+      data: {
+        state: change.state,
+        step: change.step,
+        attempts: change.attempts,
+        error: change.error,
+        updatedAt: change.at,
+        completedAt: change.at,
+        ...(change.result === null ? {} : { result: change.result }),
+      },
+    });
+    return updated.count === 1;
+  }
+
+  private async find(
+    organizationId: string,
+    nodeId: string,
+    id: string,
+  ): Promise<AgentActionRecord | undefined> {
     const row = await this.database.client.agentAction.findFirst({
       where: { id, organizationId, nodeId },
     });

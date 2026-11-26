@@ -288,3 +288,59 @@ func TestDispatcherReattachesARunningActionToItsLatestDelivery(t *testing.T) {
 		t.Fatalf("the step ran %d times", applied.Load())
 	}
 }
+
+// Issue #484: an action its deadline cut off stays unfinished in the journal; delivered again
+// after the deadline, it is undone, never carried forward, and its final update says why.
+func TestDispatcherUndoesAnActionItsDeadlineCutOff(t *testing.T) {
+	store := open(t)
+	var applied, undone atomic.Int32
+	d := &Dispatcher{
+		Journal: store,
+		Epoch:   func() uint64 { return 3 },
+		Handlers: map[string]Handler{"ensure_network": {
+			Plan: func(*agentv1.ActionRequest) (journal.Plan, error) {
+				return journal.Plan{Version: "ensure-network-v1", Steps: []journal.Step{{
+					Name: "create", RetrySafe: true,
+					Apply: func(ctx context.Context) (journal.Outcome, error) {
+						applied.Add(1)
+						<-ctx.Done() // the deadline ends it while it runs
+						return journal.Outcome{}, ctx.Err()
+					},
+					Compensate: func(context.Context) error {
+						undone.Add(1)
+						return nil
+					},
+				}}}, nil
+			},
+		}},
+	}
+	req := request("sk-app")
+	req.DeadlineUnixMs = time.Now().Add(50 * time.Millisecond).UnixMilli()
+	first := &recorder{}
+	d.Handle(context.Background(), req, first.send)
+	if got := first.last(t); got.GetState() == agentv1.OperationState_OPERATION_STATE_SUCCEEDED {
+		t.Fatalf("an action cut off by its deadline succeeded: %v", got)
+	}
+	// The control plane delivers it again, its deadline long past.
+	again := &recorder{}
+	d.Handle(context.Background(), req, again.send)
+	final := again.last(t)
+	if final.GetState() != agentv1.OperationState_OPERATION_STATE_COMPENSATED || final.GetError() != errDeadline {
+		t.Fatalf("the overdue action was not undone with its reason: %v", final)
+	}
+	if applied.Load() != 1 || undone.Load() != 1 {
+		t.Fatalf("applied %d times, undone %d times", applied.Load(), undone.Load())
+	}
+	// An overdue action the journal never saw is refused, and nothing is recorded or run.
+	other := request("sk-other")
+	other.IdempotencyKey = "deploy:42:other"
+	other.DeadlineUnixMs = time.Now().Add(-time.Minute).UnixMilli()
+	refused := &recorder{}
+	d.Handle(context.Background(), other, refused.send)
+	if got := refused.last(t); got.GetState() != agentv1.OperationState_OPERATION_STATE_FAILED || got.GetError() != errDeadline {
+		t.Fatalf("an unknown overdue action was not refused: %v", got)
+	}
+	if applied.Load() != 1 {
+		t.Fatal("an overdue action ran")
+	}
+}
