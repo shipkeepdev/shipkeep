@@ -63,7 +63,12 @@ export async function browserApp(
       restore[key] = process.env[key];
       process.env[key] = value;
     }
-    const backend = await integrationApp(overrides, {
+    // Loaded once the environment is set, as integrationApp loads the application.
+    const { IDENTITY_THROTTLE } =
+      await import('../modules/identity/application/identity-throttle.js');
+    const { BrowserSuiteThrottle } = await import('./browser-suite-throttle.js');
+    const throttle = { token: IDENTITY_THROTTLE, useClass: BrowserSuiteThrottle };
+    const backend = await integrationApp([throttle, ...overrides], {
       // Never reset an inherited developer DATABASE_URL, including one loaded by Nx.
       isolatedDatabase: true,
       // The production role: tenant commands refuse one that could bypass row security.
