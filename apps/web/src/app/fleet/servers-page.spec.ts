@@ -66,6 +66,7 @@ describe('servers page', () => {
     const routes: Partial<Record<string, () => Response | Promise<Response>>> = {
       [`GET ${BASE}/nodes`]: () => json({ items: nodes, nextCursor: null }),
       [`GET ${BASE}/agent-upgrades`]: () => json(upgrades),
+      [`GET ${BASE}/node-readoptions`]: () => json({ items: [] }),
       [`POST ${BASE}/agent-upgrades`]: () => {
         const rollout = {
           id: '0190f5a8-7b1c-7e2d-8f3a-0000000000f1',

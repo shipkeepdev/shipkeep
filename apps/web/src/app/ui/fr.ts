@@ -705,10 +705,12 @@ export const FR: Readonly<Record<string, string>> = {
     "Identité et build de l'application. Chaque valeur vient de son shipkeep.yml.",
   'If a server fails': 'En cas de panne',
   'Servers to re-adopt': 'Serveurs à réadopter',
-  'These servers present a certificate this installation does not know, as after a restore from a backup older than their last certificate renewal. Their applications keep running. Re-adopt a server you recognize: it connects again within 5 minutes.':
-    "Ces serveurs présentent un certificat que cette installation ne connaît pas, comme après la restauration d'une sauvegarde plus ancienne que le dernier renouvellement de leur certificat. Leurs applications continuent de tourner. Réadoptez un serveur que vous reconnaissez : il se reconnecte dans les 5 minutes.",
-  '{name} is re-adopted: it connects again within 5 minutes.':
-    '{name} est réadopté : il se reconnecte dans les 5 minutes.',
+  'These servers present a certificate this installation does not know, as after a restore from a backup older than their last certificate renewal. Their applications keep running. Re-adopt a server you recognize: it connects again within 5 minutes, or, with an agent of 0.1.0-alpha.7 or earlier, once its agent is restarted (sudo systemctl restart shipkeep-agent).':
+    "Ces serveurs présentent un certificat que cette installation ne connaît pas, comme après la restauration d'une sauvegarde plus ancienne que le dernier renouvellement de leur certificat. Leurs applications continuent de tourner. Réadoptez un serveur que vous reconnaissez : il se reconnecte dans les 5 minutes, ou, avec un agent 0.1.0-alpha.7 ou antérieur, une fois son agent redémarré (sudo systemctl restart shipkeep-agent).",
+  '{name} is re-adopted: it connects again within 5 minutes, or once its agent is restarted if it runs 0.1.0-alpha.7 or earlier.':
+    '{name} est réadopté : il se reconnecte dans les 5 minutes, ou une fois son agent redémarré s’il exécute 0.1.0-alpha.7 ou antérieur.',
+  'The servers to re-adopt could not be read.': 'Les serveurs à réadopter n’ont pas pu être lus.',
+  'Try again': 'Réessayer',
   'refused since {since} · certificate valid until {until}':
     "refusé depuis le {since} · certificat valable jusqu'au {until}",
   'Re-adopt': 'Réadopter',

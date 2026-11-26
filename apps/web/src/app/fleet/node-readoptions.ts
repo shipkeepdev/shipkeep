@@ -29,7 +29,7 @@ import { FleetApi, type FleetNode, type NodeReadoption } from './fleet-api';
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (rows().length || readopted()) {
+    @if (rows().length || readopted() || unread()) {
       <section
         class="card flex flex-col gap-3 px-5 py-4"
         aria-labelledby="readoptions-title"
@@ -41,7 +41,7 @@ import { FleetApi, type FleetNode, type NodeReadoption } from './fleet-api';
           </h2>
           <p class="text-[12.5px] leading-[1.55] text-pretty text-fg3">
             {{
-              'These servers present a certificate this installation does not know, as after a restore from a backup older than their last certificate renewal. Their applications keep running. Re-adopt a server you recognize: it connects again within 5 minutes.'
+              'These servers present a certificate this installation does not know, as after a restore from a backup older than their last certificate renewal. Their applications keep running. Re-adopt a server you recognize: it connects again within 5 minutes, or, with an agent of 0.1.0-alpha.7 or earlier, once its agent is restarted (sudo systemctl restart shipkeep-agent).'
                 | t
             }}
           </p>
@@ -49,11 +49,20 @@ import { FleetApi, type FleetNode, type NodeReadoption } from './fleet-api';
 
         @if (readopted(); as name) {
           <p class="alert alert-ok" role="status">
-            {{ '{name} is re-adopted: it connects again within 5 minutes.' | t: { name } }}
+            {{
+              '{name} is re-adopted: it connects again within 5 minutes, or once its agent is restarted if it runs 0.1.0-alpha.7 or earlier.'
+                | t: { name }
+            }}
           </p>
         }
         @if (runner.problem(); as problem) {
           <p class="alert" role="alert">{{ problem | t }}</p>
+        }
+        @if (unread()) {
+          <div class="alert flex-wrap items-center justify-between" role="alert">
+            <span>{{ 'The servers to re-adopt could not be read.' | t }}</span>
+            <button type="button" class="btn btn-sm" (click)="load()">{{ 'Try again' | t }}</button>
+          </div>
         }
 
         @if (rows().length) {
@@ -167,6 +176,8 @@ export class NodeReadoptions {
   protected readonly open = signal<string | null>(null);
   /** The name of the server re-adopted last, until another one is chosen. */
   protected readonly readopted = signal<string | null>(null);
+  /** The last read failed: what was read before stays, with a way to read again. */
+  protected readonly unread = signal(false);
   private revision = 0;
 
   protected readonly proof = new FormGroup({
@@ -188,6 +199,7 @@ export class NodeReadoptions {
       untracked(() => {
         // Nothing of another organization's servers stays on screen.
         this.pending.set([]);
+        this.unread.set(false);
         this.close();
         this.readopted.set(null);
         this.runner.reset();
@@ -202,9 +214,12 @@ export class NodeReadoptions {
     const organizationId = this.organizationId();
     try {
       const pending = await this.api.readoptions(organizationId);
-      if (revision === this.revision) this.pending.set(pending);
+      if (revision !== this.revision) return;
+      this.pending.set(pending);
+      this.unread.set(false);
     } catch {
-      // The page has its own errors; an unread list only hides this card.
+      // A server that waits must not vanish: the card says the list could not be read.
+      if (revision === this.revision) this.unread.set(true);
     }
   }
 
@@ -228,8 +243,9 @@ export class NodeReadoptions {
     const outcome = await this.runner.run({ readopt: row.nodeId }, () =>
       this.api.readopt(organizationId, row.nodeId, { password, ...(code ? { totp: code } : {}) }),
     );
-    this.proof.reset();
+    // The page changed organization meanwhile: what is typed there now is left alone.
     if (organizationId !== this.organizationId()) return;
+    this.proof.reset();
     if (outcome.ok) {
       this.open.set(null);
       this.readopted.set(row.name);
