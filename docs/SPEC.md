@@ -307,7 +307,7 @@ The agent only adopts or changes resources that carry its `sk.managed=true` labe
   - an action id that is not a UUIDv7, or an idempotency key outside `[A-Za-z0-9._:-]{1,128}`;
   - a missing or unregistered action kind;
   - a lease epoch other than the node's;
-  - a missing or past deadline;
+  - a missing deadline;
   - a handler validation error.
 - A step that fails says why with a fixed text from a closed list, or `action failed` (issue #265). Nothing else about the failure leaves the server.
   - The Docker client reads the daemon's message about a failed pull, names a cause and drops the message, which can hold hosts, paths, tokens or credentials.
@@ -334,6 +334,7 @@ The agent only adopts or changes resources that carry its `sk.managed=true` labe
   - The control plane maps each fixed text to a reason code and never repeats a text it does not know. A deployment's failure message is built from the reason: a failed pull says what happened and what to check, and so do `image_volume_undeclared` and `container_name_taken`, which also say what to change or to check before removing anything; other steps keep `Step <name> <state>: <fixed text>`. An agent that predates the list keeps sending `action failed`. The control plane maps the `UpgradeAgent` texts once it sends that action (ADR 0028, step 1c).
 - The payload hash covers only the action message, so a redelivery with new ids or a new deadline still matches.
 - Actions run on the agent's lifetime under their deadline, not the stream's. A dropped connection never interrupts them. The control plane redelivers every unfinished action on the next stream: a delivery of an action that is still running attaches to it, gets its last update at once and its outcome when it ends, and an earlier delivery hears nothing more (issue #483); a delivery after the end replays the journaled outcome with the same key. `CancelAction` cancels the action's context, and the journal compensates per the plan.
+- Past its deadline, an action never starts or goes forward (issue #484). The control plane expires it, then delivers it again for 24 hours, with its original deadline, until the agent says how it ended. The agent undoes an operation its journal holds unfinished, in a context of its own bounded to 2 minutes: one never started is cancelled, one that ran steps is compensated, the step in progress included, whatever its retry policy. It answers with the final state and a text: `action deadline exceeded` for one cancelled or compensated, `action failed` for one whose compensation kept failing (an action that ran and could not be undone), or the cause a failed step named. It returns a finished one as it is, and refuses one its journal never recorded with `FAILED` and `action deadline exceeded`. A recovery that cannot lock or read the journal within its bound reports nothing, and the next delivery tries again. The control plane records the final state of an expired action, as a terminal event of its own; a refusal keeps it expired. Either ends its recovery.
 
 ### 3.5 Local state
 
