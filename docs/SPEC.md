@@ -327,7 +327,7 @@ The agent only adopts or changes resources that carry its `sk.managed=true` labe
 
   - The control plane maps each fixed text to a reason code and never repeats a text it does not know. A deployment's failure message is built from the reason: a failed pull says what happened and what to check, and so do `image_volume_undeclared` and `container_name_taken`, which also say what to change or to check before removing anything; other steps keep `Step <name> <state>: <fixed text>`. An agent that predates the list keeps sending `action failed`. The control plane maps the `UpgradeAgent` texts once it sends that action (ADR 0028, step 1c).
 - The payload hash covers only the action message, so a redelivery with new ids or a new deadline still matches.
-- Actions run on the agent's lifetime under their deadline, not the stream's. A dropped connection never interrupts them; their updates are dropped, and the control plane receives the journaled outcome when it redelivers with the same key. `CancelAction` cancels the action's context, and the journal compensates per the plan.
+- Actions run on the agent's lifetime under their deadline, not the stream's. A dropped connection never interrupts them. The control plane redelivers every unfinished action on the next stream: a delivery of an action that is still running attaches to it, gets its last update at once and its outcome when it ends, and an earlier delivery hears nothing more (issue #483); a delivery after the end replays the journaled outcome with the same key. `CancelAction` cancels the action's context, and the journal compensates per the plan.
 
 ### 3.5 Local state
 
