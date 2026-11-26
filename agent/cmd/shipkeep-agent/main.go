@@ -79,6 +79,9 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "upgrade-guard" {
 		return runUpgradeGuard(args[1:], stderr)
 	}
+	if len(args) > 0 && args[0] == "adopt-routes" {
+		return runAdoptRoutes(ctx, args[1:], stdout, stderr)
+	}
 	opts, err := parseFlags(args, stderr)
 	if err != nil {
 		return exitUsage
