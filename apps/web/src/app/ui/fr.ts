@@ -705,6 +705,8 @@ export const FR: Readonly<Record<string, string>> = {
     "Identité et build de l'application. Chaque valeur vient de son shipkeep.yml.",
   'If a server fails': 'En cas de panne',
   'Untracked containers': 'Conteneurs non suivis',
+  'The untracked containers could not be read.': 'Les conteneurs non suivis n’ont pas pu être lus.',
+  'Try again': 'Réessayer',
   'This server runs them for an application of this organization, but no deployment it knows placed them here: after a restore from an older backup, they belong to deployments the backup does not know. Remove one once you have checked that it is no longer needed; its volumes stay.':
     "Ce serveur les fait tourner pour une application de cette organisation, mais aucun déploiement connu ne les y a placés : après la restauration d'une sauvegarde plus ancienne, ils appartiennent à des déploiements que la sauvegarde ne connaît pas. Supprimez-en un une fois vérifié qu'il ne sert plus ; ses volumes restent.",
   'The server removes {name} within a minute.': 'Le serveur supprime {name} dans la minute.',

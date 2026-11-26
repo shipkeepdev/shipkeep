@@ -34,7 +34,7 @@ const STATE_COLORS: Readonly<Record<string, string>> = {
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    @if (shown().length || asked()) {
+    @if (shown().length || asked() || unread()) {
       <section class="flex flex-col gap-3" aria-labelledby="untracked-title">
         <div>
           <h2 id="untracked-title" class="sec-title">{{ 'Untracked containers' | t }}</h2>
@@ -45,6 +45,12 @@ const STATE_COLORS: Readonly<Record<string, string>> = {
             }}
           </p>
         </div>
+        @if (unread()) {
+          <div class="alert flex-wrap items-center justify-between" role="alert">
+            <span>{{ 'The untracked containers could not be read.' | t }}</span>
+            <button type="button" class="btn btn-sm" (click)="load()">{{ 'Try again' | t }}</button>
+          </div>
+        }
         @if (asked(); as name) {
           <p class="alert alert-ok" role="status">
             {{ 'The server removes {name} within a minute.' | t: { name } }}
@@ -133,6 +139,8 @@ export class UntrackedContainers {
   protected readonly removing = signal<UntrackedContainer | null>(null);
   /** The container whose removal was asked last, until another is chosen. */
   protected readonly asked = signal<string | null>(null);
+  /** The last read failed: what was read before stays, with a way to read again. */
+  protected readonly unread = signal(false);
   /** The list, without the container whose removal was just asked: the server reports it gone soon. */
   protected readonly shown = computed(() =>
     this.containers().filter((container) => container.name !== this.asked()),
@@ -145,6 +153,7 @@ export class UntrackedContainers {
       this.nodeId();
       untracked(() => {
         this.containers.set([]);
+        this.unread.set(false);
         this.removing.set(null);
         this.asked.set(null);
         this.runner.reset();
@@ -160,9 +169,12 @@ export class UntrackedContainers {
     const nodeId = this.nodeId();
     try {
       const containers = await this.api.untrackedContainers(organizationId, nodeId);
-      if (revision === this.revision) this.containers.set(containers);
+      if (revision !== this.revision) return;
+      this.containers.set(containers);
+      this.unread.set(false);
     } catch {
-      // The page has its own errors; an unread list only hides this section.
+      // A container left behind must not vanish from view: the section says it could not read.
+      if (revision === this.revision) this.unread.set(true);
     }
   }
 

@@ -119,4 +119,14 @@ describe('untracked containers on the server page', () => {
     expect(page.text()).toBe('');
     expect(page.api.untrackedContainers).toHaveBeenLastCalledWith(ORG, OTHER);
   });
+  it('says when the list could not be read, and reads it again', async () => {
+    const page = setup([lost]);
+    page.api.untrackedContainers.mockImplementationOnce(() => Promise.reject(new Error('offline')));
+    await page.settle();
+    expect(page.text()).toContain('The untracked containers could not be read.');
+    page.button('Try again')?.click();
+    await page.settle();
+    expect(page.text()).not.toContain('could not be read');
+    expect(page.text()).toContain(lost.name);
+  });
 });
