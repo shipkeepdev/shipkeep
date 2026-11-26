@@ -38,7 +38,7 @@ import {
   recovery,
 } from '../domain/pipeline';
 import { placementRequest, schedulableNodes } from '../domain/placement';
-import type { DeploymentRecord } from '../domain/release';
+import type { DeploymentRecord, Release } from '../domain/release';
 import { agentAction, type RegistryAccess, type SecretValues } from '../infrastructure/agent-steps';
 
 import {
@@ -219,6 +219,10 @@ export class DeploymentPipeline {
     const maintenance = deployment.plan.maintenance !== undefined;
     const previous =
       stopping || maintenance ? allocations : allocations.filter((a) => a.releaseId !== release.id);
+    // The route before this deployment matched the hostnames of the release it served: the newest
+    // of the previous replicas', read from that release, which never changes (issue #485). A
+    // maintenance change keeps the release, and so its hostnames.
+    const servedBy = maintenance ? release : await this.newestRelease(previous, release.id);
     return {
       application,
       previousReleases: maintenance ? [] : [...new Set(previous.map((a) => a.releaseId))],
@@ -240,9 +244,23 @@ export class DeploymentPipeline {
         allocations:
           stopping || maintenance ? [] : allocations.filter((a) => a.releaseId === release.id),
         previous,
+        previousHosts: [...(servedBy?.config.domains ?? [])],
         steps,
       },
     };
+  }
+
+  /** The newest release among these replicas', other than the one deployed; none without any. */
+  private async newestRelease(
+    replicas: readonly { readonly releaseId: string }[],
+    deployed: string,
+  ): Promise<Release | undefined> {
+    const ids = [...new Set(replicas.map((a) => a.releaseId))].filter((id) => id !== deployed);
+    const releases = await Promise.all(ids.map((id) => this.pipeline.release(id)));
+    let newest: Release | undefined;
+    for (const candidate of releases)
+      if (candidate && (!newest || candidate.number > newest.number)) newest = candidate;
+    return newest;
   }
 
   private place(loaded: Loaded, replicas: number, clock: () => Date): Promise<'continue' | 'done'> {
