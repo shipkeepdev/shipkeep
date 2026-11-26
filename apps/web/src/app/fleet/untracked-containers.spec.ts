@@ -112,6 +112,49 @@ describe('untracked containers on the server page', () => {
     expect(page.button('Remove')).toBeUndefined();
   });
 
+  it('keeps a removal asked out of the list while another is chosen or kept', async () => {
+    const other: UntrackedContainer = { ...lost, name: 'sk-billing-00000000a1b2-r3-0', release: 3 };
+    const page = setup([lost, other]);
+    await page.settle();
+    const root = page.fixture.nativeElement as HTMLElement;
+    const offered = () =>
+      [...root.querySelectorAll<HTMLButtonElement>('li button')].map((element) =>
+        element.getAttribute('aria-label'),
+      );
+    root.querySelector<HTMLButtonElement>(`button[aria-label="Remove ${lost.name}"]`)?.click();
+    await page.settle();
+    page.type(lost.name);
+    await page.settle();
+    page.button('Remove the container')?.click();
+    await page.settle();
+    // The server still reports both until it has removed the first.
+    expect(offered()).toEqual([`Remove ${other.name}`]);
+    page.button('Remove')?.click();
+    await page.settle();
+    expect(offered()).toEqual([`Remove ${other.name}`]);
+    page.button('Keep it')?.click();
+    await page.settle();
+    expect(offered()).toEqual([`Remove ${other.name}`]);
+  });
+
+  it('offers a container again once the server reported it gone, then back', async () => {
+    const page = setup([lost]);
+    await page.settle();
+    page.button('Remove')?.click();
+    await page.settle();
+    page.type(lost.name);
+    await page.settle();
+    page.button('Remove the container')?.click();
+    await page.settle();
+    expect(page.button('Remove')).toBeUndefined();
+    page.api.untrackedContainers.mockImplementationOnce(() => Promise.resolve([]));
+    await page.fixture.componentInstance.load();
+    await page.settle();
+    await page.fixture.componentInstance.load();
+    await page.settle();
+    expect(page.button('Remove')).toBeDefined();
+  });
+
   it('forgets one server’s containers when another is shown', async () => {
     const page = setup([lost]);
     await page.settle();

@@ -142,13 +142,15 @@ export class UntrackedContainers {
 
   protected readonly containers = signal<readonly UntrackedContainer[]>([]);
   protected readonly removing = signal<UntrackedContainer | null>(null);
-  /** The container whose removal was asked last, until another is chosen. */
+  /** The container whose removal was asked last, for its message, until another is chosen. */
   protected readonly asked = signal<string | null>(null);
+  /** Every container whose removal was asked, while the server still reports it. */
+  private readonly requested = signal<ReadonlySet<string>>(new Set());
   /** The last read failed: what was read before stays, with a way to read again. */
   protected readonly unread = signal(false);
-  /** The list, without the container whose removal was just asked: the server reports it gone soon. */
+  /** The list, without the containers whose removal was asked: the server reports them gone soon. */
   protected readonly shown = computed(() =>
-    this.containers().filter((container) => container.name !== this.asked()),
+    this.containers().filter((container) => !this.requested().has(container.name)),
   );
   private revision = 0;
 
@@ -161,6 +163,7 @@ export class UntrackedContainers {
         this.unread.set(false);
         this.removing.set(null);
         this.asked.set(null);
+        this.requested.set(new Set());
         this.runner.reset();
         void this.load();
       });
@@ -176,6 +179,9 @@ export class UntrackedContainers {
       const containers = await this.api.untrackedContainers(organizationId, nodeId);
       if (revision !== this.revision) return;
       this.containers.set(containers);
+      // A container the server no longer reports is forgotten: if it comes back, it is offered.
+      const listed = new Set(containers.map((container) => container.name));
+      this.requested.update((names) => new Set([...names].filter((name) => listed.has(name))));
       this.unread.set(false);
     } catch {
       // A container left behind must not vanish from view: the section says it could not read.
@@ -222,6 +228,7 @@ export class UntrackedContainers {
     if (!outcome.ok) return;
     this.removing.set(null);
     this.asked.set(container.name);
+    this.requested.update((names) => new Set([...names, container.name]));
     await this.load();
   }
 }
