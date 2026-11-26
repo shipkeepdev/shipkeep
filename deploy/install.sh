@@ -588,7 +588,12 @@ if [[ -n $migrate ]]; then
   # Restarts Docker unless it already pulls through the proxy; the agent restarts with it, and its
   # first pass moves each recorded route to its container's new address.
   install_egress "$work"
-  systemctl is-active --quiet shipkeep-agent || fail 'The agent did not come back after Docker; inspect journalctl -u shipkeep-agent, then run this command again.'
+  # Docker's restart restarts the agent too: it may still be starting.
+  for attempt in {1..120}; do
+    systemctl is-active --quiet shipkeep-agent && break
+    ((attempt < 120)) || fail 'The agent did not come back after Docker; inspect journalctl -u shipkeep-agent, then run this command again.'
+    sleep 1
+  done
   printf 'Migrated (from the %s layout). Refresh Servers to verify ready; the agent can now be upgraded.\n' "$layout"
   exit 0
 fi
