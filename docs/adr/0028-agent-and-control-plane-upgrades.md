@@ -126,7 +126,11 @@ The action is journaled step by step, so an agent restarted in the middle resume
 - The trust in a release is the trust in Shipkeep's `release.yml` and in Sigstore's public infrastructure, checked offline. A stolen GitHub account that can push a tag can still publish a release. Protecting tags and the release workflow (branch and tag rules, required reviews) carries that risk.
 - The agent on the control plane machine gains the power to replace the control plane. It was root-equivalent there through Docker already.
 - `sigstore-go` and its dependencies enter the agent, and are checked by the license job (Apache-2.0).
-- Installations made before this change need the installer's new agent unit, with its guard. The agent refuses `UpgradeAgent` while its unit has no `upgrade-guard` step, and says to run the installer again.
+- Installations made before this change need the installer's new agent unit, with its guard. The agent refuses `UpgradeAgent` while its unit has no `upgrade-guard` step, and says to run the server installer with `--migrate yes`. An agent of 0.1.0-alpha.3 or earlier does not know `UpgradeAgent` at all, and is migrated the same way (#490).
+  - **What is migrated.** Only a server the installer set up for applications, with the agent and Caddy units an installer wrote, unchanged, for the control plane whose command is run. Anything else is refused before any change.
+  - **How.** The migration records the routes the old agent left unrecorded (`adopt-routes`, ADR 0017). It then installs the agent the control plane serves and the guarded unit, binary first, since the unit waits for a READY that old agents never send, and finally the egress proxy, whose Docker restart gives containers new addresses.
+  - **What is kept.** The node's identity and credentials, the journal, the containers and volumes, Caddy's configuration and certificates.
+  - **Interrupted.** Each step leaves a server that runs, and running the migration again goes on from where it stopped. It restarts Docker only while Docker is not behind the proxy yet.
 - A control plane upgrade needs room for a second copy of the database, for as long as the copy is kept. It no longer needs a backup key on the server, since the rollback does not decrypt anything.
 - The control plane is stopped from the snapshot to the end of the upgrade. Agents keep their workloads and routes meanwhile.
 - `SHIPKEEP_IMAGE` moves to `image.env`, a change in INSTALL.md's upgrade steps.

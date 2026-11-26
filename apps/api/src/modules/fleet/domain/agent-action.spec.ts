@@ -58,7 +58,8 @@ describe('summarizeAction', () => {
       // UpgradeAgent (ADR 0028)
       'a development build of the agent is not upgraded': 'upgrade_dev_build',
       'the agent already runs this version or a later one': 'upgrade_not_newer',
-      "the agent's service predates upgrades: run the installer again": 'upgrade_unit_outdated',
+      "the agent's service predates upgrades: run the server installer with --migrate yes":
+        'upgrade_unit_outdated',
       'the release archive did not verify': 'upgrade_unverified',
       'the release archive could not be downloaded': 'upgrade_unavailable',
       'another upgrade of the agent is not confirmed yet': 'upgrade_in_progress',
@@ -78,6 +79,10 @@ describe('summarizeAction', () => {
       expect(actionReason(error)).toBe(reason);
       expect(reasonText(reason)).toBe(error);
     }
+    // What agents of 0.1.0-alpha.4 to alpha.7 send for the same refusal is still read.
+    expect(actionReason("the agent's service predates upgrades: run the installer again")).toBe(
+      'upgrade_unit_outdated',
+    );
   });
 
   it('gives a compensated action no reason when the agent named none', () => {
