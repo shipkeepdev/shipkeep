@@ -477,6 +477,9 @@ succeeded -> rolled_back (when a later rollback targets the previous release)
   - `queued` resolves the image digest.
   - `releasing` places the replicas, then ensures the environment network, pulls the image and runs the release task on the first replica's node.
   - `scheduling` places the replicas if that was not already done.
+  - `building` (ADR 0030), for a Git application with `build.type: dockerfile`: the replicas are placed first, and the server of the first one builds with `BuildImage` (key `d:<deployment>:build`), at the release's commit, its context and Dockerfile read as the agent reads paths (`./api/` is `api`, `.` the root, `Dockerfile` by default). It fetches `https://github.com/<repository>.git` with a token of the organization's GitHub App, minted outside any transaction, that reads that repository's contents only (not revoked when the build ends yet: it expires within the hour, open question). It pushes the release's image, `<control plane host>/<organization>/<application>:<release number>`, with a registry grant that pushes, valid until the action's deadline. The digest it answers becomes the release's, audited as `release.image_built` (`digest`, `commitSha`). A failed build says why: its output, its time limit, or a server without a builder (`--migrate yes`). GitHub out of reach makes the run wait and try again.
+  - Every pull of an image of the installation's registry carries a grant that only pulls, issued when the pull is enqueued and valid until its deadline; other registries' credentials are those the organization stored (ADR 0019).
+  - `built` moves on at once.
   - `starting` ensures the network, pulls, creates and starts each replica.
   - `health_checking` probes `run.healthcheck` on each replica (deadline: the start period plus 2 min, at most 30 min).
   - `switching` upserts the application route (id = application id) on each node with that node's replicas as container upstreams (ADR 0017), but only when `domains` is set.
@@ -896,6 +899,8 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 | Internationalization | English only for v0.1; strings externalized for later translation                  |
 
 ## 16. Open questions
+
+- A build's GitHub token is not revoked when the build ends: it is carried by the encrypted action, and expires within the hour. Revoking it needs the control plane to read it back from the action, or the agent to say when it is done with it.
 
 - Installation-level audit access: system and account events (`organization_id` null, for example `fleet.installation_key.created`) are not readable by the runtime role. Proposal for M2.4a: an installation-administrator capability, held by the first owner and audited, with its own read context.
 

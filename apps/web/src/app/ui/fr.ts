@@ -2080,8 +2080,8 @@ export const FR: Readonly<Record<string, string>> = {
   'The path must lead to a .yml or .yaml file in the repository, without .. segments.':
     'Le chemin doit mener à un fichier .yml ou .yaml du dépôt, sans segment « .. ».',
   'The shipkeep.yml in the repository is invalid.': 'Le shipkeep.yml du dépôt est invalide.',
-  'Building from the repository is not supported yet: set build.type to image in shipkeep.yml.':
-    'Le build depuis le dépôt n’est pas encore pris en charge : mettez build.type à image dans shipkeep.yml.',
+  'Railpack and Nixpacks builds are not supported yet: build with a Dockerfile (build.type: dockerfile), or set build.type to image in shipkeep.yml.':
+    'Les builds Railpack et Nixpacks ne sont pas encore pris en charge : construisez avec un Dockerfile (build.type: dockerfile), ou indiquez build.type: image dans shipkeep.yml.',
   'An application with this name already exists in the environment.':
     'Une application de ce nom existe déjà dans l’environnement.',
   'Another application already uses one of its domains.':

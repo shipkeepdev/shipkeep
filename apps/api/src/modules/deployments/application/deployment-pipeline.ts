@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
 import {
   advance,
   createEvent,
@@ -10,17 +10,25 @@ import {
   rollBack,
   type RoutingOutcome,
   type SchedulableNode,
+  type Secret,
   stop,
   SYSTEM_ACTOR,
 } from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
-import { APPLICATION_STORE, type ApplicationStore } from '../../apps/application/ports';
+import {
+  APPLICATION_STORE,
+  type ApplicationStore,
+  REPOSITORY_SOURCE,
+  type RepositorySource,
+} from '../../apps/application/ports';
 import { domainsReleased } from '../../apps/domain/domain-events';
 import {
   REGISTRY_CREDENTIAL_STORE,
+  REGISTRY_SERVICE,
   type RegistryCredentialStore,
 } from '../../registries/application/ports';
+import { RegistryGrants } from '../../registries/application/registry-grants';
 import { DOCKER_HUB_SERVER, type RegistryLogin } from '../../registries/domain/registry-credential';
 import { SECRET_STORE, type SecretStore } from '../../secrets/application/ports';
 import { containerName } from '../domain/container-plan';
@@ -39,7 +47,12 @@ import {
 } from '../domain/pipeline';
 import { placementRequest, schedulableNodes } from '../domain/placement';
 import type { DeploymentRecord, Release } from '../domain/release';
-import { agentAction, type RegistryAccess, type SecretValues } from '../infrastructure/agent-steps';
+import {
+  agentAction,
+  type BuildAccess,
+  type RegistryAccess,
+  type SecretValues,
+} from '../infrastructure/agent-steps';
 
 import {
   ACTION_QUEUE,
@@ -84,6 +97,9 @@ export class DeploymentPipeline {
     @Inject(DEPLOYMENT_TRANSACTION) private readonly transaction: DeploymentTransaction,
     private readonly events: DomainEventBus,
     @Inject(APPLICATION_STORE) private readonly applications: ApplicationStore,
+    @Inject(REPOSITORY_SOURCE) private readonly repositories: RepositorySource,
+    private readonly grants: RegistryGrants,
+    @Inject(REGISTRY_SERVICE) private readonly registryHost: string,
   ) {}
 
   /** `wait` when agents still work for it, `done` when it finished or no longer exists. */
@@ -171,11 +187,40 @@ export class DeploymentPipeline {
         });
         return 'continue';
       }
+      case 'record_build':
+        await this.tenant(application, async () => {
+          if (await this.pipeline.recordDigest(context.release.id, decision.digest))
+            await this.events.publish([
+              this.event('release.image_built', application, 'release', context.release.id, now, {
+                digest: decision.digest,
+                commitSha: context.release.commitSha ?? '',
+              }),
+            ]);
+        });
+        return 'continue';
       case 'place':
         // Placement may wait for a lock: it reads the time itself, once it holds it.
         return this.place(loaded, decision.replicas, clock);
       case 'run':
         if (decision.steps.length) {
+          // A build fetches its repository with a token of the organization's GitHub App, minted
+          // outside any transaction: GitHub never holds a database lock (ADR 0030, 0031).
+          let source: { url: string; token: Secret; expiresAt: Date } | undefined;
+          if (decision.steps.some((step) => step.kind === 'build_image')) {
+            if (!application.repository)
+              return this.fail(loaded, 'The application has no repository to build from.', now);
+            try {
+              source = await this.repositories.buildAccess(
+                application.organizationId,
+                application.repository,
+              );
+            } catch (error: unknown) {
+              // GitHub out of reach: the run is tried again, as for an agent that waits.
+              if (error instanceof ServiceUnavailableException) return 'wait';
+              if (!isDomainError(error)) throw error;
+              return this.fail(loaded, error.message, now);
+            }
+          }
           const outcome = await this.tenant(application, async () => {
             // The deployment's row lock orders these actions with a cancellation, which updates
             // that row before it frees domains: either the cancellation sees the route actions
@@ -185,7 +230,7 @@ export class DeploymentPipeline {
               (await this.deployments.lockState(context.deployment.id)) !== context.deployment.state
             )
               return { stale: true } as const;
-            return { failure: await this.enqueue(loaded, decision.steps, now) };
+            return { failure: await this.enqueue(loaded, decision.steps, now, source) };
           });
           if ('stale' in outcome) return 'continue';
           if (outcome.failure) return this.fail(loaded, outcome.failure, now);
@@ -236,10 +281,12 @@ export class DeploymentPipeline {
         release: {
           id: release.id,
           number: release.number,
+          image: release.image,
           pinnedImage: release.imageDigest
             ? pinnedReference(parseImageReference(release.image), release.imageDigest)
             : null,
           config: release.config,
+          commitSha: release.commitSha,
         },
         allocations:
           stopping || maintenance ? [] : allocations.filter((a) => a.releaseId === release.id),
@@ -324,12 +371,47 @@ export class DeploymentPipeline {
     loaded: Loaded,
     steps: readonly PipelineStep[],
     now: Date,
+    source?: { url: string; token: Secret; expiresAt: Date },
   ): Promise<string | undefined> {
     const values = await this.secretValues(loaded, steps);
     const deadline = new Date(now.getTime() + ACTION_LIFETIME_MS);
+    const application = {
+      organizationId: loaded.application.organizationId,
+      id: loaded.application.id,
+    };
+    // A build pushes with a grant of its own, which lasts as long as the action (ADR 0030).
+    let build: BuildAccess | undefined;
+    if (source && steps.some((step) => step.kind === 'build_image')) {
+      const grant = await this.grants.issue(application, { push: true, expiresAt: deadline }, now);
+      build = {
+        repositoryUrl: source.url,
+        token: source.token,
+        push: { server: this.registryHost, username: grant.username, secret: grant.secret },
+        expiresAt: deadline,
+      };
+    }
     let registries: RegistryAccess;
     try {
       const logins = await this.registryLogins(loaded, steps);
+      // A built image is pulled from the installation's registry, with a grant that only pulls.
+      if (
+        steps.some(
+          (step) =>
+            step.kind === 'pull_image' &&
+            credentialServer(parseImageReference(step.image)) === this.registryHost,
+        )
+      ) {
+        const grant = await this.grants.issue(
+          application,
+          { push: false, expiresAt: deadline },
+          now,
+        );
+        logins.set(this.registryHost, {
+          server: this.registryHost,
+          username: grant.username,
+          password: grant.secret,
+        });
+      }
       // Credentials sent to an agent are valid for as long as the action that carries them.
       registries = {
         logins,
@@ -345,7 +427,7 @@ export class DeploymentPipeline {
     for (const step of steps) {
       let action: ReturnType<typeof agentAction>;
       try {
-        action = agentAction(step, values, registries);
+        action = agentAction(step, values, registries, build);
       } catch (error: unknown) {
         return reason(error, 'A step could not be prepared.');
       }

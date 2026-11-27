@@ -34,6 +34,8 @@ import {
   type ResourceSecurityContext as SecurityContext,
 } from '../../identity/application/resource-security-context';
 import { TenantAccess } from '../../organizations/application/tenant-access';
+import { REGISTRY_SERVICE } from '../../registries/application/ports';
+import { applicationRepository } from '../../registries/domain/registry-token';
 import { SECRET_STORE, type SecretStore } from '../../secrets/application/ports';
 import { MAX_DEPLOYMENT_ACTIONS } from '../../fleet/application/agent-actions';
 import type { AgentActionView } from '../../fleet/domain/agent-action';
@@ -115,7 +117,20 @@ export class DeploymentCommands {
     private readonly events: DomainEventBus,
     @Inject(CONTROL_PLANE_HOST) private readonly controlPlaneHost: string,
     @Inject(ACTION_QUEUE) private readonly queue: ActionQueue,
+    @Inject(REGISTRY_SERVICE) private readonly registryHost: string,
   ) {}
+
+  /**
+   * Where a Git application's built images go (ADR 0030): its repository in the installation's
+   * registry, under the control plane's name. An image application builds nothing.
+   */
+  private built(application: Application): { repository: string } | undefined {
+    return application.source === 'git'
+      ? {
+          repository: `${this.registryHost}/${applicationRepository(application.organizationId, application.id)}`,
+        }
+      : undefined;
+  }
 
   deploy(
     context: SecurityContext,
@@ -133,7 +148,7 @@ export class DeploymentCommands {
         // is one saved before the fields no deployment applies were refused.
         assertDomainsAvailable(application.config, [this.controlPlaneHost]);
         assertConfigApplied(application.config);
-        const draft = releaseDraft(application.config);
+        const draft = releaseDraft(application.config, this.built(application));
         const set = await this.secrets.list(target);
         assertSecretsSet(
           draft.secrets,
@@ -210,7 +225,7 @@ export class DeploymentCommands {
     }
     assertDomainsAvailable(application.config, [this.controlPlaneHost]);
     assertConfigApplied(application.config);
-    const draft = releaseDraft(application.config);
+    const draft = releaseDraft(application.config, this.built(application));
     const set = await this.secrets.list({
       organizationId: application.organizationId,
       projectId: application.projectId,

@@ -57,6 +57,8 @@ export function plannedActions(): ActionRequest['action'][] {
       release: {
         id: deployment.releaseId,
         number: 2,
+        image: 'ghcr.io/acme/billing:1.4.2',
+        commitSha: null,
         pinnedImage: `ghcr.io/acme/billing@sha256:${'c'.repeat(64)}`,
         config: {
           version: 1,
@@ -140,6 +142,8 @@ export function maintenanceActions(): ActionRequest['action'][] {
         release: {
           id: deployment.releaseId,
           number: 2,
+          image: 'ghcr.io/acme/web:1',
+          commitSha: null,
           pinnedImage: null,
           config: {
             version: 1,

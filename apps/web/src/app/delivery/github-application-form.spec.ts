@@ -126,7 +126,7 @@ describe('an application from a GitHub repository', () => {
     );
     form.submit();
     await form.settle();
-    expect(form.text()).toContain('Building from the repository is not supported yet');
+    expect(form.text()).toContain('Railpack and Nixpacks builds are not supported yet');
     expect(form.created).toEqual([]);
   });
 

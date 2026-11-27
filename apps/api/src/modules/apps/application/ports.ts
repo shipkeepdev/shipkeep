@@ -1,3 +1,4 @@
+import type { Secret } from '@shipkeep/domain';
 import type {
   Application,
   ApplicationConfig,
@@ -37,6 +38,15 @@ export interface RepositorySource {
     location: RepositoryLocation,
     commit?: string,
   ): Promise<RepositoryConfig>;
+  /**
+   * What a build fetches the repository with (ADR 0030): its HTTPS URL, under its current name,
+   * and a token that reads that repository's contents and nothing else, until it expires. The
+   * build carries the token; it is not revoked here.
+   */
+  buildAccess(
+    organizationId: string,
+    location: Pick<RepositoryLocation, 'installationId' | 'repositoryId'>,
+  ): Promise<{ url: string; token: Secret; expiresAt: Date }>;
 }
 
 /** A Git application a push may deploy, and whether a push may deploy it by itself (SPEC 7). */
