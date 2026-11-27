@@ -19,7 +19,7 @@ The maintainer chose both on 2026-11-27.
 
 - A `BuildImage` action is journaled like any other: `pending` before anything runs, its steps recorded, resumable after a restart. It runs outside the server-wide executor gate, behind a gate of its own, so a server runs at most one build and, beside it, its other actions one at a time.
 - This is safe because a build touches nothing the other actions touch. It talks to BuildKit's socket and the registry only, never to the Docker daemon or Caddy.
-- A build is retry-safe as a whole. An agent restart in the middle of one runs it again from its commit. BuildKit's cache makes that second run short, and pushing a tag that already holds the same image changes nothing.
+- A build is retry-safe as a whole. An agent restart in the middle of one runs it again from its commit, and BuildKit's cache makes that second run short. The second run may still produce another image, for example from a mutable base tag or unpinned packages, and then moves the release's tag to it. Nothing depends on the tag: the action answers the digest of the run that finished, the release records that digest, and pulls use it (ADR 0030).
 - One build per server, not more. BuildKit's resources are those of its own unit, which the installer sets (ADR 0030); two builds at once would share them and both slow down.
 
 ### Live output on the log stream
