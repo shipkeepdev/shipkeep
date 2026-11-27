@@ -31,6 +31,7 @@ import {
   RepositoryConfigDto,
   RepositoryConfigPreviewDto,
   UpdateApplicationConfigDto,
+  WrittenConfigChangeDto,
 } from './application.dto';
 
 const APPLICATIONS = ':organizationId/projects/:projectId/environments/:environmentId/applications';
@@ -192,6 +193,28 @@ export class ApplicationController {
       body.blobSha,
     );
     return { ...preview, diff: preview.diff.map((line) => ({ ...line })) };
+  }
+
+  /**
+   * Writes a change of that file to the repository, as a pull request or a commit (#214). A
+   * browser session only: it writes to GitHub with the organization's App.
+   */
+  @Post(`${APPLICATIONS}/:applicationId/repository-config/changes`)
+  @HttpCode(201)
+  @RequireTenant('deploy.run', 'environment')
+  @ApiCreatedResponse({ type: WrittenConfigChangeDto })
+  async changeRepositoryConfig(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+    @Body() body: RepositoryConfigChangeDto,
+  ): Promise<WrittenConfigChangeDto> {
+    return this.repositoryConfigs.change(
+      resourceContext(request),
+      target(path),
+      path.applicationId,
+      body.config,
+      body.blobSha,
+    );
   }
 
   @Post(`${APPLICATIONS}/:applicationId/config`)

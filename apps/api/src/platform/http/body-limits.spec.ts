@@ -16,6 +16,7 @@ describe('acceptsLargeJson', () => {
       `${ENVIRONMENT}/applications`,
       `${ENVIRONMENT}/applications/${ID}/config`,
       `${ENVIRONMENT}/applications/${ID}/repository-config/preview`,
+      `${ENVIRONMENT}/applications/${ID}/repository-config/changes`,
       `${ENVIRONMENT}/secrets?x=1`,
     ])
       expect(acceptsLargeJson(request(path))).toBe(true);
