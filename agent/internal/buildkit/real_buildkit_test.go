@@ -160,7 +160,7 @@ func TestRealBuildKitRunsOnlyTheAllowedFrontends(t *testing.T) {
 	build.pushed(ctx, t, "it/syntax-allowed", build.commit[:12], digest)
 	lines = nil
 	if _, err := client.Build(ctx, request("syntax-refused"), func(line string) { lines = append(lines, line) }); err == nil ||
-		!strings.Contains(err.Error()+strings.Join(lines, "\n"), "not allowed") {
+		!strings.Contains(err.Error()+strings.Join(lines, "\n"), "is not an allowed gateway source") {
 		t.Fatalf("another frontend was not refused: %v\n%s", err, strings.Join(lines, "\n"))
 	}
 }
