@@ -1380,6 +1380,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/registry/token": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["token"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/webhooks/github/{organizationId}": {
         readonly parameters: {
             readonly query?: never;
@@ -2418,6 +2434,16 @@ export type components = {
         };
         readonly RegistryCredentialsListDto: {
             readonly items: readonly components["schemas"]["RegistryCredentialsDto"][];
+        };
+        readonly RegistryTokenDto: {
+            /** @description The same token, as OAuth 2 clients read it. */
+            readonly access_token: string;
+            /** @description Seconds the token lasts: 300 at most. */
+            readonly expires_in: number;
+            /** Format: date-time */
+            readonly issued_at: string;
+            /** @description A JWT for the registry, signed by the control plane. */
+            readonly token: string;
         };
         readonly ReleaseDto: {
             readonly config: {
@@ -5220,6 +5246,32 @@ export interface operations {
             };
             /** @description A dependency is unavailable (problem details). */
             readonly 503: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    readonly token: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RegistryTokenDto"];
+                };
+            };
+            /** @description Refused, whatever the reason. */
+            readonly 401: {
                 headers: {
                     readonly [name: string]: unknown;
                 };

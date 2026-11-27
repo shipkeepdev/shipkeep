@@ -42,6 +42,8 @@ GRANT SELECT,INSERT,UPDATE ON agent_upgrades TO shipkeep_runtime;
 -- Releases are immutable: the image digest is the only column ever written after insert (once).
 GRANT SELECT,INSERT ON releases TO shipkeep_runtime;
 GRANT UPDATE (image_digest) ON releases TO shipkeep_runtime;
+-- Registry credentials are issued for an action and removed once expired (ADR 0030).
+GRANT SELECT,INSERT,DELETE ON registry_grants TO shipkeep_runtime;
 -- Append-only from the API: audit history, and wrapped key material that is never rewritten
 -- (SPEC 9: rotation inserts new rows). Losing a DEK row would make its secrets unrecoverable.
 GRANT SELECT,INSERT ON audit_events,data_encryption_keys,installation_keys TO shipkeep_runtime;
