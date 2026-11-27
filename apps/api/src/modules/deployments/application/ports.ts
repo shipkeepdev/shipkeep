@@ -135,6 +135,8 @@ export interface PipelineApplication {
   readonly projectId: string;
   readonly environmentId: string;
   readonly name: string;
+  /** A Git application's repository (ADR 0031); null for an image application. */
+  readonly repository: { readonly installationId: number; readonly repositoryId: number } | null;
 }
 
 export const OBSERVATION_STORE = Symbol('ObservationStore');

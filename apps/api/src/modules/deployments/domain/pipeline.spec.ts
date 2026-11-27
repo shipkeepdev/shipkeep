@@ -23,6 +23,9 @@ const NODES = [
 ] as const;
 const OLD_NODE = '0190f5a8-7b1c-7e2d-8f3a-00000000000c';
 const DIGEST = `sha256:${'c'.repeat(64)}`;
+const BUILT = `sha256:${'b'.repeat(64)}`;
+const COMMIT = 'f'.repeat(40);
+const REGISTRY = 'cp.example.com/0190f5a8-7b1c-7e2d-8f3a-00000000000e';
 const NOW = new Date('2026-11-05T12:00:00Z');
 const AGENT_NAME = /^sk-[a-z0-9-]{1,60}$/;
 const AGENT_KEY = /^[A-Za-z0-9._:-]{1,128}$/;
@@ -61,6 +64,9 @@ const previous: Allocation[] = [
 interface World {
   deployment: DeploymentRecord;
   pinned: string | null;
+  /** The release's image and commit: a build pushes that tag, at that commit. */
+  image: string;
+  commit: string | null;
   allocations: Allocation[];
   steps: Map<string, StepOutcome>;
   routes: Map<string, string[]>;
@@ -80,8 +86,10 @@ function context(world: World, config: ShipkeepConfig): PipelineContext {
     release: {
       id: '0190f5a8-7b1c-7e2d-8f3a-0000000000r2',
       number: 2,
+      image: world.image,
       pinnedImage: world.pinned,
       config,
+      commitSha: world.commit,
     },
     allocations: world.allocations,
     previous,
@@ -109,7 +117,9 @@ function execute(
         ? { state: 'succeeded', healthy: true }
         : step.kind === 'run_release_task'
           ? { state: 'succeeded', exitCode: 0 }
-          : { state: 'succeeded' };
+          : step.kind === 'build_image'
+            ? { state: 'succeeded', imageDigest: BUILT }
+            : { state: 'succeeded' };
   if (step.kind === 'upsert_route') {
     world.routes.set(
       step.nodeId,
@@ -150,6 +160,8 @@ function simulate(
       error: null,
     },
     pinned: null,
+    image: planned.build ? `${REGISTRY}/${APP.id}:2` : 'ghcr.io/acme/billing:1.4.2',
+    commit: planned.build ? COMMIT : null,
     allocations: [],
     steps: new Map(),
     routes: new Map(
@@ -181,6 +193,9 @@ function simulate(
       case 'resolve_image':
         world.pinned = `ghcr.io/acme/billing@${DIGEST}`;
         break;
+      case 'record_build':
+        world.pinned = `${REGISTRY}/${APP.id}@${decision.digest}`;
+        break;
       case 'place':
         world.allocations = Array.from({ length: decision.replicas }, (_, index) => ({
           index,
@@ -209,6 +224,96 @@ function simulate(
   }
   throw new Error('the pipeline did not finish');
 }
+
+describe('a build in the pipeline (ADR 0030)', () => {
+  const built: ShipkeepConfig = {
+    ...full,
+    build: {
+      type: 'dockerfile',
+      context: './services/api/',
+      dockerfile: 'Dockerfile.prod',
+      args: { NODE_ENV: 'production' },
+    },
+  };
+  const plan = { build: true, release: true };
+
+  it("builds on the first replica's server, at the commit, then deploys the image it pushed", () => {
+    const world = simulate(built, undefined, plan);
+    expect(world.states).toEqual([
+      'queued',
+      'building',
+      'built',
+      'releasing',
+      'scheduling',
+      'starting',
+      'health_checking',
+      'switching',
+      'draining',
+      'succeeded',
+    ]);
+    const builds = world.executed.filter((step) => step.kind === 'build_image');
+    expect(builds).toEqual([
+      {
+        kind: 'build_image',
+        key: `d:${world.deployment.id}:build`,
+        nodeId: NODES[0],
+        target: `${REGISTRY}/${APP.id}:2`,
+        commit: COMMIT,
+        // The paths as the agent reads them: no `.` segment, no empty one.
+        context: 'services/api',
+        dockerfile: 'Dockerfile.prod',
+        args: { NODE_ENV: 'production' },
+      },
+    ]);
+    // Every replica, and the release task, run the image the build pushed, pinned by its digest.
+    const pulled = world.executed.flatMap((step) =>
+      step.kind === 'pull_image' ? [step.image] : [],
+    );
+    expect(new Set(pulled)).toEqual(new Set([`${REGISTRY}/${APP.id}@${BUILT}`]));
+    // Nothing was resolved from a registry: the build made the image.
+    expect(world.executed.findIndex((step) => step.kind === 'build_image')).toBeLessThan(
+      world.executed.findIndex((step) => step.kind === 'pull_image'),
+    );
+  });
+
+  it('builds the root with the default Dockerfile when the configuration names neither', () => {
+    const world = simulate(
+      { ...full, build: { type: 'dockerfile', context: '.' } },
+      undefined,
+      plan,
+    );
+    expect(world.executed.find((step) => step.kind === 'build_image')).toMatchObject({
+      context: '',
+      dockerfile: 'Dockerfile',
+    });
+  });
+
+  it('says why a build failed, and deploys nothing', () => {
+    for (const [reason, text] of [
+      ['build_failed', /its output, on this deployment's page, says why/],
+      ['build_timeout', /did not finish within its time limit/],
+      ['builder_unavailable', /--migrate yes/],
+    ] as const) {
+      const world = simulate(
+        built,
+        (step) => (step.kind === 'build_image' ? { state: 'compensated', reason } : undefined),
+        plan,
+      );
+      expect(world.deployment.state).toBe('failed');
+      expect(world.deployment.error).toMatch(text);
+      expect(world.executed.some((step) => step.kind === 'pull_image')).toBe(false);
+    }
+  });
+
+  it('refuses a build that answered no digest, or a release without a commit', () => {
+    const noDigest = simulate(
+      built,
+      (step) => (step.kind === 'build_image' ? { state: 'succeeded' } : undefined),
+      plan,
+    );
+    expect(noDigest.deployment.error).toBe('The build answered no image digest.');
+  });
+});
 
 describe('deployment pipeline', () => {
   it('runs every stage in SPEC 5.1 order and replaces the serving release', () => {
@@ -571,7 +676,7 @@ describe('deployment pipeline', () => {
       expect(new Set(fresh.steps.map((s) => s.key)).size).toBe(fresh.steps.length);
   });
 
-  it('places replicas from the configuration and refuses builds', () => {
+  it('places replicas from the configuration, and builds only a release that has a commit', () => {
     const world = simulate(minimal);
     const base = context(
       {
@@ -582,8 +687,14 @@ describe('deployment pipeline', () => {
       full,
     );
     expect(plan(base)).toEqual({ kind: 'place', replicas: 2 });
-    expect(plan({ ...base, deployment: { ...base.deployment, state: 'building' } })).toMatchObject({
+    const building = { ...base, deployment: { ...base.deployment, state: 'building' as const } };
+    // Already built: on to the next stage. Not yet: placed first, on the first replica's server.
+    expect(plan(building)).toEqual({ kind: 'advance' });
+    const unbuilt = { ...building, release: { ...building.release, pinnedImage: null } };
+    expect(plan(unbuilt)).toEqual({ kind: 'place', replicas: 2 });
+    expect(plan({ ...unbuilt, allocations: world.allocations })).toEqual({
       kind: 'fail',
+      reason: 'The release names no commit to build.',
     });
     expect(plan({ ...base, deployment: { ...base.deployment, state: 'succeeded' } })).toEqual({
       kind: 'done',

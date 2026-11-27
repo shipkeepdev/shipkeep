@@ -47,7 +47,7 @@ describe('applications from a GitHub repository over HTTP', () => {
   };
   const files: Record<string, string> = {
     'shipkeep.yml': config(`{ type: image, image: "${IMAGE}" }`),
-    'deploy/build.yaml': config('{ type: dockerfile }'),
+    'deploy/build.yaml': config('{ type: railpack }'),
     'bad.yml': 'version: 1\nname: [unclosed\n',
   };
   const github: GithubApi = {

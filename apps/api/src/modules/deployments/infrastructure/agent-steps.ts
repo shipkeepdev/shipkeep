@@ -3,6 +3,8 @@ import { type Duration, DurationSchema, timestampFromDate } from '@bufbuild/prot
 import { ConflictError, type Secret } from '@shipkeep/domain';
 import {
   type ActionRequest,
+  BuildImageSchema,
+  BuildType,
   type ContainerSpec,
   ContainerSpecSchema,
   CreateContainerSchema,
@@ -48,16 +50,50 @@ export interface RegistryAccess {
 }
 
 /**
- * A planner step as the agent action it stands for (SPEC 3.3). Secret values and registry
- * credentials are injected here, at enqueue time, and only travel inside the encrypted action
- * payload over mTLS (SPEC 9).
+ * What a build needs that the planner does not know (ADR 0030), found when it is enqueued: the
+ * repository's URL and a token that reads it, and the grant it pushes with. Both last as long as
+ * the action, at most.
+ */
+export interface BuildAccess {
+  readonly repositoryUrl: string;
+  readonly token: Secret;
+  readonly push: { readonly server: string; readonly username: string; readonly secret: Secret };
+  readonly expiresAt: Date;
+}
+
+/**
+ * A planner step as the agent action it stands for (SPEC 3.3). Secret values, registry
+ * credentials and a build's token are injected here, at enqueue time, and only travel inside the
+ * encrypted action payload over mTLS (SPEC 9).
  */
 export function agentAction(
   step: PipelineStep,
   secrets: SecretValues,
   registries?: RegistryAccess,
+  build?: BuildAccess,
 ): ActionRequest['action'] {
   switch (step.kind) {
+    case 'build_image':
+      if (!build) throw new Error('A build needs its repository and its registry access.');
+      return {
+        case: 'buildImage',
+        value: create(BuildImageSchema, {
+          repoUrl: build.repositoryUrl,
+          commitSha: step.commit,
+          gitToken: build.token.expose(),
+          buildType: BuildType.DOCKERFILE,
+          context: step.context,
+          dockerfile: step.dockerfile,
+          args: { ...step.args },
+          targetRef: step.target,
+          pushCredentials: create(RegistryCredentialsSchema, {
+            server: build.push.server,
+            username: build.push.username,
+            password: build.push.secret.expose(),
+            expiresAt: timestampFromDate(build.expiresAt),
+          }),
+        }),
+      };
     case 'ensure_network':
       return { case: 'ensureNetwork', value: create(EnsureNetworkSchema, { name: step.network }) };
     case 'pull_image':

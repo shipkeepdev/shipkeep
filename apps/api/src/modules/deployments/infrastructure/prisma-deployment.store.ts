@@ -7,6 +7,7 @@ import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { Application } from '../../apps/domain/application';
 import type { DeploymentStore, Leftovers } from '../application/ports';
 import {
+  builtImage,
   DEPLOYMENT_TRIGGERS,
   type DeploymentRecord,
   type DeploymentTrigger,
@@ -127,12 +128,14 @@ export class PrismaDeploymentStore implements DeploymentStore {
       where: { applicationId: application.id },
       _max: { number: true },
     });
+    const number = (last._max.number ?? 0) + 1;
     const release: Release = {
       id: uuidv7(),
       organizationId: application.organizationId,
       applicationId: application.id,
-      number: (last._max.number ?? 0) + 1,
-      image: draft.image,
+      number,
+      // A build pushes the release's own tag (ADR 0030).
+      image: draft.plan.build ? builtImage(draft.image, number) : draft.image,
       imageDigest: null,
       config: application.config,
       configSha: application.configSha,

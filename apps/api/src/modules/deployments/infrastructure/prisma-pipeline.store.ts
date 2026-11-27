@@ -146,9 +146,26 @@ export class PrismaPipelineStore implements PipelineStore {
   async application(applicationId: string): Promise<PipelineApplication | undefined> {
     const row = await this.database.client.application.findFirst({
       where: { id: applicationId },
-      select: { id: true, organizationId: true, projectId: true, environmentId: true, name: true },
+      select: {
+        id: true,
+        organizationId: true,
+        projectId: true,
+        environmentId: true,
+        name: true,
+        installationId: true,
+        repositoryId: true,
+      },
     });
-    return row ?? undefined;
+    if (!row) return undefined;
+    const { installationId, repositoryId, ...application } = row;
+    return {
+      ...application,
+      // A Git application's repository, as GitHub identifies it: a build fetches it (ADR 0030).
+      repository:
+        installationId !== null && repositoryId !== null
+          ? { installationId: Number(installationId), repositoryId: Number(repositoryId) }
+          : null,
+    };
   }
 
   async lockPlacement(organizationId: string): Promise<void> {
@@ -203,6 +220,8 @@ export function outcome(row: {
   };
   const health = nested('healthCheck');
   const task = nested('releaseTask');
+  const built = nested('buildImage');
+  const digest = built?.['imageDigest'];
   return {
     state,
     // A code, never the text: an action that did not end well has a reason, the others none.
@@ -210,6 +229,10 @@ export function outcome(row: {
     ...(typeof result['containerId'] === 'string' ? { containerId: result['containerId'] } : {}),
     ...(health ? { healthy: health['healthy'] === true } : {}),
     ...(task ? { exitCode: typeof task['exitCode'] === 'number' ? task['exitCode'] : 0 } : {}),
+    // Only a digest the agent could have answered: the release pins it.
+    ...(typeof digest === 'string' && /^sha256:[0-9a-f]{64}$/.test(digest)
+      ? { imageDigest: digest }
+      : {}),
   };
 }
 

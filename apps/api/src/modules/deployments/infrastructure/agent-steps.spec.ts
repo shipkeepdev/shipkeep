@@ -329,3 +329,56 @@ describe('agent compatibility vectors', () => {
     );
   });
 });
+
+describe('a build as its agent action (ADR 0030)', () => {
+  const step: PipelineStep = {
+    kind: 'build_image',
+    key: 'd:deployment:build',
+    nodeId: NODE,
+    target: 'cp.example.com/org/app:7',
+    commit: 'f'.repeat(40),
+    context: 'services/api',
+    dockerfile: 'Dockerfile',
+    args: { NODE_ENV: 'production' },
+  };
+  const access = {
+    repositoryUrl: 'https://github.com/acme-corp/billing.git',
+    token: new Secret('ghs_fake_build_token_for_tests'),
+    push: {
+      server: 'cp.example.com',
+      username: 'org.grant',
+      secret: new Secret('fake_push_secret_for_tests_0123456789abcdef'),
+    },
+    expiresAt: new Date('2026-11-27T13:00:00Z'),
+  };
+
+  it('carries the repository, the commit, the token and the push grant, for that registry only', () => {
+    const action = agentAction(step, new Map(), undefined, access);
+    if (action.case !== 'buildImage') throw new Error('not a build');
+    expect(action.value).toMatchObject({
+      repoUrl: 'https://github.com/acme-corp/billing.git',
+      commitSha: 'f'.repeat(40),
+      gitToken: 'ghs_fake_build_token_for_tests',
+      context: 'services/api',
+      dockerfile: 'Dockerfile',
+      args: { NODE_ENV: 'production' },
+      targetRef: 'cp.example.com/org/app:7',
+      pushCredentials: { server: 'cp.example.com', username: 'org.grant' },
+    });
+    expect(action.value.pushCredentials?.password).toBe(
+      'fake_push_secret_for_tests_0123456789abcdef',
+    );
+    expect(Number(action.value.pushCredentials?.expiresAt?.seconds)).toBe(
+      access.expiresAt.getTime() / 1000,
+    );
+    // It round-trips as the agent decodes it.
+    const request = create(ActionRequestSchema, { action });
+    expect(
+      fromBinary(ActionRequestSchema, toBinary(ActionRequestSchema, request)).action.case,
+    ).toBe('buildImage');
+  });
+
+  it('refuses a build without its access: it never goes out without a token or a grant', () => {
+    expect(() => agentAction(step, new Map())).toThrow();
+  });
+});

@@ -34,7 +34,7 @@ const REFUSALS: Readonly<Record<string, string>> = {
     'The path must lead to a .yml or .yaml file in the repository, without .. segments.',
   invalid_application_config: 'The shipkeep.yml in the repository is invalid.',
   unsupported_build_type:
-    'Building from the repository is not supported yet: set build.type to image in shipkeep.yml.',
+    'Railpack and Nixpacks builds are not supported yet: build with a Dockerfile (build.type: dockerfile), or set build.type to image in shipkeep.yml.',
   application_name_taken: 'An application with this name already exists in the environment.',
   domain_taken: 'Another application already uses one of its domains.',
   domain_reserved: 'One of its domains is the control plane’s own address.',
