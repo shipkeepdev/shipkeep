@@ -22,7 +22,7 @@ export interface RepositoryConfig {
 }
 
 /** Where a Git application's configuration is read, without its name, which GitHub gives. */
-export type RepositoryLocation = Omit<ApplicationRepository, 'fullName'>;
+export type RepositoryLocation = Omit<ApplicationRepository, 'fullName' | 'commitSha'>;
 
 export const REPOSITORY_SOURCE = Symbol('RepositorySource');
 /**

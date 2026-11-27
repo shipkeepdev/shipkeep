@@ -24,6 +24,8 @@ export interface ApplicationRepository {
   readonly fullName: string;
   readonly branch: string;
   readonly configPath: string;
+  /** The commit the configuration was last read from: a release of it records the same. */
+  readonly commitSha: string;
 }
 
 /** Largest stored configuration, as canonical JSON. Matches the agent-bound action size budget. */

@@ -43,6 +43,7 @@ export class PrismaApplicationStore implements ApplicationStore {
               repository: repository.fullName,
               branch: repository.branch,
               configPath: repository.configPath,
+              commitSha: repository.commitSha,
             }
           : {}),
         config: JSON.parse(config.canonical) as object,
@@ -262,6 +263,7 @@ function application(row: {
   repository: string | null;
   branch: string | null;
   configPath: string | null;
+  commitSha: string | null;
   config: unknown;
   configSha: string;
   createdBy: string | null;
@@ -277,13 +279,15 @@ function application(row: {
     row.repositoryId !== null &&
     row.repository !== null &&
     row.branch !== null &&
-    row.configPath !== null
+    row.configPath !== null &&
+    row.commitSha !== null
       ? {
           installationId: Number(row.installationId),
           repositoryId: Number(row.repositoryId),
           fullName: row.repository,
           branch: row.branch,
           configPath: row.configPath,
+          commitSha: row.commitSha,
         }
       : null;
   if ((row.source === 'git') !== (repository !== null))

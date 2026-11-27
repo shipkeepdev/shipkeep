@@ -55,7 +55,7 @@ export class GithubApiClient implements GithubApi {
     jwt: Secret,
     installationId: number,
     scope: TokenScope,
-  ): Promise<{ token: Secret; expiresAt: Date }> {
+  ): Promise<{ token: Secret; expiresAt: Date } | undefined> {
     const answer = await this.call(
       'POST',
       `/app/installations/${String(installationId)}/access_tokens`,
@@ -64,7 +64,11 @@ export class GithubApiClient implements GithubApi {
         ...(scope.repositoryIds ? { repository_ids: scope.repositoryIds } : {}),
         permissions: scope.permissions,
       },
+      'json',
+      // GitHub answers 422 when a repository asked for is not in the installation.
+      scope.repositoryIds ? [422] : [],
     );
+    if (answer.status === 422) return undefined;
     const token = answer.status === 201 ? installationTokenOf(answer.body) : undefined;
     if (!token) throw githubUnavailable();
     return token;
@@ -162,6 +166,8 @@ export class GithubApiClient implements GithubApi {
     credential: Secret,
     body?: object,
     kind: 'json' | 'raw' = 'json',
+    /** Statuses answered without a body instead of being GitHub unavailable. */
+    expected: readonly number[] = [],
   ): Promise<{ status: number; body: unknown }> {
     let response: Response;
     try {
@@ -181,7 +187,7 @@ export class GithubApiClient implements GithubApi {
     } catch {
       throw githubUnavailable();
     }
-    if (response.status === 204 || response.status === 404) {
+    if (response.status === 204 || response.status === 404 || expected.includes(response.status)) {
       await discardGithubAnswer(response);
       return { status: response.status, body: undefined };
     }

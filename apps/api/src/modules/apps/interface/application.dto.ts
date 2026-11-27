@@ -68,6 +68,11 @@ export class ApplicationRepositoryDto {
   @ApiProperty({ description: '`owner/name`, as GitHub names the repository.' }) fullName!: string;
   @ApiProperty() branch!: string;
   @ApiProperty() configPath!: string;
+  @ApiProperty({
+    pattern: '^[0-9a-f]{40}$',
+    description: 'The commit the configuration was last read from.',
+  })
+  commitSha!: string;
 }
 
 export class UpdateApplicationConfigDto extends CreateApplicationDto {

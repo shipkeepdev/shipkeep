@@ -61,21 +61,25 @@ export class GithubSources implements RepositorySource {
         'The GitHub App is not installed there, or GitHub suspended or removed that installation.',
       );
     const jwt = this.github.appJwt(found.app.appId, found.app.privateKey, new Date());
-    const { token } = await this.github.installationToken(jwt, location.installationId, {
+    const unreachable = () =>
+      new InvalidInputError(
+        'github_repository_unavailable',
+        'The GitHub App does not reach this repository: add it to the installation on GitHub.',
+      );
+    const minted = await this.github.installationToken(jwt, location.installationId, {
       repositoryIds: [location.repositoryId],
       permissions: { contents: 'read', metadata: 'read' },
     });
+    // GitHub refuses a token for a repository the installation does not include.
+    if (!minted) throw unreachable();
+    const { token } = minted;
     try {
       const repository = await this.github.repository(
         token,
         location.installationId,
         location.repositoryId,
       );
-      if (!repository)
-        throw new InvalidInputError(
-          'github_repository_unavailable',
-          'The GitHub App does not reach this repository: add it to the installation on GitHub.',
-        );
+      if (!repository) throw unreachable();
       const head =
         commit ?? (await this.github.branchHead(token, repository.fullName, location.branch));
       if (!head)

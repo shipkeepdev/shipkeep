@@ -1,6 +1,7 @@
 -- Applications deployed from a GitHub repository (ADR 0031, SPEC 4): the installation of the
 -- organization's App that reaches the repository, the repository as GitHub identifies it and as
--- it names it, the branch, and the path of shipkeep.yml in it. An image application has none.
+-- it names it, the branch, the path of shipkeep.yml in it, and the commit that configuration was
+-- read from. An image application has none.
 ALTER TABLE applications DROP CONSTRAINT applications_source_check;
 ALTER TABLE applications
   ADD COLUMN installation_id bigint CHECK (installation_id > 0),
@@ -8,13 +9,14 @@ ALTER TABLE applications
   ADD COLUMN repository varchar(140),
   ADD COLUMN branch varchar(255),
   ADD COLUMN config_path varchar(255),
+  ADD COLUMN commit_sha char(40) CHECK (commit_sha ~ '^[0-9a-f]{40}$'),
   ADD CONSTRAINT applications_source_check CHECK (source IN ('image', 'git')),
   ADD CONSTRAINT applications_git_source_check CHECK (
     CASE WHEN source = 'git'
       THEN installation_id IS NOT NULL AND repository_id IS NOT NULL AND repository IS NOT NULL
-        AND branch IS NOT NULL AND config_path IS NOT NULL
+        AND branch IS NOT NULL AND config_path IS NOT NULL AND commit_sha IS NOT NULL
       ELSE installation_id IS NULL AND repository_id IS NULL AND repository IS NULL
-        AND branch IS NULL AND config_path IS NULL
+        AND branch IS NULL AND config_path IS NULL AND commit_sha IS NULL
     END);
 -- A push names a repository and a branch: the applications it deploys are found by them.
 CREATE INDEX applications_repository_branch_idx ON applications (organization_id, repository_id, branch)

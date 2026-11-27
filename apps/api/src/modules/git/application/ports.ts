@@ -68,11 +68,15 @@ export const GITHUB_API = Symbol('GithubApi');
 /** GitHub's REST API, as the organization's App (ADR 0031). */
 export interface GithubApi {
   appJwt(appId: number, privateKey: Secret, now: Date): Secret;
+  /**
+   * A token for an installation, scoped to what a call needs. Undefined when GitHub refuses the
+   * repositories asked for: they are not, or no longer, in the installation.
+   */
   installationToken(
     jwt: Secret,
     installationId: number,
     scope: TokenScope,
-  ): Promise<{ token: Secret; expiresAt: Date }>;
+  ): Promise<{ token: Secret; expiresAt: Date } | undefined>;
   repositories(
     token: Secret,
     installationId: number,
