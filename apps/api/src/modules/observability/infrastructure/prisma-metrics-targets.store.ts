@@ -100,6 +100,14 @@ export class PrismaMetricsTargets implements MetricsTargets {
     });
   }
 
+  async deploymentStart(applicationId: string, deploymentId: string): Promise<Date | undefined> {
+    const row = await this.database.client.deployment.findFirst({
+      where: { id: deploymentId, applicationId },
+      select: { startedAt: true },
+    });
+    return row?.startedAt;
+  }
+
   async nodeExists(organizationId: string, nodeId: string): Promise<boolean> {
     const node = await this.database.client.node.findFirst({
       where: { organizationId, id: nodeId },

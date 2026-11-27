@@ -80,7 +80,7 @@ describe('GitHub repositories over HTTP', () => {
     file: () => Promise.resolve(undefined),
     revoke: (token) => {
       revoked.push(token.expose());
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
   };
   const path = () => `${fixture.root}/github-app/repositories`;

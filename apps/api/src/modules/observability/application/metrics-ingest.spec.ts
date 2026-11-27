@@ -16,6 +16,7 @@ const targets: MetricsTargets = {
   onNode: () => Promise.resolve({ containers: [], hosts: [] }),
   buildsOnNode: () => Promise.resolve([]),
   nodeExists: () => Promise.resolve(true),
+  deploymentStart: () => Promise.resolve(undefined),
   environments: () => Promise.resolve([]),
 };
 const transaction = { runTenant: <T>(_id: string, work: () => Promise<T>) => work() };

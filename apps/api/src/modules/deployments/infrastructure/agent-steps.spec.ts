@@ -1,6 +1,6 @@
 import { fromBinary, toBinary } from '@bufbuild/protobuf';
 import { Secret } from '@shipkeep/domain';
-import { ActionRequestSchema, RestartPolicy_Mode, TlsMode } from '@shipkeep/proto-ts';
+import { ActionRequestSchema, BuildType, RestartPolicy_Mode, TlsMode } from '@shipkeep/proto-ts';
 import { create } from '@bufbuild/protobuf';
 
 import { containerPlan } from '../domain/container-plan';
@@ -335,6 +335,7 @@ describe('a build as its agent action (ADR 0030)', () => {
     kind: 'build_image',
     key: 'd:deployment:build',
     nodeId: NODE,
+    builder: 'dockerfile',
     target: 'cp.example.com/org/app:7',
     commit: 'f'.repeat(40),
     context: 'services/api',
@@ -359,6 +360,7 @@ describe('a build as its agent action (ADR 0030)', () => {
       repoUrl: 'https://github.com/acme-corp/billing.git',
       commitSha: 'f'.repeat(40),
       gitToken: 'ghs_fake_build_token_for_tests',
+      buildType: BuildType.DOCKERFILE,
       context: 'services/api',
       dockerfile: 'Dockerfile',
       args: { NODE_ENV: 'production' },
@@ -376,6 +378,22 @@ describe('a build as its agent action (ADR 0030)', () => {
     expect(
       fromBinary(ActionRequestSchema, toBinary(ActionRequestSchema, request)).action.case,
     ).toBe('buildImage');
+  });
+
+  it('asks Railpack or Nixpacks for their builds, with no Dockerfile', () => {
+    for (const [builder, buildType] of [
+      ['railpack', BuildType.RAILPACK],
+      ['nixpacks', BuildType.NIXPACKS],
+    ] as const) {
+      const action = agentAction(
+        { ...step, builder, dockerfile: '' },
+        new Map(),
+        undefined,
+        access,
+      );
+      if (action.case !== 'buildImage') throw new Error('not a build');
+      expect(action.value).toMatchObject({ buildType, dockerfile: '', context: 'services/api' });
+    }
   });
 
   it('refuses a build without its access: it never goes out without a token or a grant', () => {
