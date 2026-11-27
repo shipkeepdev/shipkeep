@@ -43,6 +43,12 @@ RUN NODE_ENV=production pnpm exec nx run-many -t build -p web api \
 
 FROM ${NODE_IMAGE} AS runtime
 ARG PNPM_VERSION
+# Debian's security fixes published since the base image was built, such as linux-pam's
+# CVE-2025-6020 (2026-11-27): the image's scan then passes as soon as Debian fixes a flaw, without
+# waiting for a new upstream image. Renovate still moves the base image itself.
+RUN apt-get update \
+  && DEBIAN_FRONTEND=noninteractive apt-get upgrade -y --no-install-recommends \
+  && rm -rf /var/lib/apt/lists/*
 # The control plane reports it at /api/v1/health; without it a release would call itself "dev".
 ARG SHIPKEEP_VERSION=dev
 ENV NODE_ENV=production \
