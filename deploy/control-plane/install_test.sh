@@ -692,6 +692,9 @@ curl -fsS -o /dev/null -X DELETE "$(registry_url)/v2/acme/app/manifests/$removed
 curl -fsS -o /dev/null -H 'accept: application/vnd.oci.image.manifest.v1+json' "$(registry_url)/v2/acme/app/manifests/2" || die 'the kept image is not served'
 [[ $(curl -s -o /dev/null -w '%{http_code}' -X POST "$(registry_url)/v2/acme/app/blobs/uploads/") == 202 ]] || die 'the registry is still read-only'
 gc_compose down -v >/dev/null 2>&1 || true
+# It collects only once the registry refuses pushes.
+awk '/SHIPKEEP_REGISTRY_READ_ONLY=true/ { readonly = NR } /garbage-collect/ { collect = NR } END { exit !(readonly && collect && readonly < collect) }' \
+  deploy/control-plane/registry-gc.sh || die 'the collection runs while the registry takes pushes'
 # The units that run it daily: as root, from the installation's directory, after Docker.
 service=$(registry_gc_service /opt/shipkeep)
 grep -qxF 'WorkingDirectory=/opt/shipkeep' <<<"$service" || die 'the collection runs elsewhere'
