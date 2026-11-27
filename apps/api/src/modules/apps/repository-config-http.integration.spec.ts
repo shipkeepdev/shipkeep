@@ -1,10 +1,13 @@
 import { createHash } from 'node:crypto';
 
 import { Secret } from '@shipkeep/domain';
+import { MAX_CONFIG_BYTES } from '@shipkeep/config-schema';
 import { Client } from 'pg';
+import { v7 as uuidv7 } from 'uuid';
 import { parse } from 'yaml';
 
 import { auditLog } from '../../testing/audit-log';
+import { AppConfig } from '../../platform/config/app-config';
 import { noGithubWrites } from '../../testing/github-writes';
 import { tenantHttpFixture } from '../../testing/tenant-http';
 import {
@@ -177,8 +180,15 @@ describe("a Git application's shipkeep.yml over HTTP", () => {
       valid: true,
       applied: false,
     });
-    // A file this application cannot run is shown, and said invalid.
+    // A file this application cannot run is shown, and said invalid: another name, or the
+    // control plane's own name as a domain, which a change of it would be refused for too.
     file = FILE.replace('name: storefront', 'name: another-app');
+    expect((await fixture.get(path(), 'owner').expect(200)).body).toMatchObject({
+      valid: false,
+      applied: false,
+    });
+    const controlPlane = new URL(fixture.app.get(AppConfig).get('API_PUBLIC_URL')).hostname;
+    file = `${FILE}domains: [${controlPlane}]\n`;
     expect((await fixture.get(path(), 'owner').expect(200)).body).toMatchObject({
       valid: false,
       applied: false,
@@ -230,6 +240,14 @@ describe("a Git application's shipkeep.yml over HTTP", () => {
       400,
       'application_name_immutable',
     );
+    // Comments kept around a longer value would take the file over its size.
+    // The file at exactly its largest size: one more byte is refused.
+    const padded = `${FILE}#${'x'.repeat(MAX_CONFIG_BYTES - FILE.length - 2)}\n`;
+    file = padded;
+    const longer = document();
+    longer.scale['replicas'] = 10;
+    await refused({ config: longer, blobSha: blobOf(padded) }, 400, 'config_file_too_large');
+    file = FILE;
     for (const blobSha of ['HEAD', '', 'A'.repeat(40)])
       await fixture.post(`${path()}/preview`, 'owner', { config: next, blobSha }).expect(400);
     await fixture
@@ -328,6 +346,27 @@ describe("a Git application's shipkeep.yml over HTTP", () => {
     await admin.query(`UPDATE projects SET git_write_mode = 'pull_request' WHERE id = $1`, [
       fixture.projectId,
     ]);
+  });
+
+  it('answers a retry with the same key once more, and writes nothing again', async () => {
+    const next = document();
+    next.scale['replicas'] = 4;
+    // A large configuration too: its retry is matched by the body's digest.
+    next['env'] = Object.fromEntries(
+      Array.from({ length: 200 }, (_, index) => [`SETTING_${String(index)}`, 'x'.repeat(250)]),
+    );
+    const key = uuidv7();
+    const count = written.length;
+    const first = await fixture
+      .post(`${path()}/changes`, 'owner', { config: next, blobSha: blobOf(FILE) })
+      .set('Idempotency-Key', key)
+      .expect(201);
+    const again = await fixture
+      .post(`${path()}/changes`, 'owner', { config: next, blobSha: blobOf(FILE) })
+      .set('Idempotency-Key', key)
+      .expect(201);
+    expect(again.body).toEqual(first.body);
+    expect(written).toHaveLength(count + 1);
   });
 
   it('writes nothing for a change that changes nothing, or made against another text', async () => {

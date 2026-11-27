@@ -1,5 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
-import { parseShipkeepConfig } from '@shipkeep/config-schema';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { MAX_CONFIG_BYTES, parseShipkeepConfig } from '@shipkeep/config-schema';
 import {
   ConflictError,
   createEvent,
@@ -75,6 +75,8 @@ export interface RepositoryConfigPreview extends RepositoryConfigFile {
  */
 @Injectable()
 export class RepositoryConfigs {
+  private readonly logger = new Logger(RepositoryConfigs.name);
+
   constructor(
     @Inject(APPLICATION_STORE) private readonly store: ApplicationStore,
     @Inject(APPLICATION_TRANSACTION) private readonly transaction: ApplicationTransaction,
@@ -105,6 +107,8 @@ export class RepositoryConfigs {
     if (parsed.ok)
       try {
         const config = applicationConfig(parsed.config, 'git');
+        // What a change of it would be refused for makes it invalid here too.
+        assertDomainsAvailable(config.config, [this.controlPlaneHost]);
         valid = config.name === application.name;
         applied = valid && canonicalJson(config.config) === canonicalJson(application.config);
       } catch {
@@ -141,7 +145,7 @@ export class RepositoryConfigs {
     const { repository } = application;
     const file = await this.repositories.readForChange(target.organizationId, location(repository));
     if (file.blobSha !== blobSha) throw configFileChanged();
-    const changedText = rewriteConfigFile(file.text, document);
+    const changedText = writableText(file.text, document);
     return {
       writeMode,
       ...file,
@@ -177,7 +181,7 @@ export class RepositoryConfigs {
     const { repository } = application;
     const file = await this.repositories.readForChange(target.organizationId, location(repository));
     if (file.blobSha !== blobSha) throw configFileChanged();
-    const text = rewriteConfigFile(file.text, document);
+    const text = writableText(file.text, document);
     if (text === file.text)
       throw new InvalidInputError('config_unchanged', 'This change leaves the file as it is.');
     // No person in the commit or the pull request: the repository may be public. The audit log
@@ -193,32 +197,45 @@ export class RepositoryConfigs {
         mode,
       },
     );
-    await this.transaction.runTenant(target.organizationId, () =>
-      this.events.publish([
-        createEvent({
-          type: 'application.config_written',
-          organizationId: application.organizationId,
-          actor: resourceActor(context),
-          target: { type: 'application', id: application.id },
-          payload: {
-            projectId: application.projectId,
-            environmentId: application.environmentId,
-            name: application.name,
-            repository: file.fullName,
-            branch: repository.branch,
-            configPath: repository.configPath,
-            fromCommit: file.commitSha,
-            via: written.via,
-            commitSha: written.commitSha,
-            url: written.url,
-            ...(written.via === 'pull_request'
-              ? { pullRequest: written.number, pullRequestBranch: written.branch }
-              : {}),
-          },
-          occurredAt: now,
-        }),
-      ]),
-    );
+    const event = createEvent({
+      type: 'application.config_written',
+      organizationId: application.organizationId,
+      actor: resourceActor(context),
+      target: { type: 'application', id: application.id },
+      payload: {
+        projectId: application.projectId,
+        environmentId: application.environmentId,
+        name: application.name,
+        repository: file.fullName,
+        branch: repository.branch,
+        configPath: repository.configPath,
+        fromCommit: file.commitSha,
+        via: written.via,
+        commitSha: written.commitSha,
+        url: written.url,
+        ...(written.via === 'pull_request'
+          ? { pullRequest: written.number, pullRequestBranch: written.branch }
+          : {}),
+      },
+      occurredAt: now,
+    });
+    try {
+      await this.transaction.runTenant(target.organizationId, () => this.events.publish([event]));
+    } catch {
+      // GitHub has the change and cannot take it back. Failing now would only make the caller
+      // write it again: the answer stays the change written, and the log keeps what the audit
+      // could not, without the store's error, which may hold details.
+      this.logger.error(
+        {
+          action: event.type,
+          organizationId: event.organizationId,
+          applicationId: application.id,
+          actor: event.actor,
+          payload: event.payload,
+        },
+        'a configuration change written to its repository could not be audited',
+      );
+    }
     return written;
   }
 
@@ -253,6 +270,25 @@ export class RepositoryConfigs {
       { permission, target: scope },
     );
   }
+}
+
+/**
+ * The file's text with the change, once it reads as a configuration within the size the file may
+ * have: comments kept around a longer value can take it over the limit.
+ */
+export function writableText(text: string, document: Record<string, unknown>): string {
+  const changed = rewriteConfigFile(text, document);
+  if (new TextEncoder().encode(changed).length > MAX_CONFIG_BYTES)
+    throw new InvalidInputError(
+      'config_file_too_large',
+      `With this change, the file would exceed ${String(MAX_CONFIG_BYTES / 1024)} KiB.`,
+    );
+  if (!parseShipkeepConfig(changed).ok)
+    throw new InvalidInputError(
+      'invalid_config_file',
+      'This change cannot be written into the file as it is: change it in the repository.',
+    );
+  return changed;
 }
 
 function location(repository: ApplicationRepository) {

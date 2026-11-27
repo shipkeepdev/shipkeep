@@ -22,6 +22,7 @@ describe('resource mutation retry routes', () => {
     `${environment}/bindings`,
     `${environment}/bindings/${id}/remove`,
     `${project}/api-tokens/${id}/revoke`,
+    `${environment}/applications/${id}/repository-config/changes`,
   ])('allows the explicit creation/settings route %s', (route) => {
     expect(resourceReplayRoute(route)).toBe(true);
   });
@@ -52,6 +53,13 @@ describe('resource mutation retry routes', () => {
     `${project}/api-tokens/${id}`,
     `${project}/api-tokens/invalid/revoke`,
     `${environment}/api-tokens/${id}/revoke`,
+    `${environment}/applications`,
+    `${environment}/applications/${id}/config`,
+    `${environment}/applications/${id}/repository-config`,
+    `${environment}/applications/${id}/repository-config/preview`,
+    `${environment}/applications/${id}/repository-config/changes/extra`,
+    `${environment}/applications/invalid/repository-config/changes`,
+    `${environment}/applications/${id.toUpperCase()}/repository-config/changes`,
     `${organization}/settings?token=private`,
     `${organization}/settings/`,
     `organizations/${id.toUpperCase()}/settings`,
