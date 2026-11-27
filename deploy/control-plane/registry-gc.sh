@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Frees the layers of the images the control plane's retention removed from the installation's
-# registry (ADR 0030): Distribution's garbage collection, run while the registry is read-only, so
-# that no push lands while it decides what is unused. Pulls go on meanwhile; a push fails, as the
-# build that makes it does. Run as root, from the directory of compose.yml (/opt/shipkeep): the
+# Removes from the installation's registry the manifests no tag names any more, since the control
+# plane's retention removes tags, and their layers (ADR 0030): Distribution's garbage collection,
+# run while the registry is read-only, so that no push lands while it decides what is unused.
+# Pulls go on meanwhile; a push fails, as the build that makes it does. Run as root, from the directory of compose.yml (/opt/shipkeep): the
 # shipkeep-registry-gc timer runs it every day at 03:30 UTC, an hour after retention.
 set -Eeuo pipefail
 umask 077

@@ -682,14 +682,21 @@ push_image() {
   printf 'sha256:%s' "$(printf '%s' "$manifest" | sha256sum | cut -d' ' -f1)"
 }
 blobs() { gc_compose exec -T registry find /var/lib/registry/docker/registry/v2/blobs -name data | wc -l; }
-removed=$(push_image 1)
+push_image 1 >/dev/null
 push_image 2 >/dev/null
+# Tag 3 names the manifest of tag 2, as a release a rollback copied does.
+manifest=$(curl -fsS -H 'accept: application/vnd.oci.image.manifest.v1+json' "$(registry_url)/v2/acme/app/manifests/2")
+curl -fsS -o /dev/null -X PUT -H 'content-type: application/vnd.oci.image.manifest.v1+json' --data-binary "$manifest" "$(registry_url)/v2/acme/app/manifests/3"
 [[ $(blobs) == 6 ]] || die 'the test images were not pushed'
-curl -fsS -o /dev/null -X DELETE "$(registry_url)/v2/acme/app/manifests/$removed" || die 'the test manifest was not deleted'
+# What retention does: it removes tags, never a manifest.
+for tag in 1 2; do
+  curl -fsS -o /dev/null -X DELETE "$(registry_url)/v2/acme/app/manifests/$tag" || die "the tag $tag was not deleted"
+done
 (cd "$gc" && bash registry-gc.sh >"$gc/output" 2>&1) || die "the garbage collection failed: $(cat "$gc/output")"
+# The manifest no tag names goes with its layers; the one tag 3 still names stays.
 [[ $(blobs) == 3 ]] || die "the garbage collection left $(blobs) blobs, not 3"
-[[ $(curl -fsS "$(registry_url)/v2/acme/app/tags/list") == '{"name":"acme/app","tags":["2"]}' ]] || die 'the kept tag is gone'
-curl -fsS -o /dev/null -H 'accept: application/vnd.oci.image.manifest.v1+json' "$(registry_url)/v2/acme/app/manifests/2" || die 'the kept image is not served'
+[[ $(curl -fsS "$(registry_url)/v2/acme/app/tags/list") == '{"name":"acme/app","tags":["3"]}' ]] || die 'the kept tag is gone'
+[[ $(curl -fsS -H 'accept: application/vnd.oci.image.manifest.v1+json' "$(registry_url)/v2/acme/app/manifests/3") == "$manifest" ]] || die 'the kept image is not served'
 [[ $(curl -s -o /dev/null -w '%{http_code}' -X POST "$(registry_url)/v2/acme/app/blobs/uploads/") == 202 ]] || die 'the registry is still read-only'
 gc_compose down -v >/dev/null 2>&1 || true
 # It collects only once the registry refuses pushes.
