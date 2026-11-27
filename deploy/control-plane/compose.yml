@@ -106,8 +106,11 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       VICTORIAMETRICS_URL: http://victoriametrics:8428
       VICTORIALOGS_URL: http://victorialogs:9428
+      # The public key of the registry's tokens, written at start for the registry (ADR 0030).
+      REGISTRY_JWKS_FILE: /var/lib/shipkeep-registry/jwks.json
     volumes:
       - keys:/var/lib/shipkeep:ro
+      - registry-auth:/var/lib/shipkeep-registry
     network_mode: service:net
     depends_on:
       net:
@@ -189,6 +192,24 @@ services:
       - logs
     restart: unless-stopped
 
+  # The installation's registry (ADR 0030): the images builds push, served under /v2/ on the control
+  # plane's name, by Caddy here and by the server's Caddy on a single machine. No request gets in
+  # without a token the control plane signed: it starts once the control plane wrote their key.
+  # Images are not in the instance backup: each one can be built again from its commit.
+  registry:
+    image: registry:3.1.2@sha256:d4032d4cc323c1731c707931ecada07a53076eac38e3b61ae57533f170f2c6c3
+    environment:
+      REGISTRY_AUTH_TOKEN_REALM: https://${SHIPKEEP_DOMAIN:?set SHIPKEEP_DOMAIN in .env}/api/v1/registry/token
+      REGISTRY_AUTH_TOKEN_SERVICE: ${SHIPKEEP_DOMAIN:?set SHIPKEEP_DOMAIN in .env}
+    volumes:
+      - ./registry.yml:/etc/distribution/config.yml:ro
+      - registry-auth:/auth:ro
+      - registry-data:/var/lib/registry
+    depends_on:
+      control-plane:
+        condition: service_healthy
+    restart: unless-stopped
+
   caddy:
     image: caddy:2.11.9-alpine@sha256:003a97808e781aa9f7e75cc2f43d34d461099031faf5e20faefb9f61126836f0
     network_mode: service:net
@@ -216,3 +237,5 @@ volumes:
   keys:
   caddy-data:
   caddy-config:
+  registry-auth:
+  registry-data:

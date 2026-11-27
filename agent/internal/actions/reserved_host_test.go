@@ -54,13 +54,16 @@ func TestRoutesCannotTakeTheControlPlanesName(t *testing.T) {
 			t.Errorf("%v refused", hosts)
 		}
 	}
-	// The control plane's route id cannot be named by an action: its id is outside the prefix.
-	remove := &agentv1.ActionRequest{Action: &agentv1.ActionRequest_RemoveRoute{RemoveRoute: &agentv1.RemoveRoute{RouteId: caddy.ControlPlaneRouteID}}}
-	router := &fakeRouter{routes: map[string]caddy.Route{caddy.ControlPlaneRouteID: caddy.ControlPlaneRoutes(cp, "127.0.0.1:8080")[0]}}
-	var slept []time.Duration
-	routeRequest(t, router, &slept, remove)
-	if _, kept := router.routes[caddy.ControlPlaneRouteID]; !kept {
-		t.Fatal("an action removed the control plane's route")
+	// The control plane's route ids cannot be named by an action: they are outside the prefix.
+	fixed := caddy.ControlPlaneRoutes(cp, "127.0.0.1:8080", "127.0.0.1:5000")
+	for _, route := range fixed {
+		remove := &agentv1.ActionRequest{Action: &agentv1.ActionRequest_RemoveRoute{RemoveRoute: &agentv1.RemoveRoute{RouteId: route.ID}}}
+		router := &fakeRouter{routes: map[string]caddy.Route{route.ID: route}}
+		var slept []time.Duration
+		routeRequest(t, router, &slept, remove)
+		if _, kept := router.routes[route.ID]; !kept {
+			t.Fatalf("an action removed the control plane's route %s", route.ID)
+		}
 	}
 }
 

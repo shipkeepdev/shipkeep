@@ -1,0 +1,29 @@
+# The installation's registry (ADR 0030): CNCF Distribution, served under /v2/ on the control
+# plane's name. It trusts only the tokens the control plane signs: their key is the JWKS the
+# control plane writes at start, the realm is its token endpoint and the service its name, both set
+# from SHIPKEEP_DOMAIN in compose.yml. Images are kept in the registry-data volume.
+version: 0.1
+log:
+  level: info
+  formatter: json
+storage:
+  filesystem:
+    rootdirectory: /var/lib/registry
+  delete:
+    enabled: true
+  maintenance:
+    uploadpurging:
+      enabled: true
+      age: 168h
+      interval: 24h
+      dryrun: false
+http:
+  addr: :5000
+  # Behind Caddy: upload locations stay on the name the client used.
+  relativeurls: true
+auth:
+  token:
+    realm: https://localhost/api/v1/registry/token
+    service: localhost
+    issuer: shipkeep
+    jwks: /auth/jwks.json

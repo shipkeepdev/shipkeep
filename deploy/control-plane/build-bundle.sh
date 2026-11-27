@@ -23,7 +23,7 @@ root=$work/shipkeep-control-plane
 install -d -m 0755 "$root"
 install -m 0755 "$source/install.sh" "$root/install.sh"
 install -m 0755 "$source/backup.sh" "$root/backup.sh"
-install -m 0644 "$source/compose.yml" "$source/compose.single-machine.yml" "$source/Caddyfile" "$source/.env.example" "$repository/LICENSE" "$repository/NOTICE" "$root/"
+install -m 0644 "$source/compose.yml" "$source/compose.single-machine.yml" "$source/Caddyfile" "$source/registry.yml" "$source/.env.example" "$repository/LICENSE" "$repository/NOTICE" "$root/"
 printf '%s\n' "$reference" >"$root/image"
 chmod 0644 "$root/image"
 archive=$output/shipkeep-control-plane_$version.tar.gz

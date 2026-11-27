@@ -1,7 +1,15 @@
 # HTTPS front of the control plane. Caddy and the control plane share one network namespace (the `net` service), so it
 # reaches the API on loopback and the API can trust its forwarding headers (TRUST_PROXY=loopback).
 # Caddy obtains and renews the certificate for SHIPKEEP_DOMAIN by itself (ports 80 and 443).
+# The registry's API (/v2/, ADR 0030) goes to the registry as it is: image layers are compressed
+# already, and the registry checks its own tokens.
 {$SHIPKEEP_DOMAIN} {
-	encode zstd gzip
-	reverse_proxy 127.0.0.1:3000
+	@registry path /v2 /v2/*
+	handle @registry {
+		reverse_proxy registry:5000
+	}
+	handle {
+		encode zstd gzip
+		reverse_proxy 127.0.0.1:3000
+	}
 }

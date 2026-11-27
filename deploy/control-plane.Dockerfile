@@ -72,7 +72,9 @@ COPY deploy/postgres/runtime-role.sql deploy/postgres/provision-runtime.mjs ./po
 COPY deploy/control-plane/ensure-kek.mjs ./setup/
 COPY LICENSE NOTICE ./
 # Home of the key-encryption key. A volume mounted here starts owned by the service user.
-RUN mkdir -p /var/lib/shipkeep && chown node:node /var/lib/shipkeep && chmod 700 /var/lib/shipkeep
+RUN mkdir -p /var/lib/shipkeep /var/lib/shipkeep-registry \
+  && chown node:node /var/lib/shipkeep /var/lib/shipkeep-registry \
+  && chmod 700 /var/lib/shipkeep && chmod 755 /var/lib/shipkeep-registry
 USER node
 EXPOSE 3000 7443
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
