@@ -2,8 +2,12 @@ import { describe, expect, it } from 'vitest';
 
 import {
   batchBytes,
+  buildLineOf,
+  buildLogsQuery,
   ByteRate,
+  distinctBuildLines,
   distinctLines,
+  exactTime,
   LOG_BATCH_MIN_BYTES,
   LOG_RETENTION_MS,
   type LogInput,
@@ -247,8 +251,17 @@ describe('log searches (ADR 0029)', () => {
     expect(logsQuery({ ...search, fromExact: '2026-11-24T11:00:00.123456789Z' })).toContain(
       '_time:[2026-11-24T11:00:00.123456789Z, 2026-11-24T12:00:00.000Z]',
     );
-    for (const fromExact of ['2026-11-24T11:00:00+01:00', '2026-11-24T11:00:00.1234567890Z', 'x'])
+    for (const fromExact of ['2026-11-24T11:00:00.1234567890Z', '2026-11-24T11:00:00+1:00', 'x'])
       expect(logsQuery({ ...search, fromExact })).toContain('_time:[2026-11-24T11:00:00.000Z,');
+  });
+
+  it('moves a time written with an offset to UTC, keeping its nine digits', () => {
+    expect(logsQuery({ ...search, fromExact: '2026-11-24T12:00:00.123456789+01:00' })).toContain(
+      '_time:[2026-11-24T11:00:00.123456789Z, ',
+    );
+    expect(exactTime('2026-11-24T00:30:00.5-02:30')).toBe('2026-11-24T03:00:00.5Z');
+    expect(exactTime('2026-11-24T11:00:00+01:00')).toBe('2026-11-24T10:00:00Z');
+    expect(exactTime('2026-11-24T25:00:00+01:00')).toBeUndefined();
   });
 
   it('reads forward from a time for a live view, so that nothing between two reads is missed', () => {
@@ -324,5 +337,78 @@ describe('log searches (ADR 0029)', () => {
     const other = { ...line, stream: 'stderr' as const };
     const later = { ...line, time: '2026-11-24T22:20:29.000Z' };
     expect(distinctLines([later, line, line, other, line])).toEqual([later, line, other]);
+  });
+});
+
+describe('build output searches (ADR 0032)', () => {
+  const search = {
+    organizationId: '019d0000-0000-7000-8000-00000000000a',
+    applicationId: '019d0000-0000-7000-8000-0000000000a1',
+    deploymentId: '019d0000-0000-7000-8000-0000000000d1',
+    from: new Date('2026-11-24T11:00:00Z'),
+    to: new Date('2026-11-24T12:00:00Z'),
+    limit: 500,
+  };
+
+  it("reads one deployment's build lines, oldest first", () => {
+    expect(buildLogsQuery(search)).toBe(
+      '{org="019d0000-0000-7000-8000-00000000000a",app="019d0000-0000-7000-8000-0000000000a1",instance="build",stream="build"} ' +
+        'deployment:="019d0000-0000-7000-8000-0000000000d1" ' +
+        '_time:[2026-11-24T11:00:00.000Z, 2026-11-24T12:00:00.000Z] | sort by (_time) | limit 500',
+    );
+  });
+
+  it('starts at the exact time a live view gives, and at nothing else', () => {
+    expect(buildLogsQuery({ ...search, fromExact: '2026-11-24T11:00:00.123456789Z' })).toContain(
+      '_time:[2026-11-24T11:00:00.123456789Z, ',
+    );
+    for (const fromExact of ['2026-11-24T11:00:00+01:00] OR *', '2026-11-24T11:00:00Z] OR *', 'x'])
+      expect(buildLogsQuery({ ...search, fromExact })).toContain(
+        '_time:[2026-11-24T11:00:00.000Z,',
+      );
+  });
+
+  it('refuses a scope that is not three identifiers', () => {
+    for (const field of ['organizationId', 'applicationId', 'deploymentId'])
+      expect(() => buildLogsQuery({ ...search, [field]: 'x" OR deployment:*' })).toThrow();
+  });
+
+  it('reads back only build lines', () => {
+    expect(
+      buildLineOf({
+        _time: '2026-11-24T11:30:00.97Z',
+        _msg: '#5 [2/3] RUN npm ci',
+        stream: 'build',
+        instance: 'build',
+        truncated: 'true',
+      }),
+    ).toEqual({
+      time: '2026-11-24T11:30:00.970000000Z',
+      line: '#5 [2/3] RUN npm ci',
+      truncated: true,
+    });
+    for (const record of [
+      null,
+      'line',
+      { _time: '2026-11-24T11:30:00Z', _msg: 'x', stream: 'stdout', instance: 'build' },
+      { _time: '2026-11-24T11:30:00Z', _msg: 'x', stream: 'build', instance: '0' },
+      { _time: 'yesterday', _msg: 'x', stream: 'build', instance: 'build' },
+      { _time: '2026-11-24T11:30:00Z', _msg: 7, stream: 'build', instance: 'build' },
+    ])
+      expect(buildLineOf(record)).toBeUndefined();
+  });
+
+  it('shows once a line the agent sent again, and keeps two equal lines of different times', () => {
+    const line = (time: string, text: string) => ({ time, line: text, truncated: false });
+    expect(
+      distinctBuildLines([
+        line('2026-11-24T11:30:00.000000001Z', 'step'),
+        line('2026-11-24T11:30:00.000000001Z', 'step'),
+        line('2026-11-24T11:30:00.000000002Z', 'step'),
+      ]),
+    ).toEqual([
+      line('2026-11-24T11:30:00.000000001Z', 'step'),
+      line('2026-11-24T11:30:00.000000002Z', 'step'),
+    ]);
   });
 });

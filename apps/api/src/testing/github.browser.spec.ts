@@ -9,14 +9,46 @@ import {
   type GithubApi,
   type GithubManifests,
 } from '../modules/git/application/ports';
+import { LOGS_STORE, type LogsStore } from '../modules/observability/application/ports';
 
 import { browserApp } from './browser-app';
-import { createAccount, fillPrivate, FIXTURE_PASSWORD } from './browser-identity';
+import {
+  accessible,
+  createAccount,
+  fillPrivate,
+  FIXTURE_PASSWORD,
+  submit,
+} from './browser-identity';
+import { enrollTestNode } from './enroll-test-node';
 
 const API = '/api/v1/organizations';
 const WEBHOOK = 'whsec_test_fake_webhook_secret';
 const APP_ID = 929292;
 const HEAD = 'a'.repeat(40);
+/** What rootless BuildKit writes for a small Node service, as the agent sends it (ADR 0032). */
+const BUILD_OUTPUT = [
+  '#0 building with "default" instance using rootless buildkitd',
+  `#1 [internal] load git source https://github.com/acme-corp/billing.git#${HEAD}`,
+  `#1 0.412 ${HEAD}\trefs/heads/main`,
+  '#1 DONE 1.1s',
+  '#2 [internal] load metadata for docker.io/library/node:22-alpine',
+  '#2 DONE 0.9s',
+  '#3 [deps 1/3] FROM docker.io/library/node:22-alpine',
+  '#3 CACHED',
+  '#4 [deps 2/3] COPY package.json package-lock.json ./',
+  '#4 DONE 0.1s',
+  '#5 [deps 3/3] RUN npm ci --omit=dev',
+  '#5 4.211 added 214 packages, and audited 215 packages in 4s',
+  '#5 DONE 4.6s',
+  '#6 [build 1/2] COPY . .',
+  '#6 DONE 0.2s',
+  '#7 [build 2/2] RUN npm run build',
+  '#7 0.512 > billing@1.4.0 build',
+  '#7 0.513 > tsc -p tsconfig.build.json',
+  '#7 DONE 9.8s',
+  '#8 exporting to image',
+  '#8 exporting layers 1.2s done',
+];
 
 /** A key-shaped value that is no key, put together here so that no scanner reads the source as one. */
 function fakePem(body: string): string {
@@ -49,6 +81,29 @@ describe('GitHub in Chromium', () => {
   let fixture: Awaited<ReturnType<typeof browserApp>>;
   let close: (() => Promise<void>) | undefined;
   const problems: string[] = [];
+  let owner: Page;
+  let application = '';
+  /** The application's deployments in the API. */
+  let deployments = '';
+  /** The build lines the log store answers, stamped from its first build read. */
+  let builtFrom: number | undefined;
+  const logs: LogsStore = {
+    write: () => Promise.resolve(),
+    query: (logsql) => {
+      if (!logsql.includes('stream="build"')) return Promise.resolve([]);
+      // Stamped just before the first read: after the deployment was queued, as a build would be.
+      builtFrom ??= Date.now() - 1_000;
+      const base = builtFrom;
+      return Promise.resolve(
+        BUILD_OUTPUT.map((line, index) => ({
+          _time: new Date(base + index * 40).toISOString(),
+          _msg: line,
+          stream: 'build',
+          instance: 'build',
+        })),
+      );
+    },
+  };
   const manifests: GithubManifests = {
     convert: (code) =>
       Promise.resolve(
@@ -97,7 +152,7 @@ describe('GitHub in Chromium', () => {
     branchHead: () => Promise.resolve(HEAD),
     file: () =>
       Promise.resolve(
-        `version: 1\nname: billing\nbuild:\n  type: image\n  image: ghcr.io/acme/billing@sha256:${'c'.repeat(64)}\nrun:\n  port: 3000\n`,
+        'version: 1\nname: billing\nbuild:\n  type: dockerfile\nrun:\n  port: 3000\n',
       ),
     revoke: () => Promise.resolve(),
   };
@@ -106,6 +161,7 @@ describe('GitHub in Chromium', () => {
     fixture = await browserApp([
       { token: GITHUB_MANIFESTS, value: manifests },
       { token: GITHUB_API, value: github },
+      { token: LOGS_STORE, value: logs },
     ]);
     close = fixture.close;
   });
@@ -114,7 +170,7 @@ describe('GitHub in Chromium', () => {
   });
 
   it('creates the App through GitHub, then an application from a repository it reaches', async () => {
-    const owner = await (await fixture.newContext()).newPage();
+    owner = await (await fixture.newContext()).newPage();
     owner.on('pageerror', (error) => problems.push(error.name));
     owner.on('console', (message) => {
       const text = message.text();
@@ -211,6 +267,46 @@ describe('GitHub in Chromium', () => {
     ]);
     expect(response.status()).toBe(201);
     await owner.getByText('acme-corp/billing · main', { exact: true }).waitFor();
+    const applicationId = ((await response.json()) as { id: string }).id;
+    application = `/orgs/${organizationId}/projects/${projectId}/environments/${environmentId}/applications/${applicationId}`;
+    deployments = `${API}/${organizationId}/projects/${projectId}/environments/${environmentId}/applications/${applicationId}/deployments`;
+    // A server to build on: the deployment places its replica there, then builds.
+    const session = (await (await owner.context().request.get('/api/v1/auth/session')).json()) as {
+      userId: string;
+    };
+    await enrollTestNode(
+      { app: fixture.app, organizationId, actors: { owner: { id: session.userId } } },
+      {
+        facts: {
+          hostname: 'builder-browser.example.com',
+          cpu_count: 2,
+          memory_bytes: 4 * 2 ** 30,
+          architecture: 'amd64',
+        },
+        heartbeatAt: new Date(),
+      },
+    );
+    expect(problems).toEqual([]);
+  });
+
+  it('shows the build output of a deployment as it runs, under the production CSP (#265)', async () => {
+    await owner.goto(application);
+    await submit(owner, 'Deploy', deployments, 201);
+    await owner.goto(`${application}?tab=deployments`);
+    await owner
+      .getByRole('link', { name: /^Open deployment / })
+      .first()
+      .click();
+    await owner.getByRole('heading', { name: 'Build output', exact: true, level: 2 }).waitFor();
+    const output = owner.getByRole('log', { name: 'Build output' });
+    await output.getByText('#7 DONE 9.8s').waitFor();
+    expect(await output.innerText()).toContain('#5 [deps 3/3] RUN npm ci --omit=dev');
+    // Read again while it runs, each line still shown once.
+    await owner.waitForResponse((candidate) =>
+      new URL(candidate.url()).pathname.endsWith('/build-output'),
+    );
+    expect(await output.getByText('#7 DONE 9.8s').count()).toBe(1);
+    await accessible(owner);
     expect(problems).toEqual([]);
   });
 });

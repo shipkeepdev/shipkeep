@@ -27,6 +27,7 @@ import {
   type EnvironmentRef,
   type Release,
 } from './delivery-api';
+import { BuildOutputPanel } from './build-output-panel';
 import { deploymentKind, KIND_CAUSE, KIND_TITLE } from './deployment-kind';
 import { deploymentView, type Text, timelineEnded } from './deployment-view';
 
@@ -38,7 +39,7 @@ const SETTLE_READS = 3;
 /** 15 Deployment (#265): what one deployment went through, step by step, live while it runs. */
 @Component({
   selector: 'sk-deployment-page',
-  imports: [Icon, RouterLink, T],
+  imports: [BuildOutputPanel, Icon, RouterLink, T],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @switch (state()) {
@@ -139,17 +140,25 @@ const SETTLE_READS = 3;
                   <span>{{ 'Only the first 200 agent actions are listed.' | t }}</span>
                 </div>
               }
-              <!-- A stop or a maintenance change builds nothing and runs no release command. -->
-              @if (deploys()) {
-                <div class="note">
-                  <sk-icon name="info-circle" class="text-mute" />
-                  <span>{{
-                    'Build output and the output of the release command will appear here with builds and log collection.'
-                      | t
-                  }}</span>
-                </div>
-              }
             </section>
+
+            <!-- A release of an image builds nothing; a stop or a maintenance change neither. -->
+            @if (builds()) {
+              <sk-build-output
+                [environment]="environment()"
+                [applicationId]="applicationId()"
+                [deploymentId]="deploymentId()"
+                [running]="!v.finished"
+              />
+            }
+            @if (runsRelease()) {
+              <div class="note">
+                <sk-icon name="info-circle" class="text-mute" />
+                <span>{{
+                  'The output of the release command will appear here once it is collected.' | t
+                }}</span>
+              </div>
+            }
           </div>
         }
       }
@@ -186,7 +195,7 @@ export class DeploymentPage {
   #settling = SETTLE_READS;
   #timer: ReturnType<typeof setTimeout> | undefined;
 
-  private readonly environment = computed<EnvironmentRef>(() => ({
+  protected readonly environment = computed<EnvironmentRef>(() => ({
     organizationId: this.organizationId(),
     projectId: this.projectId(),
     environmentId: this.environmentId(),
@@ -206,10 +215,15 @@ export class DeploymentPage {
     const timeline = this.timeline();
     return deployment && timeline ? deploymentView(deployment, timeline, this.now()) : null;
   });
-  /** True for a deployment of a release, the only kind with build and release output. */
-  protected readonly deploys = computed(() => {
+  /** True for a deployment of a release built from its repository: it has build output. */
+  protected readonly builds = computed(() => {
     const d = this.deployment();
-    return d ? deploymentKind(d) === 'deploy' : false;
+    return d ? deploymentKind(d) === 'deploy' && d.build : false;
+  });
+  /** True for a deployment of a release that runs its release command first. */
+  protected readonly runsRelease = computed(() => {
+    const d = this.deployment();
+    return d ? deploymentKind(d) === 'deploy' && d.release : false;
   });
   protected readonly title = computed(() => {
     const d = this.deployment();

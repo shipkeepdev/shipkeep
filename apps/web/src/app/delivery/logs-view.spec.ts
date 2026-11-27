@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import type { LogLine } from './delivery-api';
-import { lineKey, MAX_LINES, mergeLines, overlapFrom, readForward } from './logs-view';
+import type { BuildLine, LogLine } from './delivery-api';
+import {
+  lineKey,
+  MAX_BUILD_LINES,
+  MAX_LINES,
+  mergeBuildLines,
+  mergeLines,
+  overlapFrom,
+  readForward,
+} from './logs-view';
 
 const line = (time: string, text: string, instance = 1): LogLine => ({
   time,
@@ -110,5 +118,33 @@ describe('reading a live view forward', () => {
 describe('where a live read starts', () => {
   it('starts a little before the newest line, so a line another server sent late still shows', () => {
     expect(overlapFrom('2026-11-25T12:00:05.123456789Z')).toBe('2026-11-25T12:00:02.123Z');
+  });
+});
+
+describe("a build's output (ADR 0032)", () => {
+  const built = (nanos: number, text: string): BuildLine => ({
+    time: `2026-11-25T12:00:00.${String(nanos).padStart(9, '0')}Z`,
+    line: text,
+    truncated: false,
+  });
+
+  it('keeps the lines oldest first, a line read again once, and equal lines of two times', () => {
+    const known = [built(1, 'a'), built(3, 'c')];
+    expect(mergeBuildLines(known, [built(3, 'c'), built(2, 'b'), built(4, 'c')])).toEqual({
+      lines: [built(1, 'a'), built(2, 'b'), built(3, 'c'), built(4, 'c')],
+      dropped: 0,
+    });
+  });
+
+  it('drops the oldest lines past the bound, and says how many', () => {
+    const known = Array.from({ length: MAX_BUILD_LINES }, (_, index) => built(index, 'x'));
+    const merged = mergeBuildLines(known, [
+      built(MAX_BUILD_LINES, 'y'),
+      built(MAX_BUILD_LINES + 1, 'z'),
+    ]);
+    expect(merged.dropped).toBe(2);
+    expect(merged.lines).toHaveLength(MAX_BUILD_LINES);
+    expect(merged.lines[0]).toEqual(built(2, 'x'));
+    expect(merged.lines.at(-1)).toEqual(built(MAX_BUILD_LINES + 1, 'z'));
   });
 });

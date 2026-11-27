@@ -15,6 +15,8 @@ export type ApplicationMetrics = Schema<'ApplicationMetricsDto'>;
 export type MetricsRange = '1h' | '24h' | '7d';
 export type ApplicationLogs = Schema<'LogsDto'>;
 export type LogLine = Schema<'LogLineDto'>;
+export type BuildOutput = Schema<'BuildOutputDto'>;
+export type BuildLine = Schema<'BuildLineDto'>;
 export type ExecSession = Schema<'ExecSessionDto'>;
 
 /** Agent actions per page on the application screen. */
@@ -166,6 +168,20 @@ export class DeliveryApi extends WorkspaceApi {
       this.client.GET(
         '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/logs',
         { params: { path: { ...environment, applicationId }, query } },
+      ),
+    );
+  }
+  /** One deployment's build output, oldest first (ADR 0032). */
+  async buildOutput(
+    environment: EnvironmentRef,
+    applicationId: string,
+    deploymentId: string,
+    query: { from?: string; limit?: number },
+  ): Promise<BuildOutput> {
+    return this.required(() =>
+      this.client.GET(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/build-output',
+        { params: { path: { ...environment, applicationId, deploymentId }, query } },
       ),
     );
   }

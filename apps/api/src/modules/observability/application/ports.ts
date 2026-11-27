@@ -25,6 +25,8 @@ export interface MetricsTargets {
   ): Promise<BuildTarget[]>;
   /** Whether the node belongs to the organization. */
   nodeExists(organizationId: string, nodeId: string): Promise<boolean>;
+  /** When a deployment of this application started; undefined when it is not one of its. */
+  deploymentStart(applicationId: string, deploymentId: string): Promise<Date | undefined>;
   /**
    * The organization's environments with their project, at most `limit`, in identifier order,
    * after the identifier `after` when given (one page of a keyset walk).
