@@ -316,3 +316,97 @@ func TestRealCaddyFollowsARestartedContainer(t *testing.T) {
 		t.Fatalf("after reconciliation the route answered %q, want a (a moved from %s to %s)", got, before, after)
 	}
 }
+
+// #485: a deployment that moves an application to a new hostname fails while switching, and the
+// control plane restores the previous route. The route keeps its id (the application's), so the
+// restore is an UpsertRoute of that id with the previous release's hostnames and replica. Against a
+// real Caddy, the old hostname must reach the old replica again, and the new hostname must reach
+// nothing: no matcher of the failed switch may stay behind.
+func TestRealCaddyRestoresThePreviousHostnamesAfterAFailedSwitch(t *testing.T) {
+	socket, address := os.Getenv("SHIPKEEP_IT_CADDY_ADMIN"), os.Getenv("SHIPKEEP_IT_CADDY_ADDRESS")
+	if socket == "" || address == "" {
+		t.Skip("SHIPKEEP_IT_CADDY_ADMIN and SHIPKEEP_IT_CADDY_ADDRESS name the Caddy to test against")
+	}
+	router, err := caddy.New(socket)
+	if err != nil {
+		t.Fatal(err)
+	}
+	agent := newRealAgent(t, nil)
+	for kind, handler := range RouteHandlers(router, agent.engine, &RouteBook{Store: agent.store}, nil) {
+		agent.dispatcher.Handlers[kind] = handler
+	}
+	const (
+		routeID          = "it-restore"
+		previous, failed = "sk-it-restore-r1-0", "sk-it-restore-r2-0"
+		oldHost, newHost = "old.example.test", "new.example.test"
+	)
+	agent.forget([]string{previous, failed}, nil)
+	t.Cleanup(func() {
+		agent.send(&agentv1.ActionRequest{Action: &agentv1.ActionRequest_RemoveRoute{RemoveRoute: &agentv1.RemoveRoute{RouteId: routeID, DrainTimeout: durationpb.New(0)}}}, time.Minute)
+	})
+	agent.prepare()
+	ids := map[string]string{}
+	for name, version := range map[string]string{previous: "r1", failed: "r2"} {
+		ids[name] = agent.must("create "+version, itCreate(whoamiSpec(name, version)), time.Minute).GetResult().GetContainerId()
+		agent.must("start "+version, itStart(ids[name]), time.Minute)
+		agent.must("health "+version, itHealth(ids[name]), 2*time.Minute)
+	}
+	upsert := func(host, container string) *agentv1.ActionRequest {
+		return &agentv1.ActionRequest{Action: &agentv1.ActionRequest_UpsertRoute{UpsertRoute: &agentv1.UpsertRoute{Route: &agentv1.Route{
+			RouteId:   routeID,
+			Hosts:     []string{host},
+			Upstreams: []*agentv1.Upstream{{Container: container, Port: 8080}},
+			TlsMode:   agentv1.TlsMode_TLS_MODE_OFF,
+		}}}}
+	}
+	// Which replica a hostname reaches: its whoami name, or "none" when nothing of this route answers.
+	reaches := func(host string) string {
+		t.Helper()
+		request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+address+"/", nil) //nolint:gosec // the CI job names Caddy's address
+		if err != nil {
+			t.Fatal(err)
+		}
+		request.Host = host
+		response, err := (&http.Client{Timeout: 5 * time.Second}).Do(request) //nolint:gosec // the CI job names Caddy's address
+		if err != nil {
+			return "error: " + err.Error()
+		}
+		defer response.Body.Close() //nolint:errcheck // read-only body
+		body, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+		if name := whoamiName(string(body)); name != "?" {
+			return name
+		}
+		return "none"
+	}
+	eventually := func(host, want string) {
+		t.Helper()
+		deadline := time.Now().Add(30 * time.Second)
+		got := reaches(host)
+		for got != want && time.Now().Before(deadline) {
+			time.Sleep(200 * time.Millisecond)
+			got = reaches(host)
+		}
+		if got != want {
+			t.Fatalf("%s reaches %q, want %q", host, got, want)
+		}
+	}
+
+	// Release 1 serves the old hostname.
+	agent.must("route r1", upsert(oldHost, previous), time.Minute)
+	eventually(oldHost, "r1")
+	eventually(newHost, "none")
+
+	// Release 2's switch reaches this node: the route now matches the new hostname only.
+	agent.must("switch to r2", upsert(newHost, failed), time.Minute)
+	eventually(newHost, "r2")
+	eventually(oldHost, "none")
+
+	// The deployment fails on another node; recovery restores release 1's route here.
+	agent.must("restore r1", upsert(oldHost, previous), time.Minute)
+	eventually(oldHost, "r1")
+	eventually(newHost, "none")
+	// And the old replica is not reachable through the new hostname either.
+	if got := reaches(newHost); got == "r1" {
+		t.Fatalf("the new hostname reaches the previous release after the restore")
+	}
+}
