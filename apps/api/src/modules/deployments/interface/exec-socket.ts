@@ -40,7 +40,11 @@ export const MAX_BROWSER_MESSAGE = 64 * 1024;
 const ACCESS_CHECK_MS = 60_000;
 /** How often the browser is pinged; one that misses a pong in that time is gone. */
 const KEEPALIVE_MS = 30_000;
-/** Failed joins one network may make per minute, each of which costs a database lookup. */
+/**
+ * Refused joins one network may make per minute, joins still being checked included: each costs a
+ * sign-in lookup, which writes the session's activity (#546). Past it, joins answer 429 before
+ * the sign-in is read, until the minute is over.
+ */
 const FAILED_JOINS_PER_MINUTE = 20;
 
 type Scope = { organizationId: string; projectId: string; environmentId: string };
@@ -63,6 +67,8 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
     maxPayload: MAX_BROWSER_MESSAGE,
   });
   private readonly failures = new Map<string, { count: number; since: number }>();
+  /** Joins being checked, by network: they count against the budget until they end. */
+  private readonly checking = new Map<string, number>();
   private server: Server | undefined;
   private readonly onUpgrade = (request: IncomingMessage, socket: Duplex, head: Buffer): void => {
     // Until ws takes the socket, a reset from the client must find a listener, or Node throws.
@@ -122,10 +128,34 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
     }
     // Behind Caddy every request comes from loopback: the client is the address it forwarded.
     const ip = upgradeClientIp(request, this.config.get('TRUST_PROXY'));
-    if (this.throttled(ip)) {
+    if (!this.admit(ip)) {
       refuse(socket, 429);
       return;
     }
+    try {
+      await this.join(request, socket, head, drop, id, ip);
+    } finally {
+      this.release(ip);
+    }
+  }
+
+  /**
+   * Checks a join the budget admitted. Every refusal counts against the network's budget, after
+   * the sign-in too: an unknown, joined or forbidden session answers 404 like the others, and
+   * costs the same (#546).
+   */
+  private async join(
+    request: IncomingMessage,
+    socket: Duplex,
+    head: Buffer,
+    drop: () => void,
+    id: string,
+    ip: string,
+  ): Promise<void> {
+    const refused = (status: 401 | 404): void => {
+      this.failed(ip);
+      refuse(socket, status);
+    };
     const publicUrl = this.config.get('API_PUBLIC_URL');
     let token: Secret;
     let userId: string;
@@ -135,14 +165,13 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
       token = readCredential(request.headers.cookie, cookiePolicy(publicUrl).name);
       userId = (await this.sessions.authenticate(token)).user.id;
     } catch {
-      this.failed(ip);
-      refuse(socket, 401);
+      refused(401);
       return;
     }
     const session = this.registry.pending(id);
     // A session already joined is refused like an unknown one.
     if (!session || !this.registry.joinable(id, userId)) {
-      refuse(socket, 404);
+      refused(404);
       return;
     }
     const scope: Scope = {
@@ -153,12 +182,12 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
     try {
       await this.tenants.require(userId, 'container.exec', scope);
     } catch {
-      refuse(socket, 404);
+      refused(404);
       return;
     }
     // Another request may have joined it meanwhile: it is refused over HTTP, like any other.
     if (!this.registry.joinable(id, userId)) {
-      refuse(socket, 404);
+      refused(404);
       return;
     }
     socket.off('error', drop);
@@ -248,11 +277,24 @@ export class ExecSocket implements OnApplicationBootstrap, OnModuleDestroy {
     return 'yes';
   }
 
-  private throttled(ip: string, now = Date.now()): boolean {
+  /**
+   * Takes a place in the network's budget for a join about to be checked, or answers false when
+   * its refusals of the last minute and the joins it has being checked use the budget up.
+   */
+  private admit(ip: string, now = Date.now()): boolean {
     const entry = this.failures.get(ip);
-    return (
-      entry !== undefined && now - entry.since <= 60_000 && entry.count >= FAILED_JOINS_PER_MINUTE
-    );
+    const recent = entry !== undefined && now - entry.since <= 60_000 ? entry.count : 0;
+    const checking = this.checking.get(ip) ?? 0;
+    if (recent + checking >= FAILED_JOINS_PER_MINUTE) return false;
+    this.checking.set(ip, checking + 1);
+    return true;
+  }
+
+  /** Gives back the place of a join that was checked: the map holds only joins under way. */
+  private release(ip: string): void {
+    const checking = (this.checking.get(ip) ?? 1) - 1;
+    if (checking > 0) this.checking.set(ip, checking);
+    else this.checking.delete(ip);
   }
 
   private failed(ip: string, now = Date.now()): void {
