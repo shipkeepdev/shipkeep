@@ -113,7 +113,7 @@ import { RepositoryConfigStore } from './repository-config-store';
               <span>
                 @if (written.via === 'pull_request') {
                   {{
-                    'Pull request #{number} opened. Merging it into {branch} deploys the change.'
+                    'Pull request #{number} opened. Merging it into {branch} deploys the change, unless the environment is protected.'
                       | t: { number: written.number ?? 0, branch: repo.branch }
                   }}
                 } @else {

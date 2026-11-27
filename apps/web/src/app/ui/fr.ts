@@ -2107,8 +2107,8 @@ export const FR: Readonly<Record<string, string>> = {
   'The file changed in the repository since you opened it. Your draft has been kept.':
     'Le fichier a changé dans le dépôt depuis son ouverture. Votre brouillon est conservé.',
   'Load the latest file': 'Charger le dernier fichier',
-  'Pull request #{number} opened. Merging it into {branch} deploys the change.':
-    'Pull request #{number} ouverte. La fusionner dans {branch} déploie le changement.',
+  'Pull request #{number} opened. Merging it into {branch} deploys the change, unless the environment is protected.':
+    'Pull request #{number} ouverte. La fusionner dans {branch} déploie le changement, sauf si l’environnement est protégé.',
   'Committed to {branch}. Its push deploys the change, unless the environment is protected.':
     'Commité sur {branch}. Son push déploie le changement, sauf si l’environnement est protégé.',
   'Changes to write': 'Changements à écrire',

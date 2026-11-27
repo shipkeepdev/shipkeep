@@ -351,7 +351,9 @@ describe('GitHub in Chromium', () => {
     ]);
     expect(response.status()).toBe(201);
     await owner
-      .getByText('Pull request #12 opened. Merging it into main deploys the change.')
+      .getByText(
+        'Pull request #12 opened. Merging it into main deploys the change, unless the environment is protected.',
+      )
       .waitFor();
     // Only the lines added: the comments and the rest of the file are as the repository has them.
     expect(written).toEqual([

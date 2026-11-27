@@ -25,6 +25,8 @@ export class RepositoryConfigStore {
   private environment: EnvironmentRef | undefined;
   private application: Application | undefined;
   private revision = 0;
+  /** Edits of the draft so far: a read that started before one never replaces it. */
+  private edits = 0;
   /** The file as the repository held it when last read. */
   readonly file = signal<RepositoryConfig | null>(null);
   /** The last read failed: what was read before stays. */
@@ -57,11 +59,12 @@ export class RepositoryConfigStore {
     const application = this.application;
     if (!environment || !application) return;
     const revision = ++this.revision;
+    const edits = this.edits;
     try {
       const file = await this.api.repositoryConfig(environment, application.id);
       if (revision !== this.revision) return;
       this.file.set(file);
-      if (replaceDraft) this.draft.set(file.text);
+      if (replaceDraft && edits === this.edits) this.draft.set(file.text);
       this.unread.set(false);
     } catch {
       if (revision === this.revision) this.unread.set(true);
@@ -70,6 +73,7 @@ export class RepositoryConfigStore {
 
   edit(value: string): void {
     if (this.runner.busy()) return;
+    this.edits++;
     this.draft.set(value);
     this.clear();
   }
@@ -118,9 +122,15 @@ export class RepositoryConfigStore {
     if (!environment || !application || !preview || !document || this.conflict()) return;
     const outcome = await this.runner.run(
       { write: application.id, blob: preview.blobSha, text: preview.changedText },
-      (_, isCurrent) =>
+      (key, isCurrent) =>
         this.conflicted(isCurrent, () =>
-          this.api.changeRepositoryConfig(environment, application.id, document, preview.blobSha),
+          this.api.changeRepositoryConfig(
+            environment,
+            application.id,
+            document,
+            preview.blobSha,
+            key,
+          ),
         ),
     );
     if (!outcome.ok || !outcome.value) return;

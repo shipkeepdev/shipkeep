@@ -161,14 +161,18 @@ describe("a Git application's shipkeep.yml, edited here (#214)", () => {
     expect(document.activeElement).toBe(page.button('Open a pull request'));
     page.button('Open a pull request')?.click();
     await page.settle();
+    // With a key: a retry after a lost answer gets the first answer, not a second pull request.
     expect(page.api.changeRepositoryConfig).toHaveBeenCalledWith(
       env,
       application.id,
       expect.objectContaining({ scale: { replicas: 3 } }),
       BLOB,
+      expect.stringMatching(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[47][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      ),
     );
     expect(page.text()).toContain(
-      'Pull request #12 opened. Merging it into main deploys the change.',
+      'Pull request #12 opened. Merging it into main deploys the change, unless the environment is protected.',
     );
     expect(document.activeElement?.getAttribute('role')).toBe('status');
     expect(page.root().querySelector<HTMLAnchorElement>('a[href]')?.href).toBe(
@@ -190,6 +194,25 @@ describe("a Git application's shipkeep.yml, edited here (#214)", () => {
     expect(page.root().querySelector('pre')).toBeNull();
     expect(page.editor()?.value).toBe(`${TEXT}scale:\n  replicas: 3\n`);
     expect(document.activeElement).toBe(page.editor());
+  });
+
+  it('keeps a draft started while the file is read again after a write', async () => {
+    const page = setup();
+    await page.settle();
+    page.type(`${TEXT}scale:\n  replicas: 3\n`);
+    await page.review();
+    let answer: (file: RepositoryConfig) => void = () => undefined;
+    page.api.repositoryConfig.mockImplementationOnce(
+      () => new Promise<RepositoryConfig>((resolve) => (answer = resolve)),
+    );
+    page.button('Open a pull request')?.click();
+    await page.settle();
+    // The next change, typed before the branch's file came back.
+    const next = `${TEXT}scale:\n  replicas: 4\n`;
+    page.type(next);
+    answer(file());
+    await page.settle();
+    expect(page.editor()?.value).toBe(next);
   });
 
   it('commits when the project says so', async () => {

@@ -130,18 +130,22 @@ export class DeliveryApi extends WorkspaceApi {
       ),
     );
   }
-  /** Writes that change to the repository, as a pull request or a commit (#214). */
+  /**
+   * Writes that change to the repository, as a pull request or a commit (#214). `key` makes a
+   * retry answer the first answer instead of writing the change again.
+   */
   changeRepositoryConfig(
     environment: EnvironmentRef,
     applicationId: string,
     config: object,
     blobSha: string,
+    key: string,
   ): Promise<WrittenConfigChange> {
     return this.required(() =>
       this.client.POST(
         '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/repository-config/changes',
         {
-          params: { path: { ...environment, applicationId } },
+          params: { ...this.mutation(key), path: { ...environment, applicationId } },
           body: { config: { ...config }, blobSha },
         },
       ),
