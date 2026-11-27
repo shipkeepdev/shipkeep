@@ -1,4 +1,4 @@
-import { createHash, sign, verify } from 'node:crypto';
+import { createHash, createPublicKey, sign, verify } from 'node:crypto';
 
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
 import { Secret } from '@shipkeep/domain';
@@ -12,6 +12,8 @@ import {
   FLEET_TRANSACTION,
   type FleetTransaction,
   type IssuedCertificate,
+  type RegistryPublicKey,
+  type RegistryTokenKeyProvider,
 } from '../../application/ports';
 import { installationKeyCreated } from '../../domain/events';
 import { nodeSpiffeId } from '../../domain/node';
@@ -40,6 +42,19 @@ function publicKeyFingerprint(publicKeyPem: string): string {
   return `sha256:${createHash('sha256').update(publicKeyPem.trim()).digest('hex')}`;
 }
 
+/** The JWK and key id Distribution matches a token's `kid` against. */
+function registryPublicKey(publicKeyPem: string): RegistryPublicKey {
+  const key = createPublicKey(publicKeyPem);
+  const jwk = key.export({ format: 'jwk' });
+  if (jwk.kty !== 'OKP' || jwk.crv !== 'Ed25519' || typeof jwk.x !== 'string')
+    throw new Error('the registry key is not an Ed25519 key');
+  const der = key.export({ type: 'spki', format: 'der' });
+  return {
+    keyId: createHash('sha256').update(der).digest('base64url'),
+    jwk: { kty: 'OKP', crv: 'Ed25519', x: jwk.x },
+  };
+}
+
 interface LoadedKey {
   certificatePem: string | null;
   publicKeyPem: string;
@@ -56,11 +71,16 @@ interface LoadedKey {
  */
 @Injectable()
 export class X509CertificateAuthority
-  implements CertificateAuthority, ConfirmationKeyProvider, OnApplicationBootstrap
+  implements
+    CertificateAuthority,
+    ConfirmationKeyProvider,
+    RegistryTokenKeyProvider,
+    OnApplicationBootstrap
 {
   private readonly logger = new Logger(X509CertificateAuthority.name);
   private ca: LoadedKey | undefined;
   private confirmation: LoadedKey | undefined;
+  private registry: (LoadedKey & { public: RegistryPublicKey }) | undefined;
 
   constructor(
     @Inject(INSTALLATION_KEY_STORE) private readonly store: InstallationKeyStore,
@@ -72,6 +92,8 @@ export class X509CertificateAuthority
   async onApplicationBootstrap(): Promise<void> {
     this.ca = await this.loadOrCreate('ca');
     this.confirmation = await this.loadOrCreate('confirmation');
+    const registry = await this.loadOrCreate('registry');
+    this.registry = { ...registry, public: registryPublicKey(registry.publicKeyPem) };
     this.logger.log({ caFingerprint: await this.caFingerprint() }, 'installation CA ready');
   }
 
@@ -109,6 +131,19 @@ export class X509CertificateAuthority
   async verifyConfirmation(input: Uint8Array, signature: Uint8Array): Promise<boolean> {
     const key = await this.requireConfirmation();
     return verify(null, input, key.publicKeyPem, signature);
+  }
+
+  async registryKey(): Promise<RegistryPublicKey> {
+    await Promise.resolve();
+    if (!this.registry) throw new Error('installation keys not loaded yet');
+    return this.registry.public;
+  }
+
+  /** Ed25519 signature of a registry token's signing input (ADR 0030). */
+  async signRegistryToken(input: Uint8Array): Promise<Uint8Array> {
+    await Promise.resolve();
+    if (!this.registry) throw new Error('installation keys not loaded yet');
+    return sign(null, input, this.registry.privateKeyPem.expose());
   }
 
   private async requireConfirmation(): Promise<LoadedKey> {
