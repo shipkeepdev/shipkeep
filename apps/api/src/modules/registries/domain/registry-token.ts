@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 /**
  * Tokens of the installation's own registry (ADR 0030). The registry (CNCF Distribution) refuses
  * a request without a bearer token and names the control plane's token endpoint. The Docker
@@ -9,12 +11,12 @@
 export const REGISTRY_TOKEN_SECONDS = 300;
 /** Who signs the tokens: Distribution's `auth.token.issuer`. */
 export const REGISTRY_TOKEN_ISSUER = 'shipkeep';
-/** Bytes of randomness in a grant's password, sent base64url. */
-export const REGISTRY_PASSWORD_BYTES = 32;
+/** Bytes of randomness in a grant's secret, sent base64url as the password of basic auth. */
+export const REGISTRY_SECRET_BYTES = 32;
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const USERNAME = new RegExp(`^(${UUID})\\.(${UUID})$`);
-const PASSWORD = /^[A-Za-z0-9_-]{43}$/;
+const SECRET = /^[A-Za-z0-9_-]{43}$/;
 /** A scope Docker sends: `repository:<name>:<actions>`. Names and actions are checked below. */
 const SCOPE = /^repository:([a-z0-9][a-z0-9._/-]{0,254}):([a-z,*]{1,32})$/;
 const MAX_SCOPES = 8;
@@ -55,25 +57,36 @@ export function parseGrantUsername(
   return match?.[1] && match[2] ? { organizationId: match[1], grantId: match[2] } : undefined;
 }
 
-/** A password this endpoint could have issued: anything else is refused before any lookup. */
-export function wellFormedPassword(value: string): boolean {
-  return PASSWORD.test(value);
+/** A secret this endpoint could have issued: anything else is refused before any lookup. */
+export function wellFormedSecret(value: string): boolean {
+  return SECRET.test(value);
 }
 
 /**
- * Reads a basic authorization header. Undefined for any other scheme, a malformed value, or a
- * user name or password longer than a grant's.
+ * What is stored of a grant's secret: its SHA-256, bound to this purpose as API tokens are. The
+ * secret is 32 random bytes, not a person's password: a slow hash would add nothing.
+ */
+export function grantSecretHash(secret: string): string {
+  return createHash('sha256')
+    .update('shipkeep:registry_grant:')
+    .update(secret, 'utf8')
+    .digest('hex');
+}
+
+/**
+ * Reads a basic authorization header: the user name, and the secret sent as its password.
+ * Undefined for any other scheme or a malformed value.
  */
 export function basicCredentials(
   header: string | undefined,
-): { username: string; password: string } | undefined {
+): { username: string; secret: string } | undefined {
   if (!header || header.length > 512) return undefined;
   const match = /^Basic ([A-Za-z0-9+/]+={0,2})$/i.exec(header);
   if (!match?.[1]) return undefined;
   const decoded = Buffer.from(match[1], 'base64').toString('utf8');
   const colon = decoded.indexOf(':');
   if (colon < 0) return undefined;
-  return { username: decoded.slice(0, colon), password: decoded.slice(colon + 1) };
+  return { username: decoded.slice(0, colon), secret: decoded.slice(colon + 1) };
 }
 
 /**

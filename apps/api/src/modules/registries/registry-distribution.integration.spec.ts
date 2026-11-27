@@ -63,7 +63,7 @@ describe('the installation registry with Distribution', () => {
     const answer = await fixture
       .http()
       .get(`/api/v1/registry/token?${query.toString()}`)
-      .set('authorization', basic(grant.username, grant.password.expose()))
+      .set('authorization', basic(grant.username, grant.secret.expose()))
       .expect(200);
     return (answer.body as { token: string }).token;
   };

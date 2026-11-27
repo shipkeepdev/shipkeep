@@ -8,7 +8,7 @@ import {
   parseGrantUsername,
   requestedScopes,
   tokenClaims,
-  wellFormedPassword,
+  wellFormedSecret,
 } from './registry-token';
 
 const ORG = '0190f5a8-7b1c-7e2d-8f3a-0000000000aa';
@@ -38,10 +38,10 @@ describe('registry grant credentials', () => {
   });
 
   it('reads a basic header, and nothing else', () => {
-    expect(basicCredentials(basic('user', 'p:ss'))).toEqual({ username: 'user', password: 'p:ss' });
+    expect(basicCredentials(basic('user', 'p:ss'))).toEqual({ username: 'user', secret: 'p:ss' });
     expect(basicCredentials(`basic ${Buffer.from('u:p').toString('base64')}`)).toEqual({
       username: 'u',
-      password: 'p',
+      secret: 'p',
     });
     for (const other of [
       undefined,
@@ -54,15 +54,15 @@ describe('registry grant credentials', () => {
       expect(basicCredentials(other), String(other)).toBeUndefined();
   });
 
-  it('accepts only a password of the length and alphabet it issues', () => {
-    expect(wellFormedPassword('A'.repeat(43))).toBe(true);
+  it('accepts only a secret of the length and alphabet it issues', () => {
+    expect(wellFormedSecret('A'.repeat(43))).toBe(true);
     for (const other of [
       'A'.repeat(42),
       'A'.repeat(44),
       `${'A'.repeat(42)}=`,
       `${'A'.repeat(42)}/`,
     ])
-      expect(wellFormedPassword(other), other).toBe(false);
+      expect(wellFormedSecret(other), other).toBe(false);
   });
 });
 

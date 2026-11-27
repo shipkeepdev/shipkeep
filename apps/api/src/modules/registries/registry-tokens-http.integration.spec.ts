@@ -83,7 +83,7 @@ describe('registry tokens over HTTP', () => {
   it('answers a five-minute token for the repository, signed with the published key', async () => {
     const grant = await issue(true);
     const repository = `${fixture.organizationId}/${applicationId}`;
-    const answer = await ask(basic(grant.username, grant.password.expose()), [
+    const answer = await ask(basic(grant.username, grant.secret.expose()), [
       `repository:${repository}:pull,push`,
       `repository:${fixture.organizationId}/someone-else:pull`,
     ])
@@ -118,11 +118,11 @@ describe('registry tokens over HTTP', () => {
     ).toBe(true);
 
     // Only the password's hash is stored, and the grant is audited without it.
-    const stored = await admin.query<{ password_sha256: string }>(
-      'SELECT password_sha256 FROM registry_grants WHERE organization_id = $1',
+    const stored = await admin.query<{ secret_sha256: string }>(
+      'SELECT secret_sha256 FROM registry_grants WHERE organization_id = $1',
       [fixture.organizationId],
     );
-    expect(JSON.stringify(stored.rows)).not.toContain(grant.password.expose());
+    expect(JSON.stringify(stored.rows)).not.toContain(grant.secret.expose());
     const events = await auditLog().findMany({ where: { action: 'registry.grant_issued' } });
     expect(events.at(-1)).toMatchObject({
       actorKind: 'system',
@@ -130,20 +130,20 @@ describe('registry tokens over HTTP', () => {
       targetId: applicationId,
       metadata: { repository, push: true },
     });
-    expect(JSON.stringify(events)).not.toContain(grant.password.expose());
+    expect(JSON.stringify(events)).not.toContain(grant.secret.expose());
   });
 
   it('grants a deploying server pull only, and nothing beyond the grant', async () => {
     const grant = await issue(false);
     const repository = `${fixture.organizationId}/${applicationId}`;
-    const answer = await ask(basic(grant.username, grant.password.expose()), [
+    const answer = await ask(basic(grant.username, grant.secret.expose()), [
       `repository:${repository}:pull,push`,
     ]).expect(200);
     expect(claims((answer.body as { token: string }).token).body['access']).toEqual([
       { type: 'repository', name: repository, actions: ['pull'] },
     ]);
     // Without a scope, as `docker login` asks: a token that grants nothing.
-    const bare = await ask(basic(grant.username, grant.password.expose())).expect(200);
+    const bare = await ask(basic(grant.username, grant.secret.expose())).expect(200);
     expect(claims((bare.body as { token: string }).token).body['access']).toEqual([]);
   });
 
@@ -158,12 +158,12 @@ describe('registry tokens over HTTP', () => {
     const answers = await Promise.all(
       [
         undefined,
-        `Bearer ${grant.password.expose()}`,
-        basic(grant.username, `${grant.password.expose().slice(0, -1)}A`),
+        `Bearer ${grant.secret.expose()}`,
+        basic(grant.username, `${grant.secret.expose().slice(0, -1)}A`),
         basic(grant.username, 'short'),
-        basic(`${other}.${grant.username.split('.')[1] ?? ''}`, grant.password.expose()),
-        basic(expired.username, expired.password.expose()),
-        basic(`${grant.username}' OR '1'='1`, grant.password.expose()),
+        basic(`${other}.${grant.username.split('.')[1] ?? ''}`, grant.secret.expose()),
+        basic(expired.username, expired.secret.expose()),
+        basic(`${grant.username}' OR '1'='1`, grant.secret.expose()),
       ].map((authorization) => ask(authorization).expect(401)),
     );
     // The same problem, whatever was wrong: only the request's own identifier differs.
@@ -178,7 +178,7 @@ describe('registry tokens over HTTP', () => {
     await fixture
       .http()
       .get(`${TOKEN}?service=evil.example`)
-      .set('authorization', basic(grant.username, grant.password.expose()))
+      .set('authorization', basic(grant.username, grant.secret.expose()))
       .expect(401);
   });
 });
