@@ -57,6 +57,8 @@ import {
 import {
   ACTION_QUEUE,
   type ActionQueue,
+  BUILD_TOKENS,
+  type BuildTokens,
   DEPLOYMENT_STORE,
   DEPLOYMENT_TRANSACTION,
   type DeploymentStore,
@@ -69,6 +71,20 @@ import {
 } from './ports';
 
 /** Agent actions get an hour: release tasks and health probes are bounded well below it. */
+/** The states of a build action that has ended: its token is no longer needed. */
+const BUILD_ENDED: ReadonlySet<string> = new Set([
+  'succeeded',
+  'failed',
+  'cancelled',
+  'compensated',
+  'expired',
+]);
+
+/** The key of a deployment's build action (ADR 0030). */
+function buildKey(deploymentId: string): string {
+  return `d:${deploymentId}:build`;
+}
+
 const ACTION_LIFETIME_MS = 3600_000;
 /** Decisions applied in one run before yielding; each one moves the deployment forward. */
 const MAX_DECISIONS = 20;
@@ -100,6 +116,7 @@ export class DeploymentPipeline {
     @Inject(REPOSITORY_SOURCE) private readonly repositories: RepositorySource,
     private readonly grants: RegistryGrants,
     @Inject(REGISTRY_SERVICE) private readonly registryHost: string,
+    @Inject(BUILD_TOKENS) private readonly buildTokens: BuildTokens,
   ) {}
 
   /** `wait` when agents still work for it, `done` when it finished or no longer exists. */
@@ -108,11 +125,21 @@ export class DeploymentPipeline {
     deploymentId: string,
     clock = () => new Date(),
   ): Promise<'wait' | 'done'> {
+    let revoked = false;
     for (let round = 0; round < MAX_DECISIONS; round++) {
       const loaded = await this.transaction.runTenant(organizationId, () =>
         this.load(deploymentId),
       );
       if (!loaded) return 'done';
+      // Once its build has ended, whatever the deployment does next, its Git token is revoked
+      // (ADR 0030). A later run finds it taken already.
+      if (
+        !revoked &&
+        BUILD_ENDED.has(loaded.context.steps.get(buildKey(deploymentId))?.state ?? '')
+      ) {
+        revoked = true;
+        await this.revokeBuildToken(loaded, clock());
+      }
       let decision: PipelineDecision;
       try {
         decision = plan(loaded.context);
@@ -587,6 +614,34 @@ export class DeploymentPipeline {
         await this.pipeline.stop(loaded.application.id, [loaded.context.release.id], now);
       await this.releaseDomains(loaded.application, now);
     }
+  }
+
+  /**
+   * Takes the build's Git token out of its action, audited in the same transaction, then asks
+   * GitHub to revoke it outside any transaction (ADR 0030, 0031). Best effort: a token GitHub did
+   * not revoke expires within the hour.
+   */
+  private async revokeBuildToken(loaded: Loaded, now: Date): Promise<void> {
+    const { application, context } = loaded;
+    const token = await this.tenant(application, async () => {
+      const taken = await this.buildTokens.takeBuildToken(
+        application.organizationId,
+        context.deployment.id,
+      );
+      if (taken)
+        await this.events.publish([
+          this.event(
+            'deployment.build_token_revoked',
+            application,
+            'deployment',
+            context.deployment.id,
+            now,
+            {},
+          ),
+        ]);
+      return taken;
+    });
+    if (token) await this.repositories.revoke(token);
   }
 
   /** Frees what nothing serves any more and audits each domain freed (#302). */

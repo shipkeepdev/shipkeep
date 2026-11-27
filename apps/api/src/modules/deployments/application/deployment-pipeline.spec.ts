@@ -261,9 +261,12 @@ function world(
     {
       read: () => Promise.reject(new Error('no repository')),
       buildAccess: () => Promise.reject(new Error('no repository')),
+      revoke: () => Promise.reject(new Error('no repository')),
     },
     { issue: () => Promise.reject(new Error('no grant')) } as unknown as RegistryGrants,
     'cp.example.com',
+    // Nothing is built here: no build token to take.
+    { takeBuildToken: () => Promise.resolve(undefined) },
   );
 
   /** Agents finish every queued action successfully. */

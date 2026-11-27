@@ -154,6 +154,13 @@ export interface AgentActionStore {
     nodeId: string,
     key: string,
   ): Promise<AgentActionRecord | undefined>;
+  /**
+   * The organization's action with this key, whichever node it went to, locked until the
+   * transaction ends. A deployment's keys name it (`d:<deployment>:…`), so they are its own.
+   */
+  lockByKey(organizationId: string, key: string): Promise<AgentActionRecord | undefined>;
+  /** Replaces an action's payload, encrypted as when it was queued. */
+  replacePayload(organizationId: string, id: string, payload: Uint8Array): Promise<void>;
   /** Non-terminal actions whose deadline is still ahead, oldest first, at most 100. */
   deliverable(organizationId: string, nodeId: string, now: Date): Promise<AgentActionRecord[]>;
   /** Whether the node has an unfinished action, other than `exceptId`, whose deadline is ahead. */

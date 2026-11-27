@@ -7,6 +7,7 @@ import {
   InvalidInputError,
   isTenantId,
   NotFoundError,
+  Secret,
 } from '@shipkeep/domain';
 import {
   ACTION_KINDS,
@@ -157,6 +158,29 @@ export class AgentActions {
       ]);
       return { id: record.id, created: true };
     });
+  }
+
+  /**
+   * The Git token of a deployment's build (ADR 0030), taken out of its action once the build has
+   * ended, so that it is revoked once and never while BuildKit may still fetch with it. Undefined
+   * while the build runs, when there is none, or once taken. Runs inside the caller's `runTenant`,
+   * the action locked until it ends.
+   */
+  async takeBuildToken(organizationId: string, deploymentId: string): Promise<Secret | undefined> {
+    if (!isTenantId(deploymentId)) return undefined;
+    const stored = await this.store.lockByKey(organizationId, `d:${deploymentId}:build`);
+    if (!stored || !isTerminalAction(stored.state)) return undefined;
+    const request = fromBinary(ActionRequestSchema, stored.payload);
+    if (request.action.case !== 'buildImage' || request.action.value.gitToken === '')
+      return undefined;
+    const token = new Secret(request.action.value.gitToken);
+    request.action.value.gitToken = '';
+    await this.store.replacePayload(
+      organizationId,
+      stored.id,
+      toBinary(ActionRequestSchema, request),
+    );
+    return token;
   }
 
   /**

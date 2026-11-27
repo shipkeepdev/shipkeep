@@ -1,4 +1,4 @@
-import type { Actor, DeploymentState } from '@shipkeep/domain';
+import type { Actor, DeploymentState, Secret } from '@shipkeep/domain';
 import type { ActionRequest } from '@shipkeep/proto-ts';
 import type { RegistryLogin } from '../../registries/domain/registry-credential';
 
@@ -195,6 +195,16 @@ export interface ActionQueue {
      */
     origin?: { applicationId: string; deploymentId: string };
   }): Promise<{ id: string; created: boolean }>;
+}
+
+export const BUILD_TOKENS = Symbol('BuildTokens');
+/** The Git tokens the fleet's build actions carried (AgentActions, ADR 0030). */
+export interface BuildTokens {
+  /**
+   * Takes the token out of the deployment's build action once the build has ended: undefined
+   * while it runs, without one, or once taken. Runs inside the caller's tenant transaction.
+   */
+  takeBuildToken(organizationId: string, deploymentId: string): Promise<Secret | undefined>;
 }
 
 export const ACTION_HISTORY = Symbol('ActionHistory');

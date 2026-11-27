@@ -47,6 +47,32 @@ export class PrismaAgentActionStore implements AgentActionStore {
     return inserted.count === 1;
   }
 
+  async lockByKey(
+    organizationId: string,
+    idempotencyKey: string,
+  ): Promise<AgentActionRecord | undefined> {
+    const rows = await this.database.client.$queryRaw<{ id: string }[]>`
+      SELECT id FROM agent_actions
+      WHERE organization_id = ${organizationId}::uuid AND idempotency_key = ${idempotencyKey}
+      ORDER BY id LIMIT 1 FOR UPDATE`;
+    const id = rows.at(0)?.id;
+    if (id === undefined) return undefined;
+    const row = await this.database.client.agentAction.findUnique({ where: { id } });
+    return row ? this.record(row) : undefined;
+  }
+
+  async replacePayload(organizationId: string, id: string, payload: Uint8Array): Promise<void> {
+    const payloadEnc = await this.envelope.encryptFor(
+      scope(organizationId),
+      purpose(id),
+      Buffer.from(payload),
+    );
+    await this.database.client.agentAction.updateMany({
+      where: { id, organizationId },
+      data: { payloadEnc: new Uint8Array(payloadEnc) },
+    });
+  }
+
   async findByKey(
     organizationId: string,
     nodeId: string,

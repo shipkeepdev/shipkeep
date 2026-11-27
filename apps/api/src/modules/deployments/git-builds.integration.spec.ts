@@ -52,6 +52,8 @@ describe('deployments built from a repository', () => {
   let admin: Client;
   let nodeId = '';
   const minted: string[] = [];
+  /** The tokens revoked through GitHub, as it received them. */
+  const revoked: string[] = [];
   const manifests: GithubManifests = {
     convert: () =>
       Promise.resolve({
@@ -85,7 +87,10 @@ describe('deployments built from a repository', () => {
       }),
     branchHead: () => Promise.resolve(HEAD),
     file: () => Promise.resolve(served),
-    revoke: () => Promise.resolve(),
+    revoke: (token) => {
+      revoked.push(token.expose());
+      return Promise.resolve();
+    },
   };
 
   beforeAll(async () => {
@@ -121,13 +126,13 @@ describe('deployments built from a repository', () => {
     await fixture.close();
   });
 
-  const queued = async (key: string) => {
+  const queued = async (key: string, node = nodeId) => {
     const stored = await fixture.app
       .get(PrismaUnitOfWork)
       .runTenant(fixture.organizationId, () =>
         fixture.app
           .get<AgentActionStore>(AGENT_ACTION_STORE)
-          .findByKey(fixture.organizationId, nodeId, key),
+          .findByKey(fixture.organizationId, node, key),
       );
     return stored ? fromBinary(ActionRequestSchema, stored.payload).action : undefined;
   };
@@ -203,11 +208,14 @@ describe('deployments built from a repository', () => {
         actions: ['pull', 'push'],
       },
     ]);
-    // Nothing else is queued while the build runs.
+    // Nothing else is queued while the build runs, and its token is not revoked meanwhile.
     const others = await admin.query('SELECT 1 FROM agent_actions WHERE deployment_id = $1', [
       deployment.id,
     ]);
     expect(others.rowCount).toBe(1);
+    const before = revoked.length;
+    await pipeline.run(fixture.organizationId, deployment.id);
+    expect(revoked.length).toBe(before);
 
     // The agent answers the digest it pushed.
     await admin.query(
@@ -231,6 +239,18 @@ describe('deployments built from a repository', () => {
     expect(built.map((event) => event.metadata)).toMatchObject([
       { digest: BUILT, commitSha: HEAD },
     ]);
+    // The build has ended: its token is revoked once, taken out of the action, and audited.
+    expect(revoked.slice(before)).toEqual([TOKEN]);
+    const after = await queued(`d:${deployment.id}:build`);
+    if (after?.case !== 'buildImage') throw new Error('the build action is gone');
+    expect(after.value.gitToken).toBe('');
+    expect(after.value.repoUrl).toBe('https://github.com/acme-corp/built-api.git');
+    const revocations = await auditLog().findMany({
+      where: { action: 'deployment.build_token_revoked', targetId: deployment.id },
+    });
+    expect(revocations).toHaveLength(1);
+    await pipeline.run(fixture.organizationId, deployment.id);
+    expect(revoked.slice(before)).toEqual([TOKEN]);
 
     // Then the replicas pull that digest from the installation's registry, with a pull grant,
     // once the agent has made their network.
@@ -297,6 +317,54 @@ describe('deployments built from a repository', () => {
         commitSha: HEAD,
         targetRef: `${host()}/${fixture.organizationId}/${applicationId}:1`,
       });
+    } finally {
+      served = CONFIG;
+    }
+  });
+
+  it('revokes the token of a build that failed, as the deployment fails', async () => {
+    served = CONFIG.replace('name: built-api', 'name: failed-api');
+    // A server of its own: the other tests' replicas fill the first one.
+    const builder = await enrollTestNode(fixture, {
+      facts: {
+        hostname: 'builder-2.example.com',
+        architecture: 'amd64',
+        cpu_count: 2,
+        memory_bytes: 2 ** 32,
+      },
+      heartbeatAt: new Date(),
+    });
+    try {
+      const created = await fixture
+        .post(`${fixture.environment}/applications/github`, 'owner', {
+          installationId: 41,
+          repositoryId: 779,
+          branch: 'main',
+        })
+        .expect(201);
+      const applicationId = (created.body as { id: string }).id;
+      const deployed = await fixture
+        .post(`${fixture.environment}/applications/${applicationId}/deployments`, 'owner', {})
+        .expect(201);
+      const { deployment } = deployed.body as { deployment: { id: string } };
+      const pipeline = fixture.app.get(DeploymentPipeline);
+      await pipeline.run(fixture.organizationId, deployment.id);
+      const before = revoked.length;
+      await admin.query(
+        `UPDATE agent_actions SET state = 'failed', completed_at = now(), updated_at = now()
+       WHERE deployment_id = $1 AND idempotency_key = $2`,
+        [deployment.id, `d:${deployment.id}:build`],
+      );
+      await pipeline.run(fixture.organizationId, deployment.id);
+      const state = await admin.query<{ state: string }>(
+        'SELECT state FROM deployments WHERE id = $1',
+        [deployment.id],
+      );
+      expect(state.rows).toEqual([{ state: 'failed' }]);
+      expect(revoked.slice(before)).toEqual([TOKEN]);
+      const after = await queued(`d:${deployment.id}:build`, builder);
+      if (after?.case !== 'buildImage') throw new Error('the build action is gone');
+      expect(after.value.gitToken).toBe('');
     } finally {
       served = CONFIG;
     }
