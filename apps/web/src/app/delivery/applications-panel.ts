@@ -59,7 +59,7 @@ run:
             <div [class]="columns + ' grid-table th px-[18px] py-[11px]'">
               <span>{{ 'Name' | t }}</span
               ><span>{{ 'Type' | t }}</span
-              ><span>{{ 'Image' | t }}</span
+              ><span>{{ 'Source' | t }}</span
               ><span>{{ 'State' | t }}</span
               ><span>{{ 'Deployed' | t }}</span>
             </div>
