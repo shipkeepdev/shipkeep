@@ -94,8 +94,13 @@ describe('registered tenant routes for every role', () => {
           route.method === 'GET'
             ? await fixture.get(path, actor)
             : await fixture.post(path, actor, {});
-        // An event stream never ends, so these requests stop at its Accept check (406).
-        const allowedStatus = route.path.endsWith('/events') ? 406 : 200;
+        // An event stream never ends, so these requests stop at its Accept check (406). The
+        // fixture's application runs an image: it has no repository file to read (409).
+        const allowedStatus = route.path.endsWith('/events')
+          ? 406
+          : route.path.endsWith('/repository-config')
+            ? 409
+            : 200;
         const expected = !allowed ? 404 : route.method === 'GET' ? allowedStatus : 400;
         expect(response.status, `${route.method} ${route.path} as ${actor}`).toBe(expected);
       }
