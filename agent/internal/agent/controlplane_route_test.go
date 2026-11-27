@@ -38,7 +38,7 @@ func TestTheControlPlaneRouteIsKeptWhileTheAgentRuns(t *testing.T) {
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		keepControlPlaneRoute(ctx, keeper, caddy.ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080"), 20*time.Millisecond, time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
+		keepControlPlaneRoute(ctx, keeper, caddy.ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080", "127.0.0.1:5000"), 20*time.Millisecond, time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	}()
 	deadline := time.After(5 * time.Second)
 	for checks := 0; checks < 3; {
@@ -71,7 +71,7 @@ func TestAStalledAttemptEndsAfterOneInterval(t *testing.T) {
 	router := &stalledRouter{attempts: make(chan struct{}, 16)}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go keepControlPlaneRoute(ctx, router, caddy.ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080"), 20*time.Millisecond, time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	go keepControlPlaneRoute(ctx, router, caddy.ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080", "127.0.0.1:5000"), 20*time.Millisecond, time.Millisecond, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	for range 2 {
 		select {
 		case <-router.attempts:

@@ -39,6 +39,13 @@ services:
     cgroup_parent: shipkeep-controlplane.slice
     mem_limit: 320m
 
+  # The server's Caddy sends the registry's API (/v2/) here, on loopback (ADR 0030). Losing it
+  # costs a build or a pull until it restarts, not state.
+  registry:
+    ports: ['127.0.0.1:5000:5000']
+    cgroup_parent: shipkeep-controlplane.slice
+    mem_limit: 256m
+
   kek:
     cgroup_parent: shipkeep-controlplane.slice
 
