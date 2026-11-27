@@ -93,7 +93,7 @@ flowchart TB
 1. Push to the tracked branch triggers a webhook. The API verifies the webhook signature.
 2. The `deployments` context reads `shipkeep.yml` at that commit, validates it against the schema, and creates a Deployment in state `queued`.
 3. Scheduling: the scheduler picks nodes for each replica.
-4. Build: the control plane sends `BuildImage` to the server of the first replica (ADR 0030). BuildKit rootless builds, and pushes to the control plane's registry with the action's credentials. State `building` then `built`.
+4. Build: the control plane sends `BuildImage` to the server of the first replica (ADR 0030). BuildKit rootless builds, and pushes to the control plane's registry with the action's credentials. The build runs in its own lane of the agent's journal, so the server's other actions go on, and its output reaches the deployment page live over the log stream (ADR 0032). State `building` then `built`.
 5. Release task (migrations) runs once with `RunReleaseTask` if defined.
 6. For each replica: `PullImage`, `CreateContainer`, `StartContainer`, then health check. On success, `UpsertRoute` adds the new upstream; the old upstream is removed and drained; the old container is stopped.
 7. The routing table is recomputed and pushed to all agents.
