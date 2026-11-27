@@ -149,8 +149,8 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	}
 	options = append(options, actions.WithBuilds(buildkit.Client{
 		Address: "unix://" + a.cfg.Build.Socket,
-		// Railpack reads the repository from this server's disk, for the build's time (ADR 0030).
-		WorkDir:     filepath.Join(a.cfg.Paths.StateDir, "builds"),
+		// Railpack reads the repository from the builds' filesystem, for the build's time (ADR 0030).
+		WorkDir:     a.cfg.Build.WorkDir,
 		CacheSecret: cacheSecret,
 	}, buildOutput))
 	// Node, container and route metrics, sent on the stream when the control plane accepts them.

@@ -26,7 +26,8 @@ func TestDefaultsAreValidOnceControlPlaneIsSet(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
-	if cfg.Paths.StateDir != "/var/lib/shipkeep" || cfg.Log.Format != "json" || cfg.Intervals.Heartbeat != 5*time.Second {
+	// Builds work on their own filesystem (#548), never under the agent's state.
+	if cfg.Paths.StateDir != "/var/lib/shipkeep" || cfg.Build.WorkDir != "/var/lib/shipkeep-build/exports" || cfg.Log.Format != "json" || cfg.Intervals.Heartbeat != 5*time.Second {
 		t.Fatalf("defaults not applied: %+v", cfg)
 	}
 }
@@ -37,7 +38,7 @@ func TestDevDefaultIsValidWithoutFingerprint(t *testing.T) {
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("Validate() error = %v", err)
 	}
-	if !cfg.Dev || cfg.Log.Format != "text" || !strings.HasPrefix(cfg.Paths.StateDir, "/tmp/shipkeep-dev") {
+	if !cfg.Dev || cfg.Log.Format != "text" || !strings.HasPrefix(cfg.Paths.StateDir, "/tmp/shipkeep-dev") || cfg.Build.WorkDir != "/tmp/shipkeep-dev/builds" {
 		t.Fatalf("dev defaults wrong: %+v", cfg)
 	}
 }
@@ -108,6 +109,9 @@ func TestValidateReportsEveryProblem(t *testing.T) {
 		"tcp docker host":               {validYAML() + "docker:\n  host: tcp://10.0.0.5:2375\n", []string{"docker.host: tcp://"}},
 		"junk docker host":              {validYAML() + "docker:\n  host: /var/run/docker.sock\n", []string{"docker.host: must start with unix://"}},
 		"relative caddy socket":         {validYAML() + "caddy:\n  admin_socket: caddy.sock\n", []string{"caddy.admin_socket"}},
+		"relative build directory":      {validYAML() + "build:\n  work_dir: shipkeep-build/exports\n", []string{"build.work_dir: must be an absolute path"}},
+		"traversal build directory":     {validYAML() + "build:\n  work_dir: /var/lib/shipkeep-build/../shipkeep\n", []string{"build.work_dir: must be a clean path"}},
+		"empty build directory":         {validYAML() + "build:\n  work_dir: \"\"\n", []string{"build.work_dir: is required"}},
 		"bad log level":                 {validYAML() + "log:\n  level: verbose\n", []string{"log.level"}},
 		"bad log format":                {validYAML() + "log:\n  format: xml\n", []string{"log.format"}},
 		"heartbeat too short":           {validYAML() + "intervals:\n  heartbeat: 100ms\n", []string{"intervals.heartbeat"}},

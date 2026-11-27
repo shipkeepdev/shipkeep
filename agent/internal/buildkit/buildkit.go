@@ -11,7 +11,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -99,7 +101,7 @@ func (c Client) Build(ctx context.Context, request Request, line func(string)) (
 	request.CacheNamespace = CacheNamespace(c.CacheSecret, request.Target)
 	// One build at a time (ADR 0032): what is here was left by a build an agent restart cut.
 	if c.WorkDir != "" {
-		if err := os.RemoveAll(c.WorkDir); err != nil {
+		if err := emptyDir(c.WorkDir); err != nil {
 			return "", fmt.Errorf("clear the build directory: %w", err)
 		}
 	}
@@ -244,4 +246,23 @@ func (a *registryAuth) Credentials(_ context.Context, request *auth.CredentialsR
 		return &auth.CredentialsResponse{}, nil
 	}
 	return &auth.CredentialsResponse{Username: a.credentials.Username, Secret: a.credentials.Password.Expose()}, nil
+}
+
+// emptyDir removes what dir holds and keeps dir itself: on a server, the installer made it on the
+// builds' filesystem, whose root the agent cannot write (#548). A missing dir is empty.
+func emptyDir(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read %s: %w", dir, err)
+	}
+	for _, entry := range entries {
+		// RemoveAll removes a link, never what it points to.
+		if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+			return fmt.Errorf("remove %s: %w", entry.Name(), err)
+		}
+	}
+	return nil
 }
