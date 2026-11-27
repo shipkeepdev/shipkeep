@@ -56,7 +56,7 @@ The maintainer chose a dedicated stream through the control plane.
 - The API builds the LogsQL query from identifiers it validated for the caller's organization. The user's text is a quoted phrase, so it cannot change the query's filters.
 - The live tail is the same search, followed. Nothing reaches the agent: the tail needs no action either.
 
-Build output and the release command's output use the same stream and labels once builds exist (M3.3). Their details are decided with builds.
+Build output and the release command's output use the same stream and labels once builds exist (M3.3). ADR 0032 decides how for builds: entries carry the action's identifier instead of a container, and are labelled with the deployment.
 
 ## Consequences
 
