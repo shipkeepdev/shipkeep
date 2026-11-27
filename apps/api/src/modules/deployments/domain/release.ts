@@ -45,19 +45,42 @@ export interface ReleaseDraft {
   readonly secrets: readonly string[];
 }
 
-/** Image applications only (M3.4b1): the image is pulled, never built. */
-export function releaseDraft(config: ShipkeepConfig): ReleaseDraft {
-  const image = config.build?.type === 'image' ? config.build.image : undefined;
-  if (!image)
-    throw new InvalidInputError(
-      'unsupported_application_source',
-      'Only image applications can be deployed for now.',
-    );
-  return {
-    image,
-    plan: { build: false, release: config.release !== undefined },
-    secrets: [...new Set(config.secrets ?? [])].sort(),
-  };
+/**
+ * An image application's release pulls its image. A Git application with a Dockerfile builds it
+ * first (ADR 0030): `built.repository` is the application's repository in the installation's
+ * registry, and the release's image is that repository with the release's number as its tag,
+ * which the store sets once the number is known.
+ */
+export function releaseDraft(
+  config: ShipkeepConfig,
+  built?: { readonly repository: string },
+): ReleaseDraft {
+  const secrets = [...new Set(config.secrets ?? [])].sort();
+  const release = config.release !== undefined;
+  if (config.build?.type === 'image' && config.build.image)
+    return { image: config.build.image, plan: { build: false, release }, secrets };
+  if (config.build?.type === 'dockerfile' && built)
+    return { image: built.repository, plan: { build: true, release }, secrets };
+  throw new InvalidInputError(
+    'unsupported_application_source',
+    'Only image applications, and applications built from their repository with a Dockerfile, can be deployed for now.',
+  );
+}
+
+/** The release image a build pushes: the repository, tagged with the release's number. */
+export function builtImage(repository: string, number: number): string {
+  return `${repository}:${String(number)}`;
+}
+
+/**
+ * A path inside the repository as the agent reads it (ADR 0030): `.` segments and empty ones
+ * dropped, so `./api/` is `api` and `.` is the root. The schema already refuses `..`.
+ */
+export function repositoryPath(path: string | undefined): string {
+  return (path ?? '')
+    .split('/')
+    .filter((segment) => segment !== '' && segment !== '.')
+    .join('/');
 }
 
 /** Rejects a deployment whose referenced secrets are not all set; names are not secret. */

@@ -12,7 +12,7 @@ import {
 } from './container-plan';
 import { type ActionReason, reasonText } from '../../fleet/domain/agent-action';
 
-import type { DeploymentRecord } from './release';
+import { type DeploymentRecord, repositoryPath } from './release';
 
 /** One replica of the release on a node (SPEC 4 `Allocation`), placed before it starts. */
 export interface Allocation {
@@ -41,6 +41,8 @@ export interface StepOutcome {
   readonly containerId?: string;
   readonly healthy?: boolean;
   readonly exitCode?: number;
+  /** The manifest a build pushed (ADR 0030). */
+  readonly imageDigest?: string;
   /**
    * Why an unsuccessful action ended as it did, as a code. The text an agent sent never comes
    * this far: a deployment's failure message is built from the code.
@@ -58,9 +60,13 @@ export interface PipelineContext {
   readonly release: {
     readonly id: string;
     readonly number: number;
-    /** Digest-pinned image, once resolved (M3.4c2). */
+    /** The image as the release names it: for a build, the tag it pushes (ADR 0030). */
+    readonly image: string;
+    /** Digest-pinned image, once resolved (M3.4c2) or built. */
     readonly pinnedImage: string | null;
     readonly config: ShipkeepConfig;
+    /** The commit a Git application's release was read at, and is built from. */
+    readonly commitSha: string | null;
   };
   /** Replicas of this release, once placed. */
   readonly allocations: readonly Allocation[];
@@ -84,6 +90,15 @@ export interface PipelineContext {
 export type PipelineStep = { readonly key: string; readonly nodeId: string } & (
   | { readonly kind: 'ensure_network'; readonly network: string }
   | { readonly kind: 'pull_image'; readonly image: string }
+  | {
+      readonly kind: 'build_image';
+      /** The tag the build pushes; its repository is the application's in the registry. */
+      readonly target: string;
+      readonly commit: string;
+      readonly context: string;
+      readonly dockerfile: string;
+      readonly args: Readonly<Record<string, string>>;
+    }
   | {
       readonly kind: 'run_release_task';
       readonly container: ContainerPlan;
@@ -115,6 +130,8 @@ export type PipelineDecision =
   | { readonly kind: 'done' }
   /** Resolve the release image to a digest and record it (M3.4c2). */
   | { readonly kind: 'resolve_image' }
+  /** Record the digest the release's build pushed (ADR 0030). */
+  | { readonly kind: 'record_build'; readonly digest: string }
   /** Place this many replicas and store the allocations (SPEC 6). */
   | { readonly kind: 'place'; readonly replicas: number }
   /** Enqueue these actions (already-enqueued keys are no-ops); no steps means wait. */
@@ -148,13 +165,17 @@ export function plan(context: PipelineContext): PipelineDecision {
   switch (deployment.state) {
     case 'queued':
       // A stop or a maintenance change starts nothing, so it needs no image: it must work when
-      // the registry is down.
-      return deployment.plan.stop || deployment.plan.maintenance || release.pinnedImage
+      // the registry is down. A build makes its image.
+      return deployment.plan.stop ||
+        deployment.plan.maintenance ||
+        deployment.plan.build ||
+        release.pinnedImage
         ? { kind: 'advance' }
         : { kind: 'resolve_image' };
     case 'building':
+      return decide(context, build(context));
     case 'built':
-      return { kind: 'fail', reason: 'Builds are not supported yet.' };
+      return { kind: 'advance' };
     case 'releasing':
       return decide(context, releaseTask(context));
     case 'scheduling':
@@ -240,6 +261,38 @@ function decide(context: PipelineContext, progress: Progress | PipelineDecision)
 
 function place(context: PipelineContext): PipelineDecision {
   return { kind: 'place', replicas: context.release.config.scale?.replicas ?? 1 };
+}
+
+/**
+ * A Git application's build (ADR 0030): on the server of its first replica, placed first, at the
+ * release's commit, pushing the release's tag. Its digest becomes the release's.
+ */
+function build(context: PipelineContext): Progress | PipelineDecision {
+  if (context.release.pinnedImage) return { status: 'done' };
+  const first = context.allocations.at(0);
+  if (!first) return place(context);
+  const commit = context.release.commitSha;
+  if (!commit) return { status: 'failed', reason: 'The release names no commit to build.' };
+  const config = context.release.config.build;
+  const step: PipelineStep = {
+    kind: 'build_image',
+    key: key(context, 'build'),
+    nodeId: first.nodeId,
+    target: context.release.image,
+    commit,
+    context: repositoryPath(config?.context),
+    dockerfile: repositoryPath(config?.dockerfile) || 'Dockerfile',
+    args: Object.fromEntries(
+      Object.entries(config?.args ?? {}).filter(
+        (entry): entry is [string, string] => typeof entry[1] === 'string',
+      ),
+    ),
+  };
+  const progress = chain(context, [step]);
+  if (progress.status !== 'done') return progress;
+  const digest = context.steps.get(step.key)?.imageDigest;
+  if (!digest) return { status: 'failed', reason: 'The build answered no image digest.' };
+  return { kind: 'record_build', digest };
 }
 
 function releaseTask(context: PipelineContext): Progress | PipelineDecision {
@@ -433,6 +486,8 @@ function failedStep(context: PipelineContext): string | undefined {
     const step = stepKey.slice(prefix.length).split(':')[0] ?? 'step';
     const pull = step === 'pull' && outcome.reason ? PULL_FAILURES[outcome.reason] : undefined;
     if (pull) return pull;
+    const built = step === 'build' && outcome.reason ? BUILD_FAILURES[outcome.reason] : undefined;
+    if (built) return built;
     if (outcome.reason === 'image_volume_undeclared') return IMAGE_VOLUME_UNDECLARED;
     if (outcome.reason === 'container_name_taken') return CONTAINER_NAME_TAKEN;
     const text = outcome.reason ? reasonText(outcome.reason) : null;
@@ -463,6 +518,16 @@ const PULL_FAILURES: Partial<Record<ActionReason, string>> = {
   disk_full: 'The server could not pull the image: its disk is full.',
   egress_unguarded:
     "The server refused to pull the image: its Docker daemon does not go through Shipkeep's egress proxy, which keeps a registry from reaching the server's own network. Run the server installer again with --migrate yes to restore it.",
+};
+
+/** What a failed build says, by cause (ADR 0030). */
+const BUILD_FAILURES: Partial<Record<ActionReason, string>> = {
+  build_failed:
+    "The build failed: its output, on this deployment's page, says why. Fix the Dockerfile or the repository, then deploy again.",
+  build_timeout:
+    'The build did not finish within its time limit. Make it faster, for example with a smaller context or cached layers, then deploy again.',
+  builder_unavailable:
+    "The server's builder does not answer. Run the server installer with --migrate yes to add it, or inspect journalctl -u shipkeep-build on that server.",
 };
 
 function prepare(context: PipelineContext, nodeId: string, image: string): PipelineStep[] {

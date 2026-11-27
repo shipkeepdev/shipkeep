@@ -4,6 +4,7 @@ import { ConflictError, type DomainEvent, InvalidInputError, Secret } from '@shi
 import type { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import type { ApplicationStore } from '../../apps/application/ports';
 import type { RegistryCredentialStore } from '../../registries/application/ports';
+import type { RegistryGrants } from '../../registries/application/registry-grants';
 import type { RegistryLogin } from '../../registries/domain/registry-credential';
 import type { SecretStore } from '../../secrets/application/ports';
 import type { StepOutcome } from '../domain/pipeline';
@@ -150,6 +151,7 @@ function world(
         organizationId: ORG,
         projectId: ORG,
         environmentId: ORG,
+        repository: null,
         name: 'billing-api',
       }),
     release: () => Promise.resolve(release),
@@ -255,6 +257,13 @@ function world(
     transaction,
     bus,
     applications,
+    // Image applications only here: nothing is built (git-builds.integration.spec.ts builds).
+    {
+      read: () => Promise.reject(new Error('no repository')),
+      buildAccess: () => Promise.reject(new Error('no repository')),
+    },
+    { issue: () => Promise.reject(new Error('no grant')) } as unknown as RegistryGrants,
+    'cp.example.com',
   );
 
   /** Agents finish every queued action successfully. */

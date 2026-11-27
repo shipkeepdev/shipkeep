@@ -48,6 +48,6 @@ import { RegistryController } from './interface/registry.controller';
       inject: [AppConfig],
     },
   ],
-  exports: [REGISTRY_CREDENTIAL_STORE, RegistryGrants],
+  exports: [REGISTRY_CREDENTIAL_STORE, RegistryGrants, REGISTRY_SERVICE],
 })
 export class RegistriesModule {}
