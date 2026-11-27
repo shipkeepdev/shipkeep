@@ -359,7 +359,9 @@ func TestRealCaddyRestoresThePreviousHostnamesAfterAFailedSwitch(t *testing.T) {
 			TlsMode:   agentv1.TlsMode_TLS_MODE_OFF,
 		}}}}
 	}
-	// Which replica a hostname reaches: its whoami name, or "none" when nothing of this route answers.
+	// Which replica a hostname reaches: its whoami name, or "none" when no route matches it. Caddy
+	// answers a host no route matches with an empty 200. A matcher left behind answers otherwise,
+	// for instance with its upstream's 502, which must never count as unmatched.
 	reaches := func(host string) string {
 		t.Helper()
 		request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://"+address+"/", nil) //nolint:gosec // the CI job names Caddy's address
@@ -372,11 +374,17 @@ func TestRealCaddyRestoresThePreviousHostnamesAfterAFailedSwitch(t *testing.T) {
 			return "error: " + err.Error()
 		}
 		defer response.Body.Close() //nolint:errcheck // read-only body
-		body, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+		body, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+		if err != nil {
+			return "error: " + err.Error()
+		}
 		if name := whoamiName(string(body)); name != "?" {
 			return name
 		}
-		return "none"
+		if response.StatusCode == http.StatusOK && len(body) == 0 {
+			return "none"
+		}
+		return fmt.Sprintf("status %d, %d bytes", response.StatusCode, len(body))
 	}
 	eventually := func(host, want string) {
 		t.Helper()
