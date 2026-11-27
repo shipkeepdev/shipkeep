@@ -18,6 +18,25 @@ export interface RegistryCredentialStore {
   login(organizationId: string, server: string): Promise<RegistryLogin | undefined>;
 }
 
+export const REGISTRY_STORAGE = Symbol('RegistryStorage');
+/**
+ * The installation's registry as the retention reads and prunes it (ADR 0030). Calls carry tokens
+ * the control plane signs for itself. A registry that does not answer as expected throws.
+ */
+export interface RegistryStorage {
+  /** Repository names in order, at most `limit` after `last`. */
+  repositories(last: string | undefined, limit: number): Promise<string[]>;
+  /** The repository's tags, at most `MAX_REGISTRY_TAGS`; none when it has no tag left. */
+  tags(repository: string): Promise<string[]>;
+  /** The digest of the manifest a tag names; undefined when the tag is gone. */
+  digest(repository: string, tag: string): Promise<string | undefined>;
+  /** Deletes a manifest and the tags that name it: false when it was gone already. */
+  deleteManifest(repository: string, digest: string): Promise<boolean>;
+}
+
+/** The most tags the retention reads of one repository. */
+export const MAX_REGISTRY_TAGS = 10_000;
+
 export const REGISTRY_TRANSACTION = Symbol('RegistryTransaction');
 export interface RegistryTransaction {
   runTenant<T>(organizationId: string, work: () => Promise<T>): Promise<T>;

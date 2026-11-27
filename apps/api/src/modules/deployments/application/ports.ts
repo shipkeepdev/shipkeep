@@ -4,6 +4,7 @@ import type { RegistryLogin } from '../../registries/domain/registry-credential'
 
 import type { Application } from '../../apps/domain/application';
 import type { AgentActionView } from '../../fleet/domain/agent-action';
+import type { RetainedRelease } from '../domain/retention';
 import type { StepEvent } from '../domain/timeline';
 import type {
   NodeReplica,
@@ -211,6 +212,23 @@ export interface BuildTokens {
   ): Promise<{ token: Secret; queuedAt: Date } | undefined>;
   /** Removes it from the action: true when this call did. In the caller's tenant transaction. */
   clearBuildToken(organizationId: string, deploymentId: string): Promise<boolean>;
+}
+
+export const RETENTION_STORE = Symbol('RetentionStore');
+/** What image retention reads of an application (ADR 0030). Runs inside `runTenant`. */
+export interface RetentionStore {
+  /**
+   * The application's releases with their deployments, and its environment and project for the
+   * audit; undefined when the application no longer exists.
+   */
+  releases(applicationId: string): Promise<
+    | {
+        readonly projectId: string;
+        readonly environmentId: string;
+        readonly releases: readonly RetainedRelease[];
+      }
+    | undefined
+  >;
 }
 
 export const ACTION_HISTORY = Symbol('ActionHistory');

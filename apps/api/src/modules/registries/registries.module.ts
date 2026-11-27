@@ -11,6 +11,7 @@ import {
   REGISTRY_GRANT_STORE,
   REGISTRY_JWKS_FILE,
   REGISTRY_SERVICE,
+  REGISTRY_STORAGE,
   REGISTRY_TRANSACTION,
 } from './application/ports';
 import { RegistryCommands } from './application/registry-commands';
@@ -18,6 +19,7 @@ import { RegistryGrants } from './application/registry-grants';
 import { RegistryTokens } from './application/registry-tokens';
 import { PrismaRegistryCredentialStore } from './infrastructure/prisma-registry-credential.store';
 import { PrismaRegistryGrantStore } from './infrastructure/prisma-registry-grant.store';
+import { DistributionStorage } from './infrastructure/distribution-storage';
 import { RegistryJwks } from './infrastructure/registry-jwks.file';
 import { RegistryTokenController } from './interface/registry-token.controller';
 import { RegistryController } from './interface/registry.controller';
@@ -36,6 +38,7 @@ import { RegistryController } from './interface/registry.controller';
     RegistryJwks,
     { provide: REGISTRY_CREDENTIAL_STORE, useClass: PrismaRegistryCredentialStore },
     { provide: REGISTRY_GRANT_STORE, useClass: PrismaRegistryGrantStore },
+    { provide: REGISTRY_STORAGE, useClass: DistributionStorage },
     { provide: REGISTRY_TRANSACTION, useExisting: PrismaUnitOfWork },
     {
       provide: REGISTRY_SERVICE,
@@ -48,6 +51,6 @@ import { RegistryController } from './interface/registry.controller';
       inject: [AppConfig],
     },
   ],
-  exports: [REGISTRY_CREDENTIAL_STORE, RegistryGrants, REGISTRY_SERVICE],
+  exports: [REGISTRY_CREDENTIAL_STORE, RegistryGrants, REGISTRY_SERVICE, REGISTRY_STORAGE],
 })
 export class RegistriesModule {}

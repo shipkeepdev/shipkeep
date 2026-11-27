@@ -17,6 +17,8 @@ export async function distribution(
     'storage:',
     '  filesystem:',
     '    rootdirectory: /var/lib/registry',
+    '  delete:',
+    '    enabled: true',
     'http:',
     '  addr: :5000',
     'auth:',
