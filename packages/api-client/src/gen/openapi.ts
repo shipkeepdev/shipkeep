@@ -4988,7 +4988,10 @@ export interface operations {
     readonly changeRepositoryConfig: {
         readonly parameters: {
             readonly query?: never;
-            readonly header?: never;
+            readonly header?: {
+                /** @description Lowercase UUIDv4/v7. A retry with the same key and body is answered with the first answer, kept encrypted for five minutes, and writes nothing again. */
+                readonly "Idempotency-Key"?: string;
+            };
             readonly path: {
                 readonly applicationId: string;
                 readonly environmentId: string;

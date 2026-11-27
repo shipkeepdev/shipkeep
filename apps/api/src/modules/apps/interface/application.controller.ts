@@ -1,8 +1,9 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Req, UseInterceptors } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCookieAuth,
   ApiCreatedResponse,
+  ApiHeader,
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -12,6 +13,7 @@ import { IdentityAttemptLimit } from '../../identity/interface/identity-rate.gua
 import { RequireTenant } from '../../identity/interface/route-access';
 import { type IdentityRequest, resourceContext } from '../../identity/interface/session-http';
 import { ApplicationCommands } from '../application/application-commands';
+import { ApplicationReplayInterceptor } from './application-replay.interceptor';
 import { RepositoryConfigs } from '../application/repository-configs';
 import { EnvironmentClone } from '../application/environment-clone';
 import type { ApplicationTarget } from '../domain/application';
@@ -202,6 +204,13 @@ export class ApplicationController {
   @Post(`${APPLICATIONS}/:applicationId/repository-config/changes`)
   @HttpCode(201)
   @RequireTenant('deploy.run', 'environment')
+  @UseInterceptors(ApplicationReplayInterceptor)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Lowercase UUIDv4/v7. A retry with the same key and body is answered with the first answer, kept encrypted for five minutes, and writes nothing again.',
+  })
   @ApiCreatedResponse({ type: WrittenConfigChangeDto })
   async changeRepositoryConfig(
     @Req() request: IdentityRequest,

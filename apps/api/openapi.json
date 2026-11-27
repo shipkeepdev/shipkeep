@@ -3167,6 +3167,15 @@
               "format": "uuid",
               "type": "string"
             }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Lowercase UUIDv4/v7. A retry with the same key and body is answered with the first answer, kept encrypted for five minutes, and writes nothing again.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "requestBody": {
