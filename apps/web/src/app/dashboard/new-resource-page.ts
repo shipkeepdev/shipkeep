@@ -29,6 +29,8 @@ interface Item {
   readonly cta: string;
   /** Built today: opens the creation form of the chosen environment. */
   readonly ready?: boolean;
+  /** The form it opens on the environment's Resources tab, by its title's id. */
+  readonly form?: string;
 }
 
 const APPS: readonly Item[] = [
@@ -36,8 +38,10 @@ const APPS: readonly Item[] = [
     logo: 'github',
     name: 'GitHub repository',
     sub: 'GitHub App',
-    desc: 'Public or private repositories, signed webhooks and previews per pull request.',
+    desc: 'Public or private repositories, through the organization’s GitHub App and its signed pushes.',
     cta: 'Configure',
+    ready: true,
+    form: 'github-create-title',
   },
   {
     logo: 'gitlab',
@@ -285,7 +289,7 @@ const SERVICES: readonly Item[] = (
                   <button
                     type="button"
                     class="btn btn-sm btn-primary"
-                    (click)="r.ready ? openForm() : notice.notYet(r.name)"
+                    (click)="r.ready ? openForm(r.form) : notice.notYet(r.name)"
                   >
                     {{ r.cta | t }}<sk-icon name="arrow-right" />
                   </button>
@@ -419,8 +423,11 @@ export class NewResourcePage {
     void this.router.navigate([], { queryParams: { project, environment }, replaceUrl: true });
   }
 
-  /** Image applications and shipkeep.yml files are created from the environment's Resources tab. */
-  protected openForm(): void {
+  /**
+   * Image applications, shipkeep.yml files and GitHub repositories are created from the
+   * environment's Resources tab, each by its own form.
+   */
+  protected openForm(form = 'applications-create-title'): void {
     const [project, environment] = this.targetKey().split('/');
     if (!project || !environment) {
       this.notice.show('Create a project and an environment first.');
@@ -430,7 +437,7 @@ export class NewResourcePage {
       ['/orgs', this.organizationId(), 'projects', project, 'environments', environment],
       {
         queryParams: { tab: 'applications' },
-        fragment: 'applications-create-title',
+        fragment: form,
       },
     );
   }

@@ -667,7 +667,9 @@ export class ApplicationPage {
       return {
         title: 'shipkeep.yml',
         ours: 1,
-        desc: 'The configuration of this application. Saving checks it against the schema and against changes made meanwhile.',
+        desc: this.application()?.repository
+          ? 'The configuration of this application, read from its repository at each push.'
+          : 'The configuration of this application. Saving checks it against the schema and against changes made meanwhile.',
         blocks: [],
       };
     if (key === 'rollback')
