@@ -1,7 +1,8 @@
 // Package buildkit drives the server's rootless BuildKit daemon over its gRPC socket (ADR 0030):
-// it fetches a repository at a commit, builds it with BuildKit's Dockerfile frontend and pushes
-// the image to the installation's registry. It never runs a process and never touches the Docker
-// daemon; requests arrive validated by the BuildImage action.
+// it fetches a repository at a commit, builds it with a Dockerfile, Railpack or Nixpacks, and
+// pushes the image to the installation's registry. It never runs a process on the host and never
+// touches the Docker daemon; Railpack and Nixpacks run inside BuildKit, from images and binaries
+// pinned here. Requests arrive validated by the BuildImage action.
 package buildkit
 
 import (
@@ -11,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"github.com/moby/buildkit/client"
@@ -31,8 +33,22 @@ var ErrUnavailable = errors.New("buildkit daemon unavailable")
 
 var digestFormat = regexp.MustCompile(`^sha256:[0-9a-f]{64}$`)
 
+// Kind is what turns the repository into an image (ADR 0030).
+type Kind int
+
+const (
+	// Dockerfile builds with BuildKit's own Dockerfile frontend.
+	Dockerfile Kind = iota
+	// Railpack builds with the plan Railpack writes, through Railpack's frontend.
+	Railpack
+	// Nixpacks builds the Dockerfile Nixpacks writes.
+	Nixpacks
+)
+
 // Request is one build, as the BuildImage action validated it.
 type Request struct {
+	// Kind is the builder: a Dockerfile, Railpack or Nixpacks.
+	Kind Kind
 	// Repository is an HTTPS Git URL, without credentials.
 	Repository string
 	// Commit is the full commit hash fetched.
@@ -42,9 +58,10 @@ type Request struct {
 	Token secret.String
 	// Context is the build context's directory in the repository, relative; empty for its root.
 	Context string
-	// Dockerfile is the Dockerfile's path, relative to Context.
+	// Dockerfile is the Dockerfile's path, relative to Context. Dockerfile builds only.
 	Dockerfile string
-	// Args are the build arguments.
+	// Args are the build arguments. Railpack serves them as build secrets, as Railway does;
+	// Nixpacks declares them in its Dockerfile, which also sets them in the image's environment.
 	Args map[string]string
 	// Target is the reference pushed: the registry's host, the repository and a tag.
 	Target string
@@ -62,6 +79,10 @@ type Credentials struct {
 // Client builds with the daemon at Address, `unix:///…` for its socket.
 type Client struct {
 	Address string
+	// WorkDir holds the copy of the repository and the plan a Railpack build reads from this
+	// server's disk, for that build only. A server runs one build at a time (ADR 0032), so each
+	// Railpack build empties it first, of whatever an interrupted build left.
+	WorkDir string
 }
 
 // Build runs the build and pushes the image, sending each line of its output to line, and answers
@@ -80,23 +101,30 @@ func (c Client) Build(ctx context.Context, request Request, line func(string)) (
 	if err != nil {
 		return "", err
 	}
-	options := SolveOptions(request, tokenName, headerName)
-	options.Session = []session.Attachable{
+	fetch := []session.Attachable{
 		secretsprovider.FromMap(secrets(request.Token, tokenName)),
 		&registryAuth{credentials: request.Registry},
 	}
-	progress := make(chan *client.SolveStatus)
-	printed := make(chan struct{})
-	go func() {
-		defer close(printed)
-		printer := newPrinter(line)
-		for update := range progress {
-			printer.update(update)
-		}
-		printer.flush()
-	}()
-	response, err := daemon.Solve(ctx, nil, options, progress)
-	<-printed
+	output := newPrinter(line)
+	var response *client.SolveResponse
+	switch request.Kind {
+	case Railpack:
+		response, err = c.railpack(ctx, daemon, request, gitSource(request, tokenName, headerName), fetch, output)
+	case Nixpacks:
+		options := client.SolveOpt{Exports: pushTo(request.Target), Session: fetch}
+		build := nixpacksBuild(request, gitSource(request, tokenName, headerName), runtime.GOARCH)
+		response, err = solve(output, func(progress chan *client.SolveStatus) (*client.SolveResponse, error) {
+			return daemon.Build(ctx, options, "", build, progress)
+		})
+	case Dockerfile:
+		options := SolveOptions(request, tokenName, headerName)
+		options.Session = fetch
+		response, err = solve(output, func(progress chan *client.SolveStatus) (*client.SolveResponse, error) {
+			return daemon.Solve(ctx, nil, options, progress)
+		})
+	default:
+		return "", fmt.Errorf("unknown build kind %d", request.Kind)
+	}
 	if err != nil {
 		if code := status.Code(errors.Unwrap(err)); code == codes.Unavailable || status.Code(err) == codes.Unavailable {
 			return "", fmt.Errorf("%w: %w", ErrUnavailable, err)
@@ -110,9 +138,25 @@ func (c Client) Build(ctx context.Context, request Request, line func(string)) (
 	return digest, nil
 }
 
-// SolveOptions is the build without its session: the repository at the commit, as the context
-// and as the Dockerfile's source, BuildKit's Dockerfile frontend, and a push of Target.
-func SolveOptions(request Request, tokenName, headerName string) client.SolveOpt {
+// solve runs one solve, its progress printed as lines. BuildKit closes progress when it ends.
+func solve(output *printer, run func(chan *client.SolveStatus) (*client.SolveResponse, error)) (*client.SolveResponse, error) {
+	progress := make(chan *client.SolveStatus)
+	printed := make(chan struct{})
+	go func() {
+		defer close(printed)
+		for update := range progress {
+			output.update(update)
+		}
+		output.flush()
+	}()
+	response, err := run(progress)
+	<-printed
+	return response, err
+}
+
+// gitSource is the repository at the commit, its context directory only, fetched by BuildKit
+// with the token served under this build's own secret names.
+func gitSource(request Request, tokenName, headerName string) llb.State {
 	gitOptions := []llb.GitOption{
 		llb.GitRef(request.Commit),
 		llb.AuthTokenSecret(tokenName),
@@ -122,7 +166,21 @@ func SolveOptions(request Request, tokenName, headerName string) client.SolveOpt
 	if request.Context != "" {
 		gitOptions = append(gitOptions, llb.GitSubDir(request.Context))
 	}
-	source := llb.Git(request.Repository, "", gitOptions...)
+	return llb.Git(request.Repository, "", gitOptions...)
+}
+
+// pushTo is the image export that pushes target.
+func pushTo(target string) []client.ExportEntry {
+	return []client.ExportEntry{{
+		Type:  client.ExporterImage,
+		Attrs: map[string]string{"name": target, "push": "true"},
+	}}
+}
+
+// SolveOptions is the build without its session: the repository at the commit, as the context
+// and as the Dockerfile's source, BuildKit's Dockerfile frontend, and a push of Target.
+func SolveOptions(request Request, tokenName, headerName string) client.SolveOpt {
+	source := gitSource(request, tokenName, headerName)
 	attrs := map[string]string{"filename": request.Dockerfile}
 	for name, value := range request.Args {
 		attrs["build-arg:"+name] = value
@@ -131,10 +189,7 @@ func SolveOptions(request Request, tokenName, headerName string) client.SolveOpt
 		Frontend:       "dockerfile.v0",
 		FrontendAttrs:  attrs,
 		FrontendInputs: map[string]llb.State{"context": source, "dockerfile": source},
-		Exports: []client.ExportEntry{{
-			Type:  client.ExporterImage,
-			Attrs: map[string]string{"name": request.Target, "push": "true"},
-		}},
+		Exports:        pushTo(request.Target),
 	}
 }
 

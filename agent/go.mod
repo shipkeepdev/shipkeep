@@ -8,6 +8,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/shipkeepdev/shipkeep/lib v0.0.0
 	github.com/sigstore/sigstore-go v1.3.0
+	github.com/tonistiigi/fsutil v0.0.0-20261103125000-e075fd9305eb
 	golang.org/x/sys v0.50.0
 	google.golang.org/grpc v1.85.0
 	google.golang.org/protobuf v1.36.12
@@ -90,7 +91,6 @@ require (
 	github.com/sigstore/timestamp-authority/v2 v2.1.3 // indirect
 	github.com/sirupsen/logrus v1.10.2 // indirect
 	github.com/theupdateframework/go-tuf/v2 v2.4.2 // indirect
-	github.com/tonistiigi/fsutil v0.0.0-20261103125000-e075fd9305eb // indirect
 	github.com/tonistiigi/units v0.0.0-20180711220420-6950e57a87ea // indirect
 	github.com/transparency-dev/formats v0.1.1 // indirect
 	github.com/transparency-dev/merkle v0.0.2 // indirect
