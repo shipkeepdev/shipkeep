@@ -737,7 +737,7 @@ main() {
     return 0
   fi
   read_image "$here/image"
-  for file in compose.yml compose.single-machine.yml Caddyfile backup.sh; do
+  for file in compose.yml compose.single-machine.yml Caddyfile registry.yml backup.sh; do
     [[ -f $here/$file && ! -L $here/$file ]] || fail "Run this installer from a release bundle: $file is missing."
   done
   assert_root_directory "$directory"
@@ -774,6 +774,8 @@ main() {
     cgroup2_recursiveprot /proc/self/mounts || fail 'Applications on this machine need cgroup v2 mounted with memory_recursiveprot (systemd 247 or later).'
     listeners=$(ss -H -ltn 'sport = :3000') || fail 'Cannot inspect TCP ports.'
     [[ -z $listeners ]] || fail 'Port 3000 is already in use on this machine; the control plane listens there on loopback.'
+    listeners=$(ss -H -ltn 'sport = :5000') || fail 'Cannot inspect TCP ports.'
+    [[ -z $listeners ]] || fail 'Port 5000 is already in use on this machine; the registry listens there on loopback.'
     listeners=$(ss -H -ltn 'sport = :7480') || fail 'Cannot inspect TCP ports.'
     [[ -z $listeners ]] || fail 'Port 7480 is already in use on this machine; the egress proxy of the server listens there.'
     for file in /etc/systemd/system/shipkeep-controlplane.slice /etc/shipkeep; do
@@ -843,7 +845,7 @@ main() {
   [[ -d $directory ]] || install -d -m 0755 "$directory"
   assert_root_directory "$directory"
   writing=1
-  install -m 0644 "$here/compose.yml" "$here/compose.single-machine.yml" "$here/Caddyfile" "$directory/"
+  install -m 0644 "$here/compose.yml" "$here/compose.single-machine.yml" "$here/Caddyfile" "$here/registry.yml" "$directory/"
   # Instance backup and restore (ADR 0026).
   install -m 0755 "$here/backup.sh" "$directory/"
   # What a run stopped before .env left behind: never used, since nothing started without .env.

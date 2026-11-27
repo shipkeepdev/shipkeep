@@ -578,7 +578,7 @@ refused write_env "$work/settings/.env" || die 'an existing settings file was ov
 ln -s "$work/settings/elsewhere" "$work/settings/.env.new"
 refused write_env "$work/settings/.env.new" || die 'the settings were written through a link'
 [[ ! -e $work/settings/elsewhere ]] || die 'the settings followed a link'
-cp deploy/control-plane/compose.yml deploy/control-plane/Caddyfile "$work/settings/"
+cp deploy/control-plane/compose.yml deploy/control-plane/Caddyfile deploy/control-plane/registry.yml "$work/settings/"
 docker compose --project-directory "$work/settings" config --quiet
 [[ $(grep -c '' "$work/settings/.env") == 10 ]] || die 'unexpected settings file'
 # An installation without email (ADR 0020) leaves the mail settings empty: the compose file
@@ -587,10 +587,15 @@ mkdir "$work/no-email"
 # shellcheck disable=SC2034
 smtp_host='' smtp_port='' smtp_from='' smtp_user='' smtp_password=''
 write_env "$work/no-email/.env"
-cp deploy/control-plane/compose.yml deploy/control-plane/Caddyfile "$work/no-email/"
+cp deploy/control-plane/compose.yml deploy/control-plane/Caddyfile deploy/control-plane/registry.yml "$work/no-email/"
 docker compose --project-directory "$work/no-email" config --format json >"$work/no-email/config.json"
 grep -q '"SMTP_HOST": ""' "$work/no-email/config.json" || die 'an installation without email does not hand an empty SMTP host'
 grep -q '"SMTP_PORT": "465"' "$work/no-email/config.json" || die 'an installation without email lost the default SMTP port'
+# The registry (ADR 0030) trusts the control plane's token endpoint for the installation's name,
+# reads the key the control plane writes, and starts once the control plane is healthy.
+grep -q '"REGISTRY_AUTH_TOKEN_REALM": "https://shipkeep.example.com/api/v1/registry/token"' "$work/no-email/config.json" || die 'the registry does not name the token endpoint'
+grep -q '"REGISTRY_AUTH_TOKEN_SERVICE": "shipkeep.example.com"' "$work/no-email/config.json" || die 'the registry does not name the installation'
+grep -q '"REGISTRY_JWKS_FILE": "/var/lib/shipkeep-registry/jwks.json"' "$work/no-email/config.json" || die 'the control plane does not write the registry key'
 ! grep -q "$secret" "$work/no-email/.env" || die 'a mail password was written for an installation without email'
 for name in SMTP_HOST SMTP_PORT SMTP_FROM SMTP_USER SMTP_PASSWORD; do
   grep -Fxq -- "$name=\"\"" "$work/no-email/.env" || die "an installation without email does not leave $name empty"
@@ -603,7 +608,7 @@ grep -Eq '^SMTP_HOST=$' "$work/no-email/.env.example" || die 'the example settin
 archive=$(bash deploy/control-plane/build-bundle.sh 1.2.3 "$reference" "$work/bundle")
 [[ $archive == "$work/bundle/shipkeep-control-plane_1.2.3.tar.gz" ]] || die 'unexpected archive name'
 tar -tzf "$archive" | sort >"$work/listing"
-printf 'shipkeep-control-plane/%s\n' '' .env.example Caddyfile LICENSE NOTICE backup.sh compose.single-machine.yml compose.yml image install.sh | cmp -s - "$work/listing" || die 'unexpected bundle content'
+printf 'shipkeep-control-plane/%s\n' '' .env.example Caddyfile LICENSE NOTICE backup.sh compose.single-machine.yml compose.yml image install.sh registry.yml | cmp -s - "$work/listing" || die 'unexpected bundle content'
 tar -xzf "$archive" -C "$work"
 cmp -s "$installer" "$work/shipkeep-control-plane/install.sh" || die 'the bundled installer differs'
 [[ -x $work/shipkeep-control-plane/install.sh ]] || die 'the bundled installer is not executable'
