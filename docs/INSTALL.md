@@ -184,8 +184,8 @@ Builds from a repository run on the server that runs the application, in `shipke
 
 - The installer downloads BuildKit's official release from GitHub and checks it against a SHA-256 written into the installer, which is itself checked by its own digest. It installs `rootlesskit`, `slirp4netns`, `uidmap` and `git` from Ubuntu, and gives the account 65536 subordinate ids after every range already given.
 - A build reaches public addresses only, on any port. The `build` chain of `inet shipkeep_egress` refuses loopback, private, shared and link-local ranges (cloud metadata included), and the server's own addresses except port 443, where its Caddy serves only what the internet sees. The name servers of `/etc/resolv.conf` stay reachable on port 53.
-- Builds run in `shipkeep-build.slice`, at most half the memory, and are the first the kernel kills. BuildKit keeps its cache in `/var/lib/shipkeep-build` within a fifth of the disk, and leaves 15 % of it free.
-- A server installed before builds gets the builder with `--migrate yes` on the installation command. Until then, builds on it fail with "the server's builder does not answer".
+- Builds run in `shipkeep-build.slice`, at most half the memory, and are the first the kernel kills. Between builds, BuildKit's garbage collection keeps its cache in `/var/lib/shipkeep-build` within a fifth of the disk, and frees it when less than 15 % of the disk is left. A build in progress is not bounded by it: a very large build can still fill a disk shared with the applications.
+- An application server installed before builds gets the builder with `--migrate yes` on the installation command. A machine that also runs the control plane cannot get it that way yet (an open question in SPEC, section 16). Until then, builds on such a server fail with "the server's builder does not answer".
 
 On failure, `journalctl -u shipkeep-agent` (or `-u shipkeep-egress` for a refused pull, `-u shipkeep-build` for a build) on the server says why. The installer refuses a server that already has Shipkeep or Caddy; [`deploy/README.md`](../deploy/README.md) lists what to remove to start over.
 
@@ -342,6 +342,8 @@ rm -rf /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep \
 apt-get purge -y caddy
 rm -f /etc/apt/sources.list.d/shipkeep-caddy.sources /etc/apt/keyrings/shipkeep-caddy.gpg /etc/apt/keyrings/shipkeep-caddy.asc
 userdel shipkeep-build; userdel shipkeep-egress; userdel shipkeep-caddy; userdel shipkeep
+# shipkeep was in the builder's group, which userdel kept for that reason.
+groupdel shipkeep-build 2>/dev/null || true
 systemctl daemon-reload
 systemctl restart docker
 # The installer restarts Docker too: forget the restarts counted so far, or systemd refuses one.
