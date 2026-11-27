@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 
 import { IdentityRequestError } from '../identity/identity-api';
+import { PRIVATE_CLIPBOARD } from '../identity/private-clipboard';
 import { I18n } from '../ui/i18n';
 
 import { FleetApi, type FleetNode, type NodeReadoption } from './fleet-api';
@@ -30,9 +31,16 @@ function setup(first: readonly NodeReadoption[]) {
       return Promise.resolve();
     }),
   };
+  const copied: string[] = [];
   TestBed.configureTestingModule({
     imports: [NodeReadoptions],
-    providers: [{ provide: FleetApi, useValue: api }],
+    providers: [
+      { provide: FleetApi, useValue: api },
+      {
+        provide: PRIVATE_CLIPBOARD,
+        useValue: (value: string) => (copied.push(value), Promise.resolve()),
+      },
+    ],
   });
   TestBed.inject(I18n).use('en');
   const fixture = TestBed.createComponent(NodeReadoptions);
@@ -67,6 +75,7 @@ function setup(first: readonly NodeReadoption[]) {
     type,
     text: () => root().textContent.replace(/\s+/g, ' ').trim(),
     changed: () => changed,
+    copied,
     set: (next: readonly NodeReadoption[]) => {
       current = next;
     },
@@ -223,9 +232,13 @@ describe('servers to re-adopt on the Servers page', () => {
       `Check first that edge-a holds this certificate: on that server, this command prints serial=${waiting.certificateSerial}.`,
     );
     const command = (page.fixture.nativeElement as HTMLElement).querySelector('pre.code-box');
-    expect(command?.textContent).toBe(
-      'sudo python3 -c \'import json; print(json.load(open("/var/lib/shipkeep/credentials.json"))["certificate"])\' | openssl x509 -noout -serial | tr A-F a-f',
-    );
+    const expected =
+      'sudo python3 -c \'import json; print(json.load(open("/var/lib/shipkeep/credentials.json"))["certificate"])\' | openssl x509 -noout -serial | tr A-F a-f';
+    expect(command?.textContent).toBe(expected);
+    page.button('Copy the command')?.click();
+    await page.settle();
+    expect(page.copied).toEqual([expected]);
+    expect(page.text()).toContain('Command copied.');
   });
 
   it('adopts nothing when another certificate replaced the one reviewed, and asks for a new review', async () => {

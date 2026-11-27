@@ -12,6 +12,7 @@ import {
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 
 import { MutationRunner } from '../identity/mutation-runner';
+import { PrivateClipboard } from '../identity/private-clipboard';
 import { LocalDate, T } from '../ui/i18n';
 import { required } from '../workspace/validators';
 
@@ -32,7 +33,7 @@ const SERIAL_COMMAND =
 @Component({
   selector: 'sk-node-readoptions',
   imports: [LocalDate, ReactiveFormsModule, T],
-  providers: [MutationRunner],
+  providers: [MutationRunner, PrivateClipboard],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (rows().length || readopted() || unread()) {
@@ -134,8 +135,19 @@ const SERIAL_COMMAND =
                         </p>
                         <pre
                           class="code-box"
+                          tabindex="0"
                           [attr.aria-label]="'Command to read the serial' | t"
                           >{{ serialCommand }}</pre>
+                        <div class="flex flex-wrap items-center gap-2.5">
+                          <button class="btn btn-sm" type="button" (click)="copyCommand()">
+                            {{ 'Copy the command' | t }}
+                          </button>
+                          @if (clipboard.message(); as message) {
+                            <span class="text-[12px] text-mute" role="status">{{
+                              (message.startsWith('Copied') ? 'Command copied.' : message) | t
+                            }}</span>
+                          }
+                        </div>
                       </div>
                       <p class="text-[12.5px] leading-[1.55] text-mute">
                         {{
@@ -209,6 +221,7 @@ const SERIAL_COMMAND =
 export class NodeReadoptions {
   private readonly api = inject(FleetApi);
   protected readonly runner = inject(MutationRunner);
+  protected readonly clipboard = inject(PrivateClipboard);
 
   readonly organizationId = input.required<string>();
   /** The organization's servers, for their names. */
@@ -304,7 +317,12 @@ export class NodeReadoptions {
 
   protected close(): void {
     this.proof.reset();
+    this.clipboard.reset();
     this.open.set(null);
+  }
+
+  protected async copyCommand(): Promise<void> {
+    await this.clipboard.copy(SERIAL_COMMAND);
   }
 
   protected async readopt(row: { readonly nodeId: string; readonly name: string }): Promise<void> {
