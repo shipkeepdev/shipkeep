@@ -99,7 +99,21 @@ const dashboard: Route[] = [
     data: { crumbs: ['Members & access'] },
     loadComponent: () => import('./access/members-page').then((module) => module.MembersPage),
   },
-  preview('integrations', 'integrations', 'Integrations', ['Integrations']),
+  {
+    path: 'integrations',
+    title: 'Integrations · Shipkeep',
+    data: { crumbs: ['Integrations'] },
+    loadComponent: () =>
+      import('./integrations/integrations-page').then((module) => module.IntegrationsPage),
+  },
+  {
+    // Where GitHub sends an owner back once it created the App (ADR 0031).
+    path: 'integrations/github',
+    title: 'GitHub App · Shipkeep',
+    data: { crumbs: ['Integrations', 'GitHub'] },
+    loadComponent: () =>
+      import('./integrations/github-return-page').then((module) => module.GithubReturnPage),
+  },
   preview('shared-variables', 'sharedvars', 'Shared variables', ['Shared variables']),
   preview('terminal', 'terminal', 'Terminal', ['Terminal']),
   preview('vulnerabilities', 'vulns', 'Vulnerabilities', ['Vulnerabilities']),

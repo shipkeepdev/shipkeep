@@ -1070,8 +1070,6 @@ export const FR: Readonly<Record<string, string>> = {
   'Public addresses of {name}': 'Adresses publiques de {name}',
   'Public or private projects, webhooks and previews per merge request.':
     'Projets publics ou privés, webhooks et previews par merge request.',
-  'Public or private repositories, signed webhooks and previews per pull request.':
-    'Dépôts publics ou privés, webhooks signés et previews par pull request.',
   Queued: 'En file',
   'Read account profile': 'Lire le profil du compte',
   'Read and export the audit log': "Lire et exporter le journal d'audit",
@@ -2016,4 +2014,79 @@ export const FR: Readonly<Record<string, string>> = {
   'You no longer have access to this container.': 'Vous n’avez plus accès à ce conteneur.',
   'The control plane restarted: the session was closed.':
     'Le control plane a redémarré : la session a été fermée.',
+  'Public or private repositories, through the organization’s GitHub App and its signed pushes.':
+    'Dépôts publics ou privés, via l’App GitHub de l’organisation et ses pushs signés.',
+  'The Git sources the organization deploys from.':
+    'Les sources Git depuis lesquelles l’organisation déploie.',
+  'A private GitHub App of this organization: it sends signed pushes and reads only the repositories you install it on.':
+    'Une App GitHub privée de cette organisation : elle envoie des pushs signés et ne lit que les dépôts sur lesquels vous l’installez.',
+  'The GitHub integration could not be read.': 'L’intégration GitHub n’a pas pu être lue.',
+  Connected: 'Connectée',
+  'On the GitHub account {owner}': 'Sur le compte GitHub {owner}',
+  'Install on repositories': 'Installer sur des dépôts',
+  'Open on GitHub': 'Ouvrir sur GitHub',
+  Repositories: 'Dépôts',
+  'GitHub could not be reached. Try again in a moment.':
+    'GitHub n’a pas pu être joint. Réessayez dans un instant.',
+  'GitHub did not answer for {n} installation(s), removed or suspended there.':
+    'GitHub n’a pas répondu pour {n} installation(s), retirée(s) ou suspendue(s) là-bas.',
+  'default branch {branch}': 'branche par défaut {branch}',
+  private: 'privé',
+  'Only the first 500 repositories are listed.': 'Seuls les 500 premiers dépôts sont listés.',
+  'No repository yet: install the App on the repositories Shipkeep may deploy from.':
+    'Aucun dépôt pour l’instant : installez l’App sur les dépôts depuis lesquels Shipkeep peut déployer.',
+  'Reading the repositories…': 'Lecture des dépôts…',
+  'GitHub App': 'App GitHub',
+  'GitHub creates it in about a minute, then you choose the repositories it may read.':
+    'GitHub la crée en une minute environ, puis vous choisissez les dépôts qu’elle peut lire.',
+  'Where GitHub creates the App': 'Où GitHub crée l’App',
+  'My GitHub account': 'Mon compte GitHub',
+  'A GitHub organization': 'Une organisation GitHub',
+  'GitHub organization': 'Organisation GitHub',
+  'Opening GitHub…': 'Ouverture de GitHub…',
+  'Create the GitHub App': 'Créer l’App GitHub',
+  'An owner of the organization creates it.': 'Un propriétaire de l’organisation la crée.',
+  'GitLab, Gitea and Bitbucket are planned.': 'GitLab, Gitea et Bitbucket sont prévus.',
+  'Connecting the App GitHub created…': 'Connexion de l’App créée par GitHub…',
+  'This link expired or was already used. Start again from the integrations.':
+    'Ce lien a expiré ou a déjà servi. Recommencez depuis les intégrations.',
+  'GitHub created the App, but Shipkeep could not keep it. Delete it on GitHub, then start again.':
+    'GitHub a créé l’App, mais Shipkeep n’a pas pu la conserver. Supprimez-la sur GitHub, puis recommencez.',
+  'Open the App on GitHub': 'Ouvrir l’App sur GitHub',
+  'Back to the integrations': 'Retour aux intégrations',
+  'From a GitHub repository': 'Depuis un dépôt GitHub',
+  'Its shipkeep.yml is the configuration. A push to the branch deploys it, unless the environment is protected.':
+    'Son shipkeep.yml est la configuration. Un push sur la branche la déploie, sauf si l’environnement est protégé.',
+  'Connect GitHub first: an owner creates the GitHub App from the integrations.':
+    'Connectez d’abord GitHub : un propriétaire crée l’App GitHub depuis les intégrations.',
+  'Open the integrations': 'Ouvrir les intégrations',
+  'The GitHub App reaches no repository yet: install it on the repositories to deploy from.':
+    'L’App GitHub n’atteint encore aucun dépôt : installez-la sur les dépôts à déployer.',
+  'Path of shipkeep.yml': 'Chemin de shipkeep.yml',
+  'Reading the repository…': 'Lecture du dépôt…',
+  'Create the GitHub App first, from the integrations.':
+    'Créez d’abord l’App GitHub, depuis les intégrations.',
+  'The GitHub App is no longer installed there, or GitHub suspended it.':
+    'L’App GitHub n’est plus installée là, ou GitHub l’a suspendue.',
+  'The GitHub App does not reach this repository: add it to the installation on GitHub.':
+    'L’App GitHub n’atteint pas ce dépôt : ajoutez-le à l’installation sur GitHub.',
+  'This branch does not exist in the repository.': 'Cette branche n’existe pas dans le dépôt.',
+  'The repository has no file at this path on that branch.':
+    'Le dépôt n’a pas de fichier à ce chemin sur cette branche.',
+  'This is not a branch name Git allows.': 'Git n’accepte pas ce nom de branche.',
+  'The path must lead to a .yml or .yaml file in the repository, without .. segments.':
+    'Le chemin doit mener à un fichier .yml ou .yaml du dépôt, sans segment « .. ».',
+  'The shipkeep.yml in the repository is invalid.': 'Le shipkeep.yml du dépôt est invalide.',
+  'Building from the repository is not supported yet: set build.type to image in shipkeep.yml.':
+    'Le build depuis le dépôt n’est pas encore pris en charge : mettez build.type à image dans shipkeep.yml.',
+  'An application with this name already exists in the environment.':
+    'Une application de ce nom existe déjà dans l’environnement.',
+  'Another application already uses one of its domains.':
+    'Une autre application utilise déjà l’un de ses domaines.',
+  'One of its domains is the control plane’s own address.':
+    'L’un de ses domaines est l’adresse du control plane.',
+  'This configuration is the {path} of {repository}, on {branch}. Change it in the repository: a push to {branch} deploys it, unless the environment is protected.':
+    'Cette configuration est le {path} de {repository}, sur {branch}. Modifiez-la dans le dépôt : un push sur {branch} la déploie, sauf si l’environnement est protégé.',
+  'The configuration of this application, read from its repository at each push.':
+    'La configuration de cette application, lue dans son dépôt à chaque push.',
 };

@@ -59,6 +59,18 @@ export class DeliveryApi extends WorkspaceApi {
       ),
     );
   }
+  /** An application whose configuration is a GitHub repository's shipkeep.yml (ADR 0031). */
+  createGithubApplication(
+    environment: EnvironmentRef,
+    body: Schema<'CreateGithubApplicationDto'>,
+  ): Promise<Application> {
+    return this.required(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/github',
+        { body, params: { path: { ...environment } } },
+      ),
+    );
+  }
   /** A new environment with copies of these applications, not deployed (issue #257). */
   cloneEnvironment(
     environment: EnvironmentRef,

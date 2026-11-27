@@ -179,7 +179,8 @@ export async function installWebApp(app: INestApplication, directory: string): P
         "base-uri 'self'",
         "object-src 'none'",
         "frame-ancestors 'none'",
-        "form-action 'self'",
+        // GitHub's manifest flow: the browser posts the App's manifest to github.com (ADR 0031).
+        "form-action 'self' https://github.com",
         'trusted-types angular angular#bundler',
         "require-trusted-types-for 'script'",
       ].join('; '),
