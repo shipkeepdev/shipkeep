@@ -14,6 +14,8 @@ import { REGISTRY_TOKEN_KEY, type RegistryTokenKeyProvider } from '../fleet/appl
 import { RegistryGrants } from './application/registry-grants';
 
 const TOKEN = '/api/v1/registry/token';
+/** The same text with another last character: a wrong secret of the right shape. */
+const otherLast = (text: string) => `${text.slice(0, -1)}${text.endsWith('A') ? 'B' : 'A'}`;
 const basic = (user: string, password: string) =>
   `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`;
 
@@ -159,7 +161,8 @@ describe('registry tokens over HTTP', () => {
       [
         undefined,
         `Bearer ${grant.secret.expose()}`,
-        basic(grant.username, `${grant.secret.expose().slice(0, -1)}A`),
+        // The secret with its last character changed, whatever that character is.
+        basic(grant.username, otherLast(grant.secret.expose())),
         basic(grant.username, 'short'),
         basic(`${other}.${grant.username.split('.')[1] ?? ''}`, grant.secret.expose()),
         basic(expired.username, expired.secret.expose()),
