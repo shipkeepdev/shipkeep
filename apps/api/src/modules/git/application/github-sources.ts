@@ -96,8 +96,8 @@ export class GithubSources implements RepositorySource {
     return { url: `https://github.com/${fullName}.git`, ...minted };
   }
 
-  async revoke(token: Secret): Promise<void> {
-    await this.github.revoke(token);
+  async revoke(token: Secret): Promise<boolean> {
+    return this.github.revoke(token);
   }
 
   /**

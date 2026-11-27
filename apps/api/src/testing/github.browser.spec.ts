@@ -154,7 +154,7 @@ describe('GitHub in Chromium', () => {
       Promise.resolve(
         'version: 1\nname: billing\nbuild:\n  type: dockerfile\nrun:\n  port: 3000\n',
       ),
-    revoke: () => Promise.resolve(),
+    revoke: () => Promise.resolve(true),
   };
 
   beforeAll(async () => {

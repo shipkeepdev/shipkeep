@@ -161,26 +161,51 @@ export class AgentActions {
   }
 
   /**
-   * The Git token of a deployment's build (ADR 0030), taken out of its action once the build has
-   * ended, so that it is revoked once and never while BuildKit may still fetch with it. Undefined
-   * while the build runs, when there is none, or once taken. Runs inside the caller's `runTenant`,
-   * the action locked until it ends.
+   * The Git token a deployment's build still holds once the build has ended (ADR 0030), and when
+   * the build was queued: the token was minted then, and lasts an hour. Undefined while the build
+   * runs, when it has no token, or once the token is cleared. Runs inside the caller's `runTenant`.
    */
-  async takeBuildToken(organizationId: string, deploymentId: string): Promise<Secret | undefined> {
-    if (!isTenantId(deploymentId)) return undefined;
-    const stored = await this.store.lockByKey(organizationId, `d:${deploymentId}:build`);
-    if (!stored || !isTerminalAction(stored.state)) return undefined;
-    const request = fromBinary(ActionRequestSchema, stored.payload);
-    if (request.action.case !== 'buildImage' || request.action.value.gitToken === '')
-      return undefined;
-    const token = new Secret(request.action.value.gitToken);
+  async buildToken(
+    organizationId: string,
+    deploymentId: string,
+  ): Promise<{ token: Secret; queuedAt: Date } | undefined> {
+    const request = await this.endedBuild(organizationId, deploymentId);
+    if (!request) return undefined;
+    return { token: new Secret(request.gitToken), queuedAt: request.queuedAt };
+  }
+
+  /**
+   * Removes the Git token from a deployment's ended build action, once it is revoked or expired.
+   * True when this call removed it: a token is cleared, and audited, once. Runs inside the
+   * caller's `runTenant`, the action locked until it ends.
+   */
+  async clearBuildToken(organizationId: string, deploymentId: string): Promise<boolean> {
+    const request = await this.endedBuild(organizationId, deploymentId);
+    if (!request) return false;
     request.action.value.gitToken = '';
     await this.store.replacePayload(
       organizationId,
-      stored.id,
-      toBinary(ActionRequestSchema, request),
+      request.id,
+      toBinary(ActionRequestSchema, request.decoded),
     );
-    return token;
+    return true;
+  }
+
+  /** The deployment's build action, locked, once it has ended and while it holds a token. */
+  private async endedBuild(organizationId: string, deploymentId: string) {
+    if (!isTenantId(deploymentId)) return undefined;
+    const stored = await this.store.lockByKey(organizationId, `d:${deploymentId}:build`);
+    if (!stored || !isTerminalAction(stored.state)) return undefined;
+    const decoded = fromBinary(ActionRequestSchema, stored.payload);
+    const action = decoded.action;
+    if (action.case !== 'buildImage' || action.value.gitToken === '') return undefined;
+    return {
+      id: stored.id,
+      decoded,
+      action,
+      gitToken: action.value.gitToken,
+      queuedAt: stored.createdAt,
+    };
   }
 
   /**

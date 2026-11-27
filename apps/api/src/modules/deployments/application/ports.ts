@@ -201,10 +201,16 @@ export const BUILD_TOKENS = Symbol('BuildTokens');
 /** The Git tokens the fleet's build actions carried (AgentActions, ADR 0030). */
 export interface BuildTokens {
   /**
-   * Takes the token out of the deployment's build action once the build has ended: undefined
-   * while it runs, without one, or once taken. Runs inside the caller's tenant transaction.
+   * The token the deployment's build action still holds once the build has ended, and when it
+   * was queued: undefined while it runs, without one, or once cleared. Runs inside the caller's
+   * tenant transaction.
    */
-  takeBuildToken(organizationId: string, deploymentId: string): Promise<Secret | undefined>;
+  buildToken(
+    organizationId: string,
+    deploymentId: string,
+  ): Promise<{ token: Secret; queuedAt: Date } | undefined>;
+  /** Removes it from the action: true when this call did. In the caller's tenant transaction. */
+  clearBuildToken(organizationId: string, deploymentId: string): Promise<boolean>;
 }
 
 export const ACTION_HISTORY = Symbol('ActionHistory');

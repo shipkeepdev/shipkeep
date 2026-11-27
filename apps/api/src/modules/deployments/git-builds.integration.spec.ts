@@ -54,6 +54,10 @@ describe('deployments built from a repository', () => {
   const minted: string[] = [];
   /** The tokens revoked through GitHub, as it received them. */
   const revoked: string[] = [];
+  /** Whether GitHub answers a revocation; and the token it mints next, and what runs then. */
+  let revocations = true;
+  let nextToken = () => TOKEN;
+  let onMint: (() => Promise<void>) | undefined;
   const manifests: GithubManifests = {
     convert: () =>
       Promise.resolve({
@@ -69,12 +73,13 @@ describe('deployments built from a repository', () => {
   };
   const github: GithubApi = {
     appJwt: (appId) => new Secret(`jwt-for-${String(appId)}`),
-    installationToken: (_jwt, _installation, scope) => {
+    installationToken: async (_jwt, _installation, scope) => {
       minted.push(JSON.stringify(scope));
-      return Promise.resolve({
-        token: new Secret(TOKEN),
-        expiresAt: new Date(Date.now() + 3_600_000),
-      });
+      const token = nextToken();
+      const hook = onMint;
+      onMint = undefined;
+      await hook?.();
+      return { token: new Secret(token), expiresAt: new Date(Date.now() + 3_600_000) };
     },
     repositories: () => Promise.resolve({ repositories: [], truncated: false }),
     repository: (_token, installationId, repositoryId) =>
@@ -88,8 +93,9 @@ describe('deployments built from a repository', () => {
     branchHead: () => Promise.resolve(HEAD),
     file: () => Promise.resolve(served),
     revoke: (token) => {
+      if (!revocations) return Promise.resolve(false);
       revoked.push(token.expose());
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
   };
 
@@ -368,5 +374,123 @@ describe('deployments built from a repository', () => {
     } finally {
       served = CONFIG;
     }
+  });
+
+  /** A Git application of its own, on a server of its own, deployed and its run started. */
+  const deployedApplication = async (name: string, repositoryId: number, hostname: string) => {
+    served = CONFIG.replace('name: built-api', `name: ${name}`);
+    await enrollTestNode(fixture, {
+      facts: { hostname, architecture: 'amd64', cpu_count: 2, memory_bytes: 2 ** 32 },
+      heartbeatAt: new Date(),
+    });
+    try {
+      const created = await fixture
+        .post(`${fixture.environment}/applications/github`, 'owner', {
+          installationId: 41,
+          repositoryId,
+          branch: 'main',
+        })
+        .expect(201);
+      const applicationId = (created.body as { id: string }).id;
+      const deployed = await fixture
+        .post(`${fixture.environment}/applications/${applicationId}/deployments`, 'owner', {})
+        .expect(201);
+      return {
+        deploymentId: (deployed.body as { deployment: { id: string } }).deployment.id,
+      };
+    } finally {
+      served = CONFIG;
+    }
+  };
+  /** A deployment's build action, wherever placement put it. */
+  const build = async (deploymentId: string) => {
+    const key = `d:${deploymentId}:build`;
+    const found = await admin.query<{ node_id: string }>(
+      'SELECT node_id FROM agent_actions WHERE idempotency_key = $1',
+      [key],
+    );
+    const node = found.rows.at(0)?.node_id;
+    return node ? queued(key, node) : undefined;
+  };
+  const endBuild = (deploymentId: string) =>
+    admin.query(
+      `UPDATE agent_actions SET state = 'failed', completed_at = now(), updated_at = now()
+       WHERE deployment_id = $1 AND idempotency_key = $2`,
+      [deploymentId, `d:${deploymentId}:build`],
+    );
+
+  it('keeps a token GitHub could not revoke, asks again, and clears one that has expired', async () => {
+    const pipeline = fixture.app.get(DeploymentPipeline);
+    const first = await deployedApplication('retried-api', 780, 'builder-3.example.com');
+    await pipeline.run(fixture.organizationId, first.deploymentId);
+    await endBuild(first.deploymentId);
+    revocations = false;
+    try {
+      // GitHub does not answer: the token stays in the action, and the run asks to come back.
+      expect(await pipeline.run(fixture.organizationId, first.deploymentId)).toBe('wait');
+      const kept = await build(first.deploymentId);
+      if (kept?.case !== 'buildImage') throw new Error('the build action is gone');
+      expect(kept.value.gitToken).toBe(TOKEN);
+      expect(
+        await auditLog().count({
+          where: { action: 'deployment.build_token_revoked', targetId: first.deploymentId },
+        }),
+      ).toBe(0);
+      // An hour later the token has expired by itself: it is cleared without GitHub.
+      await admin.query(
+        `UPDATE agent_actions SET created_at = now() - interval '71 minutes'
+         WHERE idempotency_key = $1`,
+        [`d:${first.deploymentId}:build`],
+      );
+      expect(await pipeline.run(fixture.organizationId, first.deploymentId)).toBe('done');
+      const cleared = await build(first.deploymentId);
+      if (cleared?.case !== 'buildImage') throw new Error('the build action is gone');
+      expect(cleared.value.gitToken).toBe('');
+      const events = await auditLog().findMany({
+        where: { action: 'deployment.build_token_revoked', targetId: first.deploymentId },
+      });
+      expect(events.map((event) => event.metadata)).toMatchObject([{ ended: 'expiry' }]);
+    } finally {
+      revocations = true;
+    }
+
+    // GitHub answers again: the next run revokes the token, then clears it.
+    const second = await deployedApplication('recovered-api', 781, 'builder-4.example.com');
+    await pipeline.run(fixture.organizationId, second.deploymentId);
+    await endBuild(second.deploymentId);
+    revocations = false;
+    expect(await pipeline.run(fixture.organizationId, second.deploymentId)).toBe('wait');
+    revocations = true;
+    const before = revoked.length;
+    expect(await pipeline.run(fixture.organizationId, second.deploymentId)).toBe('done');
+    expect(revoked.slice(before)).toEqual([TOKEN]);
+    const events = await auditLog().findMany({
+      where: { action: 'deployment.build_token_revoked', targetId: second.deploymentId },
+    });
+    expect(events.map((event) => event.metadata)).toMatchObject([{ ended: 'github' }]);
+  });
+
+  it('revokes at once a token minted for a build another run queued first', async () => {
+    const pipeline = fixture.app.get(DeploymentPipeline);
+    const { deploymentId } = await deployedApplication('raced-api', 782, 'builder-5.example.com');
+    const unused = 'ghs_fake_token_minted_for_nothing';
+    // While this run mints its token, another run mints one and queues the build with it.
+    nextToken = () => unused;
+    onMint = async () => {
+      nextToken = () => TOKEN;
+      await pipeline.run(fixture.organizationId, deploymentId);
+    };
+    const before = revoked.length;
+    try {
+      await pipeline.run(fixture.organizationId, deploymentId);
+    } finally {
+      nextToken = () => TOKEN;
+      onMint = undefined;
+    }
+    expect(revoked.slice(before)).toEqual([unused]);
+    // The build carries the other run's token, which stays until the build ends.
+    const queuedBuild = await build(deploymentId);
+    if (queuedBuild?.case !== 'buildImage') throw new Error('no build was queued');
+    expect(queuedBuild.value.gitToken).toBe(TOKEN);
   });
 });

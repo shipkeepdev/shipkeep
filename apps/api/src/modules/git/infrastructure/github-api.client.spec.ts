@@ -138,9 +138,15 @@ describe('GitHub REST API as the App', () => {
       expect(error).toBeInstanceOf(ServiceUnavailableException);
       expect((error as Error).message).not.toMatch(/internal detail|evil|network/);
     }
-    await expect(
-      github(() => Promise.reject(new TypeError('down'))).client.revoke(token),
-    ).resolves.toBeUndefined();
+    // A revocation says whether GitHub no longer honours the token: revoked now, or no longer
+    // valid; never when GitHub could not be asked.
+    for (const [make, done] of [
+      [() => new Response(null, { status: 204 }), true],
+      [() => new Response(null, { status: 401 }), true],
+      [() => new Response('internal detail', { status: 500 }), false],
+      [() => Promise.reject(new TypeError('down')), false],
+    ] as const)
+      expect(await github(make).client.revoke(token)).toBe(done);
     // An entry GitHub could not have sent is left out, not the page.
     const page = await github(() =>
       json(200, { total_count: 2, repositories: [repository(0), repository(7)] }),

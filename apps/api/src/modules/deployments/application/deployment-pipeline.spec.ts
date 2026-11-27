@@ -266,7 +266,7 @@ function world(
     { issue: () => Promise.reject(new Error('no grant')) } as unknown as RegistryGrants,
     'cp.example.com',
     // Nothing is built here: no build token to take.
-    { takeBuildToken: () => Promise.resolve(undefined) },
+    { buildToken: () => Promise.resolve(undefined), clearBuildToken: () => Promise.resolve(false) },
   );
 
   /** Agents finish every queued action successfully. */

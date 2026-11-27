@@ -82,7 +82,7 @@ describe('applications from a GitHub repository over HTTP', () => {
     },
     revoke: (token) => {
       revoked.push(token.expose());
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
   };
   const create = (body: Record<string, unknown>, actor: 'owner' | 'outsider' = 'owner') =>

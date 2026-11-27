@@ -47,8 +47,11 @@ export interface RepositorySource {
     organizationId: string,
     location: Pick<RepositoryLocation, 'installationId' | 'repositoryId'>,
   ): Promise<{ url: string; token: Secret; expiresAt: Date }>;
-  /** Revokes a token `buildAccess` minted. Best effort: a token not revoked expires anyway. */
-  revoke(token: Secret): Promise<void>;
+  /**
+   * Revokes a token `buildAccess` minted: true once GitHub no longer honours it, false when GitHub
+   * could not be asked. A token not revoked still expires within the hour.
+   */
+  revoke(token: Secret): Promise<boolean>;
 }
 
 /** A Git application a push may deploy, and whether a push may deploy it by itself (SPEC 7). */
