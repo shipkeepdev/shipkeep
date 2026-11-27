@@ -18,6 +18,9 @@ export type LogLine = Schema<'LogLineDto'>;
 export type BuildOutput = Schema<'BuildOutputDto'>;
 export type BuildLine = Schema<'BuildLineDto'>;
 export type ExecSession = Schema<'ExecSessionDto'>;
+export type RepositoryConfig = Schema<'RepositoryConfigDto'>;
+export type RepositoryConfigPreview = Schema<'RepositoryConfigPreviewDto'>;
+export type WrittenConfigChange = Schema<'WrittenConfigChangeDto'>;
 
 /** Agent actions per page on the application screen. */
 export const AGENT_ACTION_PAGE = 20;
@@ -97,6 +100,49 @@ export class DeliveryApi extends WorkspaceApi {
         {
           params: { path: { ...environment, applicationId } },
           body: { expectedConfigSha, config: { ...config } },
+        },
+      ),
+    );
+  }
+  /** A Git application's shipkeep.yml in its repository, and whether it runs it (#214). */
+  repositoryConfig(environment: EnvironmentRef, applicationId: string): Promise<RepositoryConfig> {
+    return this.required(() =>
+      this.client.GET(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/repository-config',
+        { params: { path: { ...environment, applicationId } } },
+      ),
+    );
+  }
+  /** What a change of that file would write, before anything is written (#214). */
+  previewRepositoryConfig(
+    environment: EnvironmentRef,
+    applicationId: string,
+    config: object,
+    blobSha: string,
+  ): Promise<RepositoryConfigPreview> {
+    return this.required(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/repository-config/preview',
+        {
+          params: { path: { ...environment, applicationId } },
+          body: { config: { ...config }, blobSha },
+        },
+      ),
+    );
+  }
+  /** Writes that change to the repository, as a pull request or a commit (#214). */
+  changeRepositoryConfig(
+    environment: EnvironmentRef,
+    applicationId: string,
+    config: object,
+    blobSha: string,
+  ): Promise<WrittenConfigChange> {
+    return this.required(() =>
+      this.client.POST(
+        '/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/repository-config/changes',
+        {
+          params: { path: { ...environment, applicationId } },
+          body: { config: { ...config }, blobSha },
         },
       ),
     );

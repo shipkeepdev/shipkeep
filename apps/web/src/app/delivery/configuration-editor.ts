@@ -5,32 +5,19 @@ import { IssueText } from '../ui/config-issue';
 import { T } from '../ui/i18n';
 
 import { ConfigurationEditorStore } from './configuration-editor-store';
+import { RepositoryConfigEditor } from './repository-config-editor';
 import { type Application, type EnvironmentRef } from './delivery-api';
 
 @Component({
   selector: 'sk-configuration-editor',
-  imports: [IssueText, T],
+  imports: [IssueText, RepositoryConfigEditor, T],
   providers: [MutationRunner, ConfigurationEditorStore],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section aria-labelledby="configuration-title" class="border-t border-line pt-6">
       <h2 id="configuration-title">{{ 'Configuration' | t }}</h2>
-      @if (application().repository; as repo) {
-        <p id="config-hint" class="hint mb-4">
-          {{
-            'This configuration is the {path} of {repository}, on {branch}. Change it in the repository: a push to {branch} deploys it, unless the environment is protected.'
-              | t: { path: repo.configPath, repository: repo.fullName, branch: repo.branch }
-          }}
-        </p>
-        <label for="configuration-draft">shipkeep.yml</label>
-        <textarea
-          id="configuration-draft"
-          class="block min-h-72 w-full resize-y rounded-md border border-control p-3 font-mono text-sm"
-          spellcheck="false"
-          readonly
-          [value]="store.draft()"
-          aria-describedby="config-hint"
-        ></textarea>
+      @if (application().repository) {
+        <sk-repository-config-editor [application]="application()" [environment]="environment()" />
       } @else {
         <p id="config-hint" class="hint mb-4">
           {{ 'Edit' | t }} <code>shipkeep.yml</code
