@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestRecoveryAfterEveryStepSideEffect(t *testing.T) {
@@ -397,5 +398,67 @@ func TestRecoverCancelsAnOperationThatNeverStarted(t *testing.T) {
 	op, err := store.Recover(t.Context(), request(), plan, nil)
 	if !errors.Is(err, ErrOperationFailed) || op.State != Cancelled || ran {
 		t.Fatalf("an operation that never started was not cancelled cleanly: %v %v %v", op.State, err, ran)
+	}
+}
+
+// ADR 0032: a build runs in its own lane, so the server's other actions go on meanwhile, while two
+// builds, like two other actions, still run one at a time.
+func TestLanesRunSideBySideAndEachOneAtATime(t *testing.T) {
+	store, err := Open(t.Context(), t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close() //nolint:errcheck // test cleanup
+	held := make(chan struct{})
+	release := make(chan struct{})
+	blocking := func(name string, lane Lane) Plan {
+		return Plan{Version: "v1", Lane: lane, Steps: []Step{{Name: name, RetrySafe: true,
+			Apply: func(context.Context) (Outcome, error) {
+				held <- struct{}{}
+				<-release
+				return Outcome{}, nil
+			},
+			Compensate: func(context.Context) error { return nil },
+		}}}
+	}
+	quick := func(lane Lane, ran *bool) Plan {
+		return Plan{Version: "v1", Lane: lane, Steps: []Step{{Name: "quick", RetrySafe: true,
+			Apply:      func(context.Context) (Outcome, error) { *ran = true; return Outcome{}, nil },
+			Compensate: func(context.Context) error { return nil },
+		}}}
+	}
+	operation := func(n int, kind string) Request {
+		return Request{ID: fmt.Sprintf("0192f0c0-0000-7000-8000-%012d", n), Key: fmt.Sprintf("key-%d", n), Kind: kind, PayloadHash: request().PayloadHash}
+	}
+	done := make(chan error, 1)
+	go func() {
+		_, err := store.Execute(t.Context(), operation(1, "build_image"), blocking("build", BuildLane), nil)
+		done <- err
+	}()
+	<-held
+	// While the build runs, an action of the default lane runs to the end.
+	var ranDefault bool
+	bounded, stop := context.WithTimeout(t.Context(), 5*time.Second)
+	defer stop()
+	if op, err := store.Execute(bounded, operation(2, "create_container"), quick(DefaultLane, &ranDefault), nil); err != nil || op.State != Succeeded || !ranDefault {
+		t.Fatalf("default lane blocked by a build: %v %v", op.State, err)
+	}
+	// A second build waits for the first.
+	waiting, cancel := context.WithTimeout(t.Context(), 50*time.Millisecond)
+	defer cancel()
+	var ranBuild bool
+	if _, err := store.Execute(waiting, operation(3, "build_image"), quick(BuildLane, &ranBuild), nil); err == nil || ranBuild {
+		t.Fatalf("two builds ran at once: %v", err)
+	}
+	close(release)
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if op, err := store.Execute(t.Context(), operation(4, "build_image"), quick(BuildLane, &ranBuild), nil); err != nil || op.State != Succeeded || !ranBuild {
+		t.Fatalf("build after the first: %v %v", op.State, err)
+	}
+	// A lane this agent does not know is refused before anything is recorded.
+	if _, err := store.Execute(t.Context(), operation(5, "build_image"), Plan{Version: "v1", Lane: laneCount, Steps: quick(BuildLane, &ranBuild).Steps}, nil); err == nil {
+		t.Fatal("an unknown lane was accepted")
 	}
 }
