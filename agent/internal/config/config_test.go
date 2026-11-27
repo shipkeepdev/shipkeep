@@ -274,6 +274,18 @@ func TestControlPlaneRouteSettings(t *testing.T) {
 	if cfg.ControlPlane.Route.Host != "shipkeep.example.com" || cfg.ControlPlane.Route.Upstream != "127.0.0.1:8080" {
 		t.Fatalf("not read: %+v", cfg.ControlPlane.Route)
 	}
+	// A route written before builds existed sends the registry's API to where the single-machine
+	// Compose file publishes it (ADR 0030); another loopback port can be named.
+	if got := cfg.ControlPlane.Route.RegistryUpstream(); got != "127.0.0.1:5000" {
+		t.Fatalf("registry upstream = %q", got)
+	}
+	named, err := config.Parse([]byte(valid+"    registry: '[::1]:5001'\n"), config.Default())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := named.Validate(); err != nil || named.ControlPlane.Route.RegistryUpstream() != "[::1]:5001" {
+		t.Fatalf("named registry: %v %q", err, named.ControlPlane.Route.RegistryUpstream())
+	}
 	for name, route := range map[string]string{
 		"public upstream":       "    host: shipkeep.example.com\n    upstream: 203.0.113.5:8080\n",
 		"private upstream":      "    host: shipkeep.example.com\n    upstream: 10.0.0.2:8080\n",
@@ -290,6 +302,10 @@ func TestControlPlaneRouteSettings(t *testing.T) {
 		"ip host":               "    host: 203.0.113.5\n    upstream: 127.0.0.1:8080\n",
 		"newline in host":       "    host: \"shipkeep.example.com\\nx\"\n    upstream: 127.0.0.1:8080\n",
 		"oversized host":        "    host: " + strings.Repeat("a", 250) + ".example.com\n    upstream: 127.0.0.1:8080\n",
+		"public registry":       "    host: shipkeep.example.com\n    upstream: 127.0.0.1:8080\n    registry: 203.0.113.5:5000\n",
+		"named registry":        "    host: shipkeep.example.com\n    upstream: 127.0.0.1:8080\n    registry: registry:5000\n",
+		"registry without port": "    host: shipkeep.example.com\n    upstream: 127.0.0.1:8080\n    registry: 127.0.0.1\n",
+		"registry with path":    "    host: shipkeep.example.com\n    upstream: 127.0.0.1:8080\n    registry: 127.0.0.1:5000/v2\n",
 	} {
 		cfg, err := config.Parse([]byte(validYAML()+"  route:\n"+route), config.Default())
 		if err != nil {

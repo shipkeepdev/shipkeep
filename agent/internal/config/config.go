@@ -66,6 +66,21 @@ type LocalRoute struct {
 	Host string `yaml:"host"`
 	// Upstream is the loopback address and port the control plane's HTTP port is published on.
 	Upstream string `yaml:"upstream"`
+	// Registry, optional, is the loopback address and port the installation's registry is
+	// published on (ADR 0030): Host's /v2/ path goes there. DefaultRegistryUpstream when empty, so
+	// that a configuration written before builds existed serves the registry too.
+	Registry string `yaml:"registry"`
+}
+
+// DefaultRegistryUpstream is where compose.single-machine.yml publishes the registry.
+const DefaultRegistryUpstream = "127.0.0.1:5000"
+
+// RegistryUpstream is where Host's /v2/ path goes.
+func (r LocalRoute) RegistryUpstream() string {
+	if r.Registry != "" {
+		return r.Registry
+	}
+	return DefaultRegistryUpstream
 }
 
 // routeHost is a DNS name of at least two labels, lowercase, without a wildcard.
@@ -249,6 +264,9 @@ func (c Config) Validate() error {
 		}
 		if !gateway.LoopbackConnect(route.Upstream) {
 			add("control_plane.route.upstream must be a loopback address with a port, such as 127.0.0.1:8080")
+		}
+		if route.Registry != "" && !gateway.LoopbackConnect(route.Registry) {
+			add("control_plane.route.registry must be a loopback address with a port, such as 127.0.0.1:5000")
 		}
 	}
 
