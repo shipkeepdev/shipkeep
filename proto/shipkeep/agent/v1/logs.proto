@@ -35,7 +35,7 @@ message LogBatch {
 
 message LogEntry {
   // The managed container's name, as the agent created it; the control plane maps it to an
-  // allocation and never writes it as a label.
+  // allocation and never writes it as a label. Empty for an action's output (action_id).
   string container = 1;
   LogStream stream = 2;
   // Docker's timestamp of the line.
@@ -44,6 +44,9 @@ message LogEntry {
   string line = 4;
   // The line was longer and was cut.
   bool truncated = 5;
+  // The action whose output this is, a build's (ADR 0032); container is then empty. The control
+  // plane labels the line with the deployment it queued that action for.
+  string action_id = 6;
 }
 
 enum LogStream {

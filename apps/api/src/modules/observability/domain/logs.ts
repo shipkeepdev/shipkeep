@@ -28,9 +28,13 @@ export const MAX_LOG_WRITES = 256;
 export const LOG_BATCH_MIN_BYTES = 16 * 1024;
 
 const CONTAINER = /^(?:[a-f0-9]{64}|sk-[a-z0-9-]{1,60})$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 export interface LogInput {
+  /** Empty for an action's output. */
   readonly container: string;
+  /** The action whose output this is, a build's (ADR 0032); empty for a container's line. */
+  readonly actionId: string;
   readonly stream: 'stdout' | 'stderr';
   readonly time: Date;
   /** The nanoseconds within its second, as Docker stamped it: a resent line has the same. */
@@ -47,43 +51,62 @@ export interface LogRecord {
   readonly project: string;
   readonly env: string;
   readonly app: string;
+  /** The replica, or `build` for a build's output. */
   readonly instance: string;
   readonly node: string;
-  readonly stream: 'stdout' | 'stderr';
+  readonly stream: 'stdout' | 'stderr' | 'build';
+  /** The deployment a build's output belongs to (ADR 0032). */
+  readonly deployment?: string;
   readonly truncated?: true;
+}
+
+/** A build action the control plane queued on a node, and its deployment (ADR 0032). */
+export interface BuildTarget {
+  readonly actionId: string;
+  readonly deploymentId: string;
+  readonly applicationId: string;
+  readonly projectId: string;
+  readonly environmentId: string;
 }
 
 /** The well-formed entries of a batch, within its bounds. */
 export function validEntries(entries: readonly LogInput[]): LogInput[] {
-  return entries
-    .slice(0, MAX_LOG_ENTRIES)
-    .filter(
-      (entry) =>
-        CONTAINER.test(entry.container) &&
-        Number.isFinite(entry.time.getTime()) &&
-        Number.isInteger(entry.nanos) &&
-        entry.nanos >= 0 &&
-        entry.nanos < 1_000_000_000 &&
-        utf8.encode(entry.line).length <= MAX_LOG_LINE_BYTES,
-    );
+  return entries.slice(0, MAX_LOG_ENTRIES).filter(
+    (entry) =>
+      // A container's line, or an action's output, never both.
+      (entry.actionId === ''
+        ? CONTAINER.test(entry.container)
+        : entry.container === '' && UUID.test(entry.actionId)) &&
+      Number.isFinite(entry.time.getTime()) &&
+      Number.isInteger(entry.nanos) &&
+      entry.nanos >= 0 &&
+      entry.nanos < 1_000_000_000 &&
+      utf8.encode(entry.line).length <= MAX_LOG_LINE_BYTES,
+  );
 }
 
 /**
  * The records of entries whose container is one of the node's placed allocations, labelled from
- * that allocation: an agent can write lines for its own workloads only, and none of its names
- * becomes a label. Entries of other containers, or past retention, are dropped.
+ * that allocation, and of entries whose action is a build the control plane queued on that node,
+ * labelled with its deployment (ADR 0032): an agent can write lines for its own workloads and
+ * builds only, and none of its names becomes a label. Other entries, or past retention, are
+ * dropped.
  */
 export function logRecords(
   entries: readonly LogInput[],
   targets: readonly ContainerTarget[],
   scope: { organizationId: string; nodeId: string },
   now: Date,
+  builds: readonly BuildTarget[] = [],
 ): LogRecord[] {
   const byName = new Map(targets.map((target) => [target.container, target]));
+  const byAction = new Map(builds.map((build) => [build.actionId, build]));
   const records: LogRecord[] = [];
   for (const entry of entries) {
-    const target = byName.get(entry.container);
-    if (!target) continue;
+    const target = entry.actionId === '' ? byName.get(entry.container) : undefined;
+    const build = entry.actionId === '' ? undefined : byAction.get(entry.actionId);
+    const owner = target ?? build;
+    if (!owner) continue;
     const age = now.getTime() - entry.time.getTime();
     if (age > LOG_RETENTION_MS) continue;
     records.push({
@@ -93,12 +116,13 @@ export function logRecords(
           : logTime(entry.time, entry.nanos),
       _msg: entry.line,
       org: scope.organizationId,
-      project: target.projectId,
-      env: target.environmentId,
-      app: target.applicationId,
-      instance: String(target.replica),
+      project: owner.projectId,
+      env: owner.environmentId,
+      app: owner.applicationId,
+      instance: target ? String(target.replica) : 'build',
       node: scope.nodeId,
-      stream: entry.stream,
+      stream: target ? entry.stream : 'build',
+      ...(build ? { deployment: build.deploymentId } : {}),
       ...(entry.truncated ? { truncated: true as const } : {}),
     });
   }
@@ -179,8 +203,6 @@ export interface LogSearch {
   readonly order?: 'newest' | 'oldest' | undefined;
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
-
 /**
  * The LogsQL query of a search: filters on labels the control plane wrote, from identifiers it
  * validated, and the person's text as one quoted substring, which cannot add a filter or a pipe.
@@ -191,6 +213,8 @@ export function logsQuery(search: LogSearch): string {
   const parts = [
     `{org="${search.organizationId}",app="${search.applicationId}"}`,
     `_time:[${exactTime(search.fromExact) ?? search.from.toISOString()}, ${search.to.toISOString()}]`,
+    // A build's output is read with its deployment, never with the application's lines.
+    '-stream:=build',
   ];
   if (search.stream) parts.push(`stream:=${search.stream}`);
   if (search.instance !== undefined) parts.push(`instance:="${String(search.instance)}"`);
