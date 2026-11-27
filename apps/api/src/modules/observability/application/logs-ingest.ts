@@ -125,16 +125,24 @@ export class LogsIngest implements OnModuleInit {
     if (entries.length < batch.entries.length)
       this.logger.warn({ nodeId: identity.nodeId }, 'malformed log entries dropped');
     if (entries.length === 0) return;
-    const found = await this.transaction.runTenant(identity.organizationId, () =>
-      this.targets.onNode(
-        identity.organizationId,
-        identity.nodeId,
-        [...new Set(entries.map((entry) => entry.container))],
-        [],
-      ),
-    );
+    const containers = [
+      ...new Set(entries.filter((entry) => entry.actionId === '').map((entry) => entry.container)),
+    ];
+    const actions = [
+      ...new Set(entries.filter((entry) => entry.actionId !== '').map((entry) => entry.actionId)),
+    ];
+    const found = await this.transaction.runTenant(identity.organizationId, async () => ({
+      containers: containers.length
+        ? (await this.targets.onNode(identity.organizationId, identity.nodeId, containers, []))
+            .containers
+        : [],
+      // A build's output (ADR 0032): only builds this node was given.
+      builds: actions.length
+        ? await this.targets.buildsOnNode(identity.organizationId, identity.nodeId, actions)
+        : [],
+    }));
     signal.throwIfAborted();
-    await store.write(logRecords(entries, found.containers, identity, now), signal);
+    await store.write(logRecords(entries, found.containers, identity, now, found.builds), signal);
   }
 
   private rate(nodeId: string): ByteRate {
@@ -163,6 +171,7 @@ function entryOf(entry: LogBatch['entries'][number]): LogInput | undefined {
   if (!stream) return undefined;
   return {
     container: entry.container,
+    actionId: entry.actionId,
     stream,
     time: entry.time ? timestampDate(entry.time) : new Date(Number.NaN),
     nanos: entry.time?.nanos ?? 0,

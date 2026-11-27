@@ -33,6 +33,7 @@ function world(
 ) {
   const batches = new LogBatches();
   const asked: string[][] = [];
+  const builds: string[][] = [];
   const slept: number[] = [];
   const targets = {
     onNode: (_org: string, _node: string, containers: readonly string[]) => {
@@ -50,6 +51,18 @@ function world(
         hosts: [],
       });
     },
+    buildsOnNode: (_org: string, _node: string, actions: readonly string[]) => {
+      builds.push([...actions]);
+      return Promise.resolve([
+        {
+          actionId: BUILD,
+          deploymentId: 'd1',
+          applicationId: 'a',
+          projectId: 'p',
+          environmentId: 'e',
+        },
+      ]);
+    },
   } as unknown as MetricsTargets;
   const transaction = {
     runTenant: (_o: string, work: () => Promise<unknown>) => work(),
@@ -63,14 +76,19 @@ function world(
     limits,
   );
   ingest.onModuleInit();
-  return { batches, ingest, asked, slept };
+  return { batches, ingest, asked, builds, slept };
 }
 
-const batchOf = (...lines: { container: string; line: string; stderr?: boolean }[]) =>
+const BUILD = '0190f5a8-7b1c-7e2d-8f3a-0000000000b1';
+
+const batchOf = (
+  ...lines: { container: string; line: string; stderr?: boolean; actionId?: string }[]
+) =>
   create(LogBatchSchema, {
     seq: 1n,
     entries: lines.map((item) => ({
       container: item.container,
+      actionId: item.actionId ?? '',
       stream: item.stderr ? LogStream.STDERR : LogStream.STDOUT,
       time: timestampFromDate(NOW),
       line: item.line,
@@ -126,6 +144,42 @@ describe('log ingestion (ADR 0029)', () => {
           instance: '2',
           node: 'n1',
           stream: 'stderr',
+        },
+      ],
+    ]);
+  });
+
+  it("writes a build's lines with its deployment, asking only for the actions named (ADR 0032)", async () => {
+    const written: LogRecord[][] = [];
+    const w = world({
+      write: (records) => (written.push([...records]), Promise.resolve()),
+      query: () => Promise.resolve([]),
+    });
+    await w.ingest.record(
+      node,
+      batchOf(
+        { container: '', actionId: BUILD, line: '#1 RUN npm ci' },
+        { container: '', actionId: '0190f5a8-7b1c-7e2d-8f3a-0000000000ff', line: 'not given' },
+      ),
+      kept,
+      NOW,
+    );
+    // No container was named: the allocations are not read.
+    expect(w.asked).toEqual([]);
+    expect(w.builds).toEqual([[BUILD, '0190f5a8-7b1c-7e2d-8f3a-0000000000ff']]);
+    expect(written).toEqual([
+      [
+        {
+          _time: '2026-11-24T12:00:00.000000000Z',
+          _msg: '#1 RUN npm ci',
+          org: 'o1',
+          project: 'p',
+          env: 'e',
+          app: 'a',
+          instance: 'build',
+          node: 'n1',
+          stream: 'build',
+          deployment: 'd1',
         },
       ],
     ]);

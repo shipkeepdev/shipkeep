@@ -14,6 +14,7 @@ const identity = {
 };
 const targets: MetricsTargets = {
   onNode: () => Promise.resolve({ containers: [], hosts: [] }),
+  buildsOnNode: () => Promise.resolve([]),
   nodeExists: () => Promise.resolve(true),
   environments: () => Promise.resolve([]),
 };

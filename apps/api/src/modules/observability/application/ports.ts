@@ -1,4 +1,4 @@
-import type { LogRecord } from '../domain/logs';
+import type { BuildTarget, LogRecord } from '../domain/logs';
 import type { ContainerTarget, HostTarget } from '../domain/metrics';
 
 export const METRICS_TARGETS = Symbol('MetricsTargets');
@@ -14,6 +14,15 @@ export interface MetricsTargets {
     containers: readonly string[],
     hosts: readonly string[],
   ): Promise<{ containers: ContainerTarget[]; hosts: HostTarget[] }>;
+  /**
+   * The build actions among these identifiers that the control plane queued on the node for a
+   * deployment, with that deployment's application (ADR 0032).
+   */
+  buildsOnNode(
+    organizationId: string,
+    nodeId: string,
+    actionIds: readonly string[],
+  ): Promise<BuildTarget[]>;
   /** Whether the node belongs to the organization. */
   nodeExists(organizationId: string, nodeId: string): Promise<boolean>;
   /**

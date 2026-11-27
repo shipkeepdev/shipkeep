@@ -2,7 +2,11 @@ import { Injectable } from '@nestjs/common';
 
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { MetricsTargets } from '../application/ports';
+import type { BuildTarget } from '../domain/logs';
 import type { ContainerTarget, HostTarget } from '../domain/metrics';
+
+/** A deployment's step key, as the pipeline names its actions: `d:<deployment>:<step>`. */
+const DEPLOYMENT_KEY = /^d:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}):/;
 
 @Injectable()
 export class PrismaMetricsTargets implements MetricsTargets {
@@ -54,6 +58,46 @@ export class PrismaMetricsTargets implements MetricsTargets {
         environmentId: row.application.environmentId,
       })),
     };
+  }
+
+  async buildsOnNode(
+    organizationId: string,
+    nodeId: string,
+    actionIds: readonly string[],
+  ): Promise<BuildTarget[]> {
+    const actions = await this.database.client.agentAction.findMany({
+      where: { organizationId, nodeId, kind: 'buildImage', id: { in: [...actionIds] } },
+      select: { id: true, idempotencyKey: true },
+    });
+    const deploymentOf = new Map<string, string>();
+    for (const action of actions) {
+      const deployment = DEPLOYMENT_KEY.exec(action.idempotencyKey)?.[1];
+      if (deployment) deploymentOf.set(action.id, deployment);
+    }
+    if (deploymentOf.size === 0) return [];
+    const deployments = await this.database.client.deployment.findMany({
+      where: { organizationId, id: { in: [...new Set(deploymentOf.values())] } },
+      select: {
+        id: true,
+        applicationId: true,
+        application: { select: { projectId: true, environmentId: true } },
+      },
+    });
+    const byId = new Map(deployments.map((deployment) => [deployment.id, deployment]));
+    return [...deploymentOf].flatMap(([actionId, deploymentId]) => {
+      const deployment = byId.get(deploymentId);
+      return deployment
+        ? [
+            {
+              actionId,
+              deploymentId,
+              applicationId: deployment.applicationId,
+              projectId: deployment.application.projectId,
+              environmentId: deployment.application.environmentId,
+            },
+          ]
+        : [];
+    });
   }
 
   async nodeExists(organizationId: string, nodeId: string): Promise<boolean> {

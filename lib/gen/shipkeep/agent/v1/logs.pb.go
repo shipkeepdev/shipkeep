@@ -325,7 +325,7 @@ func (x *LogBatch) GetEntries() []*LogEntry {
 type LogEntry struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
 	// The managed container's name, as the agent created it; the control plane maps it to an
-	// allocation and never writes it as a label.
+	// allocation and never writes it as a label. Empty for an action's output (action_id).
 	Container string    `protobuf:"bytes,1,opt,name=container,proto3" json:"container,omitempty"`
 	Stream    LogStream `protobuf:"varint,2,opt,name=stream,proto3,enum=shipkeep.agent.v1.LogStream" json:"stream,omitempty"`
 	// Docker's timestamp of the line.
@@ -333,7 +333,10 @@ type LogEntry struct {
 	// The line without its newline, at most 16 KiB, valid UTF-8, with secret values redacted.
 	Line string `protobuf:"bytes,4,opt,name=line,proto3" json:"line,omitempty"`
 	// The line was longer and was cut.
-	Truncated     bool `protobuf:"varint,5,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	Truncated bool `protobuf:"varint,5,opt,name=truncated,proto3" json:"truncated,omitempty"`
+	// The action whose output this is, a build's (ADR 0032); container is then empty. The control
+	// plane labels the line with the deployment it queued that action for.
+	ActionId      string `protobuf:"bytes,6,opt,name=action_id,json=actionId,proto3" json:"action_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -403,6 +406,13 @@ func (x *LogEntry) GetTruncated() bool {
 	return false
 }
 
+func (x *LogEntry) GetActionId() string {
+	if x != nil {
+		return x.ActionId
+	}
+	return ""
+}
+
 // VictoriaLogs accepted the batch with this sequence number.
 type LogAck struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -465,13 +475,14 @@ const file_shipkeep_agent_v1_logs_proto_rawDesc = "" +
 	"leaseEpoch\"S\n" +
 	"\bLogBatch\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq\x125\n" +
-	"\aentries\x18\x02 \x03(\v2\x1b.shipkeep.agent.v1.LogEntryR\aentries\"\xc0\x01\n" +
+	"\aentries\x18\x02 \x03(\v2\x1b.shipkeep.agent.v1.LogEntryR\aentries\"\xdd\x01\n" +
 	"\bLogEntry\x12\x1c\n" +
 	"\tcontainer\x18\x01 \x01(\tR\tcontainer\x124\n" +
 	"\x06stream\x18\x02 \x01(\x0e2\x1c.shipkeep.agent.v1.LogStreamR\x06stream\x12.\n" +
 	"\x04time\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\x04time\x12\x12\n" +
 	"\x04line\x18\x04 \x01(\tR\x04line\x12\x1c\n" +
-	"\ttruncated\x18\x05 \x01(\bR\ttruncated\"\x1a\n" +
+	"\ttruncated\x18\x05 \x01(\bR\ttruncated\x12\x1b\n" +
+	"\taction_id\x18\x06 \x01(\tR\bactionId\"\x1a\n" +
 	"\x06LogAck\x12\x10\n" +
 	"\x03seq\x18\x01 \x01(\x04R\x03seq*U\n" +
 	"\tLogStream\x12\x1a\n" +

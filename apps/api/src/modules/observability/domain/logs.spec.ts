@@ -19,6 +19,7 @@ import type { ContainerTarget } from './metrics';
 const NOW = new Date('2026-11-24T12:00:00Z');
 const entry = (overrides: Partial<LogInput> = {}): LogInput => ({
   container: 'sk-web-r1-0',
+  actionId: '',
   stream: 'stdout',
   time: new Date('2026-11-24T11:59:59Z'),
   nanos: 123_456_789,
@@ -34,6 +35,64 @@ const target: ContainerTarget = {
   applicationId: 'a1',
 };
 const scope = { organizationId: 'o1', nodeId: 'n1' };
+
+const ACTION = '019d0000-0000-7000-8000-0000000000b1';
+const build = {
+  actionId: ACTION,
+  deploymentId: '019d0000-0000-7000-8000-0000000000d1',
+  applicationId: 'a1',
+  projectId: 'p1',
+  environmentId: 'e1',
+};
+
+describe('build output (ADR 0032)', () => {
+  it("is a container's line or an action's output, never both nor neither", () => {
+    expect(validEntries([entry({ container: '', actionId: ACTION })])).toHaveLength(1);
+    for (const bad of [
+      entry({ actionId: ACTION }),
+      entry({ container: '', actionId: '' }),
+      entry({ container: '', actionId: 'not-a-uuid' }),
+      entry({ container: '', actionId: `${ACTION}' OR 1=1` }),
+      entry({ container: '', actionId: ACTION.toUpperCase() }),
+    ])
+      expect(validEntries([bad]), JSON.stringify(bad)).toEqual([]);
+  });
+
+  it('labels a build line with its deployment, and drops one of a build the node was not given', () => {
+    const records = logRecords(
+      [
+        entry({ container: '', actionId: ACTION, line: '#2 RUN npm ci' }),
+        entry({ container: '', actionId: '019d0000-0000-7000-8000-0000000000ff', line: 'forged' }),
+        entry({ line: 'served' }),
+      ],
+      [target],
+      scope,
+      NOW,
+      [build],
+    );
+    expect(records).toEqual([
+      expect.objectContaining({
+        _msg: '#2 RUN npm ci',
+        org: 'o1',
+        project: 'p1',
+        env: 'e1',
+        app: 'a1',
+        instance: 'build',
+        node: 'n1',
+        stream: 'build',
+        deployment: build.deploymentId,
+      }),
+      expect.objectContaining({ _msg: 'served', instance: '1', stream: 'stdout' }),
+    ]);
+    expect(records[1]).not.toHaveProperty('deployment');
+  });
+
+  it("never comes back with an application's lines", () => {
+    expect(
+      logLineOf({ _time: '2026-11-24T11:59:59.1Z', _msg: 'x', stream: 'build', instance: 'build' }),
+    ).toBeUndefined();
+  });
+});
 
 describe('log batches (ADR 0029)', () => {
   it('keeps well-formed entries within the bounds', () => {
@@ -179,7 +238,7 @@ describe('log searches (ADR 0029)', () => {
   it('filters on the labels the control plane wrote, newest first', () => {
     expect(logsQuery({ ...search, stream: 'stderr', instance: 2, text: 'timeout' })).toBe(
       '{org="019d0000-0000-7000-8000-00000000000a",app="019d0000-0000-7000-8000-0000000000a1"} ' +
-        '_time:[2026-11-24T11:00:00.000Z, 2026-11-24T12:00:00.000Z] stream:=stderr instance:="2" *"timeout"* ' +
+        '_time:[2026-11-24T11:00:00.000Z, 2026-11-24T12:00:00.000Z] -stream:=build stream:=stderr instance:="2" *"timeout"* ' +
         '| sort by (_time desc) | limit 200',
     );
   });
