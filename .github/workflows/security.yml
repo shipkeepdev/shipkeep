@@ -126,7 +126,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        service: [postgres, caddy, victoriametrics, victorialogs]
+        service: [postgres, caddy, victoriametrics, victorialogs, registry]
         # A server installed on arm64 pulls the arm64 variant of the same digest.
         platform: [linux/amd64, linux/arm64]
     steps:

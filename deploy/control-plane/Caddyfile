@@ -4,6 +4,17 @@
 # The registry's API (/v2/, ADR 0030) goes to the registry as it is: image layers are compressed
 # already, and the registry checks its own tokens.
 {$SHIPKEEP_DOMAIN} {
+	# The registry parses a token before it checks it, and its JWK parsing can be made slow (#543):
+	# only nothing, or one compact bearer JWS within bounds, reaches it. Shipkeep's tokens have a
+	# header of about 110 characters and claims of about 470. The agent's route on a single machine
+	# refuses the same (agent/internal/caddy RegistryAuthorization).
+	@refusedToken {
+		path /v2 /v2/*
+		not vars_regexp {http.request.header.Authorization} `^(?:|Bearer [A-Za-z0-9_-]{1,512}\.[A-Za-z0-9_-]{1,1000}\.[A-Za-z0-9_-]{1,512})$`
+	}
+	handle @refusedToken {
+		respond 401
+	}
 	@registry path /v2 /v2/*
 	handle @registry {
 		reverse_proxy registry:5000

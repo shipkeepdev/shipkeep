@@ -3,6 +3,8 @@ package caddy
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -46,10 +48,22 @@ func TestControlPlaneRouteIsFirstAndRepairedOnlyWhenNeeded(t *testing.T) {
 	if err != nil || !changed {
 		t.Fatalf("first apply: changed=%v err=%v", changed, err)
 	}
-	// The registry's API first (ADR 0030): only its paths, over HTTPS, to the registry's port.
-	if got := firstRoute(t, fake); got.ID != ControlPlaneRegistryRouteID || got.Match[0].Protocol != HTTPS ||
-		!slices.Equal(got.Match[0].Path, []string{"/v2", "/v2/*"}) || !got.Match[0].bounded() || got.Handle[0].Upstreams[0].Dial != "127.0.0.1:5000" {
+	// First, the registry's API refuses what is not a token it may parse (#543): only its paths,
+	// over HTTPS, answered by Caddy itself.
+	if got := firstRoute(t, fake); got.ID != ControlPlaneRegistryRefusedRouteID || got.Match[0].Protocol != HTTPS ||
+		!slices.Equal(got.Match[0].Path, []string{"/v2", "/v2/*"}) || !got.Match[0].bounded() ||
+		len(got.Match[0].Not) != 1 || got.Match[0].Not[0].VarsRegexp[authorizationHeader].Pattern != RegistryAuthorization ||
+		got.Handle[0].Handler != "static_response" || got.Handle[0].StatusCode != 401 || len(got.Handle[0].Upstreams) != 0 {
 		t.Fatalf("first route = %+v", got)
+	}
+	// Then the registry's API (ADR 0030): only its paths, over HTTPS, to the registry's port.
+	var registry Route
+	fake.mu.Lock()
+	_ = json.Unmarshal(fake.routes[ControlPlaneRegistryRouteID], &registry)
+	fake.mu.Unlock()
+	if registry.Match[0].Protocol != HTTPS || !slices.Equal(registry.Match[0].Path, []string{"/v2", "/v2/*"}) ||
+		!registry.Match[0].bounded() || registry.Handle[0].Upstreams[0].Dial != "127.0.0.1:5000" {
+		t.Fatalf("registry route = %+v", registry)
 	}
 	// Then the rest of the name to the control plane, then its redirect on plain HTTP, before the
 	// application's wildcard.
@@ -59,7 +73,7 @@ func TestControlPlaneRouteIsFirstAndRepairedOnlyWhenNeeded(t *testing.T) {
 	_ = json.Unmarshal(fake.routes[ControlPlaneRouteID], &api)
 	_ = json.Unmarshal(fake.routes[ControlPlaneRedirectRouteID], &redirect)
 	fake.mu.Unlock()
-	if len(order) != 4 || order[1] != ControlPlaneRouteID || order[2] != ControlPlaneRedirectRouteID || order[3] != RouteID("app") {
+	if len(order) != 5 || order[1] != ControlPlaneRegistryRouteID || order[2] != ControlPlaneRouteID || order[3] != ControlPlaneRedirectRouteID || order[4] != RouteID("app") {
 		t.Fatalf("route order = %v", order)
 	}
 	if api.Match[0].Path != nil || api.Match[0].Protocol != HTTPS || api.Handle[0].Upstreams[0].Dial != "127.0.0.1:8080" {
@@ -87,7 +101,7 @@ func TestControlPlaneRouteIsFirstAndRepairedOnlyWhenNeeded(t *testing.T) {
 	if changed, err := client.EnsureControlPlaneRoutes(ctx, want); err != nil || !changed {
 		t.Fatalf("repair: changed=%v err=%v", changed, err)
 	}
-	if got := firstRoute(t, fake); got.ID != ControlPlaneRegistryRouteID {
+	if got := firstRoute(t, fake); got.ID != ControlPlaneRegistryRefusedRouteID {
 		t.Fatalf("not first after repair: %s", got.ID)
 	}
 	fake.mu.Lock()
@@ -111,7 +125,7 @@ func TestControlPlaneRouteSurvivesALostConfiguration(t *testing.T) {
 	if _, err := client.EnsureControlPlaneRoutes(context.Background(), want); err != nil {
 		t.Fatal(err)
 	}
-	if got := firstRoute(t, fake); got.ID != ControlPlaneRegistryRouteID {
+	if got := firstRoute(t, fake); got.ID != ControlPlaneRegistryRefusedRouteID {
 		t.Fatalf("route not restored: %+v", got)
 	}
 }
@@ -222,10 +236,50 @@ func TestControlPlaneRouteRepairIsOneWrite(t *testing.T) {
 	if !slices.Equal(routeWrites, []string{"PATCH /config/apps/http/servers/" + Server + "/routes"}) {
 		t.Fatalf("route writes = %v", routeWrites)
 	}
-	if order := fake.ordered(); !slices.Equal(order, []string{ControlPlaneRegistryRouteID, ControlPlaneRouteID, ControlPlaneRedirectRouteID, RouteID("b"), RouteID("a")}) {
+	if order := fake.ordered(); !slices.Equal(order, []string{ControlPlaneRegistryRefusedRouteID, ControlPlaneRegistryRouteID, ControlPlaneRouteID, ControlPlaneRedirectRouteID, RouteID("b"), RouteID("a")}) {
 		t.Fatalf("route order = %v", order)
 	}
 	if !strings.Contains(string(fake.routes[RouteID("a")]), `"flush_interval":-1`) {
 		t.Fatalf("a field the client does not model was lost: %s", fake.routes[RouteID("a")])
+	}
+}
+
+// What reaches the registry (#543): nothing, or one compact bearer JWS of Shipkeep's size. A token
+// in JSON form, an oversized header that could carry a large JWK, two Authorization headers,
+// another scheme: refused by Caddy before the registry parses them.
+func TestTheRegistryReceivesOnlyBoundedBearerTokens(t *testing.T) {
+	allowed := regexp.MustCompile(RegistryAuthorization)
+	segment := func(n int) string { return strings.Repeat("A", n) }
+	// The size of a token the control plane signs: a header of about 110, claims of about 470.
+	ours := "Bearer " + segment(110) + "." + segment(470) + "." + segment(86)
+	for _, value := range []string{"", ours, "Bearer " + segment(512) + "." + segment(1000) + "." + segment(512)} {
+		if !allowed.MatchString(value) {
+			t.Fatalf("refused: %.60s", value)
+		}
+	}
+	for name, value := range map[string]string{
+		"oversized header": "Bearer " + segment(513) + "." + segment(470) + "." + segment(86),
+		"oversized claims": "Bearer " + segment(110) + "." + segment(1001) + "." + segment(86),
+		"JSON form":        `Bearer {"protected":"x","header":{"jwk":{"kty":"RSA"}},"payload":"x","signature":"x"}`,
+		"two headers":      ours + "," + ours,
+		"basic":            "Basic dXNlcjpwYXNz",
+		"two parts":        "Bearer " + segment(110) + "." + segment(470),
+		"padding":          "Bearer " + segment(110) + "=." + segment(470) + "." + segment(86),
+		"line break":       ours + "\n",
+	} {
+		if allowed.MatchString(value) {
+			t.Fatalf("%s allowed", name)
+		}
+	}
+}
+
+// The control plane's own Caddy, on a machine of its own, refuses exactly the same.
+func TestTheComposeCaddyfileRefusesTheSameTokens(t *testing.T) {
+	caddyfile, err := os.ReadFile("../../../deploy/control-plane/Caddyfile")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(caddyfile), "not vars_regexp "+authorizationHeader+" `"+RegistryAuthorization+"`") {
+		t.Fatal("deploy/control-plane/Caddyfile does not refuse what the agent's route refuses")
 	}
 }

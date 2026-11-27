@@ -2,7 +2,7 @@ import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainer
 
 /** CNCF Distribution, the image deploy/dev/compose.yml pins (ADR 0030). */
 export const DISTRIBUTION_TEST_IMAGE =
-  'registry:3.1.2@sha256:d4032d4cc323c1731c707931ecada07a53076eac38e3b61ae57533f170f2c6c3';
+  'registry:3.1.2@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c';
 
 /**
  * A Distribution registry for one spec file, with token authentication: it trusts the keys of

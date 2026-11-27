@@ -75,7 +75,26 @@ type Match struct {
 	// route that matched plain HTTP too would answer there instead of the redirect. Empty for a
 	// route with TLS off, which is served on port 80.
 	Protocol string `json:"protocol,omitempty"`
+	// Not, set on the control plane's registry refusal only, matches what its sets do not.
+	Not []NotMatch `json:"not,omitempty"`
 }
+
+// NotMatch is one matcher set of Caddy's not matcher.
+type NotMatch struct {
+	// VarsRegexp matches placeholders, such as a request header's values joined with commas.
+	VarsRegexp map[string]HeaderPattern `json:"vars_regexp,omitempty"`
+}
+
+// RegistryAuthorization is what the registry may receive as Authorization: nothing, or one
+// compact bearer JWS within bounds. The registry parses a token before it checks it, and its JWK
+// parsing can be made slow (#543); Shipkeep's tokens have a header of about 110 characters and
+// claims of about 470. Go's regexp allows repeat counts up to 1000. deploy/control-plane/Caddyfile
+// refuses the same.
+const RegistryAuthorization = `^(?:|Bearer [A-Za-z0-9_-]{1,512}\.[A-Za-z0-9_-]{1,1000}\.[A-Za-z0-9_-]{1,512})$`
+
+// authorizationHeader is the request's Authorization values, joined with commas: two headers never
+// pass for one.
+const authorizationHeader = "{http.request.header.Authorization}"
 
 // HTTPS is the protocol matcher of a route under automatic HTTPS.
 const HTTPS = "https"
@@ -136,19 +155,30 @@ type automaticHTTPS struct {
 // The ids of the control plane's routes on the machine that hosts it (ADR 0021). They are outside
 // the Shipkeep route prefix, so no action can reach them.
 const (
-	ControlPlaneRegistryRouteID = "shipkeep-control-plane-registry"
-	ControlPlaneRouteID         = "shipkeep-control-plane"
-	ControlPlaneRedirectRouteID = "shipkeep-control-plane-http"
+	ControlPlaneRegistryRefusedRouteID = "shipkeep-control-plane-registry-refused"
+	ControlPlaneRegistryRouteID        = "shipkeep-control-plane-registry"
+	ControlPlaneRouteID                = "shipkeep-control-plane"
+	ControlPlaneRedirectRouteID        = "shipkeep-control-plane-http"
 )
 
 // ControlPlaneRoutes are the routes of the control plane's name: its registry's API (/v2/) over
-// HTTPS to the registry's loopback port (ADR 0030), the rest over HTTPS to the control plane's,
-// and plain HTTP redirected to HTTPS. The redirect is a route of its own, so that no application
-// route placed after it answers that name on HTTP, not even a wildcard with TLS off.
+// HTTPS to the registry's loopback port (ADR 0030), unless its Authorization is not one the
+// registry may receive, the rest over HTTPS to the control plane's, and plain HTTP redirected to
+// HTTPS. The redirect is a route of its own, so that no application route placed after it answers
+// that name on HTTP, not even a wildcard with TLS off.
 func ControlPlaneRoutes(host, upstream, registry string) []Route {
 	registryMatch := HostMatch([]string{host}, HTTPS)
 	registryMatch.Path = []string{"/v2", "/v2/*"}
+	refusedMatch := HostMatch([]string{host}, HTTPS)
+	refusedMatch.Path = []string{"/v2", "/v2/*"}
+	refusedMatch.Not = []NotMatch{{VarsRegexp: map[string]HeaderPattern{authorizationHeader: {Pattern: RegistryAuthorization}}}}
 	return []Route{
+		{
+			ID:       ControlPlaneRegistryRefusedRouteID,
+			Match:    []Match{refusedMatch},
+			Handle:   []Handler{{Handler: "static_response", StatusCode: http.StatusUnauthorized}},
+			Terminal: true,
+		},
 		{
 			ID:       ControlPlaneRegistryRouteID,
 			Match:    []Match{registryMatch},
