@@ -82,6 +82,7 @@ describe('rollback', () => {
     imageDigest: `sha256:${'a'.repeat(64)}`,
     config: config({ release: { command: ['migrate'] }, secrets: ['B', 'A', 'B'] }),
     configSha: 'c'.repeat(64),
+    commitSha: null,
     createdBy: null,
     createdAt: new Date(0),
     ...overrides,

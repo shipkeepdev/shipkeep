@@ -40,16 +40,22 @@ export interface DeploymentStore {
    * is not a successful removal. Each names the deployment that left it.
    */
   leftovers(application: { id: string; organizationId: string }): Promise<Leftovers>;
-  /** Snapshots the configuration as the next release number; undefined on a concurrent insert. */
+  /**
+   * Snapshots the configuration as the next release number, with the commit it was read from for a
+   * Git application; undefined on a concurrent insert. `actorId` is null for the system.
+   */
   createRelease(
     application: Application,
     draft: ReleaseDraft,
-    actorId: string,
+    actorId: string | null,
     now: Date,
+    commitSha?: string | null,
   ): Promise<Release | undefined>;
   /** Copies an earlier release as the next number (rollback); undefined on a concurrent insert. */
   copyRelease(source: Release, actorId: string, now: Date): Promise<Release | undefined>;
   release(applicationId: string, releaseId: string): Promise<Release | undefined>;
+  /** The application's newest release, undefined before its first. */
+  latestRelease(applicationId: string): Promise<Release | undefined>;
   /**
    * The most recently finished succeeded deployment: the version serving now. Undefined when
    * that deployment was a stop, since nothing serves after it.
@@ -62,7 +68,7 @@ export interface DeploymentStore {
     release: Release,
     draft: ReleaseDraft,
     trigger: DeploymentTrigger,
-    actorId: string,
+    actorId: string | null,
     now: Date,
   ): Promise<DeploymentRecord | undefined>;
   find(applicationId: string, deploymentId: string): Promise<DeploymentRecord | undefined>;

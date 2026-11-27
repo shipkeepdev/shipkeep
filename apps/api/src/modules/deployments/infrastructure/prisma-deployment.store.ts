@@ -119,8 +119,9 @@ export class PrismaDeploymentStore implements DeploymentStore {
   async createRelease(
     application: Application,
     draft: ReleaseDraft,
-    actorId: string,
+    actorId: string | null,
     now: Date,
+    commitSha: string | null = null,
   ): Promise<Release | undefined> {
     const last = await this.database.client.release.aggregate({
       where: { applicationId: application.id },
@@ -135,6 +136,7 @@ export class PrismaDeploymentStore implements DeploymentStore {
       imageDigest: null,
       config: application.config,
       configSha: application.configSha,
+      commitSha,
       createdBy: actorId,
       createdAt: now,
     };
@@ -197,7 +199,7 @@ export class PrismaDeploymentStore implements DeploymentStore {
     release: Release,
     draft: ReleaseDraft,
     trigger: DeploymentTrigger,
-    actorId: string,
+    actorId: string | null,
     now: Date,
   ): Promise<DeploymentRecord | undefined> {
     const record: DeploymentRecord = {
@@ -266,6 +268,14 @@ export class PrismaDeploymentStore implements DeploymentStore {
     return rows.map(deployment);
   }
 
+  async latestRelease(applicationId: string): Promise<Release | undefined> {
+    const row = await this.database.client.release.findFirst({
+      where: { applicationId },
+      orderBy: { number: 'desc' },
+    });
+    return row ? releaseRecord(row) : undefined;
+  }
+
   async releases(applicationId: string): Promise<Release[]> {
     const rows = await this.database.client.release.findMany({
       where: { applicationId },
@@ -306,6 +316,7 @@ function releaseRecord(row: {
   imageDigest: string | null;
   config: unknown;
   configSha: string;
+  commitSha: string | null;
   createdBy: string | null;
   createdAt: Date;
 }): Release {
@@ -319,6 +330,7 @@ function releaseRecord(row: {
     // Snapshot of a schema-validated configuration; the column CHECK keeps it an object.
     config: row.config as ShipkeepConfig,
     configSha: row.configSha,
+    commitSha: row.commitSha,
     createdBy: row.createdBy,
     createdAt: row.createdAt,
   };

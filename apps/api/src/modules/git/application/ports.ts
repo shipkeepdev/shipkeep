@@ -2,7 +2,7 @@ import type { Secret } from '@shipkeep/domain';
 
 import type { GithubRepository, TokenScope } from '../domain/github-api';
 import type { CreatedGithubApp, GithubAppMetadata } from '../domain/github-app';
-import type { DeliveryHeaders, InstallationChange } from '../domain/github-webhook';
+import type { DeliveryHeaders, InstallationChange, PushEvent } from '../domain/github-webhook';
 
 /** A manifest flow under way: the hashed state GitHub brings back, and who started it. */
 export interface GithubAppFlow {
@@ -62,6 +62,15 @@ export interface GithubWebhookStore {
     change: InstallationChange,
     now: Date,
   ): Promise<boolean>;
+}
+
+export const GITHUB_PUSHES = Symbol('GithubPushes');
+/**
+ * Hands a verified push over to the deployments context (`GITHUB_PUSH_QUEUE`), in the transaction
+ * that records its delivery: the push and its record commit together, or neither does.
+ */
+export interface GithubPushes {
+  enqueue(push: PushEvent): Promise<void>;
 }
 
 export const GITHUB_API = Symbol('GithubApi');

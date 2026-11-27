@@ -23,13 +23,13 @@ export interface RegistryTransaction {
   runTenant<T>(organizationId: string, work: () => Promise<T>): Promise<T>;
 }
 
-/** A credential for the installation's registry (ADR 0030), as stored: its password hashed. */
+/** A credential for the installation's registry (ADR 0030), as stored: its secret hashed. */
 export interface RegistryGrant {
   readonly id: string;
   readonly organizationId: string;
   readonly applicationId: string;
-  /** SHA-256 of the password, lower-case hex. */
-  readonly passwordSha256: string;
+  /** `grantSecretHash` of the secret, lower-case hex. */
+  readonly secretSha256: string;
   readonly push: boolean;
   readonly expiresAt: Date;
   readonly createdAt: Date;

@@ -1,4 +1,4 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
+import { timingSafeEqual } from 'node:crypto';
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
@@ -7,11 +7,12 @@ import { REGISTRY_TOKEN_KEY, type RegistryTokenKeyProvider } from '../../fleet/a
 import {
   compactToken,
   grantedAccess,
+  grantSecretHash,
   parseGrantUsername,
   requestedScopes,
   signingInput,
   tokenClaims,
-  wellFormedPassword,
+  wellFormedSecret,
 } from '../domain/registry-token';
 
 import {
@@ -29,7 +30,7 @@ export interface RegistryToken {
   readonly issuedAt: Date;
 }
 
-/** Any refusal: the answer never says whether the user, the password, or the deadline was wrong. */
+/** Any refusal: the answer never says whether the user, the secret, or the deadline was wrong. */
 export class RegistryTokenRefused extends Error {
   constructor() {
     super('registry token refused');
@@ -37,7 +38,7 @@ export class RegistryTokenRefused extends Error {
 }
 
 /**
- * The registry's token endpoint (ADR 0030). A grant's user name and password, sent by the Docker
+ * The registry's token endpoint (ADR 0030). A grant's user name and secret, sent by the Docker
  * daemon or BuildKit, buy a token of five minutes for what was asked within the grant: its
  * application's repository, pull, and push when it allows it. Reads only; nothing is audited.
  */
@@ -53,7 +54,7 @@ export class RegistryTokens {
   ) {}
 
   async token(
-    credentials: { username: string; password: string } | undefined,
+    credentials: { username: string; secret: string } | undefined,
     request: { service: string | undefined; scopes: readonly string[] },
     now = new Date(),
   ): Promise<RegistryToken> {
@@ -61,17 +62,17 @@ export class RegistryTokens {
     if (
       !credentials ||
       !named ||
-      !wellFormedPassword(credentials.password) ||
+      !wellFormedSecret(credentials.secret) ||
       (request.service !== undefined && request.service !== this.service)
     )
       throw new RegistryTokenRefused();
     const grant = await this.transaction.runTenant(named.organizationId, () =>
       this.store.find(named.organizationId, named.grantId),
     );
-    const given = createHash('sha256').update(credentials.password, 'utf8').digest();
+    const given = Buffer.from(grantSecretHash(credentials.secret), 'hex');
     if (
       !grant ||
-      !timingSafeEqual(given, Buffer.from(grant.passwordSha256, 'hex')) ||
+      !timingSafeEqual(given, Buffer.from(grant.secretSha256, 'hex')) ||
       grant.expiresAt.getTime() <= now.getTime()
     )
       throw new RegistryTokenRefused();

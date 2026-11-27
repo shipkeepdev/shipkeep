@@ -3,11 +3,13 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { parseShipkeepConfig } from '@shipkeep/config-schema';
 import {
+  type Actor,
   ConflictError,
   createEvent,
   InvalidInputError,
   NotFoundError,
   type Permission,
+  SYSTEM_ACTOR,
 } from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
@@ -41,6 +43,9 @@ import {
   DOMAIN_RESOLVER,
   type DomainCertificateStore,
   type DomainResolver,
+  type FollowerPage,
+  type RepositoryConfig,
+  type RepositoryFollower,
   REPOSITORY_SOURCE,
   type RepositoryLocation,
   type RepositorySource,
@@ -108,10 +113,91 @@ export class ApplicationCommands {
           'application_name_taken',
           'An application with this name already exists in the environment.',
         );
-      await this.claimDomains(context, created, now);
-      await this.audit('created', context, created, now, undefined, read.commitSha);
+      await this.claimDomains(resourceActor(context), created, now);
+      await this.audit('created', resourceActor(context), created, now, undefined, read.commitSha);
       return created;
     });
+  }
+
+  /**
+   * The Git applications a push to `branch` of a repository deploys. Runs in the caller's tenant
+   * transaction; checks no permission: a verified delivery of the organization's own App is the
+   * system acting.
+   */
+  followers(
+    organizationId: string,
+    push: { installationId: number; repositoryId: number; branch: string },
+    page?: FollowerPage,
+  ): Promise<Application[]> {
+    return this.store.followers(organizationId, push, page);
+  }
+
+  /**
+   * Makes a configuration read from the repository the application's, with the commit it was read
+   * at and the repository's current name, as the system, in the caller's tenant transaction (ADR
+   * 0031). The same configuration at the same commit changes nothing. The name stays the
+   * application's, and a domain another application claims is refused, as for any configuration.
+   * Answers the application locked, with whether its environment is protected now; `moved` when
+   * another push changed it since `listed` was read, before GitHub was asked.
+   */
+  async applyRepositoryConfig(
+    organizationId: string,
+    listed: Application,
+    read: RepositoryConfig,
+    now = new Date(),
+  ): Promise<RepositoryFollower | 'moved'> {
+    if (listed.source !== 'git' || !(await this.store.lock(listed)))
+      throw new NotFoundError('application');
+    // Read again once locked: GitHub was asked meanwhile, and an administrator may have changed
+    // the environment's protection in that time.
+    const follower = await this.store.follower(organizationId, listed.id);
+    const current = follower?.application;
+    if (!follower || !current?.repository) throw new NotFoundError('application');
+    // Another push applied since this one listed the application: GitHub may have answered it
+    // after this one, so this read is not applied over it. The push is tried again, with the
+    // application as stored now.
+    if (
+      current.updatedAt.getTime() !== listed.updatedAt.getTime() ||
+      current.configSha !== listed.configSha ||
+      current.repository.commitSha !== listed.repository?.commitSha
+    )
+      return 'moved';
+    const parsed = parseShipkeepConfig(read.text);
+    if (!parsed.ok)
+      throw new InvalidInputError(
+        'invalid_application_config',
+        `The configuration at ${current.repository.configPath} is invalid.`,
+        { issues: parsed.issues.slice(0, 20), commit: read.commitSha },
+      );
+    const config = applicationConfig(parsed.config, 'git');
+    assertDomainsAvailable(config.config, [this.controlPlaneHost]);
+    assertSameName(current, config);
+    const configSha = sha256(config.canonical);
+    const changed = configSha !== current.configSha;
+    // The same configuration at another commit, or under the repository's new name, is recorded
+    // too: a release made from it names that commit.
+    if (
+      !changed &&
+      current.repository.commitSha === read.commitSha &&
+      current.repository.fullName === read.fullName
+    )
+      return follower;
+    const updated = await this.store.replaceConfig(
+      current,
+      current.configSha,
+      config,
+      configSha,
+      now,
+      { fullName: read.fullName, commitSha: read.commitSha },
+    );
+    if (!updated)
+      throw new ConflictError(
+        'application_config_changed',
+        'The configuration changed meanwhile; reload it and retry.',
+      );
+    if (changed) await this.claimDomains(SYSTEM_ACTOR, updated, now);
+    await this.audit('updated', SYSTEM_ACTOR, updated, now, current.configSha, read.commitSha);
+    return { application: updated, protectedEnvironment: follower.protectedEnvironment };
   }
 
   create(
@@ -135,8 +221,8 @@ export class ApplicationCommands {
           'application_name_taken',
           'An application with this name already exists in the environment.',
         );
-      await this.claimDomains(context, created, now);
-      await this.audit('created', context, created, now);
+      await this.claimDomains(resourceActor(context), created, now);
+      await this.audit('created', resourceActor(context), created, now);
       return created;
     });
   }
@@ -172,8 +258,8 @@ export class ApplicationCommands {
       if (configSha === current.configSha) return current;
       const updated = await this.store.replaceConfig(current, expectedSha, config, configSha, now);
       if (!updated) throw changed();
-      await this.claimDomains(context, updated, now);
-      await this.audit('updated', context, updated, now, current.configSha);
+      await this.claimDomains(resourceActor(context), updated, now);
+      await this.audit('updated', resourceActor(context), updated, now, current.configSha);
       return updated;
     });
   }
@@ -238,11 +324,7 @@ export class ApplicationCommands {
   }
 
   /** A hostname belongs to one application per organization (SPEC 4). */
-  private async claimDomains(
-    context: SecurityContext,
-    application: Application,
-    now: Date,
-  ): Promise<void> {
+  private async claimDomains(actor: Actor, application: Application, now: Date): Promise<void> {
     const { taken, released } = await this.store.syncDomains(
       application,
       application.config.domains ?? [],
@@ -253,9 +335,7 @@ export class ApplicationCommands {
         hostname: taken,
       });
     if (released.length)
-      await this.events.publish(
-        domainsReleased(application, released, resourceActor(context), now),
-      );
+      await this.events.publish(domainsReleased(application, released, actor, now));
   }
 
   private scoped<T>(
@@ -281,7 +361,7 @@ export class ApplicationCommands {
 
   private audit(
     action: 'created' | 'updated',
-    context: SecurityContext,
+    actor: Actor,
     application: Application,
     now: Date,
     previousSha?: string,
@@ -291,7 +371,7 @@ export class ApplicationCommands {
       createEvent({
         type: `application.${action}`,
         organizationId: application.organizationId,
-        actor: resourceActor(context),
+        actor,
         target: { type: 'application', id: application.id },
         // Hashes only: the configuration may carry non-secret values the audit log does not need.
         payload: {

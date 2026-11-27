@@ -467,12 +467,12 @@ model RegistryCredential {
 }
 
 /// A credential for the installation's own registry (ADR 0030): pull, and push for a build, on one
-/// application's repository until `expiresAt`. Only the SHA-256 of the random password is kept.
+/// application's repository until `expiresAt`. Only the SHA-256 of its random secret is kept.
 model RegistryGrant {
   id             String       @id @db.Uuid
   organizationId String       @map("organization_id") @db.Uuid
   applicationId  String       @map("application_id") @db.Uuid
-  passwordSha256 String       @unique @map("password_sha256") @db.Char(64)
+  secretSha256   String       @unique @map("secret_sha256") @db.Char(64)
   push           Boolean
   expiresAt      DateTime     @map("expires_at") @db.Timestamptz(6)
   createdAt      DateTime     @map("created_at") @db.Timestamptz(6)
