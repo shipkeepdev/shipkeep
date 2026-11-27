@@ -12,9 +12,14 @@ const MAX_ATTEMPTS = 30;
 const COMMIT = /^[0-9a-f]{40}$/;
 const LOGIN = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,37}[A-Za-z0-9])?$/;
 
-/** The queue's job: a push, and when tried again, the applications left and the attempt. */
+/**
+ * The queue's job: a push, with the page of its applications it handles. The first job takes the
+ * first page; the next page of a full one is sent at once (`after`); applications left to try
+ * again are sent a minute later with the attempt (`only`).
+ */
 interface PushJob extends PushEvent {
   readonly only?: readonly string[];
+  readonly after?: string;
   readonly attempt?: number;
 }
 
@@ -44,16 +49,21 @@ export class PushWorker {
   async handle(data: unknown): Promise<void> {
     const job = pushJob(data);
     if (!job) return;
-    const again = await this.pushes.handle(job, job.only);
-    const attempt = (job.attempt ?? 0) + 1;
+    const { only, after, attempt: tried, ...push } = job;
+    const { again, next } = await this.pushes.handle(
+      push,
+      only ? { only } : after ? { after } : {},
+    );
+    if (next) await this.jobs.send(GITHUB_PUSH_QUEUE, { ...push, after: next } satisfies PushJob);
+    const attempt = (tried ?? 0) + 1;
     if (again.length === 0) return;
     if (attempt >= MAX_ATTEMPTS) {
       this.logger.warn({ commit: job.commit, applications: again.length }, 'push given up');
-      await this.pushes.gaveUp(job, again);
+      await this.pushes.gaveUp(push, again);
       return;
     }
-    const next: PushJob = { ...job, only: again, attempt };
-    await this.jobs.send(GITHUB_PUSH_QUEUE, next, { startAfter: AGAIN_SECONDS });
+    const retry: PushJob = { ...push, only: again, attempt };
+    await this.jobs.send(GITHUB_PUSH_QUEUE, retry, { startAfter: AGAIN_SECONDS });
   }
 }
 
@@ -62,8 +72,17 @@ export function pushJob(data: unknown): PushJob | undefined {
   const value =
     typeof data === 'object' && data !== null ? (data as Record<string, unknown>) : undefined;
   if (!value) return undefined;
-  const { organizationId, installationId, repositoryId, branch, commit, pusher, only, attempt } =
-    value;
+  const {
+    organizationId,
+    installationId,
+    repositoryId,
+    branch,
+    commit,
+    pusher,
+    only,
+    after,
+    attempt,
+  } = value;
   const id = (n: unknown): n is number => typeof n === 'number' && Number.isSafeInteger(n) && n > 0;
   if (
     !isTenantId(organizationId) ||
@@ -78,6 +97,7 @@ export function pushJob(data: unknown): PushJob | undefined {
       only === undefined ||
       (Array.isArray(only) && only.length <= 20 && only.every((entry) => isTenantId(entry)))
     ) ||
+    !(after === undefined || (isTenantId(after) && only === undefined)) ||
     !(attempt === undefined || (typeof attempt === 'number' && Number.isSafeInteger(attempt)))
   )
     return undefined;
@@ -89,6 +109,7 @@ export function pushJob(data: unknown): PushJob | undefined {
     commit,
     pusher,
     ...(only === undefined ? {} : { only }),
+    ...(after === undefined ? {} : { after }),
     ...(attempt === undefined ? {} : { attempt }),
   };
 }

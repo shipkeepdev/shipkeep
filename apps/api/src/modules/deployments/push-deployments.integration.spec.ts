@@ -89,8 +89,8 @@ describe('deployments from GitHub pushes', () => {
     commit: at,
     pusher,
   });
-  const handle = (event: PushEvent, only?: string[]) =>
-    fixture.app.get(PushDeployments).handle(event, only);
+  const handle = async (event: PushEvent, only?: string[]) =>
+    (await fixture.app.get(PushDeployments).handle(event, only ? { only } : {})).again;
   const deployments = async (applicationId: string) =>
     (
       await admin.query<{ trigger: string; actor_id: string | null; commit_sha: string | null }>(
@@ -388,5 +388,68 @@ describe('deployments from GitHub pushes', () => {
     expect((await events(applicationId, 'deployment.push_refused')).at(-1)?.metadata).toMatchObject(
       { commitSha: commit(9), code: 'push_given_up' },
     );
+  });
+
+  it('tries a push again when another one changed the application while GitHub answered', async () => {
+    head = commit(0);
+    files.set(commit(0), config(IMAGE('b'), 6000));
+    // Another push applies between this one's listing and its lock.
+    duringRead = () =>
+      admin.query(
+        "UPDATE applications SET commit_sha = $1, updated_at = now() + interval '1 second' WHERE id = $2",
+        ['1'.repeat(40), applicationId],
+      );
+    expect(await handle(push(commit(0)))).toEqual([applicationId]);
+    duringRead = undefined;
+    // Nothing of this push was kept: no release, the configuration as the other push left it.
+    expect(
+      await admin.query('SELECT 1 FROM releases WHERE commit_sha = $1', [commit(0)]),
+    ).toMatchObject({ rows: [] });
+    expect(await repository(applicationId)).toMatchObject({
+      commit_sha: '1'.repeat(40),
+      port: 5000,
+    });
+    // Tried again, it reads GitHub again and applies the head over what is stored now.
+    expect(await handle(push(commit(0)), [applicationId])).toEqual([]);
+    expect(await repository(applicationId)).toMatchObject({ commit_sha: commit(0), port: 6000 });
+    await finish(applicationId);
+  });
+
+  it('reaches every application that follows the branch, a page at a time', async () => {
+    // Twenty more applications follow the branch, in the protected environment: each push holds.
+    await protect(true);
+    await admin.query(
+      `INSERT INTO applications (id, organization_id, project_id, environment_id, name, source,
+         installation_id, repository_id, repository, branch, config_path, commit_sha, config,
+         config_sha, created_by, created_at, updated_at)
+       SELECT gen_random_uuid(), organization_id, project_id, environment_id, 'billing-' || n, source,
+         installation_id, repository_id, repository, branch, config_path, commit_sha, config,
+         config_sha, created_by, created_at, updated_at
+       FROM applications, generate_series(1, 20) AS n WHERE id = $1`,
+      [applicationId],
+    );
+    const all = (
+      await admin.query<{ id: string }>(
+        "SELECT id FROM applications WHERE source = 'git' AND repository_id = 901 ORDER BY id",
+      )
+    ).rows.map((row) => row.id);
+    expect(all).toHaveLength(21);
+    const at = 'b'.repeat(40);
+    head = at;
+    files.set(at, config(IMAGE('c')));
+    const handled = fixture.app.get(PushDeployments);
+    const first = await handled.handle(push(at));
+    expect(first).toEqual({ again: [], next: all[19] });
+    if (!first.next) throw new Error('a full page names the next one');
+    expect(await handled.handle(push(at), { after: first.next })).toEqual({ again: [] });
+    // Each one was handled once: held for the first, refused for the copies, whose name differs.
+    const outcomes = (
+      await auditLog().findMany({
+        where: { action: { in: ['deployment.push_held', 'deployment.push_refused'] } },
+      })
+    ).filter((event) => (event.metadata as { commitSha?: string }).commitSha === at);
+    expect(
+      outcomes.map((event) => (event.metadata as { applicationId: string }).applicationId).sort(),
+    ).toEqual([...all].sort());
   });
 });

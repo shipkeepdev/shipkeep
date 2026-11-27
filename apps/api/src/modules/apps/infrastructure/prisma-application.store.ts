@@ -3,11 +3,13 @@ import type { ShipkeepConfig } from '@shipkeep/config-schema';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
-import type {
-  ApplicationStore,
-  DomainSync,
-  RepositoryFollower,
-  RepositoryHead,
+import {
+  type ApplicationStore,
+  type DomainSync,
+  type FollowerPage,
+  MAX_FOLLOWERS,
+  type RepositoryFollower,
+  type RepositoryHead,
 } from '../application/ports';
 import type {
   Application,
@@ -19,8 +21,6 @@ import type {
 import type { NodeStatus } from '../../fleet/domain/node';
 
 const MAX_LISTED = 500;
-/** A push deploys at most this many applications: one per environment that follows the branch. */
-export const MAX_FOLLOWERS = 20;
 /** Placement spreads replicas over at most this many nodes long before the bound matters. */
 const MAX_HOSTS = 200;
 
@@ -262,6 +262,7 @@ export class PrismaApplicationStore implements ApplicationStore {
   async followers(
     organizationId: string,
     push: { installationId: number; repositoryId: number; branch: string },
+    page: FollowerPage = {},
   ): Promise<Application[]> {
     // Served by the partial index applications_repository_branch_idx.
     const rows = await this.database.client.application.findMany({
@@ -271,8 +272,13 @@ export class PrismaApplicationStore implements ApplicationStore {
         repositoryId: BigInt(push.repositoryId),
         branch: push.branch,
         installationId: BigInt(push.installationId),
+        ...(page.only
+          ? { id: { in: [...page.only] } }
+          : page.after
+            ? { id: { gt: page.after } }
+            : {}),
       },
-      orderBy: { createdAt: 'asc' },
+      orderBy: { id: 'asc' },
       take: MAX_FOLLOWERS,
     });
     return rows.map(application);

@@ -20,6 +20,8 @@ describe('the push queue job', () => {
     expect(pushJob({ ...job, pusher: null })).toEqual({ ...job, pusher: null });
     const retry = { ...job, only: ['0190f5a8-7b1c-7e2d-8f3a-0000000000bb'], attempt: 3 };
     expect(pushJob(retry)).toEqual(retry);
+    const page = { ...job, after: '0190f5a8-7b1c-7e2d-8f3a-0000000000bb' };
+    expect(pushJob(page)).toEqual(page);
   });
 
   it('refuses a payload this queue never sends: it crossed the database', () => {
@@ -34,6 +36,8 @@ describe('the push queue job', () => {
       { ...job, only: ['not-a-uuid'] },
       { ...job, only: Array.from({ length: 21 }, () => job.organizationId) },
       { ...job, attempt: 'one' },
+      { ...job, after: 'not-a-uuid' },
+      { ...job, after: job.organizationId, only: [job.organizationId] },
       null,
       'job',
     ])
@@ -52,8 +56,10 @@ describe('the push worker', () => {
         return Promise.resolve(null);
       },
     } as unknown as JobQueue;
+    const page: { next?: string } = {};
     const pushes = {
-      handle: () => Promise.resolve([busy]),
+      handle: () =>
+        Promise.resolve(page.next ? { again: [busy], next: page.next } : { again: [busy] }),
       gaveUp: (_push: unknown, ids: unknown) => {
         givenUp.push(ids);
         return Promise.resolve();
@@ -66,5 +72,12 @@ describe('the push worker', () => {
     await worker.handle({ ...job, only: [busy], attempt: 29 });
     expect(sent).toHaveLength(1);
     expect(givenUp).toEqual([[busy]]);
+    // A full page: the next one is sent at once, from the push alone.
+    page.next = '0190f5a8-7b1c-7e2d-8f3a-0000000000cc';
+    await worker.handle(job);
+    expect(sent.slice(1)).toEqual([
+      [{ ...job, after: page.next }, undefined],
+      [{ ...job, only: [busy], attempt: 1 }, { startAfter: 60 }],
+    ]);
   });
 });

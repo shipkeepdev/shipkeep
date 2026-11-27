@@ -4,6 +4,8 @@ import { createEvent, isDomainError, SYSTEM_ACTOR } from '@shipkeep/domain';
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { ApplicationCommands } from '../../apps/application/application-commands';
 import {
+  type FollowerPage,
+  MAX_FOLLOWERS,
   REPOSITORY_SOURCE,
   type RepositoryConfig,
   type RepositorySource,
@@ -34,17 +36,22 @@ export class PushDeployments {
   ) {}
 
   /**
-   * Handles a push for the applications that follow its branch, or only those named in `only`
-   * (a push tried again). Answers the applications to try again later: GitHub unavailable, or a
-   * deployment already under way.
+   * Handles a page of the applications that follow the push's branch: the first, the one after
+   * `page.after`, or only those named in `page.only` (a push tried again). Answers the
+   * applications to try again later (GitHub unavailable, a deployment under way, another push
+   * applied meanwhile) and, when the page was full, the last one, after which the next page
+   * starts.
    */
-  async handle(push: PushEvent, only?: readonly string[], now = new Date()): Promise<string[]> {
+  async handle(
+    push: PushEvent,
+    page: FollowerPage = {},
+    now = new Date(),
+  ): Promise<{ again: string[]; next?: string }> {
     const followers = await this.transaction.runTenant(push.organizationId, () =>
-      this.applications.followers(push.organizationId, push),
+      this.applications.followers(push.organizationId, push, page),
     );
     const again: string[] = [];
     for (const application of followers) {
-      if (only && !only.includes(application.id)) continue;
       if (!application.repository) continue;
       let read: RepositoryConfig;
       try {
@@ -60,10 +67,11 @@ export class PushDeployments {
         const outcome = await this.transaction.runTenant(push.organizationId, async () => {
           const current = await this.applications.applyRepositoryConfig(
             push.organizationId,
-            application.id,
+            application,
             read,
             now,
           );
+          if (current === 'moved') return current;
           return this.deployments.deployPush(
             current.application,
             push,
@@ -71,7 +79,7 @@ export class PushDeployments {
             now,
           );
         });
-        if (outcome === 'busy') again.push(application.id);
+        if (outcome === 'busy' || outcome === 'moved') again.push(application.id);
       } catch (error: unknown) {
         // A deployment queued at the same moment: nothing was kept, the push waits its turn.
         if (isDomainError(error) && error.code === 'deployment_in_progress')
@@ -79,7 +87,10 @@ export class PushDeployments {
         else await this.refused(push, application, error, now);
       }
     }
-    return again;
+    const last = followers.at(-1);
+    return !page.only && last && followers.length === MAX_FOLLOWERS
+      ? { again, next: last.id }
+      : { again };
   }
 
   /**
@@ -92,11 +103,9 @@ export class PushDeployments {
     now = new Date(),
   ): Promise<void> {
     const followers = await this.transaction.runTenant(push.organizationId, () =>
-      this.applications.followers(push.organizationId, push),
+      this.applications.followers(push.organizationId, push, { only: applicationIds }),
     );
-    for (const application of followers)
-      if (applicationIds.includes(application.id))
-        await this.refused(push, application, pushGivenUp(), now);
+    for (const application of followers) await this.refused(push, application, pushGivenUp(), now);
   }
 
   /**

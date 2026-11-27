@@ -43,6 +43,7 @@ import {
   DOMAIN_RESOLVER,
   type DomainCertificateStore,
   type DomainResolver,
+  type FollowerPage,
   type RepositoryConfig,
   type RepositoryFollower,
   REPOSITORY_SOURCE,
@@ -126,8 +127,9 @@ export class ApplicationCommands {
   followers(
     organizationId: string,
     push: { installationId: number; repositoryId: number; branch: string },
+    page?: FollowerPage,
   ): Promise<Application[]> {
-    return this.store.followers(organizationId, push);
+    return this.store.followers(organizationId, push, page);
   }
 
   /**
@@ -135,22 +137,31 @@ export class ApplicationCommands {
    * at and the repository's current name, as the system, in the caller's tenant transaction (ADR
    * 0031). The same configuration at the same commit changes nothing. The name stays the
    * application's, and a domain another application claims is refused, as for any configuration.
-   * Answers the application locked, with whether its environment is protected now.
+   * Answers the application locked, with whether its environment is protected now; `moved` when
+   * another push changed it since `listed` was read, before GitHub was asked.
    */
   async applyRepositoryConfig(
     organizationId: string,
-    applicationId: string,
+    listed: Application,
     read: RepositoryConfig,
     now = new Date(),
-  ): Promise<RepositoryFollower> {
-    const found = await this.store.findById(organizationId, applicationId);
-    if (!found || found.source !== 'git' || !(await this.store.lock(found)))
+  ): Promise<RepositoryFollower | 'moved'> {
+    if (listed.source !== 'git' || !(await this.store.lock(listed)))
       throw new NotFoundError('application');
     // Read again once locked: GitHub was asked meanwhile, and an administrator may have changed
-    // the application or the environment's protection in that time.
-    const follower = await this.store.follower(organizationId, applicationId);
+    // the environment's protection in that time.
+    const follower = await this.store.follower(organizationId, listed.id);
     const current = follower?.application;
     if (!follower || !current?.repository) throw new NotFoundError('application');
+    // Another push applied since this one listed the application: GitHub may have answered it
+    // after this one, so this read is not applied over it. The push is tried again, with the
+    // application as stored now.
+    if (
+      current.updatedAt.getTime() !== listed.updatedAt.getTime() ||
+      current.configSha !== listed.configSha ||
+      current.repository.commitSha !== listed.repository?.commitSha
+    )
+      return 'moved';
     const parsed = parseShipkeepConfig(read.text);
     if (!parsed.ok)
       throw new InvalidInputError(

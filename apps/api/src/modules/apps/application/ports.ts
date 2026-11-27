@@ -40,6 +40,15 @@ export interface RepositorySource {
 }
 
 /** A Git application a push may deploy, and whether a push may deploy it by itself (SPEC 7). */
+/** A page of a push's applications holds at most this many: a job handles one page. */
+export const MAX_FOLLOWERS = 20;
+
+/** Which of a push's applications a page holds: those after `after`, or only those named. */
+export interface FollowerPage {
+  readonly after?: string;
+  readonly only?: readonly string[];
+}
+
 /** Where a repository's branch head is, as GitHub answered for it. */
 export type RepositoryHead = Pick<RepositoryConfig, 'fullName' | 'commitSha'>;
 
@@ -78,12 +87,15 @@ export interface ApplicationStore {
   ): Promise<Application | undefined>;
   find(target: ApplicationTarget, applicationId: string): Promise<Application | undefined>;
   /**
-   * The Git applications of the organization that follow this branch of this repository through
-   * this installation, at most `MAX_FOLLOWERS`, oldest first.
+   * A page of the Git applications of the organization that follow this branch of this
+   * repository through this installation: at most `MAX_FOLLOWERS`, in identifier order, after
+   * `page.after` or among `page.only`. A push reaches them all by asking for the page after the
+   * last one until a page is not full.
    */
   followers(
     organizationId: string,
     push: { installationId: number; repositoryId: number; branch: string },
+    page?: FollowerPage,
   ): Promise<Application[]>;
   /** A Git application by id, with whether its environment is protected now. */
   follower(organizationId: string, applicationId: string): Promise<RepositoryFollower | undefined>;
