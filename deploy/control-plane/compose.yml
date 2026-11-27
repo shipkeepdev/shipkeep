@@ -201,6 +201,8 @@ services:
     environment:
       REGISTRY_AUTH_TOKEN_REALM: https://${SHIPKEEP_DOMAIN:?set SHIPKEEP_DOMAIN in .env}/api/v1/registry/token
       REGISTRY_AUTH_TOKEN_SERVICE: ${SHIPKEEP_DOMAIN:?set SHIPKEEP_DOMAIN in .env}
+      # Read-only while registry-gc.sh frees unused layers (ADR 0030); writable otherwise.
+      REGISTRY_STORAGE_MAINTENANCE_READONLY: '{"enabled": ${SHIPKEEP_REGISTRY_READ_ONLY:-false}}'
     volumes:
       - ./registry.yml:/etc/distribution/config.yml:ro
       - registry-auth:/auth:ro

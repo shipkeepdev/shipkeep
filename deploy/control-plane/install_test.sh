@@ -608,7 +608,7 @@ grep -Eq '^SMTP_HOST=$' "$work/no-email/.env.example" || die 'the example settin
 archive=$(bash deploy/control-plane/build-bundle.sh 1.2.3 "$reference" "$work/bundle")
 [[ $archive == "$work/bundle/shipkeep-control-plane_1.2.3.tar.gz" ]] || die 'unexpected archive name'
 tar -tzf "$archive" | sort >"$work/listing"
-printf 'shipkeep-control-plane/%s\n' '' .env.example Caddyfile LICENSE NOTICE backup.sh compose.single-machine.yml compose.yml image install.sh registry.yml | cmp -s - "$work/listing" || die 'unexpected bundle content'
+printf 'shipkeep-control-plane/%s\n' '' .env.example Caddyfile LICENSE NOTICE backup.sh compose.single-machine.yml compose.yml image install.sh registry-gc.sh registry.yml | cmp -s - "$work/listing" || die 'unexpected bundle content'
 tar -xzf "$archive" -C "$work"
 cmp -s "$installer" "$work/shipkeep-control-plane/install.sh" || die 'the bundled installer differs'
 [[ -x $work/shipkeep-control-plane/install.sh ]] || die 'the bundled installer is not executable'
@@ -649,4 +649,54 @@ for options in '--single-machine maybe' "--single-machine yes --organization $(p
   if bash "$installer" $options </dev/null >"$work/output" 2>&1; then die "accepted $options"; fi
   grep -Eq 'single-machine|organization name' "$work/output" || die "refused $options for another reason: $(cat "$work/output")"
 done
+# The registry's garbage collection (ADR 0030): registry-gc.sh, with the read-only switch of
+# compose.yml, frees what retention deleted, keeps what a tag names, and leaves the registry
+# writable. Token authentication is left out: it is not what this checks.
+gc=$work/gc
+mkdir "$gc"
+registry_image=$(sed -n 's/^    image: \(registry:.*\)$/\1/p' deploy/control-plane/compose.yml)
+readonly_switch=$(grep -F 'REGISTRY_STORAGE_MAINTENANCE_READONLY:' deploy/control-plane/compose.yml)
+[[ -n $registry_image && -n $readonly_switch ]] || die 'the registry service has no image or no read-only switch'
+sed '/^auth:/,$d' deploy/control-plane/registry.yml >"$gc/registry.yml"
+printf 'services:\n  registry:\n    image: %s\n    environment:\n%s\n    volumes:\n      - ./registry.yml:/etc/distribution/config.yml:ro\n      - data:/var/lib/registry\n    ports: ["127.0.0.1::5000"]\nvolumes:\n  data:\n' \
+  "$registry_image" "$readonly_switch" >"$gc/compose.yml"
+cp deploy/control-plane/registry-gc.sh "$gc/"
+gc_compose() { (cd "$gc" && docker compose "$@"); }
+gc_compose up -d --wait >/dev/null
+registry_url() { printf 'http://%s' "$(gc_compose port registry 5000)"; }
+upload() {
+  local data=$1 digest location
+  digest="sha256:$(printf '%s' "$data" | sha256sum | cut -d' ' -f1)"
+  location=$(curl -fsS -D - -o /dev/null -X POST "$(registry_url)/v2/acme/app/blobs/uploads/" | sed -n 's/^[Ll]ocation: //p' | tr -d '\r')
+  [[ $location == http* ]] || location="$(registry_url)$location"
+  [[ $location == *\?* ]] && location="$location&digest=$digest" || location="$location?digest=$digest"
+  curl -fsS -o /dev/null -X PUT -H 'content-type: application/octet-stream' --data-binary "$data" "$location"
+  printf '{"digest":"%s","size":%d}' "$digest" "${#data}"
+}
+push_image() {
+  local config layer manifest
+  config=$(upload "{\"seed\":\"$1\"}")
+  layer=$(upload "layer of $1")
+  manifest="{\"schemaVersion\":2,\"mediaType\":\"application/vnd.oci.image.manifest.v1+json\",\"config\":${config%\}},\"mediaType\":\"application/vnd.oci.image.config.v1+json\"},\"layers\":[${layer%\}},\"mediaType\":\"application/vnd.oci.image.layer.v1.tar+gzip\"}]}"
+  curl -fsS -o /dev/null -X PUT -H 'content-type: application/vnd.oci.image.manifest.v1+json' --data-binary "$manifest" "$(registry_url)/v2/acme/app/manifests/$1"
+  printf 'sha256:%s' "$(printf '%s' "$manifest" | sha256sum | cut -d' ' -f1)"
+}
+blobs() { gc_compose exec -T registry find /var/lib/registry/docker/registry/v2/blobs -name data | wc -l; }
+removed=$(push_image 1)
+push_image 2 >/dev/null
+[[ $(blobs) == 6 ]] || die 'the test images were not pushed'
+curl -fsS -o /dev/null -X DELETE "$(registry_url)/v2/acme/app/manifests/$removed" || die 'the test manifest was not deleted'
+(cd "$gc" && bash registry-gc.sh >"$gc/output" 2>&1) || die "the garbage collection failed: $(cat "$gc/output")"
+[[ $(blobs) == 3 ]] || die "the garbage collection left $(blobs) blobs, not 3"
+[[ $(curl -fsS "$(registry_url)/v2/acme/app/tags/list") == '{"name":"acme/app","tags":["2"]}' ]] || die 'the kept tag is gone'
+curl -fsS -o /dev/null -H 'accept: application/vnd.oci.image.manifest.v1+json' "$(registry_url)/v2/acme/app/manifests/2" || die 'the kept image is not served'
+[[ $(curl -s -o /dev/null -w '%{http_code}' -X POST "$(registry_url)/v2/acme/app/blobs/uploads/") == 202 ]] || die 'the registry is still read-only'
+gc_compose down -v >/dev/null 2>&1 || true
+# The units that run it daily: as root, from the installation's directory, after Docker.
+service=$(registry_gc_service /opt/shipkeep)
+grep -qxF 'WorkingDirectory=/opt/shipkeep' <<<"$service" || die 'the collection runs elsewhere'
+grep -qxF 'ExecStart=/opt/shipkeep/registry-gc.sh' <<<"$service" || die 'the collection runs something else'
+grep -qxF 'After=docker.service' <<<"$service" || die 'the collection may run before Docker'
+grep -qxF 'OnCalendar=*-*-* 03:30:00 UTC' <<<"$(registry_gc_timer)" || die 'the collection does not run at 03:30 UTC'
+
 printf 'Control plane installer checks passed.\n'

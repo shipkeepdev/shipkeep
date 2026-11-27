@@ -576,6 +576,29 @@ add_this_server() {
 # PostgreSQL and the API run in this slice, protected up to the reservation (ADR 0021). Its parent,
 # shipkeep.slice, gets the same protection from the server installer. Written once .env exists, so
 # that a run stopped before leaves nothing a new run refuses, and again on resume.
+# The units that run registry-gc.sh every day at 03:30 UTC, an hour after the control plane's image
+# retention (ADR 0030). $1 is the installation's directory.
+registry_gc_service() {
+  printf '[Unit]\nDescription=Shipkeep: free the layers of the images the registry no longer keeps\nRequires=docker.service\nAfter=docker.service\n[Service]\nType=oneshot\nWorkingDirectory=%s\nExecStart=%s/registry-gc.sh\n' "$1" "$1"
+}
+registry_gc_timer() {
+  printf '[Unit]\nDescription=Shipkeep: the registry garbage collection, daily\n[Timer]\nOnCalendar=*-*-* 03:30:00 UTC\nPersistent=true\n[Install]\nWantedBy=timers.target\n'
+}
+install_registry_gc() {
+  local unit=/etc/systemd/system/shipkeep-registry-gc
+  if [[ ! -d /run/systemd/system ]]; then
+    printf 'No systemd here: run %s/registry-gc.sh from that directory every day to free the registry'"'"'s unused layers.\n' "$directory"
+    return 0
+  fi
+  registry_gc_service "$directory" >"$unit.service.new"
+  registry_gc_timer >"$unit.timer.new"
+  chmod 0644 "$unit.service.new" "$unit.timer.new"
+  mv -- "$unit.service.new" "$unit.service"
+  mv -- "$unit.timer.new" "$unit.timer"
+  systemctl daemon-reload
+  systemctl enable --quiet --now shipkeep-registry-gc.timer
+}
+
 controlplane_slice() {
   local unit=/etc/systemd/system/shipkeep-controlplane.slice
   printf '[Unit]\nDescription=Shipkeep: the control plane on the machine that also runs applications\nBefore=slices.target\n[Slice]\nMemoryLow=%d\n' "$reserved_memory_bytes" >"$unit.new"
@@ -598,6 +621,7 @@ finish() {
   printf 'Starting the control plane...\n'
   compose up -d
   ((started)) || record started
+  install_registry_gc
   if ((!account_done)); then
     [[ -n $owner_password ]] || ask_owner_password
     printf 'Creating the account %s...\n' "$owner_email"
@@ -737,7 +761,7 @@ main() {
     return 0
   fi
   read_image "$here/image"
-  for file in compose.yml compose.single-machine.yml Caddyfile registry.yml backup.sh; do
+  for file in compose.yml compose.single-machine.yml Caddyfile registry.yml backup.sh registry-gc.sh; do
     [[ -f $here/$file && ! -L $here/$file ]] || fail "Run this installer from a release bundle: $file is missing."
   done
   assert_root_directory "$directory"
@@ -846,8 +870,8 @@ main() {
   assert_root_directory "$directory"
   writing=1
   install -m 0644 "$here/compose.yml" "$here/compose.single-machine.yml" "$here/Caddyfile" "$here/registry.yml" "$directory/"
-  # Instance backup and restore (ADR 0026).
-  install -m 0755 "$here/backup.sh" "$directory/"
+  # Instance backup and restore (ADR 0026), and the registry's garbage collection (ADR 0030).
+  install -m 0755 "$here/backup.sh" "$here/registry-gc.sh" "$directory/"
   # What a run stopped before .env left behind: never used, since nothing started without .env.
   rm -f -- "$directory/.env.new" "$directory/install-state.new"
   # What --resume yes needs to finish, nothing secret, in place before .env: whoever finds .env
