@@ -24,7 +24,8 @@ export class GithubPushQueue implements GithubPushes, OnModuleInit {
       retryDelay: 15,
       retryBackoff: true,
       retryDelayMax: 600,
-      expireInSeconds: 300,
+      // Up to 20 applications, each asking GitHub several times with a 10 s timeout per call.
+      expireInSeconds: 1500,
       retentionSeconds: 7 * 86400,
       deleteAfterSeconds: 86400,
     });

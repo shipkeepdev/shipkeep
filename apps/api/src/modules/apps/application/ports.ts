@@ -40,6 +40,9 @@ export interface RepositorySource {
 }
 
 /** A Git application a push may deploy, and whether a push may deploy it by itself (SPEC 7). */
+/** Where a repository's branch head is, as GitHub answered for it. */
+export type RepositoryHead = Pick<RepositoryConfig, 'fullName' | 'commitSha'>;
+
 export interface RepositoryFollower {
   readonly application: Application;
   /** In a protected environment, a push changes the configuration and deploys nothing. */
@@ -61,13 +64,17 @@ export interface ApplicationStore {
     now: Date,
     repository?: ApplicationRepository | null,
   ): Promise<Application | undefined>;
-  /** Replaces the configuration if it still has `expectedSha`; undefined when it changed. */
+  /**
+   * Replaces the configuration if it still has `expectedSha`; undefined when it changed. A Git
+   * application's `head` is the repository's name and the commit the configuration was read at.
+   */
   replaceConfig(
     application: Application,
     expectedSha: string,
     config: ApplicationConfig,
     configSha: string,
     now: Date,
+    head?: RepositoryHead,
   ): Promise<Application | undefined>;
   find(target: ApplicationTarget, applicationId: string): Promise<Application | undefined>;
   /**
@@ -77,7 +84,9 @@ export interface ApplicationStore {
   followers(
     organizationId: string,
     push: { installationId: number; repositoryId: number; branch: string },
-  ): Promise<RepositoryFollower[]>;
+  ): Promise<Application[]>;
+  /** A Git application by id, with whether its environment is protected now. */
+  follower(organizationId: string, applicationId: string): Promise<RepositoryFollower | undefined>;
   /** The application by id within its organization, wherever it lives (confirmation targets). */
   findById(organizationId: string, applicationId: string): Promise<Application | undefined>;
   /**

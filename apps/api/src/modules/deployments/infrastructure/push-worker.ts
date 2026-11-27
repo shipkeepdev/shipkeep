@@ -49,6 +49,7 @@ export class PushWorker {
     if (again.length === 0) return;
     if (attempt >= MAX_ATTEMPTS) {
       this.logger.warn({ commit: job.commit, applications: again.length }, 'push given up');
+      await this.pushes.gaveUp(job, again);
       return;
     }
     const next: PushJob = { ...job, only: again, attempt };

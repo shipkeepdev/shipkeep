@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { pushJob } from './push-worker';
+import type { JobQueue } from '../../../platform/jobs/job-queue';
+import type { PushDeployments } from '../application/push-deployments';
+
+import { pushJob, PushWorker } from './push-worker';
 
 const job = {
   organizationId: '0190f5a8-7b1c-7e2d-8f3a-0000000000aa',
@@ -35,5 +38,33 @@ describe('the push queue job', () => {
       'job',
     ])
       expect(pushJob(other), JSON.stringify(other)).toBeUndefined();
+  });
+});
+
+describe('the push worker', () => {
+  it('tries busy applications again a minute later, then gives up on them, audited', async () => {
+    const busy = '0190f5a8-7b1c-7e2d-8f3a-0000000000bb';
+    const sent: unknown[] = [];
+    const givenUp: unknown[] = [];
+    const jobs = {
+      send: (_queue: string, data: unknown, options: unknown) => {
+        sent.push([data, options]);
+        return Promise.resolve(null);
+      },
+    } as unknown as JobQueue;
+    const pushes = {
+      handle: () => Promise.resolve([busy]),
+      gaveUp: (_push: unknown, ids: unknown) => {
+        givenUp.push(ids);
+        return Promise.resolve();
+      },
+    } as unknown as PushDeployments;
+    const worker = new PushWorker(jobs, pushes);
+    await worker.handle({ ...job, attempt: 3 });
+    expect(sent).toEqual([[{ ...job, only: [busy], attempt: 4 }, { startAfter: 60 }]]);
+    expect(givenUp).toEqual([]);
+    await worker.handle({ ...job, only: [busy], attempt: 29 });
+    expect(sent).toHaveLength(1);
+    expect(givenUp).toEqual([[busy]]);
   });
 });

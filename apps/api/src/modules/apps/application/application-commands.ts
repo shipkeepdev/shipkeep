@@ -43,6 +43,7 @@ import {
   DOMAIN_RESOLVER,
   type DomainCertificateStore,
   type DomainResolver,
+  type RepositoryConfig,
   type RepositoryFollower,
   REPOSITORY_SOURCE,
   type RepositoryLocation,
@@ -118,62 +119,74 @@ export class ApplicationCommands {
   }
 
   /**
-   * The Git applications a push to `branch` of a repository deploys, with whether each one's
-   * environment is protected. Runs in the caller's tenant transaction; checks no permission: a
-   * verified delivery of the organization's own App is the system acting.
+   * The Git applications a push to `branch` of a repository deploys. Runs in the caller's tenant
+   * transaction; checks no permission: a verified delivery of the organization's own App is the
+   * system acting.
    */
   followers(
     organizationId: string,
     push: { installationId: number; repositoryId: number; branch: string },
-  ): Promise<RepositoryFollower[]> {
+  ): Promise<Application[]> {
     return this.store.followers(organizationId, push);
   }
 
   /**
-   * Makes a configuration read from the repository at `commitSha` the application's, as the
-   * system, in the caller's tenant transaction (ADR 0031). The same configuration changes nothing.
-   * The name stays the application's, and a domain another application claims is refused, as for
-   * any configuration.
+   * Makes a configuration read from the repository the application's, with the commit it was read
+   * at and the repository's current name, as the system, in the caller's tenant transaction (ADR
+   * 0031). The same configuration at the same commit changes nothing. The name stays the
+   * application's, and a domain another application claims is refused, as for any configuration.
+   * Answers the application locked, with whether its environment is protected now.
    */
   async applyRepositoryConfig(
     organizationId: string,
     applicationId: string,
-    text: string,
-    commitSha: string,
+    read: RepositoryConfig,
     now = new Date(),
-  ): Promise<Application> {
+  ): Promise<RepositoryFollower> {
     const found = await this.store.findById(organizationId, applicationId);
     if (!found || found.source !== 'git' || !(await this.store.lock(found)))
       throw new NotFoundError('application');
-    const current = await this.store.findById(organizationId, applicationId);
-    if (!current) throw new NotFoundError('application');
-    const parsed = parseShipkeepConfig(text);
+    // Read again once locked: GitHub was asked meanwhile, and an administrator may have changed
+    // the application or the environment's protection in that time.
+    const follower = await this.store.follower(organizationId, applicationId);
+    const current = follower?.application;
+    if (!follower || !current?.repository) throw new NotFoundError('application');
+    const parsed = parseShipkeepConfig(read.text);
     if (!parsed.ok)
       throw new InvalidInputError(
         'invalid_application_config',
-        `The configuration at ${current.repository?.configPath ?? 'shipkeep.yml'} is invalid.`,
-        { issues: parsed.issues.slice(0, 20), commit: commitSha },
+        `The configuration at ${current.repository.configPath} is invalid.`,
+        { issues: parsed.issues.slice(0, 20), commit: read.commitSha },
       );
     const config = applicationConfig(parsed.config, 'git');
     assertDomainsAvailable(config.config, [this.controlPlaneHost]);
     assertSameName(current, config);
     const configSha = sha256(config.canonical);
-    if (configSha === current.configSha) return current;
+    const changed = configSha !== current.configSha;
+    // The same configuration at another commit, or under the repository's new name, is recorded
+    // too: a release made from it names that commit.
+    if (
+      !changed &&
+      current.repository.commitSha === read.commitSha &&
+      current.repository.fullName === read.fullName
+    )
+      return follower;
     const updated = await this.store.replaceConfig(
       current,
       current.configSha,
       config,
       configSha,
       now,
+      { fullName: read.fullName, commitSha: read.commitSha },
     );
     if (!updated)
       throw new ConflictError(
         'application_config_changed',
         'The configuration changed meanwhile; reload it and retry.',
       );
-    await this.claimDomains(SYSTEM_ACTOR, updated, now);
-    await this.audit('updated', SYSTEM_ACTOR, updated, now, current.configSha, commitSha);
-    return updated;
+    if (changed) await this.claimDomains(SYSTEM_ACTOR, updated, now);
+    await this.audit('updated', SYSTEM_ACTOR, updated, now, current.configSha, read.commitSha);
+    return { application: updated, protectedEnvironment: follower.protectedEnvironment };
   }
 
   create(

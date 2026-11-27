@@ -105,6 +105,14 @@ export function applicationCleanupPending(): ConflictError {
   );
 }
 
+/** A push whose applications stayed busy, or GitHub unavailable, for every attempt. */
+export function pushGivenUp(): ConflictError {
+  return new ConflictError(
+    'push_given_up',
+    'The push was tried again too many times without deploying.',
+  );
+}
+
 export function deploymentInProgress(state?: DeploymentState): ConflictError {
   return new ConflictError(
     'deployment_in_progress',

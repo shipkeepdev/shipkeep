@@ -10,6 +10,7 @@ import {
 } from '../../apps/application/ports';
 import type { Application } from '../../apps/domain/application';
 import type { PushEvent } from '../../git/domain/github-webhook';
+import { pushGivenUp } from '../domain/release';
 
 import { DeploymentCommands } from './deployment-commands';
 import { DEPLOYMENT_TRANSACTION, type DeploymentTransaction } from './ports';
@@ -42,7 +43,7 @@ export class PushDeployments {
       this.applications.followers(push.organizationId, push),
     );
     const again: string[] = [];
-    for (const { application, protectedEnvironment } of followers) {
+    for (const application of followers) {
       if (only && !only.includes(application.id)) continue;
       if (!application.repository) continue;
       let read: RepositoryConfig;
@@ -60,18 +61,42 @@ export class PushDeployments {
           const current = await this.applications.applyRepositoryConfig(
             push.organizationId,
             application.id,
-            read.text,
-            read.commitSha,
+            read,
             now,
           );
-          return this.deployments.deployPush(current, push, protectedEnvironment, now);
+          return this.deployments.deployPush(
+            current.application,
+            push,
+            current.protectedEnvironment,
+            now,
+          );
         });
         if (outcome === 'busy') again.push(application.id);
       } catch (error: unknown) {
-        await this.refused(push, application, error, now);
+        // A deployment queued at the same moment: nothing was kept, the push waits its turn.
+        if (isDomainError(error) && error.code === 'deployment_in_progress')
+          again.push(application.id);
+        else await this.refused(push, application, error, now);
       }
     }
     return again;
+  }
+
+  /**
+   * The applications a push was tried for too long without deploying: each is audited as
+   * refused, so the log says the commit never deployed. Those deleted meanwhile are skipped.
+   */
+  async gaveUp(
+    push: PushEvent,
+    applicationIds: readonly string[],
+    now = new Date(),
+  ): Promise<void> {
+    const followers = await this.transaction.runTenant(push.organizationId, () =>
+      this.applications.followers(push.organizationId, push),
+    );
+    for (const application of followers)
+      if (applicationIds.includes(application.id))
+        await this.refused(push, application, pushGivenUp(), now);
   }
 
   /**

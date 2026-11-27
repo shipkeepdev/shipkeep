@@ -3,7 +3,12 @@ import type { ShipkeepConfig } from '@shipkeep/config-schema';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
-import type { ApplicationStore, DomainSync, RepositoryFollower } from '../application/ports';
+import type {
+  ApplicationStore,
+  DomainSync,
+  RepositoryFollower,
+  RepositoryHead,
+} from '../application/ports';
 import type {
   Application,
   ApplicationConfig,
@@ -77,18 +82,29 @@ export class PrismaApplicationStore implements ApplicationStore {
     config: ApplicationConfig,
     configSha: string,
     now: Date,
+    head?: RepositoryHead,
   ): Promise<Application | undefined> {
+    const repository =
+      head && application.repository
+        ? { ...application.repository, fullName: head.fullName, commitSha: head.commitSha }
+        : application.repository;
     // Compare-and-swap on the configuration hash: a concurrent edit makes this one fail.
     const updated = await this.database.client.application.updateMany({
       where: {
         id: application.id,
         organizationId: application.organizationId,
         configSha: expectedSha,
+        ...(head ? { source: 'git' } : {}),
       },
-      data: { config: JSON.parse(config.canonical) as object, configSha, updatedAt: now },
+      data: {
+        config: JSON.parse(config.canonical) as object,
+        configSha,
+        ...(head ? { repository: head.fullName, commitSha: head.commitSha } : {}),
+        updatedAt: now,
+      },
     });
     if (updated.count !== 1) return undefined;
-    return { ...application, config: config.config, configSha, updatedAt: now };
+    return { ...application, repository, config: config.config, configSha, updatedAt: now };
   }
 
   async syncDomains(
@@ -256,14 +272,23 @@ export class PrismaApplicationStore implements ApplicationStore {
         branch: push.branch,
         installationId: BigInt(push.installationId),
       },
-      include: { environment: { select: { protected: true } } },
       orderBy: { createdAt: 'asc' },
       take: MAX_FOLLOWERS,
     });
-    return rows.map((row) => ({
-      application: application(row),
-      protectedEnvironment: row.environment.protected,
-    }));
+    return rows.map(application);
+  }
+
+  async follower(
+    organizationId: string,
+    applicationId: string,
+  ): Promise<RepositoryFollower | undefined> {
+    const row = await this.database.client.application.findFirst({
+      where: { id: applicationId, organizationId, source: 'git' },
+      include: { environment: { select: { protected: true } } },
+    });
+    return row
+      ? { application: application(row), protectedEnvironment: row.environment.protected }
+      : undefined;
   }
 
   async list(target: ApplicationTarget): Promise<Application[]> {

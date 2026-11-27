@@ -25,8 +25,8 @@ function fakePem(body: string): string {
 
 const WEBHOOK = 'whsec_test_fake_webhook_secret';
 const IMAGE = (tag: string) => `ghcr.io/acme/billing@sha256:${tag.repeat(64)}`;
-const config = (image: string, port = 3000) =>
-  `version: 1\nname: billing\nbuild: { type: image, image: "${image}" }\nrun:\n  port: ${String(port)}\n`;
+const config = (image: string, port = 3000, secrets = '') =>
+  `version: 1\nname: billing\nbuild: { type: image, image: "${image}" }\nrun:\n  port: ${String(port)}\n${secrets}`;
 const commit = (n: number) => String(n % 10).repeat(40);
 
 /**
@@ -38,7 +38,10 @@ describe('deployments from GitHub pushes', () => {
   let admin: Client;
   // What the fake GitHub holds: the branch head, and the file at each commit.
   let head = commit(1);
+  let fullName = 'acme-corp/billing';
   let unavailable = false;
+  // Runs while GitHub is asked, as an administrator acting at that moment would.
+  let duringRead: (() => Promise<unknown>) | undefined;
   const files = new Map<string, string>([[commit(1), config(IMAGE('a'))]]);
   const manifests: GithubManifests = {
     convert: () =>
@@ -67,12 +70,15 @@ describe('deployments from GitHub pushes', () => {
       Promise.resolve({
         installationId,
         id: repositoryId,
-        fullName: 'acme-corp/billing',
+        fullName,
         defaultBranch: 'main',
         private: true,
       }),
     branchHead: () => Promise.resolve(head),
-    file: (_token, _fullName, _path, at) => Promise.resolve(files.get(at)),
+    file: async (_token, _fullName, _path, at) => {
+      await duringRead?.();
+      return files.get(at);
+    },
     revoke: () => Promise.resolve(),
   };
   const push = (at: string, pusher: string | null = 'octocat'): PushEvent => ({
@@ -93,6 +99,23 @@ describe('deployments from GitHub pushes', () => {
         [applicationId],
       )
     ).rows;
+  const repository = async (applicationId: string) =>
+    (
+      await admin.query<{ repository: string; commit_sha: string; port: number }>(
+        "SELECT repository, commit_sha, (config->'run'->>'port')::int AS port FROM applications WHERE id = $1",
+        [applicationId],
+      )
+    ).rows[0];
+  const finish = (applicationId: string) =>
+    admin.query(
+      "UPDATE deployments SET state = 'succeeded', finished_at = now(), updated_at = now() WHERE application_id = $1 AND finished_at IS NULL",
+      [applicationId],
+    );
+  const protect = (value: boolean) =>
+    admin.query('UPDATE environments SET protected = $1 WHERE id = $2', [
+      value,
+      fixture.environmentId,
+    ]);
   const events = async (applicationId: string, action: string) =>
     (await auditLog().findMany({ where: { action }, orderBy: { createdAt: 'asc' } })).filter(
       (event) =>
@@ -202,18 +225,25 @@ describe('deployments from GitHub pushes', () => {
 
   it('holds a push in a protected environment: the configuration follows, nothing deploys', async () => {
     head = commit(2);
-    files.set(commit(2), config(IMAGE('b'), 4000));
+    // A secret not set yet only matters to a deployment: the push is held, not refused.
+    files.set(commit(2), config(IMAGE('b'), 4000, 'secrets: [API_KEY]\n'));
+    // Renamed on GitHub meanwhile: the name is kept for the next calls.
+    fullName = 'acme-corp/billing-next';
     expect(await handle(push(commit(2)))).toEqual([]);
     expect(await deployments(applicationId)).toEqual([]);
-    const stored = await admin.query<{ config: { run: { port: number } } }>(
-      'SELECT config FROM applications WHERE id = $1',
-      [applicationId],
-    );
-    expect(stored.rows.map((row) => row.config.run.port)).toEqual([4000]);
+    expect(await repository(applicationId)).toEqual({
+      repository: 'acme-corp/billing-next',
+      commit_sha: commit(2),
+      port: 4000,
+    });
     const held = await events(applicationId, 'deployment.push_held');
-    expect(held.map((event) => [event.actorKind, event.metadata])).toMatchObject([
+    expect(
+      held.map((event) => [event.actorKind, event.targetType, event.targetId, event.metadata]),
+    ).toMatchObject([
       [
         'system',
+        'application',
+        applicationId,
         { commitSha: commit(2), githubPusher: 'octocat', reason: 'protected_environment' },
       ],
     ]);
@@ -224,9 +254,7 @@ describe('deployments from GitHub pushes', () => {
   });
 
   it('deploys the branch head in an unprotected environment, once, as the system', async () => {
-    await admin.query('UPDATE environments SET protected = false WHERE id = $1', [
-      fixture.environmentId,
-    ]);
+    await protect(false);
     head = commit(3);
     files.set(commit(3), config(IMAGE('c')));
     // An overtaken push, its commit no longer the branch head, deploys nothing.
@@ -284,5 +312,81 @@ describe('deployments from GitHub pushes', () => {
     expect(await handle(push(commit(6)))).toEqual([applicationId]);
     unavailable = false;
     expect(await deployments(applicationId)).toHaveLength(2);
+  });
+
+  it("reads the environment's protection once the application is locked", async () => {
+    // Protected while GitHub was asked: held, though the environment was open when listed.
+    head = commit(7);
+    files.set(commit(7), config(IMAGE('f')));
+    duringRead = () => protect(true);
+    expect(await handle(push(commit(7)))).toEqual([]);
+    duringRead = undefined;
+    expect(await deployments(applicationId)).toHaveLength(2);
+    expect((await events(applicationId, 'deployment.push_held')).at(-1)?.metadata).toMatchObject({
+      commitSha: commit(7),
+    });
+    // Deployed by hand, the release names the commit the configuration was read at.
+    await protect(false);
+    await fixture
+      .post(`${fixture.environment}/applications/${applicationId}/deployments`, 'owner', {})
+      .expect(201);
+    expect((await deployments(applicationId)).at(-1)).toMatchObject({
+      trigger: 'manual',
+      commit_sha: commit(7),
+    });
+    await finish(applicationId);
+  });
+
+  it('records the same configuration at a newer commit, and deploys that commit', async () => {
+    const before = await admin.query<{ config_sha: string }>(
+      'SELECT config_sha FROM applications WHERE id = $1',
+      [applicationId],
+    );
+    head = commit(8);
+    files.set(commit(8), config(IMAGE('f')));
+    expect(await handle(push(commit(8)))).toEqual([]);
+    expect((await repository(applicationId))?.commit_sha).toBe(commit(8));
+    expect((await deployments(applicationId)).at(-1)).toMatchObject({
+      trigger: 'webhook',
+      commit_sha: commit(8),
+    });
+    expect((await events(applicationId, 'application.updated')).at(-1)?.metadata).toMatchObject({
+      commitSha: commit(8),
+      configSha: before.rows[0]?.config_sha,
+      previousConfigSha: before.rows[0]?.config_sha,
+    });
+    await finish(applicationId);
+  });
+
+  it('keeps no release when a deployment was queued at the same moment, and tries again', async () => {
+    head = commit(9);
+    files.set(commit(9), config(IMAGE('a'), 5000));
+    // The insert skipped, as the unique index of active deployments does for a concurrent one.
+    await admin.query(
+      'CREATE FUNCTION skip_deployment() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NULL; END $$',
+    );
+    await admin.query(
+      'CREATE TRIGGER skip_deployment BEFORE INSERT ON deployments FOR EACH ROW EXECUTE FUNCTION skip_deployment()',
+    );
+    try {
+      expect(await handle(push(commit(9)))).toEqual([applicationId]);
+    } finally {
+      await admin.query('DROP TRIGGER skip_deployment ON deployments');
+      await admin.query('DROP FUNCTION skip_deployment()');
+    }
+    const kept = await admin.query('SELECT 1 FROM releases WHERE commit_sha = $1', [commit(9)]);
+    expect(kept.rows).toEqual([]);
+    // Rolled back with it, the configuration is applied again by the next attempt.
+    expect((await repository(applicationId))?.port).toBe(3000);
+    expect(await handle(push(commit(9)), [applicationId])).toEqual([]);
+    expect((await deployments(applicationId)).at(-1)).toMatchObject({ commit_sha: commit(9) });
+    expect((await repository(applicationId))?.port).toBe(5000);
+    await finish(applicationId);
+
+    // A push tried too many times is audited as refused, with a stable code.
+    await fixture.app.get(PushDeployments).gaveUp(push(commit(9)), [applicationId]);
+    expect((await events(applicationId, 'deployment.push_refused')).at(-1)?.metadata).toMatchObject(
+      { commitSha: commit(9), code: 'push_given_up' },
+    );
   });
 });
