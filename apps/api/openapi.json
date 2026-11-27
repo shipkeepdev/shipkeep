@@ -1662,7 +1662,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReauthenticateMfaDto"
+                "$ref": "#/components/schemas/ReadoptNodeDto"
               }
             }
           }
@@ -7477,6 +7477,37 @@
           "expiresAt",
           "caFingerprint",
           "gatewayAddress"
+        ]
+      },
+      "ReadoptNodeDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password"
+          },
+          "totp": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
+          },
+          "recovery": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "writeOnly": true
+          },
+          "certificateSerial": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "Serial of the certificate reviewed, as the list of servers to re-adopt gives it. When another certificate waits for this server, the answer is 409 `readoption_changed` and nothing is adopted."
+          }
+        },
+        "required": [
+          "password",
+          "certificateSerial"
         ]
       },
       "NodeReadoptedDto": {

@@ -70,9 +70,18 @@ export class NodeReadoptions {
     });
   }
 
-  /** Registers the node's waiting certificate and revokes its others; the caller authorized it. */
+  /**
+   * Registers the node's waiting certificate and revokes its others; the caller authorized it.
+   * `serial` is the certificate the administrator reviewed (#545): another one waiting answers
+   * `ReadoptionChangedError`, and adopts nothing.
+   */
   async confirm(
-    input: { readonly organizationId: string; readonly nodeId: string; readonly actor: Actor },
+    input: {
+      readonly organizationId: string;
+      readonly nodeId: string;
+      readonly serial: string;
+      readonly actor: Actor;
+    },
     now = new Date(),
   ): Promise<{ serial: string; notAfter: Date }> {
     return this.transaction.runTenant(input.organizationId, async () => {
@@ -81,6 +90,7 @@ export class NodeReadoptions {
         await this.readoptions.find(input.organizationId, input.nodeId),
         node,
         now,
+        input.serial,
       );
       const revokedSerials = await this.readoptions.adopt(request, uuidv7(), now);
       await this.events.publish([

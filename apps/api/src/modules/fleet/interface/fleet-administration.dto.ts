@@ -12,6 +12,7 @@ import {
   ValidateIf,
 } from 'class-validator';
 
+import { ReauthenticateMfaDto } from '../../identity/interface/mfa.dto';
 import type { AgentUpgradeOverview } from '../application/agent-upgrades';
 import type { IssueJoinTokenResult } from '../application/issue-join-token';
 import { ACTION_REASONS } from '../domain/agent-action';
@@ -126,6 +127,17 @@ export class NodeReadoptionDto {
 }
 export class NodeReadoptionPageDto {
   @ApiProperty({ type: [NodeReadoptionDto] }) items!: NodeReadoptionDto[];
+}
+/** The proof to re-adopt a server, and the certificate the administrator reviewed (#545). */
+export class ReadoptNodeDto extends ReauthenticateMfaDto {
+  @ApiProperty({
+    pattern: '^[0-9a-f]{32}$',
+    description:
+      'Serial of the certificate reviewed, as the list of servers to re-adopt gives it. When another certificate waits for this server, the answer is 409 `readoption_changed` and nothing is adopted.',
+  })
+  @IsString()
+  @Matches(/^[0-9a-f]{32}$/)
+  certificateSerial!: string;
 }
 export class NodeReadoptedDto {
   @ApiProperty() certificateSerial!: string;

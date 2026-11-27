@@ -3,6 +3,7 @@ import { NotFoundError } from '@shipkeep/domain';
 import {
   presentationOutcome,
   READOPTION_REFRESH_MS,
+  ReadoptionChangedError,
   ReadoptionExpiredError,
   ReadoptionNotPendingError,
   type ReadoptionRequest,
@@ -66,26 +67,39 @@ describe('presentationOutcome', () => {
 });
 
 describe('readoptable', () => {
-  it('confirms a current request for a node still there', () => {
-    expect(readoptable(request(), { status: 'down' }, now)).toEqual(request());
+  it('confirms a current request for a node still there, for the certificate reviewed', () => {
+    expect(readoptable(request(), { status: 'down' }, now, '0a')).toEqual(request());
   });
 
   it('refuses without a request, or for a removed node', () => {
-    expect(() => readoptable(undefined, { status: 'down' }, now)).toThrow(
+    expect(() => readoptable(undefined, { status: 'down' }, now, '0a')).toThrow(
       ReadoptionNotPendingError,
     );
-    expect(() => readoptable(request(), { status: 'removed' }, now)).toThrow(
+    expect(() => readoptable(request(), { status: 'removed' }, now, '0a')).toThrow(
       ReadoptionNotPendingError,
     );
-    expect(() => readoptable(request(), undefined, now)).toThrow(NotFoundError);
+    expect(() => readoptable(request(), undefined, now, '0a')).toThrow(NotFoundError);
+  });
+
+  // #545: the administrator reviewed one certificate, and another one replaced it meanwhile.
+  it('refuses a certificate other than the one reviewed', () => {
+    for (const reviewed of ['0b', '0A', '', ' 0a', '0a0'])
+      expect(() => readoptable(request(), { status: 'down' }, now, reviewed)).toThrow(
+        ReadoptionChangedError,
+      );
   });
 
   it('refuses a certificate that expired while it waited, or is not valid yet', () => {
-    expect(() => readoptable(request({ notAfter: now }), { status: 'down' }, now)).toThrow(
+    expect(() => readoptable(request({ notAfter: now }), { status: 'down' }, now, '0a')).toThrow(
       ReadoptionExpiredError,
     );
     expect(() =>
-      readoptable(request({ notBefore: new Date(now.getTime() + 1) }), { status: 'down' }, now),
+      readoptable(
+        request({ notBefore: new Date(now.getTime() + 1) }),
+        { status: 'down' },
+        now,
+        '0a',
+      ),
     ).toThrow(ReadoptionExpiredError);
   });
 });
