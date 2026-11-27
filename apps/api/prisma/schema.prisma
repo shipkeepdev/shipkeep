@@ -46,6 +46,7 @@ model Organization {
   joinTokens          JoinToken[]
   confirmations       ConfirmationToken[]
   registries          RegistryCredential[]
+  registryGrants      RegistryGrant[]
   agentUpgrades       AgentUpgrade[]
   githubApp           GithubApp?
   githubAppFlow       GithubAppFlow?
@@ -465,6 +466,23 @@ model RegistryCredential {
   @@map("registry_credentials")
 }
 
+/// A credential for the installation's own registry (ADR 0030): pull, and push for a build, on one
+/// application's repository until `expiresAt`. Only the SHA-256 of its random secret is kept.
+model RegistryGrant {
+  id             String       @id @db.Uuid
+  organizationId String       @map("organization_id") @db.Uuid
+  applicationId  String       @map("application_id") @db.Uuid
+  secretSha256   String       @unique @map("secret_sha256") @db.Char(64)
+  push           Boolean
+  expiresAt      DateTime     @map("expires_at") @db.Timestamptz(6)
+  createdAt      DateTime     @map("created_at") @db.Timestamptz(6)
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+  application    Application  @relation(fields: [applicationId], references: [id], onDelete: Cascade, onUpdate: Restrict)
+
+  @@index([organizationId, expiresAt], map: "registry_grants_expires_at_idx")
+  @@map("registry_grants")
+}
+
 /// Durable action queued for one node (PLAN M1.4a2); the action message is encrypted.
 model AgentAction {
   id             String    @id @db.Uuid
@@ -567,6 +585,7 @@ model Application {
   deployments    Deployment[]
   allocations    Allocation[]
   domains        Domain[]
+  registryGrants RegistryGrant[]
 
   @@unique([environmentId, name])
   @@unique([organizationId, id])

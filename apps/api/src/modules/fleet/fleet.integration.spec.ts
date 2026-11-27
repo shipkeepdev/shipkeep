@@ -119,7 +119,7 @@ describe('fleet enrollment against PostgreSQL', () => {
     expect(stored[0]?.['token_hash']).not.toBe(token.value.expose());
 
     const keys = await prisma.installationKey.findMany();
-    expect(keys.map((k) => k.kind).sort()).toEqual(['ca', 'confirmation']);
+    expect(keys.map((k) => k.kind).sort()).toEqual(['ca', 'confirmation', 'registry']);
     for (const key of keys) {
       expect(Buffer.from(key.privateKeyEnc).toString('utf8')).not.toContain('PRIVATE KEY');
     }

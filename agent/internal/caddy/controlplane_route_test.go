@@ -36,7 +36,7 @@ func TestControlPlaneRouteIsFirstAndRepairedOnlyWhenNeeded(t *testing.T) {
 	if err := client.UpsertRoute(ctx, app); err != nil {
 		t.Fatal(err)
 	}
-	want := ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080")
+	want := ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080", "127.0.0.1:5000")
 	for _, route := range want {
 		if strings.HasPrefix(route.ID, idPrefix) {
 			t.Fatal("the control plane's routes must be outside the prefix actions use")
@@ -46,17 +46,24 @@ func TestControlPlaneRouteIsFirstAndRepairedOnlyWhenNeeded(t *testing.T) {
 	if err != nil || !changed {
 		t.Fatalf("first apply: changed=%v err=%v", changed, err)
 	}
-	if got := firstRoute(t, fake); got.ID != ControlPlaneRouteID || got.Match[0].Protocol != HTTPS || got.Handle[0].Upstreams[0].Dial != "127.0.0.1:8080" {
+	// The registry's API first (ADR 0030): only its paths, over HTTPS, to the registry's port.
+	if got := firstRoute(t, fake); got.ID != ControlPlaneRegistryRouteID || got.Match[0].Protocol != HTTPS ||
+		!slices.Equal(got.Match[0].Path, []string{"/v2", "/v2/*"}) || !got.Match[0].bounded() || got.Handle[0].Upstreams[0].Dial != "127.0.0.1:5000" {
 		t.Fatalf("first route = %+v", got)
 	}
-	// Then the redirect of that name on plain HTTP, before the application's wildcard.
+	// Then the rest of the name to the control plane, then its redirect on plain HTTP, before the
+	// application's wildcard.
 	fake.mu.Lock()
 	order := fake.ordered()
-	var redirect Route
+	var api, redirect Route
+	_ = json.Unmarshal(fake.routes[ControlPlaneRouteID], &api)
 	_ = json.Unmarshal(fake.routes[ControlPlaneRedirectRouteID], &redirect)
 	fake.mu.Unlock()
-	if len(order) != 3 || order[1] != ControlPlaneRedirectRouteID || order[2] != RouteID("app") {
+	if len(order) != 4 || order[1] != ControlPlaneRouteID || order[2] != ControlPlaneRedirectRouteID || order[3] != RouteID("app") {
 		t.Fatalf("route order = %v", order)
+	}
+	if api.Match[0].Path != nil || api.Match[0].Protocol != HTTPS || api.Handle[0].Upstreams[0].Dial != "127.0.0.1:8080" {
+		t.Fatalf("control plane route = %+v", api)
 	}
 	if redirect.Match[0].Protocol != "http" || redirect.Handle[0].Handler != "static_response" || redirect.Handle[0].StatusCode != 308 ||
 		redirect.Handle[0].Headers["Location"][0] != "https://{http.request.host}{http.request.uri}" {
@@ -80,7 +87,7 @@ func TestControlPlaneRouteIsFirstAndRepairedOnlyWhenNeeded(t *testing.T) {
 	if changed, err := client.EnsureControlPlaneRoutes(ctx, want); err != nil || !changed {
 		t.Fatalf("repair: changed=%v err=%v", changed, err)
 	}
-	if got := firstRoute(t, fake); got.ID != ControlPlaneRouteID {
+	if got := firstRoute(t, fake); got.ID != ControlPlaneRegistryRouteID {
 		t.Fatalf("not first after repair: %s", got.ID)
 	}
 	fake.mu.Lock()
@@ -100,11 +107,11 @@ func TestControlPlaneRouteIsFirstAndRepairedOnlyWhenNeeded(t *testing.T) {
 func TestControlPlaneRouteSurvivesALostConfiguration(t *testing.T) {
 	// A fresh Caddy: no apps at all, as after a restart that lost its saved configuration.
 	client, fake := admin(t)
-	want := ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080")
+	want := ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080", "127.0.0.1:5000")
 	if _, err := client.EnsureControlPlaneRoutes(context.Background(), want); err != nil {
 		t.Fatal(err)
 	}
-	if got := firstRoute(t, fake); got.ID != ControlPlaneRouteID {
+	if got := firstRoute(t, fake); got.ID != ControlPlaneRegistryRouteID {
 		t.Fatalf("route not restored: %+v", got)
 	}
 }
@@ -117,7 +124,7 @@ func TestControlPlaneRouteLeavesTheHostsWithoutTLS(t *testing.T) {
 		t.Fatal(err)
 	}
 	fake.skip = []string{"plain.example.com", "shipkeep.example.com"}
-	if _, err := client.EnsureControlPlaneRoutes(ctx, ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080")); err != nil {
+	if _, err := client.EnsureControlPlaneRoutes(ctx, ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080", "127.0.0.1:5000")); err != nil {
 		t.Fatal(err)
 	}
 	if !slices.Equal(fake.skip, []string{"plain.example.com"}) {
@@ -155,7 +162,7 @@ func TestControlPlaneRouteWaitsForARouteChangeInProgress(t *testing.T) {
 	client.betweenWrites = func() {
 		before := len(requests())
 		go func() {
-			_, err := client.EnsureControlPlaneRoutes(ctx, ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080"))
+			_, err := client.EnsureControlPlaneRoutes(ctx, ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080", "127.0.0.1:5000"))
 			repaired <- err
 		}()
 		// The repair is running once Caddy got its first request, which comes before the lock.
@@ -201,7 +208,7 @@ func TestControlPlaneRouteRepairIsOneWrite(t *testing.T) {
 	fake.order = []string{RouteID("b"), RouteID("a")}
 	writes := len(fake.requests)
 	fake.mu.Unlock()
-	if changed, err := client.EnsureControlPlaneRoutes(ctx, ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080")); err != nil || !changed {
+	if changed, err := client.EnsureControlPlaneRoutes(ctx, ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080", "127.0.0.1:5000")); err != nil || !changed {
 		t.Fatalf("apply: changed=%v err=%v", changed, err)
 	}
 	fake.mu.Lock()
@@ -215,7 +222,7 @@ func TestControlPlaneRouteRepairIsOneWrite(t *testing.T) {
 	if !slices.Equal(routeWrites, []string{"PATCH /config/apps/http/servers/" + Server + "/routes"}) {
 		t.Fatalf("route writes = %v", routeWrites)
 	}
-	if order := fake.ordered(); !slices.Equal(order, []string{ControlPlaneRouteID, ControlPlaneRedirectRouteID, RouteID("b"), RouteID("a")}) {
+	if order := fake.ordered(); !slices.Equal(order, []string{ControlPlaneRegistryRouteID, ControlPlaneRouteID, ControlPlaneRedirectRouteID, RouteID("b"), RouteID("a")}) {
 		t.Fatalf("route order = %v", order)
 	}
 	if !strings.Contains(string(fake.routes[RouteID("a")]), `"flush_interval":-1`) {

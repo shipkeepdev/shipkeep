@@ -5,4 +5,6 @@ ARG GREETING=hello
 RUN test ! -e /var/run/docker.sock && test ! -e /run/docker.sock && test ! -e /host
 COPY greeting.txt /greeting.txt
 RUN echo "$GREETING from $(cat /greeting.txt)" > /built.txt && cat /built.txt
+# The image runs as an unprivileged user, as any application image should.
+USER nobody
 CMD ["cat", "/built.txt"]
