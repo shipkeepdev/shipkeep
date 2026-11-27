@@ -141,6 +141,8 @@ export class BuildOutputPanel {
             clearInterval(timer);
             return;
           }
+          // A read still under way keeps the slot: the next tick reads after it.
+          if (this.reading !== undefined) return;
           this.settling--;
         }
         void this.load();
