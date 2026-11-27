@@ -112,6 +112,10 @@ func buildImage(settings *buildSettings, req *agentv1.ActionRequest) (journal.Pl
 				line("the build did not finish in time")
 				return journal.Outcome{}, causeError{cause: causeBuildTimeout}
 			default:
+				// What failed before BuildKit printed it, such as the agent's own preparation.
+				for _, text := range strings.Split(err.Error(), "\n") {
+					line("the build failed: " + text)
+				}
 				return journal.Outcome{}, causeError{cause: causeBuildFailed}
 			}
 		},
@@ -159,7 +163,9 @@ func buildRequest(action *agentv1.BuildImage) (buildkit.Request, time.Duration, 
 		return buildkit.Request{}, 0, errInput
 	}
 	for name, value := range args {
-		if !buildArgName.MatchString(name) || len(value) > maxBuildArgValue || !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
+		// BUILDKIT_… arguments are BuildKit's own settings, such as the cache namespace the agent
+		// sets: an application never chooses them.
+		if !buildArgName.MatchString(name) || strings.HasPrefix(name, "BUILDKIT_") || len(value) > maxBuildArgValue || !utf8.ValidString(value) || strings.ContainsRune(value, 0) {
 			return buildkit.Request{}, 0, errInput
 		}
 	}

@@ -146,6 +146,14 @@ export function applicationConfig(
           'An application created without a repository runs an image (build.type: image): to build one, create the application from its repository.',
         );
   assertConfigApplied(config);
+  // BuildKit reads BUILDKIT_… arguments as its own settings, such as each application's cache
+  // namespace: an application never sets them (ADR 0030).
+  if (Object.keys(config.build?.args ?? {}).some((name) => name.startsWith('BUILDKIT_')))
+    throw new InvalidInputError(
+      'reserved_build_arg',
+      'Build arguments starting with BUILDKIT_ are BuildKit settings that Shipkeep sets: rename them.',
+      { field: '/build/args' },
+    );
   // Wildcards need DNS-01 (SPEC 2.2), which neither the agent nor the control plane offers yet.
   if (config.domains?.some((hostname) => hostname.startsWith('*.')))
     throw new InvalidInputError(

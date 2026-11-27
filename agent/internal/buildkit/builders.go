@@ -2,10 +2,13 @@ package buildkit
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -51,20 +54,47 @@ const (
 	maxNixpacksScript = 64 << 10
 	maxNixpacksArgs   = 200
 	maxNixpacksValue  = 4096
+	cacheSecretBytes  = 32
 )
 
 // A build argument Nixpacks passes: an environment variable's name.
 var nixpacksArgName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]{0,127}$`)
 
-// cacheKey separates one application's cache mounts from another's on the same builder: the
-// repository its image is pushed to, without its tag, hashed.
-func cacheKey(target string) string {
+// CacheNamespace separates one application's cache mounts from another's on the same builder:
+// the repository its image is pushed to, without its tag, keyed with a secret only this agent
+// holds, so that no build can name another application's caches.
+func CacheNamespace(secret []byte, target string) string {
 	repository := target
 	if index := strings.LastIndexByte(target, ':'); index > strings.LastIndexByte(target, '/') {
 		repository = target[:index]
 	}
-	sum := sha256.Sum256([]byte(repository))
-	return "sk-" + hex.EncodeToString(sum[:8])
+	mac := hmac.New(sha256.New, secret)
+	mac.Write([]byte(repository))
+	return "sk-" + hex.EncodeToString(mac.Sum(nil)[:12])
+}
+
+// LoadCacheSecret reads the agent's build cache key from path, or writes a new random one there,
+// readable by the agent alone. A key of the wrong length is replaced.
+func LoadCacheSecret(path string) ([]byte, error) {
+	key, err := os.ReadFile(path) //nolint:gosec // the agent's own state directory
+	if err == nil && len(key) == cacheSecretBytes {
+		return key, nil
+	}
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return nil, fmt.Errorf("read the build cache key: %w", err)
+	}
+	key = make([]byte, cacheSecretBytes)
+	if _, err := rand.Read(key); err != nil {
+		return nil, fmt.Errorf("build cache key: %w", err)
+	}
+	temporary := path + ".tmp"
+	if err := os.WriteFile(temporary, key, 0o600); err != nil {
+		return nil, fmt.Errorf("write the build cache key: %w", err)
+	}
+	if err := os.Rename(temporary, path); err != nil {
+		return nil, fmt.Errorf("write the build cache key: %w", err)
+	}
+	return key, nil
 }
 
 // sortedNames is the build arguments' names in order, so that a build's definition is stable.
@@ -120,7 +150,7 @@ func RailpackOptions(request Request) client.SolveOpt {
 		FrontendAttrs: map[string]string{
 			"source": RailpackFrontend,
 			// The cache mounts of one application are its own, and a new argument value rebuilds.
-			"build-arg:cache-key":    cacheKey(request.Target),
+			"build-arg:cache-key":    request.CacheNamespace,
 			"build-arg:secrets-hash": hex.EncodeToString(values.Sum(nil)),
 		},
 		Exports: pushTo(request.Target),
@@ -133,10 +163,7 @@ func (c Client) railpack(ctx context.Context, daemon *client.Client, request Req
 	if c.WorkDir == "" {
 		return nil, errors.New("railpack builds need a work directory")
 	}
-	// One build at a time (ADR 0032): what is here was left by a build an agent restart cut.
-	if err := os.RemoveAll(c.WorkDir); err != nil {
-		return nil, fmt.Errorf("clear the build directory: %w", err)
-	}
+	// Build emptied WorkDir already: what an interrupted build left is gone.
 	if err := os.MkdirAll(c.WorkDir, 0o700); err != nil {
 		return nil, fmt.Errorf("build directory: %w", err)
 	}
@@ -201,7 +228,7 @@ func NixpacksOutput(request Request, source llb.State, arch string) (llb.State, 
 		llb.WithCustomName("unpack nixpacks"),
 	)
 	args := append([]string{
-		"/nixpacks", "build", "/src", "--out", "/out", "--cache-key", cacheKey(request.Target),
+		"/nixpacks", "build", "/src", "--out", "/out", "--cache-key", request.CacheNamespace,
 	}, envFlags(request.Args)...)
 	run := binary.Run(
 		llb.Args(args),
@@ -232,12 +259,16 @@ func nixpacksBuild(request Request, source llb.State, arch string) gateway.Build
 		if err != nil {
 			return nil, fmt.Errorf("nixpacks output: %w", err)
 		}
+		// One byte more than the bound: a longer script is refused, never cut.
 		script, err := ref.ReadFile(ctx, gateway.ReadRequest{
 			Filename: nixpacksScript,
-			Range:    &gateway.FileRange{Length: maxNixpacksScript},
+			Range:    &gateway.FileRange{Length: maxNixpacksScript + 1},
 		})
 		if err != nil {
 			return nil, fmt.Errorf("nixpacks build script: %w", err)
+		}
+		if len(script) > maxNixpacksScript {
+			return nil, errors.New("nixpacks wrote a build script longer than 64 KiB")
 		}
 		attrs := map[string]string{"filename": nixpacksFile}
 		args := NixpacksBuildArgs(script)
@@ -247,8 +278,8 @@ func nixpacksBuild(request Request, source llb.State, arch string) gateway.Build
 		for name, value := range args {
 			attrs["build-arg:"+name] = value
 		}
-		// The repository with Nixpacks' files on top: its own `.nixpacks`, if any, is replaced.
-		merged, err := llb.Merge([]llb.State{source, generated}).Marshal(ctx)
+		attrs["build-arg:BUILDKIT_CACHE_MOUNT_NS"] = request.CacheNamespace
+		merged, err := NixpacksContext(source, generated).Marshal(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("nixpacks context: %w", err)
 		}
@@ -262,6 +293,16 @@ func nixpacksBuild(request Request, source llb.State, arch string) gateway.Build
 		}
 		return built, nil
 	}
+}
+
+// NixpacksContext is the repository with Nixpacks' files on top. Its own `.nixpacks`, if it has
+// one, is removed first: only what Nixpacks wrote there is built.
+func NixpacksContext(source, generated llb.State) llb.State {
+	repository := source.File(
+		llb.Rm("/.nixpacks", &llb.RmInfo{AllowNotFound: true}),
+		llb.WithCustomName("remove the repository's .nixpacks"),
+	)
+	return llb.Merge([]llb.State{repository, generated})
 }
 
 // NixpacksBuildArgs reads the `--build-arg NAME=VALUE` pairs of the `docker build` command
