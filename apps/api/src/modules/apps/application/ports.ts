@@ -39,6 +39,13 @@ export interface RepositorySource {
   ): Promise<RepositoryConfig>;
 }
 
+/** A Git application a push may deploy, and whether a push may deploy it by itself (SPEC 7). */
+export interface RepositoryFollower {
+  readonly application: Application;
+  /** In a protected environment, a push changes the configuration and deploys nothing. */
+  readonly protectedEnvironment: boolean;
+}
+
 export const APPLICATION_STORE = Symbol('ApplicationStore');
 /** Every method runs inside `runTenant` for the target's organization. */
 export interface ApplicationStore {
@@ -63,6 +70,14 @@ export interface ApplicationStore {
     now: Date,
   ): Promise<Application | undefined>;
   find(target: ApplicationTarget, applicationId: string): Promise<Application | undefined>;
+  /**
+   * The Git applications of the organization that follow this branch of this repository through
+   * this installation, at most `MAX_FOLLOWERS`, oldest first.
+   */
+  followers(
+    organizationId: string,
+    push: { installationId: number; repositoryId: number; branch: string },
+  ): Promise<RepositoryFollower[]>;
   /** The application by id within its organization, wherever it lives (confirmation targets). */
   findById(organizationId: string, applicationId: string): Promise<Application | undefined>;
   /**

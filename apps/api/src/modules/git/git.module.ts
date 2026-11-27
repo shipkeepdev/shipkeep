@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 
+import { JobsModule } from '../../platform/jobs/jobs.module';
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { IdentityModule } from '../identity/identity.module';
 import { REPOSITORY_SOURCE } from '../apps/application/ports';
@@ -14,10 +15,12 @@ import {
   GITHUB_API,
   GITHUB_APP_STORE,
   GITHUB_MANIFESTS,
+  GITHUB_PUSHES,
   GITHUB_WEBHOOK_STORE,
 } from './application/ports';
 import { GithubApiClient } from './infrastructure/github-api.client';
 import { GithubManifestClient } from './infrastructure/github-manifest.client';
+import { GithubPushQueue } from './infrastructure/github-push-queue';
 import { PrismaGithubAppStore } from './infrastructure/prisma-github-app.store';
 import { PrismaGithubWebhookStore } from './infrastructure/prisma-github-webhook.store';
 import { GithubAppController } from './interface/github-app.controller';
@@ -28,7 +31,7 @@ import { GithubWebhookController } from './interface/github-webhook.controller';
  * a Git application's configuration from its repository.
  */
 @Module({
-  imports: [IdentityModule, TenantAccessModule],
+  imports: [IdentityModule, TenantAccessModule, JobsModule],
   controllers: [GithubAppController, GithubWebhookController],
   providers: [
     GithubAppCommands,
@@ -37,6 +40,8 @@ import { GithubWebhookController } from './interface/github-webhook.controller';
     { provide: REPOSITORY_SOURCE, useExisting: GithubSources },
     { provide: GITHUB_API, useFactory: () => new GithubApiClient() },
     GithubWebhooks,
+    GithubPushQueue,
+    { provide: GITHUB_PUSHES, useExisting: GithubPushQueue },
     { provide: GITHUB_WEBHOOK_STORE, useClass: PrismaGithubWebhookStore },
     { provide: GITHUB_APP_STORE, useClass: PrismaGithubAppStore },
     { provide: GITHUB_MANIFESTS, useFactory: () => new GithubManifestClient() },

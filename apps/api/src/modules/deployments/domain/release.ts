@@ -19,6 +19,8 @@ export interface Release {
   readonly imageDigest: string | null;
   readonly config: ShipkeepConfig;
   readonly configSha: string;
+  /** The commit a Git application's configuration was read from; null for an image one. */
+  readonly commitSha: string | null;
   readonly createdBy: string | null;
   readonly createdAt: Date;
 }

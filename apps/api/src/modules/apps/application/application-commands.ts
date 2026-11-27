@@ -3,11 +3,13 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { parseShipkeepConfig } from '@shipkeep/config-schema';
 import {
+  type Actor,
   ConflictError,
   createEvent,
   InvalidInputError,
   NotFoundError,
   type Permission,
+  SYSTEM_ACTOR,
 } from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
@@ -41,6 +43,7 @@ import {
   DOMAIN_RESOLVER,
   type DomainCertificateStore,
   type DomainResolver,
+  type RepositoryFollower,
   REPOSITORY_SOURCE,
   type RepositoryLocation,
   type RepositorySource,
@@ -108,10 +111,69 @@ export class ApplicationCommands {
           'application_name_taken',
           'An application with this name already exists in the environment.',
         );
-      await this.claimDomains(context, created, now);
-      await this.audit('created', context, created, now, undefined, read.commitSha);
+      await this.claimDomains(resourceActor(context), created, now);
+      await this.audit('created', resourceActor(context), created, now, undefined, read.commitSha);
       return created;
     });
+  }
+
+  /**
+   * The Git applications a push to `branch` of a repository deploys, with whether each one's
+   * environment is protected. Runs in the caller's tenant transaction; checks no permission: a
+   * verified delivery of the organization's own App is the system acting.
+   */
+  followers(
+    organizationId: string,
+    push: { installationId: number; repositoryId: number; branch: string },
+  ): Promise<RepositoryFollower[]> {
+    return this.store.followers(organizationId, push);
+  }
+
+  /**
+   * Makes a configuration read from the repository at `commitSha` the application's, as the
+   * system, in the caller's tenant transaction (ADR 0031). The same configuration changes nothing.
+   * The name stays the application's, and a domain another application claims is refused, as for
+   * any configuration.
+   */
+  async applyRepositoryConfig(
+    organizationId: string,
+    applicationId: string,
+    text: string,
+    commitSha: string,
+    now = new Date(),
+  ): Promise<Application> {
+    const found = await this.store.findById(organizationId, applicationId);
+    if (!found || found.source !== 'git' || !(await this.store.lock(found)))
+      throw new NotFoundError('application');
+    const current = await this.store.findById(organizationId, applicationId);
+    if (!current) throw new NotFoundError('application');
+    const parsed = parseShipkeepConfig(text);
+    if (!parsed.ok)
+      throw new InvalidInputError(
+        'invalid_application_config',
+        `The configuration at ${current.repository?.configPath ?? 'shipkeep.yml'} is invalid.`,
+        { issues: parsed.issues.slice(0, 20), commit: commitSha },
+      );
+    const config = applicationConfig(parsed.config, 'git');
+    assertDomainsAvailable(config.config, [this.controlPlaneHost]);
+    assertSameName(current, config);
+    const configSha = sha256(config.canonical);
+    if (configSha === current.configSha) return current;
+    const updated = await this.store.replaceConfig(
+      current,
+      current.configSha,
+      config,
+      configSha,
+      now,
+    );
+    if (!updated)
+      throw new ConflictError(
+        'application_config_changed',
+        'The configuration changed meanwhile; reload it and retry.',
+      );
+    await this.claimDomains(SYSTEM_ACTOR, updated, now);
+    await this.audit('updated', SYSTEM_ACTOR, updated, now, current.configSha, commitSha);
+    return updated;
   }
 
   create(
@@ -135,8 +197,8 @@ export class ApplicationCommands {
           'application_name_taken',
           'An application with this name already exists in the environment.',
         );
-      await this.claimDomains(context, created, now);
-      await this.audit('created', context, created, now);
+      await this.claimDomains(resourceActor(context), created, now);
+      await this.audit('created', resourceActor(context), created, now);
       return created;
     });
   }
@@ -172,8 +234,8 @@ export class ApplicationCommands {
       if (configSha === current.configSha) return current;
       const updated = await this.store.replaceConfig(current, expectedSha, config, configSha, now);
       if (!updated) throw changed();
-      await this.claimDomains(context, updated, now);
-      await this.audit('updated', context, updated, now, current.configSha);
+      await this.claimDomains(resourceActor(context), updated, now);
+      await this.audit('updated', resourceActor(context), updated, now, current.configSha);
       return updated;
     });
   }
@@ -238,11 +300,7 @@ export class ApplicationCommands {
   }
 
   /** A hostname belongs to one application per organization (SPEC 4). */
-  private async claimDomains(
-    context: SecurityContext,
-    application: Application,
-    now: Date,
-  ): Promise<void> {
+  private async claimDomains(actor: Actor, application: Application, now: Date): Promise<void> {
     const { taken, released } = await this.store.syncDomains(
       application,
       application.config.domains ?? [],
@@ -253,9 +311,7 @@ export class ApplicationCommands {
         hostname: taken,
       });
     if (released.length)
-      await this.events.publish(
-        domainsReleased(application, released, resourceActor(context), now),
-      );
+      await this.events.publish(domainsReleased(application, released, actor, now));
   }
 
   private scoped<T>(
@@ -281,7 +337,7 @@ export class ApplicationCommands {
 
   private audit(
     action: 'created' | 'updated',
-    context: SecurityContext,
+    actor: Actor,
     application: Application,
     now: Date,
     previousSha?: string,
@@ -291,7 +347,7 @@ export class ApplicationCommands {
       createEvent({
         type: `application.${action}`,
         organizationId: application.organizationId,
-        actor: resourceActor(context),
+        actor,
         target: { type: 'application', id: application.id },
         // Hashes only: the configuration may carry non-secret values the audit log does not need.
         payload: {
