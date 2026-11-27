@@ -60,7 +60,6 @@ describe('GitHub REST API as the App', () => {
       repositoryIds: [5],
       permissions: { contents: 'read' },
     });
-    expect(answer.token.expose()).toBe(token.expose());
     expect(calls[0]?.url).toBe('https://api.github.com/app/installations/7/access_tokens');
     expect(calls[0]?.init).toMatchObject({
       method: 'POST',
@@ -71,6 +70,21 @@ describe('GitHub REST API as the App', () => {
       repository_ids: [5],
       permissions: { contents: 'read' },
     });
+    expect(answer?.token.expose()).toBe(token.expose());
+  });
+
+  it('has no token for a repository the installation does not include, which GitHub refuses', async () => {
+    const { client } = github(() => json(422, { message: 'There is at least one repository' }));
+    expect(
+      await client.installationToken(new Secret('jwt'), 7, {
+        repositoryIds: [5],
+        permissions: { contents: 'read' },
+      }),
+    ).toBeUndefined();
+    // Asked for no repository, a refusal is GitHub being unavailable, never an empty answer.
+    await expect(
+      client.installationToken(new Secret('jwt'), 7, { permissions: { metadata: 'read' } }),
+    ).rejects.toThrow(ServiceUnavailableException);
   });
 
   it('lists repositories page by page, up to a limit', async () => {

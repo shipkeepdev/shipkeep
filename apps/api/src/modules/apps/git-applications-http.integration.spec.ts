@@ -53,6 +53,8 @@ describe('applications from a GitHub repository over HTTP', () => {
   const github: GithubApi = {
     appJwt: (appId) => new Secret(`jwt-for-${String(appId)}`),
     installationToken: (_jwt, installationId, scope) => {
+      // GitHub refuses a token for a repository the installation does not include.
+      if (scope.repositoryIds?.includes(998)) return Promise.resolve(undefined);
       scopes.push({ installationId, scope });
       return Promise.resolve({
         token: new Secret(`ghs_token_${String(scopes.length)}`),
@@ -142,6 +144,7 @@ describe('applications from a GitHub repository over HTTP', () => {
 
     // Refused from GitHub's answers, each token given back.
     await refused({ repositoryId: 999 }, 400, 'github_repository_unavailable');
+    await refused({ repositoryId: 998 }, 400, 'github_repository_unavailable');
     await refused({ branch: 'gone' }, 400, 'github_branch_not_found');
     await refused({ configPath: 'missing.yml' }, 400, 'github_config_not_found');
     const invalid = await refused({ configPath: 'bad.yml' }, 400, 'invalid_application_config');
@@ -165,6 +168,7 @@ describe('applications from a GitHub repository over HTTP', () => {
         fullName: 'acme-corp/billing-renamed',
         branch: 'main',
         configPath: 'shipkeep.yml',
+        commitSha: HEAD,
       },
       config: { name: 'billing', build: { type: 'image', image: IMAGE } },
     });
@@ -215,12 +219,15 @@ describe('applications from a GitHub repository over HTTP', () => {
       .expect((response) => {
         expect(response.body).toMatchObject({ code: 'environment_has_git_applications' });
       });
-    const stored = await admin.query<{ installation_id: string; repository: string }>(
-      'SELECT installation_id::text, repository FROM applications WHERE id = $1',
-      [app.id],
-    );
+    const stored = await admin.query<{
+      installation_id: string;
+      repository: string;
+      commit_sha: string;
+    }>('SELECT installation_id::text, repository, commit_sha FROM applications WHERE id = $1', [
+      app.id,
+    ]);
     expect(stored.rows).toEqual([
-      { installation_id: '21', repository: 'acme-corp/billing-renamed' },
+      { installation_id: '21', repository: 'acme-corp/billing-renamed', commit_sha: HEAD },
     ]);
   });
 
@@ -228,12 +235,13 @@ describe('applications from a GitHub repository over HTTP', () => {
     const insert = (source: string, installation: number | null, repositoryId: number | null) =>
       admin.query(
         `INSERT INTO applications (id, organization_id, project_id, environment_id, name, source,
-           installation_id, repository_id, repository, branch, config_path, config, config_sha,
-           created_at, updated_at)
+           installation_id, repository_id, repository, branch, config_path, commit_sha, config,
+           config_sha, created_at, updated_at)
          SELECT gen_random_uuid(), organization_id, project_id, id, 'check-' || $1, $1, $2, $3,
            CASE WHEN $3::bigint IS NULL THEN NULL ELSE 'acme-corp/x' END,
            CASE WHEN $3::bigint IS NULL THEN NULL ELSE 'main' END,
            CASE WHEN $3::bigint IS NULL THEN NULL ELSE 'shipkeep.yml' END,
+           CASE WHEN $3::bigint IS NULL THEN NULL ELSE repeat('a', 40) END,
            '{}', repeat('0', 64), now(), now()
          FROM environments WHERE id = $4`,
         [source, installation, repositoryId, fixture.environmentId],

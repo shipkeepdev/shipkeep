@@ -96,7 +96,7 @@ export class ApplicationCommands {
       );
     const config = applicationConfig(parsed.config, 'git');
     assertDomainsAvailable(config.config, [this.controlPlaneHost]);
-    const repository = { ...location, fullName: read.fullName };
+    const repository = { ...location, fullName: read.fullName, commitSha: read.commitSha };
     return this.scoped(context, 'deploy.run', target, async () => {
       const created = await this.store.create(
         target,

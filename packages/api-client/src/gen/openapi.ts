@@ -1628,6 +1628,8 @@ export type components = {
         };
         readonly ApplicationRepositoryDto: {
             readonly branch: string;
+            /** @description The commit the configuration was last read from. */
+            readonly commitSha: string;
             readonly configPath: string;
             /** @description `owner/name`, as GitHub names the repository. */
             readonly fullName: string;
