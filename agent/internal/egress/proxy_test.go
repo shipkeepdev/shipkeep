@@ -289,14 +289,31 @@ func TestBoundsTunnelsAndTheirLifetime(t *testing.T) {
 	}
 }
 
-func TestLogsHostsAndOutcomesOnly(t *testing.T) {
-	h := start(t, DefaultLimits, map[string][]string{"registry.example.com": {"8.8.8.8"}, "private.example.com": {"10.0.0.5"}})
+func TestLogsHostsAddressesAndOutcomesOnly(t *testing.T) {
+	limits := DefaultLimits
+	limits.Connect = 200 * time.Millisecond
+	h := start(t, limits, map[string][]string{
+		"registry.example.com": {"8.8.8.8"},
+		"private.example.com":  {"10.0.0.5"},
+		// A name with one private answer among public ones: only the private one is named.
+		"mixed.example.com":  {"8.8.8.8", "169.254.169.254"},
+		"silent.example.com": {"9.9.9.9"},
+	})
 	request(t, h, "CONNECT registry.example.com:443 HTTP/1.1\r\nHost: registry.example.com:443\r\nProxy-Authorization: Basic c2VjcmV0LXZhbHVl\r\n\r\n")
 	request(t, h, "CONNECT private.example.com:443 HTTP/1.1\r\nHost: private.example.com:443\r\n\r\n")
+	request(t, h, "CONNECT mixed.example.com:443 HTTP/1.1\r\nHost: mixed.example.com:443\r\n\r\n")
+	request(t, h, "CONNECT silent.example.com:443 HTTP/1.1\r\nHost: silent.example.com:443\r\n\r\n")
 	request(t, h, "GET http://private.example.com/secret-path?token=abc HTTP/1.1\r\nHost: private.example.com\r\n\r\n")
 	time.Sleep(50 * time.Millisecond)
 	logs := h.logs.String()
-	for _, want := range []string{`"host":"registry.example.com"`, `"reason":"not_public"`, `"reason":"not_connect"`} {
+	for _, want := range []string{
+		`"host":"registry.example.com"`, `"reason":"not_public"`, `"reason":"not_connect"`,
+		// What the socket connected to, and what each refusal was about.
+		`"msg":"egress tunnel","host":"registry.example.com","port":443,"address":"8.8.8.8:443"`,
+		`"host":"private.example.com","port":443,"addresses":["10.0.0.5:443"]`,
+		`"host":"mixed.example.com","port":443,"addresses":["169.254.169.254:443"]`,
+		`"reason":"unreachable","host":"silent.example.com","port":443,"addresses":["9.9.9.9:443"]`,
+	} {
 		if !strings.Contains(logs, want) {
 			t.Errorf("logs miss %s:\n%s", want, logs)
 		}

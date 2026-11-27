@@ -190,10 +190,11 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), p.Limits.Connect)
-	upstream, reason := p.open(ctx, host, port)
+	upstream, reason, addresses := p.open(ctx, host, port)
 	cancel()
 	if upstream == nil {
-		p.Logger.Warn("egress refused", "reason", reason, "host", host, "port", port)
+		// The addresses the name led to: a name that resolved where it should not shows here.
+		p.Logger.Warn("egress refused", "reason", reason, "host", host, "port", port, "addresses", addressList(addresses))
 		status := http.StatusBadGateway
 		if reason == "not_public" {
 			status = http.StatusForbidden
@@ -222,29 +223,37 @@ func (p *Proxy) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	deadline := time.Now().Add(p.Limits.Lifetime)
 	_ = client.SetDeadline(deadline)
 	_ = upstream.SetDeadline(deadline)
-	p.Logger.Info("egress tunnel", "host", host, "port", port)
+	// The address the socket connected to, as the guard checked it: never resolved again.
+	p.Logger.Info("egress tunnel", "host", host, "port", port, "address", addresses[0].String())
 	pipe(client, buffered, upstream)
 }
 
 // open resolves host and connects to the first of its addresses that answers. Every address
-// must be public: a name with one private answer is refused, as the control plane does.
-func (p *Proxy) open(ctx context.Context, host string, port uint16) (net.Conn, string) {
+// must be public: a name with one private answer is refused, as the control plane does. It also
+// answers the addresses the outcome is about, for the log: the one connected to, those refused
+// as not public, or those that did not answer.
+func (p *Proxy) open(ctx context.Context, host string, port uint16) (net.Conn, string, []netip.AddrPort) {
 	var addresses []netip.Addr
 	if literal, err := netip.ParseAddr(host); err == nil {
 		addresses = []netip.Addr{literal}
 	} else {
 		found, err := p.Resolve(ctx, host)
 		if err != nil || len(found) == 0 {
-			return nil, "unresolved"
+			return nil, "unresolved", nil
 		}
 		addresses = found
 	}
+	var refused []netip.AddrPort
 	for _, address := range addresses {
 		if !Public(address) {
-			return nil, "not_public"
+			refused = append(refused, netip.AddrPortFrom(address, port))
 		}
 	}
+	if len(refused) > 0 {
+		return nil, "not_public", refused
+	}
 	deadline, bounded := ctx.Deadline()
+	tried := make([]netip.AddrPort, 0, len(addresses))
 	for i, address := range addresses {
 		// Each address gets its share of the time left, so one that drops connection attempts
 		// cannot spend the time of those after it.
@@ -252,16 +261,27 @@ func (p *Proxy) open(ctx context.Context, host string, port uint16) (net.Conn, s
 		if bounded {
 			attempt, cancel = context.WithTimeout(ctx, time.Until(deadline)/time.Duration(len(addresses)-i))
 		}
-		conn, err := p.connect(attempt, netip.AddrPortFrom(address.Unmap(), port))
+		dialed := netip.AddrPortFrom(address.Unmap(), port)
+		conn, err := p.connect(attempt, dialed)
 		cancel()
 		if errors.Is(err, errNotPublic) {
-			return nil, "not_public"
+			return nil, "not_public", []netip.AddrPort{dialed}
 		}
 		if err == nil {
-			return conn, ""
+			return conn, "", []netip.AddrPort{dialed}
 		}
+		tried = append(tried, dialed)
 	}
-	return nil, "unreachable"
+	return nil, "unreachable", tried
+}
+
+// addressList is the addresses as the log writes them.
+func addressList(addresses []netip.AddrPort) []string {
+	out := make([]string, len(addresses))
+	for i, address := range addresses {
+		out[i] = address.String()
+	}
+	return out
 }
 
 // target splits a CONNECT authority into a host and a port. The host is a DNS name or an IP
