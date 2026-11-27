@@ -262,7 +262,7 @@ export class PrismaApplicationStore implements ApplicationStore {
   async followers(
     organizationId: string,
     push: { installationId: number; repositoryId: number; branch: string },
-  ): Promise<RepositoryFollower[]> {
+  ): Promise<Application[]> {
     // Served by the partial index applications_repository_branch_idx.
     const rows = await this.database.client.application.findMany({
       where: {

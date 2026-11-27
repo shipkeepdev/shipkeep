@@ -345,7 +345,7 @@ describe('deployments from GitHub pushes', () => {
     head = commit(8);
     files.set(commit(8), config(IMAGE('f')));
     expect(await handle(push(commit(8)))).toEqual([]);
-    expect((await repository(applicationId))?.commit_sha).toBe(commit(8));
+    expect((await repository(applicationId)).commit_sha).toBe(commit(8));
     expect((await deployments(applicationId)).at(-1)).toMatchObject({
       trigger: 'webhook',
       commit_sha: commit(8),
@@ -377,10 +377,10 @@ describe('deployments from GitHub pushes', () => {
     const kept = await admin.query('SELECT 1 FROM releases WHERE commit_sha = $1', [commit(9)]);
     expect(kept.rows).toEqual([]);
     // Rolled back with it, the configuration is applied again by the next attempt.
-    expect((await repository(applicationId))?.port).toBe(3000);
+    expect((await repository(applicationId)).port).toBe(3000);
     expect(await handle(push(commit(9)), [applicationId])).toEqual([]);
     expect((await deployments(applicationId)).at(-1)).toMatchObject({ commit_sha: commit(9) });
-    expect((await repository(applicationId))?.port).toBe(5000);
+    expect((await repository(applicationId)).port).toBe(5000);
     await finish(applicationId);
 
     // A push tried too many times is audited as refused, with a stable code.
