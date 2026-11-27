@@ -223,11 +223,20 @@ export function logsQuery(search: LogSearch): string {
   return `${parts.join(' ')} | sort by (${sort}) | limit ${String(search.limit)}`;
 }
 
-const EXACT_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
+const EXACT_TIME = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
-/** A UTC time with up to nine digits of fraction, as it may go into the query; else undefined. */
-function exactTime(value: string | undefined): string | undefined {
-  return value !== undefined && EXACT_TIME.test(value) ? value : undefined;
+/**
+ * A time with up to nine digits of fraction, in UTC as it may go into the query; else undefined.
+ * One written with an offset is moved to UTC with its whole fraction, as the same time in UTC is.
+ */
+export function exactTime(value: string | undefined): string | undefined {
+  const match = value === undefined ? null : EXACT_TIME.exec(value);
+  if (!match) return undefined;
+  const [, seconds, fraction = '', zone] = match;
+  if (zone === 'Z') return value;
+  // An offset is whole minutes: moving the seconds moves the time, and the fraction stays as is.
+  const at = new Date(`${seconds}${zone}`);
+  return Number.isNaN(at.getTime()) ? undefined : `${at.toISOString().slice(0, 19)}${fraction}Z`;
 }
 
 /** A LogsQL quoted string: backslashes and quotes escaped, control characters removed. */
@@ -297,6 +306,71 @@ export function distinctLines(lines: readonly LogLine[]): LogLine[] {
   const seen = new Set<string>();
   return lines.filter((line) => {
     const key = JSON.stringify([line.time, line.instance, line.stream, line.line]);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** A search of one deployment's build output (ADR 0032), read forward from `from`. */
+export interface BuildLogSearch {
+  readonly organizationId: string;
+  readonly applicationId: string;
+  readonly deploymentId: string;
+  readonly from: Date;
+  /** `from` to the nanosecond, as a live view gives the time of its last line. */
+  readonly fromExact?: string | undefined;
+  readonly to: Date;
+  readonly limit: number;
+}
+
+/**
+ * The LogsQL query of a deployment's build output: the lines the control plane labelled with that
+ * deployment, oldest first, from identifiers it validated.
+ */
+export function buildLogsQuery(search: BuildLogSearch): string {
+  if (
+    !UUID.test(search.organizationId) ||
+    !UUID.test(search.applicationId) ||
+    !UUID.test(search.deploymentId)
+  )
+    throw new Error('invalid build log search scope');
+  return [
+    `{org="${search.organizationId}",app="${search.applicationId}",instance="build",stream="build"}`,
+    `deployment:="${search.deploymentId}"`,
+    `_time:[${exactTime(search.fromExact) ?? search.from.toISOString()}, ${search.to.toISOString()}]`,
+    `| sort by (_time) | limit ${String(search.limit)}`,
+  ].join(' ');
+}
+
+/** One line of a build's output, as the API returns it. */
+export interface BuildLine {
+  readonly time: string;
+  readonly line: string;
+  readonly truncated: boolean;
+}
+
+/** A build line of VictoriaLogs' answer, or undefined when it is not one. */
+export function buildLineOf(record: unknown): BuildLine | undefined {
+  if (!record || typeof record !== 'object') return undefined;
+  const value = record as Record<string, unknown>;
+  const time = fullTime(value['_time']);
+  const line = value['_msg'];
+  if (
+    time === undefined ||
+    typeof line !== 'string' ||
+    value['stream'] !== 'build' ||
+    value['instance'] !== 'build'
+  )
+    return undefined;
+  return { time, line, truncated: value['truncated'] === 'true' };
+}
+
+/** The lines without the copies an agent sent again after an outage, in their order. */
+export function distinctBuildLines(lines: readonly BuildLine[]): BuildLine[] {
+  const seen = new Set<string>();
+  return lines.filter((line) => {
+    const key = JSON.stringify([line.time, line.line]);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
