@@ -52,6 +52,7 @@ import { ApplicationController } from './interface/application.controller';
       inject: [AppConfig],
     },
   ],
-  exports: [APPLICATION_STORE, CONTROL_PLANE_HOST],
+  // ApplicationCommands applies a pushed configuration for the deployments context.
+  exports: [APPLICATION_STORE, CONTROL_PLANE_HOST, ApplicationCommands],
 })
 export class AppsModule {}

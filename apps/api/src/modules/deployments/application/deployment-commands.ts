@@ -11,6 +11,7 @@ import {
   type Permission,
   type Secret,
   stop,
+  SYSTEM_ACTOR,
 } from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
@@ -143,7 +144,15 @@ export class DeploymentCommands {
         // A new release would start behind the page unseen: leaving maintenance comes first.
         if (inMaintenance(await this.store.serving(application.id)))
           throw applicationInMaintenance();
-        const release = await this.store.createRelease(application, draft, context.userId, now);
+        // A Git application's release names the commit its configuration was read at.
+        const commitSha = application.repository?.commitSha;
+        const release = await this.store.createRelease(
+          application,
+          draft,
+          context.userId,
+          now,
+          commitSha,
+        );
         if (!release) throw deploymentInProgress();
         const deployment = await this.store.queue(release, draft, 'manual', context.userId, now);
         if (!deployment) throw deploymentInProgress();
@@ -152,6 +161,7 @@ export class DeploymentCommands {
             number: release.number,
             image: release.image,
             configSha: release.configSha,
+            ...(commitSha ? { commitSha } : {}),
           }),
           this.event('deployment.queued', context, application, deployment.id, now, {
             releaseId: release.id,
@@ -164,6 +174,75 @@ export class DeploymentCommands {
       },
       true,
     );
+  }
+
+  /**
+   * Deploys a Git application's configuration at the commit a verified push moved its branch to
+   * (ADR 0031), as the system, in the caller's tenant transaction. Nothing is deployed in a
+   * protected environment (SPEC 7) or while the application is in maintenance: the push is
+   * `held`, and an administrator deploys the commit. `busy` while another deployment is active,
+   * and `deployment_in_progress` thrown when one was queued at the same moment: the caller tries
+   * again later. `current` when the newest release is already this commit's. A configuration that
+   * cannot deploy throws, as for any request.
+   */
+  async deployPush(
+    application: Application,
+    push: { readonly commit: string; readonly pusher: string | null },
+    protectedEnvironment: boolean,
+    now = new Date(),
+  ): Promise<{ release: Release; deployment: DeploymentRecord } | 'current' | 'held' | 'busy'> {
+    // A push handled again (a retried job) deploys nothing twice.
+    const latest = await this.store.latestRelease(application.id);
+    if (latest?.commitSha === push.commit && latest.configSha === application.configSha)
+      return 'current';
+    // Held first: what only a deployment needs, secrets set included, must not undo the
+    // configuration the push brought in a protected environment.
+    const maintenance = inMaintenance(await this.store.serving(application.id));
+    if (protectedEnvironment || maintenance) {
+      await this.events.publish([
+        this.event('deployment.push_held', 'system', application, application.id, now, {
+          commitSha: push.commit,
+          githubPusher: push.pusher,
+          reason: protectedEnvironment ? 'protected_environment' : 'maintenance',
+        }),
+      ]);
+      return 'held';
+    }
+    assertDomainsAvailable(application.config, [this.controlPlaneHost]);
+    assertConfigApplied(application.config);
+    const draft = releaseDraft(application.config);
+    const set = await this.secrets.list({
+      organizationId: application.organizationId,
+      projectId: application.projectId,
+      environmentId: application.environmentId,
+    });
+    assertSecretsSet(
+      draft.secrets,
+      set.map((secret) => secret.name),
+    );
+    if (await this.store.active(application.id)) return 'busy';
+    const release = await this.store.createRelease(application, draft, null, now, push.commit);
+    if (!release) return 'busy';
+    const deployment = await this.store.queue(release, draft, 'webhook', null, now);
+    // The release is written already: failing rolls it back with the transaction, where `busy`
+    // would commit it undeployed, and the push tried again would find it current.
+    if (!deployment) throw deploymentInProgress();
+    await this.events.publish([
+      this.event('release.created', 'system', application, release.id, now, {
+        number: release.number,
+        image: release.image,
+        configSha: release.configSha,
+        commitSha: push.commit,
+      }),
+      this.event('deployment.queued', 'system', application, deployment.id, now, {
+        releaseId: release.id,
+        trigger: deployment.trigger,
+        commitSha: push.commit,
+        githubPusher: push.pusher,
+      }),
+    ]);
+    await this.waker.wake(application.organizationId, deployment.id);
+    return { release, deployment };
   }
 
   /** Deploys a copy of the release an earlier deployment ran (SPEC 5.1, PLAN M3.5a). */
@@ -666,19 +745,25 @@ export class DeploymentCommands {
       | 'release.created'
       | 'deployment.queued'
       | 'deployment.cancelled'
+      | 'deployment.push_held'
       | 'application.deleted'
       | 'application.cleanup_requested',
-    context: SecurityContext,
+    context: SecurityContext | 'system',
     application: Application,
     id: string,
     now: Date,
-    payload: Record<string, string | number>,
+    payload: Record<string, string | number | null>,
   ): DomainEvent {
     return createEvent({
       type,
       organizationId: application.organizationId,
-      actor: resourceActor(context),
-      target: { type: type.split('.')[0] ?? 'deployment', id },
+      actor: context === 'system' ? SYSTEM_ACTOR : resourceActor(context),
+      // A held push has no deployment: its target is the application.
+      target: {
+        type:
+          type === 'deployment.push_held' ? 'application' : (type.split('.')[0] ?? 'deployment'),
+        id,
+      },
       payload: {
         projectId: application.projectId,
         environmentId: application.environmentId,

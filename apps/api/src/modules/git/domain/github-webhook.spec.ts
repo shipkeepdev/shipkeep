@@ -8,6 +8,7 @@ import {
   installationChange,
   pingedApp,
   WebhookRejected,
+  pushOf,
 } from './github-webhook';
 
 const signature = `sha256=${'ab'.repeat(32)}`;
@@ -148,5 +149,48 @@ describe('GitHub deliveries (ADR 0031)', () => {
         for (const minute of [11, 13])
           expect(changeApplies(change(action, minute), removed), action).toBe(false);
     });
+  });
+});
+
+describe('a push to a branch (#213)', () => {
+  const ORG = '0190f5a8-7b1c-7e2d-8f3a-0000000000aa';
+  const payload = (overrides: Record<string, unknown> = {}) => ({
+    ref: 'refs/heads/feature/login',
+    after: 'f'.repeat(40),
+    repository: { id: 901 },
+    installation: { id: 31 },
+    sender: { login: 'octocat' },
+    ...overrides,
+  });
+
+  it('reads the branch, the commit, the repository, the installation and the pusher', () => {
+    expect(pushOf(ORG, payload())).toEqual({
+      organizationId: ORG,
+      installationId: 31,
+      repositoryId: 901,
+      branch: 'feature/login',
+      commit: 'f'.repeat(40),
+      pusher: 'octocat',
+    });
+    expect(pushOf(ORG, payload({ sender: { login: 'not a login' } }))?.pusher).toBeNull();
+  });
+
+  it('deploys nothing for a tag, a deleted branch, or a field GitHub could not have sent', () => {
+    for (const other of [
+      payload({ ref: 'refs/tags/v1.0.0' }),
+      payload({ ref: 'refs/heads/a..b' }),
+      payload({ ref: 'refs/heads/' }),
+      payload({ deleted: true }),
+      payload({ after: '0'.repeat(40) }),
+      payload({ after: 'F'.repeat(40) }),
+      payload({ after: 'f'.repeat(39) }),
+      payload({ repository: { id: '901' } }),
+      payload({ repository: { id: 0 } }),
+      payload({ installation: undefined }),
+      payload({ installation: { id: 2 ** 60 } }),
+      null,
+      [],
+    ])
+      expect(pushOf(ORG, other), JSON.stringify(other)).toBeUndefined();
   });
 });

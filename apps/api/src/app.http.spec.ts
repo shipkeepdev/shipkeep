@@ -16,6 +16,7 @@ import { PROBLEM_MEDIA_TYPE } from './platform/http/problem-details';
 import { PrismaService } from './platform/prisma/prisma.service';
 import { DeploymentQueue } from './modules/deployments/infrastructure/deployment-queue';
 import { AgentUpgradeQueue } from './modules/fleet/infrastructure/agent-upgrade-queue';
+import { GithubPushQueue } from './modules/git/infrastructure/github-push-queue';
 import { ExecSessionChecks } from './modules/fleet/infrastructure/exec-session-checks';
 import { JobQueue } from './platform/jobs/job-queue';
 import { MemoryDataKeyStore, MemoryInstallationKeyStore } from './testing/memory-stores';
@@ -50,6 +51,8 @@ describe('HTTP pipeline', () => {
       .useValue({ wake: () => Promise.resolve() })
       .overrideProvider(AgentUpgradeQueue)
       .useValue({ wake: () => Promise.resolve() })
+      .overrideProvider(GithubPushQueue)
+      .useValue({ enqueue: () => Promise.resolve() })
       .overrideProvider(ExecSessionChecks)
       .useValue({ schedule: () => Promise.resolve() })
       .compile();

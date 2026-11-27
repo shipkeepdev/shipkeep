@@ -39,6 +39,25 @@ export interface RepositorySource {
   ): Promise<RepositoryConfig>;
 }
 
+/** A Git application a push may deploy, and whether a push may deploy it by itself (SPEC 7). */
+/** A page of a push's applications holds at most this many: a job handles one page. */
+export const MAX_FOLLOWERS = 20;
+
+/** Which of a push's applications a page holds: those after `after`, or only those named. */
+export interface FollowerPage {
+  readonly after?: string;
+  readonly only?: readonly string[];
+}
+
+/** Where a repository's branch head is, as GitHub answered for it. */
+export type RepositoryHead = Pick<RepositoryConfig, 'fullName' | 'commitSha'>;
+
+export interface RepositoryFollower {
+  readonly application: Application;
+  /** In a protected environment, a push changes the configuration and deploys nothing. */
+  readonly protectedEnvironment: boolean;
+}
+
 export const APPLICATION_STORE = Symbol('ApplicationStore');
 /** Every method runs inside `runTenant` for the target's organization. */
 export interface ApplicationStore {
@@ -54,15 +73,32 @@ export interface ApplicationStore {
     now: Date,
     repository?: ApplicationRepository | null,
   ): Promise<Application | undefined>;
-  /** Replaces the configuration if it still has `expectedSha`; undefined when it changed. */
+  /**
+   * Replaces the configuration if it still has `expectedSha`; undefined when it changed. A Git
+   * application's `head` is the repository's name and the commit the configuration was read at.
+   */
   replaceConfig(
     application: Application,
     expectedSha: string,
     config: ApplicationConfig,
     configSha: string,
     now: Date,
+    head?: RepositoryHead,
   ): Promise<Application | undefined>;
   find(target: ApplicationTarget, applicationId: string): Promise<Application | undefined>;
+  /**
+   * A page of the Git applications of the organization that follow this branch of this
+   * repository through this installation: at most `MAX_FOLLOWERS`, in identifier order, after
+   * `page.after` or among `page.only`. A push reaches them all by asking for the page after the
+   * last one until a page is not full.
+   */
+  followers(
+    organizationId: string,
+    push: { installationId: number; repositoryId: number; branch: string },
+    page?: FollowerPage,
+  ): Promise<Application[]>;
+  /** A Git application by id, with whether its environment is protected now. */
+  follower(organizationId: string, applicationId: string): Promise<RepositoryFollower | undefined>;
   /** The application by id within its organization, wherever it lives (confirmation targets). */
   findById(organizationId: string, applicationId: string): Promise<Application | undefined>;
   /**

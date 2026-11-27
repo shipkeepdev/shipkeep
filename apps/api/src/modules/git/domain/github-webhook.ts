@@ -1,5 +1,7 @@
 import { DomainError, InvalidInputError } from '@shipkeep/domain';
 
+import { validBranch } from './github-api';
+
 /** A larger body is refused unread (ADR 0031). */
 export const MAX_WEBHOOK_BYTES = 1 << 20;
 /** How long a delivery identifier is kept, so that the same delivery again does nothing. */
@@ -145,6 +147,67 @@ function githubTime(value: unknown): Date | undefined {
     return undefined;
   const time = new Date(value);
   return Number.isFinite(time.getTime()) ? time : undefined;
+}
+
+/** The pg-boss queue that carries verified pushes to the deployments context. */
+export const GITHUB_PUSH_QUEUE = 'github-push';
+
+/**
+ * A verified push to a branch (ADR 0031): identifiers, the branch, the commit it moved to and who
+ * pushed. This is also the job's payload: nothing else of the delivery leaves the webhook.
+ */
+export interface PushEvent {
+  readonly organizationId: string;
+  readonly installationId: number;
+  readonly repositoryId: number;
+  readonly branch: string;
+  /** The commit the branch points to after the push. */
+  readonly commit: string;
+  /** The GitHub login of whoever pushed, or null when the payload names none GitHub could. */
+  readonly pusher: string | null;
+}
+
+const COMMIT = /^[0-9a-f]{40}$/;
+const NO_COMMIT = /^0{40}$/;
+const BRANCH_REF = 'refs/heads/';
+
+/**
+ * The push a `push` payload describes, or undefined for one that deploys nothing: a tag, a branch
+ * deleted, a payload without an installation, or a field GitHub could not have sent. The branch
+ * is checked as Git allows names, so it can be compared and sent back to GitHub safely.
+ */
+export function pushOf(organizationId: string, payload: unknown): PushEvent | undefined {
+  const value = record(payload);
+  const ref = value?.['ref'];
+  const after = value?.['after'];
+  const repositoryId = record(value?.['repository'])?.['id'];
+  const installationId = record(value?.['installation'])?.['id'];
+  if (
+    typeof ref !== 'string' ||
+    !ref.startsWith(BRANCH_REF) ||
+    value?.['deleted'] === true ||
+    typeof after !== 'string' ||
+    !COMMIT.test(after) ||
+    NO_COMMIT.test(after) ||
+    typeof repositoryId !== 'number' ||
+    !Number.isSafeInteger(repositoryId) ||
+    repositoryId <= 0 ||
+    typeof installationId !== 'number' ||
+    !Number.isSafeInteger(installationId) ||
+    installationId <= 0
+  )
+    return undefined;
+  const branch = ref.slice(BRANCH_REF.length);
+  if (!validBranch(branch)) return undefined;
+  const sender = record(value?.['sender'])?.['login'];
+  return {
+    organizationId,
+    installationId,
+    repositoryId,
+    branch,
+    commit: after,
+    pusher: typeof sender === 'string' && LOGIN.test(sender) ? sender : null,
+  };
 }
 
 /** The App a `ping` names: it must be this organization's. */

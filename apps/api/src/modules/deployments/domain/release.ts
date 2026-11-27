@@ -19,6 +19,8 @@ export interface Release {
   readonly imageDigest: string | null;
   readonly config: ShipkeepConfig;
   readonly configSha: string;
+  /** The commit a Git application's configuration was read from; null for an image one. */
+  readonly commitSha: string | null;
   readonly createdBy: string | null;
   readonly createdAt: Date;
 }
@@ -100,6 +102,14 @@ export function applicationCleanupPending(): ConflictError {
   return new ConflictError(
     'application_cleanup_pending',
     "A server has not confirmed yet that this application's containers and routes are gone; it has been asked to remove them. Retry in a moment, or remove that server.",
+  );
+}
+
+/** A push whose applications stayed busy, or GitHub unavailable, for every attempt. */
+export function pushGivenUp(): ConflictError {
+  return new ConflictError(
+    'push_given_up',
+    'The push was tried again too many times without deploying.',
   );
 }
 

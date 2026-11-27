@@ -91,6 +91,7 @@ function world(
     imageDigest: null,
     config: options.config ?? config,
     configSha: 'a'.repeat(64),
+    commitSha: null,
     createdBy: null,
     createdAt: NOW,
   };
