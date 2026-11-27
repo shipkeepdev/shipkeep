@@ -257,6 +257,7 @@ describe('a build in the pipeline (ADR 0030)', () => {
         kind: 'build_image',
         key: `d:${world.deployment.id}:build`,
         nodeId: NODES[0],
+        builder: 'dockerfile',
         target: `${REGISTRY}/${APP.id}:2`,
         commit: COMMIT,
         // The paths as the agent reads them: no `.` segment, no empty one.
@@ -286,6 +287,23 @@ describe('a build in the pipeline (ADR 0030)', () => {
       context: '',
       dockerfile: 'Dockerfile',
     });
+  });
+
+  it('builds with Railpack or Nixpacks, which take no Dockerfile', () => {
+    for (const builder of ['railpack', 'nixpacks'] as const) {
+      const world = simulate(
+        { ...full, build: { type: builder, context: './web/', args: { NODE_ENV: 'production' } } },
+        undefined,
+        plan,
+      );
+      expect(world.deployment.state).toBe('succeeded');
+      expect(world.executed.find((step) => step.kind === 'build_image')).toMatchObject({
+        builder,
+        context: 'web',
+        dockerfile: '',
+        args: { NODE_ENV: 'production' },
+      });
+    }
   });
 
   it('says why a build failed, and deploys nothing', () => {

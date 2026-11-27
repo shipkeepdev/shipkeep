@@ -26,7 +26,7 @@ export class ApplicationPathDto extends ApplicationEnvironmentPathDto {
 }
 
 const CONFIG_DESCRIPTION =
-  'The shipkeep.yml document as JSON (SPEC 2), validated against the schema. Only build.type image is accepted for now. Secrets are listed by name; values are set through the secrets API.';
+  'The shipkeep.yml document as JSON (SPEC 2), validated against the schema. Only build.type image is accepted here: an application built from its repository is created from it. Secrets are listed by name; values are set through the secrets API.';
 
 export class CreateApplicationDto {
   @ApiProperty({ type: 'object', additionalProperties: true, description: CONFIG_DESCRIPTION })
