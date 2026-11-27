@@ -131,6 +131,20 @@ export interface ConfirmationKeyProvider {
   verifyConfirmation(input: Uint8Array, signature: Uint8Array): Promise<boolean>;
 }
 
+/** The public half of the registry's signing key, as Distribution reads it from a JWKS file. */
+export interface RegistryPublicKey {
+  /** The `kid` a token's header names: the SHA-256 of the key's SPKI encoding, base64url. */
+  readonly keyId: string;
+  readonly jwk: { readonly kty: 'OKP'; readonly crv: 'Ed25519'; readonly x: string };
+}
+
+/** Ed25519 key pair that signs the tokens of the installation's registry (ADR 0030). */
+export interface RegistryTokenKeyProvider {
+  registryKey(): Promise<RegistryPublicKey>;
+  /** Signs with the private half, which never leaves the key provider. */
+  signRegistryToken(input: Uint8Array): Promise<Uint8Array>;
+}
+
 /** Every method runs inside `runTenant` for the action's organization. */
 export interface AgentActionStore {
   /** False when the node already has an action with this idempotency key. */
@@ -178,6 +192,7 @@ export const JOIN_TOKEN_STORE = Symbol('JoinTokenStore');
 export const NODE_STORE = Symbol('NodeStore');
 export const CERTIFICATE_AUTHORITY = Symbol('CertificateAuthority');
 export const CONFIRMATION_KEY_PROVIDER = Symbol('ConfirmationKeyProvider');
+export const REGISTRY_TOKEN_KEY = Symbol('RegistryTokenKeyProvider');
 
 /**
  * What the control plane relays in an UpgradeAgent: the archive's address, its SHA-256 and its

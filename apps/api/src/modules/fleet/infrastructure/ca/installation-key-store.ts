@@ -1,5 +1,5 @@
-/** Kinds of long-lived installation key pairs (SPEC sections 3.2 and 3.6). */
-export type InstallationKeyKind = 'ca' | 'confirmation';
+/** Kinds of long-lived installation key pairs (SPEC sections 3.2 and 3.6, ADR 0030). */
+export type InstallationKeyKind = 'ca' | 'confirmation' | 'registry';
 
 export interface StoredInstallationKey {
   readonly kind: InstallationKeyKind;

@@ -1,4 +1,4 @@
-import { randomBytes, X509Certificate } from 'node:crypto';
+import { createPublicKey, randomBytes, verify, X509Certificate } from 'node:crypto';
 import { mkdtemp, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -63,7 +63,7 @@ const org = '0192f0c0-0000-7000-8000-0000000000aa';
 const nodeId = '0192f0c0-0000-7000-8000-0000000000bb';
 
 describe('X509CertificateAuthority', () => {
-  it('creates the CA and confirmation keys once and stores private keys encrypted', async () => {
+  it('creates the CA, confirmation and registry keys once and stores private keys encrypted', async () => {
     const store = new MemoryInstallationKeys();
     const env = await envelope();
     const bus = new DomainEventBus();
@@ -78,11 +78,25 @@ describe('X509CertificateAuthority', () => {
       [
         ['fleet.installation_key.created', 'system', 'ca'],
         ['fleet.installation_key.created', 'system', 'confirmation'],
+        ['fleet.installation_key.created', 'system', 'registry'],
       ],
     );
     expect(JSON.stringify(published)).not.toContain('PRIVATE KEY');
 
-    expect(store.keys.size).toBe(2);
+    expect(store.keys.size).toBe(3);
+    // The registry's tokens are signed with an Ed25519 key, published as a JWK for Distribution.
+    const registry = await ca.registryKey();
+    expect(registry.jwk).toMatchObject({ kty: 'OKP', crv: 'Ed25519' });
+    expect(registry.keyId).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    const signed = await ca.signRegistryToken(Buffer.from('header.claims'));
+    expect(
+      verify(
+        null,
+        Buffer.from('header.claims'),
+        createPublicKey({ key: { ...registry.jwk }, format: 'jwk' }),
+        signed,
+      ),
+    ).toBe(true);
     const caKey = store.keys.get('ca');
     expect(caKey?.certificatePem).toContain('BEGIN CERTIFICATE');
     expect(caKey?.privateKeyEnc.toString('utf8')).not.toContain('PRIVATE KEY');
@@ -96,8 +110,8 @@ describe('X509CertificateAuthority', () => {
     // A second start reuses the stored keys.
     const again = new X509CertificateAuthority(store, env, new DomainEventBus(), inline);
     await again.onApplicationBootstrap();
-    expect(store.inserts).toBe(2);
-    expect(published).toHaveLength(2);
+    expect(store.inserts).toBe(3);
+    expect(published).toHaveLength(3);
     expect(await again.caFingerprint()).toBe(await ca.caFingerprint());
   });
 

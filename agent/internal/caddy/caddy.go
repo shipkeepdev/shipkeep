@@ -66,6 +66,8 @@ type Route struct {
 // Match selects requests by host and, for a route under automatic HTTPS, by protocol.
 type Match struct {
 	Host []string `json:"host"`
+	// Path, set on the control plane's registry route only, selects the registry's API.
+	Path []string `json:"path,omitempty"`
 	// HeaderRegexp bounds the Host header (see BoundHost): every Shipkeep route carries it.
 	HeaderRegexp map[string]HeaderPattern `json:"header_regexp,omitempty"`
 	// Protocol is "https" for a route under automatic HTTPS: the server listens on both ports, and
@@ -134,15 +136,25 @@ type automaticHTTPS struct {
 // The ids of the control plane's routes on the machine that hosts it (ADR 0021). They are outside
 // the Shipkeep route prefix, so no action can reach them.
 const (
+	ControlPlaneRegistryRouteID = "shipkeep-control-plane-registry"
 	ControlPlaneRouteID         = "shipkeep-control-plane"
 	ControlPlaneRedirectRouteID = "shipkeep-control-plane-http"
 )
 
-// ControlPlaneRoutes are the routes of the control plane's name: HTTPS to its loopback port, and
-// plain HTTP redirected to HTTPS. The redirect is a route of its own, so that no application route
-// placed after it answers that name on HTTP, not even a wildcard with TLS off.
-func ControlPlaneRoutes(host, upstream string) []Route {
+// ControlPlaneRoutes are the routes of the control plane's name: its registry's API (/v2/) over
+// HTTPS to the registry's loopback port (ADR 0030), the rest over HTTPS to the control plane's,
+// and plain HTTP redirected to HTTPS. The redirect is a route of its own, so that no application
+// route placed after it answers that name on HTTP, not even a wildcard with TLS off.
+func ControlPlaneRoutes(host, upstream, registry string) []Route {
+	registryMatch := HostMatch([]string{host}, HTTPS)
+	registryMatch.Path = []string{"/v2", "/v2/*"}
 	return []Route{
+		{
+			ID:       ControlPlaneRegistryRouteID,
+			Match:    []Match{registryMatch},
+			Handle:   []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{{Dial: registry}}}},
+			Terminal: true,
+		},
 		{
 			ID:       ControlPlaneRouteID,
 			Match:    []Match{HostMatch([]string{host}, HTTPS)},

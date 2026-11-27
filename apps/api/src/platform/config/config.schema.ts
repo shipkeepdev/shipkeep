@@ -77,6 +77,19 @@ export const configSchema = z
      */
     VICTORIAMETRICS_URL: z.preprocess(emptyAsUnset, httpUrl.optional()),
     REGISTRY_URL: httpUrl.default('http://localhost:5000'),
+    /**
+     * Where the public key of the registry's tokens is written, for Distribution's
+     * `auth.token.jwks` (ADR 0030). Unset, it is written nowhere.
+     */
+    REGISTRY_JWKS_FILE: z.preprocess(
+      emptyAsUnset,
+      z
+        .string()
+        .min(1)
+        .max(4096)
+        .refine((value) => value.startsWith('/') && !value.includes(String.fromCharCode(0)))
+        .optional(),
+    ),
     // Email is optional (ADR 0020). Without a host, accounts are created on the server.
     SMTP_HOST: z.preprocess(
       emptyAsUnset,

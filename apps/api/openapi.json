@@ -2165,6 +2165,30 @@
         ]
       }
     },
+    "/api/v1/registry/token": {
+      "get": {
+        "operationId": "token",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistryTokenDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Refused, whatever the reason."
+          }
+        },
+        "tags": [
+          "registries"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/github-app/repositories": {
       "get": {
         "operationId": "listGithubRepositories",
@@ -7676,6 +7700,33 @@
           "server",
           "username",
           "password"
+        ]
+      },
+      "RegistryTokenDto": {
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": "string",
+            "description": "A JWT for the registry, signed by the control plane."
+          },
+          "access_token": {
+            "type": "string",
+            "description": "The same token, as OAuth 2 clients read it."
+          },
+          "expires_in": {
+            "type": "number",
+            "description": "Seconds the token lasts: 300 at most."
+          },
+          "issued_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "token",
+          "access_token",
+          "expires_in",
+          "issued_at"
         ]
       },
       "GithubRepositoryDto": {
