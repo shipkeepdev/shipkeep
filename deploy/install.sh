@@ -111,18 +111,48 @@ loopback_nameservers() {
     fi
   done <"$1"
 }
+# Prints the name servers of the resolv.conf $1, one per line: the IPv4 and IPv6 addresses
+# slirp4netns forwards a build's names to (ADR 0030). Any other line is ignored.
+resolv_nameservers() {
+  local line keyword address rest
+  while IFS= read -r line || [[ -n $line ]]; do
+    line=${line%%[#;]*}
+    read -r keyword address rest <<<"$line" || true
+    [[ $keyword == nameserver && -n $address && -z $rest ]] || continue
+    if [[ $address =~ ^([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})\.([0-9]{1,3})$ ]]; then
+      ((10#${BASH_REMATCH[1]} <= 255 && 10#${BASH_REMATCH[2]} <= 255 && 10#${BASH_REMATCH[3]} <= 255 && 10#${BASH_REMATCH[4]} <= 255)) || continue
+      printf '%d.%d.%d.%d\n' "$((10#${BASH_REMATCH[1]}))" "$((10#${BASH_REMATCH[2]}))" "$((10#${BASH_REMATCH[3]}))" "$((10#${BASH_REMATCH[4]}))"
+    elif [[ $address =~ ^[0-9A-Fa-f:.]{2,45}$ && $address == *:* ]]; then
+      printf '%s\n' "${address,,}"
+    fi
+  done <"$1"
+}
+# What a build never reaches (ADR 0030): the egress proxy's ranges (agent/internal/egress), which
+# a test compares with these, and IPv4-mapped addresses.
+build_blocked_ipv4='0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.0.0.0/24, 192.0.2.0/24, 192.88.99.0/24, 192.168.0.0/16, 198.18.0.0/15, 198.51.100.0/24, 203.0.113.0/24, 224.0.0.0/4, 240.0.0.0/4'
+build_blocked_ipv6='::/128, ::1/128, ::ffff:0:0/96, 64:ff9b::/96, 64:ff9b:1::/48, 100::/64, 2001::/23, 2001:db8::/32, 2002::/16, fc00::/7, fe80::/10, fec0::/10, ff00::/8'
 # Prints the nftables guard of ADR 0023 for the cgroup $1 of shipkeep.slice, which holds the
 # Docker daemon: its new connections to loopback are rejected, except to the egress proxy and to
 # the name servers read on standard input, port 53. It fails for a cgroup that is not the slice's.
+# With the user id $2 of shipkeep-build, the builder's new connections (ADR 0030) reach public
+# addresses only, on any port: never loopback, private, shared or link-local ranges, nor the
+# server's own addresses but on port 443, where its Caddy serves what the internet sees (on a
+# single machine, the control plane's registry), and the name servers $3… on port 53.
 egress_guard() {
-  local cgroup=$1 level server family
+  local cgroup=$1 build=${2:-} level server family
   [[ $cgroup =~ ^(/[A-Za-z0-9@._:-]+)*/shipkeep\.slice$ ]] || return 1
+  [[ -z $build || $build =~ ^[1-9][0-9]{0,9}$ ]] || return 1
+  shift $(($# < 2 ? $# : 2))
+  for server; do
+    [[ $server =~ ^[0-9a-f.:]{2,45}$ ]] || return 1
+  done
   level=${cgroup//[^\/]/}
   printf 'destroy table inet shipkeep_egress\n'
   printf 'table inet shipkeep_egress {\n'
   printf '  chain output {\n'
   printf '    type filter hook output priority filter; policy accept;\n'
   printf '    socket cgroupv2 level %d "%s" ct state new jump docker\n' "${#level}" "${cgroup#/}"
+  [[ -z $build ]] || printf '    meta skuid %d ct state new jump build\n' "$build"
   printf '  }\n'
   printf '  chain docker {\n'
   printf '    ip daddr 127.0.0.1 tcp dport 7480 return\n'
@@ -136,7 +166,102 @@ egress_guard() {
   printf '    ip daddr 127.0.0.0/8 reject\n'
   printf '    ip6 daddr ::1 reject\n'
   printf '  }\n'
+  if [[ -n $build ]]; then
+    printf '  chain build {\n'
+    for server; do
+      family=ip
+      [[ $server == *:* ]] && family=ip6
+      printf '    meta l4proto { tcp, udp } ct original %s daddr %s ct original proto-dst 53 return\n' "$family" "$server"
+    done
+    printf '    fib daddr type local tcp dport 443 return\n'
+    printf '    fib daddr type local reject\n'
+    printf '    ip daddr { %s } reject\n' "$build_blocked_ipv4"
+    printf '    ip6 daddr { %s } reject\n' "$build_blocked_ipv6"
+    printf '  }\n'
+  fi
   printf '}\n'
+}
+# Prints the first subordinate id after every range of the subuid and subgid files $@, at least
+# 100000: the builder's 65536 ids never overlap another account's (Ubuntu's cloud images give
+# 100000 to 165535 to ubuntu).
+subordinate_start() {
+  local file name start count end=100000
+  for file; do
+    [[ -f $file ]] || continue
+    while IFS=: read -r name start count || [[ -n $name ]]; do
+      [[ $start =~ ^[0-9]{1,10}$ && $count =~ ^[0-9]{1,10}$ ]] || continue
+      if ((10#$start + 10#$count > end)); then end=$((10#$start + 10#$count)); fi
+    done <"$file"
+  done
+  printf '%d\n' "$end"
+}
+# BuildKit builds applications from their repository (ADR 0030): the release this script pins,
+# downloaded from GitHub and checked against these digests before any of it is kept. Only
+# buildkitd and its runc are installed.
+buildkit_version=v0.35.1
+buildkit_amd64_sha256=b248c2b91698aafef11818fe8b681dc5e341581f7d5676709ff45ca1f29b0408
+buildkit_arm64_sha256=46c7d1799250bd8b31266ed718715ab9d3464bad0455d5bfbe48e2eeb92ca965
+# The builder's BuildKit configuration: one rootless OCI worker whose cache stays within a fifth
+# of the disk and leaves 15 % of it free.
+buildkitd_config() {
+  cat <<'CONFIG'
+root = "/var/lib/shipkeep-build/buildkit"
+[log]
+  format = "json"
+[grpc]
+  address = ["unix:///run/shipkeep-build/buildkitd.sock"]
+[worker.oci]
+  enabled = true
+  rootless = true
+  gc = true
+  maxUsedSpace = "20%"
+  minFreeSpace = "15%"
+[worker.containerd]
+  enabled = false
+CONFIG
+}
+# The builds' slice: half the memory at most, a lower CPU weight than the applications.
+builder_slice_unit() {
+  cat <<'UNIT'
+[Unit]
+Description=Shipkeep builds
+[Slice]
+MemoryMax=50%
+CPUWeight=50
+UNIT
+}
+# The builder (ADR 0030): rootlesskit starts buildkitd in a user namespace of shipkeep-build,
+# which is in no group that reaches Docker, with slirp4netns for its network and the host's
+# loopback out of reach. It loads the egress guard, and its build rule, before it starts. Its
+# socket is for the group shipkeep-build, which the agent's account is in.
+builder_unit() {
+  cat <<'UNIT'
+[Unit]
+Description=Shipkeep builder, rootless BuildKit
+After=network-online.target shipkeep.slice
+Wants=network-online.target
+Requires=shipkeep.slice
+[Service]
+User=shipkeep-build
+Group=shipkeep-build
+Slice=shipkeep-build.slice
+Delegate=yes
+Environment=XDG_RUNTIME_DIR=/run/shipkeep-build PATH=/usr/local/libexec/shipkeep-build:/usr/sbin:/usr/bin:/sbin:/bin
+RuntimeDirectory=shipkeep-build
+RuntimeDirectoryMode=0750
+StateDirectory=shipkeep-build
+StateDirectoryMode=0700
+ExecStartPre=+/usr/sbin/nft --file /etc/shipkeep-egress.nft
+ExecStart=/usr/bin/rootlesskit --net=slirp4netns --disable-host-loopback --copy-up=/etc --state-dir=/run/shipkeep-build/rootlesskit /usr/local/libexec/shipkeep-build/buildkitd --config /etc/shipkeep-build/buildkitd.toml
+Restart=always
+RestartSec=5
+# A build is the first the kernel kills, before the applications and the control plane.
+OOMScoreAdjust=1000
+ProtectHome=true
+PrivateTmp=true
+[Install]
+WantedBy=multi-user.target
+UNIT
 }
 # Fails when the daemon.json $1 sets a proxy: Docker applies it before its environment, so the
 # egress proxy would be bypassed.
@@ -339,7 +464,7 @@ install_guard() {
 # So nftables.service can load the guard in the same transaction as its own ruleset, at start,
 # reload and stop, and no flush leaves Docker unguarded.
 install_egress() {
-  local attempt slice
+  local attempt slice build
   install_guard "$1"
   cat > /etc/systemd/system/shipkeep-egress.service <<'UNIT'
 [Unit]
@@ -380,7 +505,9 @@ UNIT
   systemctl daemon-reload
   systemctl enable --now shipkeep.slice
   slice=$(systemctl show --property ControlGroup --value shipkeep.slice)
-  loopback_nameservers /etc/resolv.conf | egress_guard "$slice" >"$1/egress.nft" || fail 'shipkeep.slice has no cgroup.'
+  build=$(id -u shipkeep-build) || fail 'The builder account is missing.'
+  # shellcheck disable=SC2046 # one argument per name server
+  loopback_nameservers /etc/resolv.conf | egress_guard "$slice" "$build" $(resolv_nameservers /etc/resolv.conf) >"$1/egress.nft" || fail 'shipkeep.slice has no cgroup.'
   nft --check --file "$1/egress.nft" || fail 'nftables cannot load the egress guard of the Docker daemon.'
   install -m 0644 "$1/egress.nft" /etc/shipkeep-egress.nft
   # nftables.service applies the operator's ruleset and the guard in one transaction.
@@ -457,6 +584,51 @@ REPO
   systemctl disable caddy.service caddy-api.service
   systemctl unmask --runtime caddy.service caddy-api.service
 }
+# Installs the builder, stopped (ADR 0030): its packages, the pinned BuildKit, the shipkeep-build
+# account with its subordinate ids, its configuration and its units. The agent's account joins
+# its group, for the socket. $1 is a private work directory. A migration runs it again: what is
+# there already is kept. start_builder starts it, once the egress guard holds its rule.
+prepare_builder() {
+  local sha arch start
+  case $(uname -m) in
+    x86_64) sha=$buildkit_amd64_sha256 arch=amd64 ;;
+    aarch64) sha=$buildkit_arm64_sha256 arch=arm64 ;;
+    *) fail 'Unsupported architecture.' ;;
+  esac
+  apt-get install -y --no-install-recommends rootlesskit slirp4netns uidmap git </dev/null
+  curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --max-time 600 --max-filesize 134217728 \
+    "https://github.com/moby/buildkit/releases/download/$buildkit_version/buildkit-$buildkit_version.linux-$arch.tar.gz" -o "$1/buildkit.tar.gz"
+  printf '%s  %s\n' "$sha" "$1/buildkit.tar.gz" | sha256sum --check --status || fail 'BuildKit checksum mismatch.'
+  install -d -m 0700 "$1/buildkit"
+  tar -xzf "$1/buildkit.tar.gz" -C "$1/buildkit" --no-same-owner --no-same-permissions bin/buildkitd bin/buildkit-runc
+  install -d -m 0755 /usr/local/libexec/shipkeep-build
+  install -m 0755 -o root -g root "$1/buildkit/bin/buildkitd" "$1/buildkit/bin/buildkit-runc" /usr/local/libexec/shipkeep-build/
+  getent passwd shipkeep-build >/dev/null ||
+    useradd --system --user-group --home-dir /var/lib/shipkeep-build --no-create-home --shell /usr/sbin/nologin shipkeep-build
+  start=$(subordinate_start /etc/subuid /etc/subgid)
+  grep -q '^shipkeep-build:' /etc/subuid || usermod --add-subuids "$start-$((start + 65535))" shipkeep-build
+  grep -q '^shipkeep-build:' /etc/subgid || usermod --add-subgids "$start-$((start + 65535))" shipkeep-build
+  usermod --append --groups shipkeep-build shipkeep
+  install -d -m 0755 /etc/shipkeep-build
+  buildkitd_config >"$1/buildkitd.toml"
+  install -m 0644 "$1/buildkitd.toml" /etc/shipkeep-build/buildkitd.toml
+  builder_slice_unit >"$1/shipkeep-build.slice"
+  builder_unit >"$1/shipkeep-build.service"
+  install -m 0644 "$1/shipkeep-build.slice" /etc/systemd/system/shipkeep-build.slice
+  install -m 0644 "$1/shipkeep-build.service" /etc/systemd/system/shipkeep-build.service
+  systemctl daemon-reload
+}
+# Starts the builder, or restarts it on a migration, and waits for its socket.
+start_builder() {
+  local attempt
+  systemctl enable shipkeep-build
+  systemctl restart shipkeep-build
+  for attempt in {1..60}; do
+    [[ -S /run/shipkeep-build/buildkitd.sock ]] && return 0
+    ((attempt < 60)) || fail 'The builder did not start; inspect journalctl -u shipkeep-build.'
+    sleep 0.5
+  done
+}
 # The checks source this file for the functions above, and stop here.
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
 umask 077
@@ -517,6 +689,12 @@ if [[ -n $migrate ]]; then
   elif getent group shipkeep-egress >/dev/null; then
     fail 'A shipkeep-egress group exists without its account; reconcile it manually.'
   fi
+  if getent passwd shipkeep-build >/dev/null; then
+    [[ $(id -gn shipkeep-build) == shipkeep-build ]] || fail 'The shipkeep-build account is not in its own group; reconcile it manually.'
+    ! id -nG shipkeep-build | tr ' ' '\n' | grep -qx docker || fail 'The shipkeep-build account is in the docker group; reconcile it manually.'
+  elif getent group shipkeep-build >/dev/null; then
+    fail 'A shipkeep-build group exists without its account; reconcile it manually.'
+  fi
   for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep/bin; do
     [[ -d $path && ! -L $path && $(stat -c %U:%G -- "$path") == shipkeep:shipkeep ]] || fail "$path is not the agent's directory; reconcile it manually."
   done
@@ -533,7 +711,7 @@ if [[ -n $migrate ]]; then
   server_config_of /etc/shipkeep/agent.yaml "$control_plane" "$fingerprint" ||
     fail "/etc/shipkeep/agent.yaml names another control plane or CA than this command, or a control plane machine. Run the command that this server's control plane shows."
   # What an earlier migration or a current installation wrote is a regular file, rewritten below.
-  for path in /usr/local/libexec/shipkeep-egress /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf; do
+  for path in /usr/local/libexec/shipkeep-egress /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf /etc/shipkeep-build/buildkitd.toml /usr/local/libexec/shipkeep-build/buildkitd /usr/local/libexec/shipkeep-build/buildkit-runc /etc/systemd/system/shipkeep-build.service /etc/systemd/system/shipkeep-build.slice; do
     [[ ! -L $path && (! -e $path || -f $path) ]] || fail "$path is not a regular file; reconcile it manually."
   done
   # Its upgrade guard would put the previous binary back over the one installed here.
@@ -564,6 +742,9 @@ if [[ -n $migrate ]]; then
   # Changes start here. Each step leaves a server that runs: the old agent, or the new one under
   # the old or the guarded unit, Docker with or without the egress proxy. Running this again goes on.
   prepare_egress "$work"
+  # The builder (ADR 0030), stopped until the guard holds its rule; the agent restarts below in
+  # its group, for the socket.
+  prepare_builder "$work"
   getent passwd shipkeep-egress >/dev/null || useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin shipkeep-egress
   install_guard "$work"
   if systemctl is-active --quiet shipkeep-egress; then systemctl restart shipkeep-egress; fi
@@ -588,6 +769,7 @@ if [[ -n $migrate ]]; then
   # Restarts Docker unless it already pulls through the proxy; the agent restarts with it, and its
   # first pass moves each recorded route to its container's new address.
   install_egress "$work"
+  start_builder
   # Docker's restart restarts the agent too: it may still be starting.
   for attempt in {1..120}; do
     systemctl is-active --quiet shipkeep-agent && break
@@ -597,10 +779,10 @@ if [[ -n $migrate ]]; then
   printf 'Migrated (from the %s layout). Refresh Servers to verify ready; the agent can now be upgraded.\n' "$layout"
   exit 0
 fi
-for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep /etc/shipkeep-caddy.json /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-workloads.slice /usr/local/libexec/shipkeep-egress /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf /etc/tmpfiles.d/shipkeep.conf; do
+for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep /etc/shipkeep-caddy.json /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-workloads.slice /usr/local/libexec/shipkeep-egress /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf /etc/tmpfiles.d/shipkeep.conf /etc/shipkeep-build /var/lib/shipkeep-build /run/shipkeep-build /usr/local/libexec/shipkeep-build /etc/systemd/system/shipkeep-build.service /etc/systemd/system/shipkeep-build.slice; do
   [[ ! -e $path && ! -L $path ]] || fail 'Existing Shipkeep installation; refusing to overwrite it. To bring a server an earlier version set up to the current layout, run the same command with --migrate yes.'
 done
-for account in shipkeep shipkeep-caddy shipkeep-egress; do
+for account in shipkeep shipkeep-caddy shipkeep-egress shipkeep-build; do
   ! getent passwd "$account" >/dev/null || fail 'An installation service account already exists.'
   ! getent group "$account" >/dev/null || fail 'An installation group already exists.'
 done
@@ -725,7 +907,10 @@ else
   caddy_unit >/etc/systemd/system/shipkeep-caddy.service
   agent_unit >/etc/systemd/system/shipkeep-agent.service
   chmod 0644 /etc/systemd/system/shipkeep-{agent,caddy}.service
+  # The builder (ADR 0030) starts once the egress guard holds its rule.
+  prepare_builder "$work"
   install_egress "$work"
+  start_builder
 fi
 if [[ -n $local_control_plane ]]; then
   workloads_slice_unit "$memory" >/etc/systemd/system/shipkeep-workloads.slice || fail 'No memory is left for applications beside the reservation.'
