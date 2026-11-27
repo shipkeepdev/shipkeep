@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { parseShipkeepConfig } from '@shipkeep/config-schema';
-import { ConflictError, NotFoundError, type Permission } from '@shipkeep/domain';
+import { MAX_CONFIG_BYTES, parseShipkeepConfig } from '@shipkeep/config-schema';
+import { ConflictError, InvalidInputError, NotFoundError, type Permission } from '@shipkeep/domain';
 
 import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
 import type { ResourceSecurityContext as SecurityContext } from '../../identity/application/resource-security-context';
@@ -85,6 +85,8 @@ export class RepositoryConfigs {
     if (parsed.ok)
       try {
         const config = applicationConfig(parsed.config, 'git');
+        // What a change of it would be refused for makes it invalid here too.
+        assertDomainsAvailable(config.config, [this.controlPlaneHost]);
         valid = config.name === application.name;
         applied = valid && canonicalJson(config.config) === canonicalJson(application.config);
       } catch {
@@ -118,7 +120,7 @@ export class RepositoryConfigs {
     const { repository } = application;
     const file = await this.repositories.readForChange(target.organizationId, location(repository));
     if (file.blobSha !== blobSha) throw fileChanged();
-    const changedText = rewriteConfigFile(file.text, document);
+    const changedText = writableText(file.text, document);
     return {
       ...file,
       branch: repository.branch,
@@ -167,6 +169,25 @@ export function fileChanged(): ConflictError {
     'config_file_changed',
     'The file changed in the repository since it was read: review the change again.',
   );
+}
+
+/**
+ * The file's text with the change, once it reads as a configuration within the size the file may
+ * have: comments kept around a longer value can take it over the limit.
+ */
+export function writableText(text: string, document: Record<string, unknown>): string {
+  const changed = rewriteConfigFile(text, document);
+  if (new TextEncoder().encode(changed).length > MAX_CONFIG_BYTES)
+    throw new InvalidInputError(
+      'config_file_too_large',
+      `With this change, the file would exceed ${String(MAX_CONFIG_BYTES / 1024)} KiB.`,
+    );
+  if (!parseShipkeepConfig(changed).ok)
+    throw new InvalidInputError(
+      'invalid_config_file',
+      'This change cannot be written into the file as it is: change it in the repository.',
+    );
+  return changed;
 }
 
 function location(repository: ApplicationRepository) {
