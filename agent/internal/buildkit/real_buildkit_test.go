@@ -134,3 +134,33 @@ func TestRealBuildKitBuildsWithRailpackAndNixpacks(t *testing.T) {
 		})
 	}
 }
+
+// #544: a Dockerfile may name the official Dockerfile frontend, and no other. The CI daemon runs
+// with the frontends deploy/install.sh allows.
+func TestRealBuildKitRunsOnlyTheAllowedFrontends(t *testing.T) {
+	build := realBuildKit(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	defer cancel()
+	client := Client{Address: build.address, CacheSecret: []byte("shipkeep real build test key 32b")}
+	request := func(dir string) Request {
+		return Request{
+			Repository: build.repository,
+			Commit:     build.commit,
+			Context:    "agent/internal/buildkit/testdata/" + dir,
+			Dockerfile: "Dockerfile",
+			Target:     build.registry + "/it/" + dir + ":" + build.commit[:12],
+			Registry:   Credentials{Host: build.registry, Username: "it", Password: secret.NewString("it-password")},
+		}
+	}
+	var lines []string
+	digest, err := client.Build(ctx, request("syntax-allowed"), func(line string) { lines = append(lines, line) })
+	if err != nil {
+		t.Fatalf("the official frontend was refused: %v\n%s", err, strings.Join(lines, "\n"))
+	}
+	build.pushed(ctx, t, "it/syntax-allowed", build.commit[:12], digest)
+	lines = nil
+	if _, err := client.Build(ctx, request("syntax-refused"), func(line string) { lines = append(lines, line) }); err == nil ||
+		!strings.Contains(err.Error()+strings.Join(lines, "\n"), "not allowed") {
+		t.Fatalf("another frontend was not refused: %v\n%s", err, strings.Join(lines, "\n"))
+	}
+}

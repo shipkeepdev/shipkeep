@@ -120,6 +120,8 @@ printf 'group:200000:65536\n' >"$work/subgid"
 [[ $(subordinate_start "$work/subuid" "$work/subgid") == 300010 ]] || die 'a subordinate range overlaps'
 [[ $(subordinate_start "$work/none" "$work/none") == 100000 ]] || die 'no subordinate range to start from'
 # The builder runs as shipkeep-build, loads the guard first, and never touches Docker.
+# Builds run only the frontends the installer allows (#544).
+grep -qxF '  allowedRepositories = ["docker.io/docker/dockerfile", "ghcr.io/railwayapp/railpack-frontend"]' <<<"$(buildkitd_config)" || die 'the builder allows any frontend'
 unit=$(builder_unit)
 for line in 'User=shipkeep-build' 'Group=shipkeep-build' 'Delegate=yes' 'Requires=shipkeep.slice' 'ExecStartPre=+/usr/sbin/nft --file /etc/shipkeep-egress.nft' 'OOMScoreAdjust=1000'; do
   grep -qxF "$line" <<<"$unit" || die "the builder unit misses $line"

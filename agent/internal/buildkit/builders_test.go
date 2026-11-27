@@ -316,3 +316,22 @@ func TestNixpacksBuildArgsRefuseWhatIsNotAnArgument(t *testing.T) {
 		t.Fatalf("%d args", len(got))
 	}
 }
+
+// The installer lets builds run Railpack's frontend, the one the agent pins (#544).
+func TestTheBuilderAllowsThePinnedRailpackFrontend(t *testing.T) {
+	installer, err := os.ReadFile("../../../deploy/install.sh")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository, _, _ := strings.Cut(RailpackFrontend, "@")
+	repository = repository[:strings.LastIndexByte(repository, ':')]
+	line := ""
+	for candidate := range strings.SplitSeq(string(installer), "\n") {
+		if strings.HasPrefix(strings.TrimSpace(candidate), "allowedRepositories = ") {
+			line = candidate
+		}
+	}
+	if !strings.Contains(line, `"`+repository+`"`) || !strings.Contains(line, `"docker.io/docker/dockerfile"`) {
+		t.Fatalf("the builder's frontends are %q, not %s and the official Dockerfile frontend", line, repository)
+	}
+}
