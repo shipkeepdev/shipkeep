@@ -133,4 +133,58 @@ describe('GitHub REST API as the App', () => {
     ).client.repositories(token, 7, 10);
     expect(page.repositories.map((entry) => entry.id)).toEqual([7]);
   });
+
+  it('reads a repository by its identifier, and refuses an answer about another one', async () => {
+    const { client, calls } = github(() => json(200, repository(7)));
+    expect(await client.repository(token, 3, 7)).toMatchObject({
+      installationId: 3,
+      id: 7,
+      fullName: 'acme-corp/r7',
+    });
+    expect(calls[0]?.url).toBe('https://api.github.com/repositories/7');
+    expect(
+      await github(() => new Response(null, { status: 404 })).client.repository(token, 3, 7),
+    ).toBeUndefined();
+    await expect(
+      github(() => json(200, repository(8))).client.repository(token, 3, 7),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('reads a file at a commit as raw text, bounded, and never sends a path trick', async () => {
+    const commit = 'd'.repeat(40);
+    const { client, calls } = github(() => new Response('version: 1\n', { status: 200 }));
+    expect(await client.file(token, 'acme-corp/web', 'deploy/prod env.yml', commit)).toBe(
+      'version: 1\n',
+    );
+    expect(calls[0]?.url).toBe(
+      `https://api.github.com/repos/acme-corp/web/contents/deploy/prod%20env.yml?ref=${commit}`,
+    );
+    expect(new Headers(calls[0]?.init.headers).get('accept')).toBe('application/vnd.github.raw');
+    expect(
+      await github(() => new Response(null, { status: 404 })).client.file(
+        token,
+        'acme-corp/web',
+        'shipkeep.yml',
+        commit,
+      ),
+    ).toBeUndefined();
+    // Larger than the largest shipkeep.yml: GitHub is unavailable, nothing is kept.
+    await expect(
+      github(() => new Response('x'.repeat(256 * 1024 + 1), { status: 200 })).client.file(
+        token,
+        'acme-corp/web',
+        'shipkeep.yml',
+        commit,
+      ),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+    const before = calls.length;
+    for (const [name, path, ref] of [
+      ['acme-corp/..', 'shipkeep.yml', commit],
+      ['acme-corp/web', '../secrets.yml', commit],
+      ['acme-corp/web', 'shipkeep.yml', 'main'],
+      ['acme-corp/web', 'shipkeep.yml', `${commit}&x=1`],
+    ] as const)
+      expect(await client.file(token, name, path, ref)).toBeUndefined();
+    expect(calls).toHaveLength(before);
+  });
 });

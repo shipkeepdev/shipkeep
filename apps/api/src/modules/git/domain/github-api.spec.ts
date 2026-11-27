@@ -4,7 +4,10 @@ import {
   appJwtClaims,
   branchHeadOf,
   installationTokenOf,
+  repositoryOf,
   repositoryPageOf,
+  validCommit,
+  validConfigPath,
   validRepository,
 } from './github-api';
 
@@ -105,5 +108,51 @@ describe("GitHub's answers to the App (ADR 0031)", () => {
       ['acme/web', 'a:b'],
     ] as const)
       expect(validRepository(name, branch), `${name} ${branch}`).toBe(false);
+  });
+
+  it('reads one repository, and nothing GitHub could not have named', () => {
+    expect(repositoryOf(repository(), 9)).toEqual({
+      installationId: 9,
+      id: 5,
+      fullName: 'acme-corp/web',
+      defaultBranch: 'main',
+      private: true,
+    });
+    for (const broken of [
+      repository({ id: 0 }),
+      repository({ id: '5' }),
+      repository({ full_name: 'acme-corp/..' }),
+      repository({ default_branch: 'a..b' }),
+      repository({ private: 'yes' }),
+      null,
+      [],
+    ])
+      expect(repositoryOf(broken, 9)).toBeUndefined();
+  });
+
+  it('accepts a full commit hash only', () => {
+    expect(validCommit('0123456789abcdef0123456789abcdef01234567')).toBe(true);
+    for (const commit of ['abc', 'A'.repeat(40), `${'a'.repeat(40)}&x=1`, 'main'])
+      expect(validCommit(commit), commit).toBe(false);
+  });
+
+  it('accepts a relative path to a YAML file, and no path tricks', () => {
+    for (const path of ['shipkeep.yml', 'deploy/prod.yaml', 'apps/api/shipkeep.yml', 'é/x.yml'])
+      expect(validConfigPath(path), path).toBe(true);
+    for (const path of [
+      '',
+      '/shipkeep.yml',
+      '../shipkeep.yml',
+      'a/../shipkeep.yml',
+      './shipkeep.yml',
+      'a//shipkeep.yml',
+      'a\\shipkeep.yml',
+      'shipkeep.yml/',
+      'shipkeep.json',
+      'shipkeep.yml\n',
+      'shipkeep.yml?ref=main',
+      `${'a'.repeat(252)}.yml`,
+    ])
+      expect(validConfigPath(path), JSON.stringify(path)).toBe(false);
   });
 });

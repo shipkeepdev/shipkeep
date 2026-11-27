@@ -1,5 +1,15 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsObject, IsString, Length, Matches, MaxLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import {
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 
 import type { Application } from '../domain/application';
 
@@ -23,6 +33,43 @@ export class CreateApplicationDto {
   @IsObject()
   config!: Record<string, unknown>;
 }
+export class CreateGithubApplicationDto {
+  @ApiProperty({
+    description: "An installation of the organization's GitHub App that reaches the repository.",
+  })
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  installationId!: number;
+  @ApiProperty({ description: "GitHub's identifier of the repository." })
+  @IsInt()
+  @Min(1)
+  @Max(Number.MAX_SAFE_INTEGER)
+  repositoryId!: number;
+  @ApiProperty({ maxLength: 255, description: 'The branch whose pushes the application follows.' })
+  @IsString()
+  @MaxLength(255)
+  branch!: string;
+  @ApiPropertyOptional({
+    maxLength: 255,
+    default: 'shipkeep.yml',
+    description:
+      'Where shipkeep.yml is in the repository: a relative path to a .yml or .yaml file.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(255)
+  configPath?: string;
+}
+
+export class ApplicationRepositoryDto {
+  @ApiProperty() installationId!: number;
+  @ApiProperty() repositoryId!: number;
+  @ApiProperty({ description: '`owner/name`, as GitHub names the repository.' }) fullName!: string;
+  @ApiProperty() branch!: string;
+  @ApiProperty() configPath!: string;
+}
+
 export class UpdateApplicationConfigDto extends CreateApplicationDto {
   @ApiProperty({ pattern: SHA256.source, description: 'configSha of the configuration edited.' })
   @Matches(SHA256)
@@ -32,7 +79,14 @@ export class UpdateApplicationConfigDto extends CreateApplicationDto {
 export class ApplicationDto {
   @ApiProperty({ format: 'uuid' }) id!: string;
   @ApiProperty() name!: string;
-  @ApiProperty({ enum: ['image'] }) source!: string;
+  @ApiProperty({ enum: ['image', 'git'] }) source!: string;
+  @ApiProperty({
+    type: ApplicationRepositoryDto,
+    nullable: true,
+    description:
+      "With source git: the repository whose shipkeep.yml is the application's configuration.",
+  })
+  repository!: ApplicationRepositoryDto | null;
   @ApiProperty({ type: 'object', additionalProperties: true }) config!: object;
   @ApiProperty({ pattern: SHA256.source }) configSha!: string;
   @ApiProperty({ type: String, nullable: true }) createdBy!: string | null;
@@ -106,6 +160,7 @@ export function applicationDto(application: Application): ApplicationDto {
     id: application.id,
     name: application.name,
     source: application.source,
+    repository: application.repository ? { ...application.repository } : null,
     config: application.config,
     configSha: application.configSha,
     createdBy: application.createdBy,

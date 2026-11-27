@@ -3,13 +3,19 @@ import { createSign } from 'node:crypto';
 import { Secret } from '@shipkeep/domain';
 
 import type { GithubApi } from '../application/ports';
+import { MAX_CONFIG_BYTES } from '@shipkeep/config-schema';
+
 import {
   appJwtClaims,
   branchHeadOf,
   type GithubRepository,
   installationTokenOf,
+  repositoryOf,
   repositoryPageOf,
   type TokenScope,
+  validCommit,
+  validConfigPath,
+  validFullName,
   validRepository,
 } from '../domain/github-api';
 
@@ -103,16 +109,59 @@ export class GithubApiClient implements GithubApi {
     return sha;
   }
 
+  async repository(
+    token: Secret,
+    installationId: number,
+    repositoryId: number,
+  ): Promise<GithubRepository | undefined> {
+    const answer = await this.call('GET', `/repositories/${String(repositoryId)}`, token);
+    if (answer.status === 404) return undefined;
+    const repository =
+      answer.status === 200 ? repositoryOf(answer.body, installationId) : undefined;
+    // An answer about another repository is not this one's.
+    if (!repository || repository.id !== repositoryId) throw githubUnavailable();
+    return repository;
+  }
+
+  async file(
+    token: Secret,
+    fullName: string,
+    path: string,
+    commit: string,
+  ): Promise<string | undefined> {
+    // Checked here too: each part becomes a URL path segment, and the commit a query value.
+    if (!validFullName(fullName) || !validConfigPath(path) || !validCommit(commit))
+      return undefined;
+    const segments = [...fullName.split('/'), 'contents', ...path.split('/')]
+      .map(encodeURIComponent)
+      .join('/');
+    const answer = await this.call(
+      'GET',
+      `/repos/${segments}?ref=${commit}`,
+      token,
+      undefined,
+      'raw',
+    );
+    if (answer.status === 404) return undefined;
+    if (answer.status !== 200 || typeof answer.body !== 'string') throw githubUnavailable();
+    return answer.body;
+  }
+
   async revoke(token: Secret): Promise<void> {
     // Best effort: a token that is not revoked still expires within the hour.
     await this.call('DELETE', '/installation/token', token).catch(() => undefined);
   }
 
+  /**
+   * One call. A `raw` answer is a file's bytes as text, read up to the largest shipkeep.yml;
+   * any other is JSON, read up to `MAX_ANSWER`.
+   */
   private async call(
     method: 'GET' | 'POST' | 'DELETE',
     path: string,
     credential: Secret,
     body?: object,
+    kind: 'json' | 'raw' = 'json',
   ): Promise<{ status: number; body: unknown }> {
     let response: Response;
     try {
@@ -120,7 +169,7 @@ export class GithubApiClient implements GithubApi {
         method,
         redirect: 'manual',
         headers: {
-          accept: 'application/vnd.github+json',
+          accept: kind === 'raw' ? 'application/vnd.github.raw' : 'application/vnd.github+json',
           authorization: `Bearer ${credential.expose()}`,
           'x-github-api-version': '2022-11-28',
           'user-agent': 'shipkeep',
@@ -140,6 +189,8 @@ export class GithubApiClient implements GithubApi {
       await discardGithubAnswer(response);
       throw githubUnavailable();
     }
+    if (kind === 'raw')
+      return { status: response.status, body: await readGithubAnswer(response, MAX_CONFIG_BYTES) };
     const text = await readGithubAnswer(response, MAX_ANSWER);
     try {
       return { status: response.status, body: JSON.parse(text) as unknown };

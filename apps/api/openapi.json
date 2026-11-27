@@ -2763,6 +2763,73 @@
         ]
       }
     },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/github": {
+      "post": {
+        "operationId": "createGithubApplication",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateGithubApplicationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplicationDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "applications"
+        ]
+      }
+    },
     "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}": {
       "get": {
         "operationId": "getApplication",
@@ -7850,6 +7917,34 @@
           "name"
         ]
       },
+      "ApplicationRepositoryDto": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "number"
+          },
+          "repositoryId": {
+            "type": "number"
+          },
+          "fullName": {
+            "type": "string",
+            "description": "`owner/name`, as GitHub names the repository."
+          },
+          "branch": {
+            "type": "string"
+          },
+          "configPath": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "installationId",
+          "repositoryId",
+          "fullName",
+          "branch",
+          "configPath"
+        ]
+      },
       "ApplicationDto": {
         "type": "object",
         "properties": {
@@ -7863,7 +7958,19 @@
           "source": {
             "type": "string",
             "enum": [
-              "image"
+              "image",
+              "git"
+            ]
+          },
+          "repository": {
+            "description": "With source git: the repository whose shipkeep.yml is the application's configuration.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ApplicationRepositoryDto"
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "config": {
@@ -7893,6 +8000,7 @@
           "id",
           "name",
           "source",
+          "repository",
           "config",
           "configSha",
           "createdBy",
@@ -7949,6 +8057,35 @@
         },
         "required": [
           "config"
+        ]
+      },
+      "CreateGithubApplicationDto": {
+        "type": "object",
+        "properties": {
+          "installationId": {
+            "type": "number",
+            "description": "An installation of the organization's GitHub App that reaches the repository."
+          },
+          "repositoryId": {
+            "type": "number",
+            "description": "GitHub's identifier of the repository."
+          },
+          "branch": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "The branch whose pushes the application follows."
+          },
+          "configPath": {
+            "type": "string",
+            "maxLength": 255,
+            "default": "shipkeep.yml",
+            "description": "Where shipkeep.yml is in the repository: a relative path to a .yml or .yaml file."
+          }
+        },
+        "required": [
+          "installationId",
+          "repositoryId",
+          "branch"
         ]
       },
       "DomainCertificateDto": {

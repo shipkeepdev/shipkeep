@@ -2,6 +2,7 @@ import type {
   Application,
   ApplicationConfig,
   ApplicationHost,
+  ApplicationRepository,
   ApplicationTarget,
 } from '../domain/application';
 import type {
@@ -11,16 +12,47 @@ import type {
   StoredCertificate,
 } from '../domain/certificates';
 
+/** A repository's shipkeep.yml at a commit, as GitHub returned it (ADR 0031). */
+export interface RepositoryConfig {
+  /** The repository's current `owner/name`: GitHub's identifier stays, its name may change. */
+  readonly fullName: string;
+  readonly commitSha: string;
+  /** The file's text, at most the largest shipkeep.yml. */
+  readonly text: string;
+}
+
+/** Where a Git application's configuration is read, without its name, which GitHub gives. */
+export type RepositoryLocation = Omit<ApplicationRepository, 'fullName'>;
+
+export const REPOSITORY_SOURCE = Symbol('RepositorySource');
+/**
+ * Reads a Git application's configuration from its repository, through the organization's
+ * GitHub App (the `git` module). It checks no permission: callers do. It runs no transaction of
+ * its own around GitHub's answers, so callers call it outside theirs.
+ */
+export interface RepositorySource {
+  /** At `commit`, or at the branch's head when no commit is given. */
+  read(
+    organizationId: string,
+    location: RepositoryLocation,
+    commit?: string,
+  ): Promise<RepositoryConfig>;
+}
+
 export const APPLICATION_STORE = Symbol('ApplicationStore');
 /** Every method runs inside `runTenant` for the target's organization. */
 export interface ApplicationStore {
-  /** Returns undefined when the name is already taken in the environment. */
+  /**
+   * Returns undefined when the name is already taken in the environment. A Git application comes
+   * with its repository.
+   */
   create(
     target: ApplicationTarget,
     config: ApplicationConfig,
     configSha: string,
     actorId: string,
     now: Date,
+    repository?: ApplicationRepository | null,
   ): Promise<Application | undefined>;
   /** Replaces the configuration if it still has `expectedSha`; undefined when it changed. */
   replaceConfig(

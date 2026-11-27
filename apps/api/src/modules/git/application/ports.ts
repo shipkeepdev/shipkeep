@@ -80,6 +80,17 @@ export interface GithubApi {
   ): Promise<{ repositories: GithubRepository[]; truncated: boolean }>;
   /** The commit a branch points to; undefined when the repository or branch is unknown. */
   branchHead(token: Secret, fullName: string, branch: string): Promise<string | undefined>;
+  /** A repository by GitHub's identifier; undefined when the token does not reach it. */
+  repository(
+    token: Secret,
+    installationId: number,
+    repositoryId: number,
+  ): Promise<GithubRepository | undefined>;
+  /**
+   * A file's text at a commit, at most the largest shipkeep.yml; undefined when the path does not
+   * name a file there. A larger file, or any other failure, is GitHub unavailable.
+   */
+  file(token: Secret, fullName: string, path: string, commit: string): Promise<string | undefined>;
   revoke(token: Secret): Promise<void>;
 }
 

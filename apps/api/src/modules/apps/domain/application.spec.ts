@@ -1,7 +1,8 @@
-import { InvalidInputError } from '@shipkeep/domain';
+import { ConflictError, InvalidInputError } from '@shipkeep/domain';
 
 import {
   applicationConfig,
+  assertConfigEditable,
   assertDomainsAvailable,
   assertSameName,
   canonicalJson,
@@ -77,6 +78,34 @@ describe('applicationConfig', () => {
       { version: 1, name: 'analytics', compose: { file: 'docker-compose.yml' } },
     ])
       expect(rejection(unsupported).code).toBe('unsupported_application_source');
+  });
+
+  it("reads a Git application's configuration as such, and refuses a build until builds land", () => {
+    expect(applicationConfig(image(), 'git')).toMatchObject({ source: 'git', name: 'billing-api' });
+    expect(applicationConfig(image()).source).toBe('image');
+    let refused: unknown;
+    try {
+      applicationConfig(image({ build: { type: 'railpack' } }), 'git');
+    } catch (error: unknown) {
+      refused = error;
+    }
+    expect(refused).toBeInstanceOf(InvalidInputError);
+    expect((refused as InvalidInputError).code).toBe('unsupported_build_type');
+    expect(
+      clonedConfig(applicationConfig(image({ domains: ['a.example.com'] })).config, 'git'),
+    ).toMatchObject({
+      source: 'git',
+      config: { name: 'billing-api' },
+    });
+  });
+
+  it('lets the API replace the configuration of an image application only', () => {
+    expect(() => {
+      assertConfigEditable({ source: 'image' });
+    }).not.toThrow();
+    expect(() => {
+      assertConfigEditable({ source: 'git' });
+    }).toThrow(ConflictError);
   });
 
   it('refuses what the schema describes but no deployment applies yet, instead of ignoring it', () => {

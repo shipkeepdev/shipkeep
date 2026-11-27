@@ -547,6 +547,14 @@ model Application {
   environmentId  String       @map("environment_id") @db.Uuid
   name           String       @db.VarChar(40)
   source         String       @db.VarChar(16)
+  /// With source `git` only (ADR 0031): the installation, the repository and where shipkeep.yml is.
+  /// A push finds its applications through applications_repository_branch_idx, a partial index in
+  /// the migration SQL.
+  installationId BigInt?      @map("installation_id")
+  repositoryId   BigInt?      @map("repository_id")
+  repository     String?      @db.VarChar(140)
+  branch         String?      @db.VarChar(255)
+  configPath     String?      @map("config_path") @db.VarChar(255)
   config         Json
   configSha      String       @map("config_sha") @db.Char(64)
   createdBy      String?      @map("created_by") @db.VarChar(128)
@@ -574,6 +582,8 @@ model Release {
   imageDigest    String?      @map("image_digest") @db.VarChar(71)
   config         Json
   configSha      String       @map("config_sha") @db.Char(64)
+  /// The commit a Git application's release was read from.
+  commitSha      String?      @map("commit_sha") @db.Char(40)
   createdBy      String?      @map("created_by") @db.VarChar(128)
   createdAt      DateTime     @map("created_at") @db.Timestamptz(6)
   application    Application  @relation(fields: [organizationId, applicationId], references: [organizationId, id], onDelete: Cascade, onUpdate: Restrict, map: "releases_application_fkey")

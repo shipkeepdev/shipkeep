@@ -1172,6 +1172,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/github": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["createGithubApplication"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/bindings": {
         readonly parameters: {
             readonly query?: never;
@@ -1581,8 +1597,10 @@ export type components = {
             /** Format: uuid */
             readonly id: string;
             readonly name: string;
+            /** @description With source git: the repository whose shipkeep.yml is the application's configuration. */
+            readonly repository: components["schemas"]["ApplicationRepositoryDto"] | null;
             /** @enum {string} */
-            readonly source: "image";
+            readonly source: "image" | "git";
             /** Format: date-time */
             readonly updatedAt: string;
         };
@@ -1607,6 +1625,14 @@ export type components = {
             readonly stepSeconds: number;
             /** Format: date-time */
             readonly to: string;
+        };
+        readonly ApplicationRepositoryDto: {
+            readonly branch: string;
+            readonly configPath: string;
+            /** @description `owner/name`, as GitHub names the repository. */
+            readonly fullName: string;
+            readonly installationId: number;
+            readonly repositoryId: number;
         };
         readonly AssignBindingDto: {
             /**
@@ -1746,6 +1772,19 @@ export type components = {
             readonly config: {
                 readonly [key: string]: unknown;
             };
+        };
+        readonly CreateGithubApplicationDto: {
+            /** @description The branch whose pushes the application follows. */
+            readonly branch: string;
+            /**
+             * @description Where shipkeep.yml is in the repository: a relative path to a .yml or .yaml file.
+             * @default shipkeep.yml
+             */
+            readonly configPath: string;
+            /** @description An installation of the organization's GitHub App that reaches the repository. */
+            readonly installationId: number;
+            /** @description GitHub's identifier of the repository. */
+            readonly repositoryId: number;
         };
         readonly CreateOrganizationDto: {
             /** @description Trimmed to a display name of 1–80 Unicode code points. */
@@ -4745,6 +4784,33 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+        };
+    };
+    readonly createGithubApplication: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["CreateGithubApplicationDto"];
+            };
+        };
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["ApplicationDto"];
                 };
             };
         };

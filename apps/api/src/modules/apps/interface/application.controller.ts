@@ -24,6 +24,7 @@ import {
   ClonedEnvironmentDto,
   CloneEnvironmentDto,
   CreateApplicationDto,
+  CreateGithubApplicationDto,
   DomainListDto,
   UpdateApplicationConfigDto,
 } from './application.dto';
@@ -91,6 +92,26 @@ export class ApplicationController {
   ): Promise<ApplicationDto> {
     return applicationDto(
       await this.applications.create(resourceContext(request), target(path), body.config),
+    );
+  }
+
+  @Post(`${APPLICATIONS}/github`)
+  @HttpCode(201)
+  @RequireTenant('deploy.run', 'environment')
+  @AllowApiToken('deploy.run')
+  @ApiCreatedResponse({ type: ApplicationDto })
+  async createGithubApplication(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationEnvironmentPathDto,
+    @Body() body: CreateGithubApplicationDto,
+  ): Promise<ApplicationDto> {
+    return applicationDto(
+      await this.applications.createFromRepository(resourceContext(request), target(path), {
+        installationId: body.installationId,
+        repositoryId: body.repositoryId,
+        branch: body.branch,
+        configPath: body.configPath ?? 'shipkeep.yml',
+      }),
     );
   }
 

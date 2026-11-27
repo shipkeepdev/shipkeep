@@ -8,6 +8,7 @@ import type {
   Application,
   ApplicationConfig,
   ApplicationHost,
+  ApplicationRepository,
   ApplicationTarget,
 } from '../domain/application';
 import type { NodeStatus } from '../../fleet/domain/node';
@@ -26,6 +27,7 @@ export class PrismaApplicationStore implements ApplicationStore {
     configSha: string,
     actorId: string,
     now: Date,
+    repository: ApplicationRepository | null = null,
   ): Promise<Application | undefined> {
     const id = uuidv7();
     const inserted = await this.database.client.application.createMany({
@@ -34,6 +36,15 @@ export class PrismaApplicationStore implements ApplicationStore {
         ...target,
         name: config.name,
         source: config.source,
+        ...(repository
+          ? {
+              installationId: BigInt(repository.installationId),
+              repositoryId: BigInt(repository.repositoryId),
+              repository: repository.fullName,
+              branch: repository.branch,
+              configPath: repository.configPath,
+            }
+          : {}),
         config: JSON.parse(config.canonical) as object,
         configSha,
         createdBy: actorId,
@@ -48,6 +59,7 @@ export class PrismaApplicationStore implements ApplicationStore {
       ...target,
       name: config.name,
       source: config.source,
+      repository,
       config: config.config,
       configSha,
       createdBy: actorId,
@@ -245,13 +257,37 @@ function application(row: {
   environmentId: string;
   name: string;
   source: string;
+  installationId: bigint | null;
+  repositoryId: bigint | null;
+  repository: string | null;
+  branch: string | null;
+  configPath: string | null;
   config: unknown;
   configSha: string;
   createdBy: string | null;
   createdAt: Date;
   updatedAt: Date;
 }): Application {
-  if (row.source !== 'image') throw new Error('Unknown application source in storage.');
+  if (row.source !== 'image' && row.source !== 'git')
+    throw new Error('Unknown application source in storage.');
+  // The table's CHECK sets every repository column for a Git application, and none otherwise.
+  const repository =
+    row.source === 'git' &&
+    row.installationId !== null &&
+    row.repositoryId !== null &&
+    row.repository !== null &&
+    row.branch !== null &&
+    row.configPath !== null
+      ? {
+          installationId: Number(row.installationId),
+          repositoryId: Number(row.repositoryId),
+          fullName: row.repository,
+          branch: row.branch,
+          configPath: row.configPath,
+        }
+      : null;
+  if ((row.source === 'git') !== (repository !== null))
+    throw new Error('Inconsistent application source in storage.');
   return {
     id: row.id,
     organizationId: row.organizationId,
@@ -259,6 +295,7 @@ function application(row: {
     environmentId: row.environmentId,
     name: row.name,
     source: row.source,
+    repository,
     // Stored only after schema validation; the column CHECK keeps it an object.
     config: row.config as ShipkeepConfig,
     configSha: row.configSha,

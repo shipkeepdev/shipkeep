@@ -66,25 +66,52 @@ export function repositoryPageOf(
     return undefined;
   const repositories: GithubRepository[] = [];
   for (const item of list as unknown[]) {
-    const repository = record(item);
-    const id = repository?.['id'];
-    const fullName = repository?.['full_name'];
-    const defaultBranch = repository?.['default_branch'];
-    const isPrivate = repository?.['private'];
-    if (
-      typeof id !== 'number' ||
-      !Number.isSafeInteger(id) ||
-      id <= 0 ||
-      typeof fullName !== 'string' ||
-      !validFullName(fullName) ||
-      typeof defaultBranch !== 'string' ||
-      !validBranch(defaultBranch) ||
-      typeof isPrivate !== 'boolean'
-    )
-      continue;
-    repositories.push({ installationId, id, fullName, defaultBranch, private: isPrivate });
+    const repository = repositoryOf(item, installationId);
+    if (repository) repositories.push(repository);
   }
   return { total, repositories };
+}
+
+/** A repository as GitHub describes it, or undefined when its names or identifier are not valid. */
+export function repositoryOf(raw: unknown, installationId: number): GithubRepository | undefined {
+  const repository = record(raw);
+  const id = repository?.['id'];
+  const fullName = repository?.['full_name'];
+  const defaultBranch = repository?.['default_branch'];
+  const isPrivate = repository?.['private'];
+  if (
+    typeof id !== 'number' ||
+    !Number.isSafeInteger(id) ||
+    id <= 0 ||
+    typeof fullName !== 'string' ||
+    !validFullName(fullName) ||
+    typeof defaultBranch !== 'string' ||
+    !validBranch(defaultBranch) ||
+    typeof isPrivate !== 'boolean'
+  )
+    return undefined;
+  return { installationId, id, fullName, defaultBranch, private: isPrivate };
+}
+
+/** A full commit hash, as GitHub names commits. */
+export function validCommit(sha: string): boolean {
+  return SHA.test(sha);
+}
+
+/**
+ * Where shipkeep.yml is in a repository: a relative path of at most 255 bytes, ending in `.yml` or
+ * `.yaml`, without an empty, `.` or `..` segment, a backslash or a control character. A URL built
+ * from it then names that file and nothing else.
+ */
+export function validConfigPath(path: string): boolean {
+  return (
+    path.length >= 1 &&
+    new TextEncoder().encode(path).length <= 255 &&
+    /\.ya?ml$/.test(path) &&
+    // eslint-disable-next-line no-control-regex -- control characters are what is refused
+    !/[\u0000-\u001f\u007f\\]/.test(path) &&
+    path.split('/').every((part) => part.length > 0 && part !== '.' && part !== '..')
+  );
 }
 
 /** The commit a branch points to, or undefined. */
