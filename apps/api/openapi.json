@@ -8685,6 +8685,14 @@
             "items": {
               "$ref": "#/components/schemas/DiffLineDto"
             }
+          },
+          "writeMode": {
+            "type": "string",
+            "enum": [
+              "commit",
+              "pull_request"
+            ],
+            "description": "How writing it goes: the project's gitWriteMode."
           }
         },
         "required": [
@@ -8695,7 +8703,8 @@
           "blobSha",
           "text",
           "changedText",
-          "diff"
+          "diff",
+          "writeMode"
         ]
       },
       "WrittenConfigChangeDto": {
