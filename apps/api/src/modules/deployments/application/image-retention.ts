@@ -42,6 +42,9 @@ export class ImageRetention {
     let deleted = 0;
     while (repositories < MAX_REPOSITORIES) {
       const page = await this.registry.repositories(last, CATALOG_PAGE);
+      // The catalog ends with an empty page: a short one may come before the end.
+      const next = page.at(-1);
+      if (next === undefined || next === last) break;
       for (const repository of page) {
         repositories++;
         try {
@@ -51,15 +54,18 @@ export class ImageRetention {
           this.logger.warn({ repository }, 'image retention skipped a repository');
         }
       }
-      if (page.length < CATALOG_PAGE) break;
-      last = page.at(-1);
+      last = next;
     }
     return { repositories, deleted };
   }
 
   /**
-   * The tags are read before the releases: a tag pushed meanwhile is not read at all, and the
-   * release of any tag read already exists, since a release is recorded before its build pushes.
+   * Removes the tags no kept release runs. The tags are read before the releases: the release of
+   * any tag read exists already, since a release is recorded before its build pushes. Only tags
+   * go, never a manifest: one that another tag names stays, even a tag pushed after this read
+   * (a build in progress, whose release is kept), and the registry's garbage collection removes
+   * the manifests no tag names. A deployment queued after the read is a new release, with a tag of
+   * its own, or a rollback to the release before the one that serves, which is kept.
    */
   private async prune(repository: string, now: Date): Promise<number> {
     const named = APPLICATION_REPOSITORY.exec(repository);
@@ -72,43 +78,51 @@ export class ImageRetention {
       !isTenantId(applicationId)
     )
       return 0;
-    const digests = new Map<string, string>();
-    for (const tag of await this.registry.tags(repository)) {
-      const digest = await this.registry.digest(repository, tag);
-      if (digest) digests.set(tag, digest);
-    }
-    if (!digests.size) return 0;
+    const tags = await this.registry.tags(repository);
+    if (!tags.length) return 0;
     const application = await this.transaction.runTenant(organizationId, () =>
       this.store.releases(applicationId),
     );
-    const kept = keptTags(application?.releases ?? []);
-    // A manifest a kept tag names stays, whatever other tags name it too.
-    const keep = new Set([...digests].filter(([tag]) => kept.has(tag)).map(([, digest]) => digest));
+    const kept = keptTags(application?.releases ?? [], repository);
     const removed: string[] = [];
-    for (const digest of new Set(digests.values())) {
-      if (keep.has(digest)) continue;
-      if (await this.registry.deleteManifest(repository, digest))
-        removed.push(...[...digests].filter(([, named]) => named === digest).map(([tag]) => tag));
+    for (const tag of tags) {
+      if (kept.has(tag)) continue;
+      // One tag that fails does not stop the others, nor the record of those removed.
+      try {
+        if (await this.registry.deleteTag(repository, tag)) removed.push(tag);
+      } catch {
+        this.logger.warn({ repository }, 'image retention could not remove a tag');
+      }
     }
-    if (removed.length && application)
-      await this.transaction.runTenant(organizationId, () =>
-        this.events.publish([
-          createEvent({
-            type: 'application.images_pruned',
-            organizationId,
-            actor: SYSTEM_ACTOR,
-            target: { type: 'application', id: applicationId },
-            payload: {
-              projectId: application.projectId,
-              environmentId: application.environmentId,
-              applicationId,
-              tags: removed.sort().join(','),
-              count: removed.length,
-            },
-            occurredAt: now,
-          }),
-        ]),
-      );
+    removed.sort();
+    if (removed.length && application) {
+      try {
+        await this.transaction.runTenant(organizationId, () =>
+          this.events.publish([
+            createEvent({
+              type: 'application.images_pruned',
+              organizationId,
+              actor: SYSTEM_ACTOR,
+              target: { type: 'application', id: applicationId },
+              payload: {
+                projectId: application.projectId,
+                environmentId: application.environmentId,
+                applicationId,
+                tags: removed.join(','),
+                count: removed.length,
+              },
+              occurredAt: now,
+            }),
+          ]),
+        );
+      } catch {
+        // The registry has changed and cannot change back: the log keeps what the audit could not.
+        this.logger.error(
+          { repository, tags: removed.join(','), count: removed.length },
+          'image retention removed tags it could not audit',
+        );
+      }
+    }
     if (removed.length && !application)
       this.logger.log(
         { repository, count: removed.length },

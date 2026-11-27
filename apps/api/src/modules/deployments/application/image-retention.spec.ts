@@ -11,10 +11,12 @@ const ORG = '0190f5a8-7b1c-7e2d-8f3a-0000000000aa';
 const APP = '0190f5a8-7b1c-7e2d-8f3a-0000000000ab';
 const GONE = '0190f5a8-7b1c-7e2d-8f3a-0000000000ac';
 const FAILING = '0190f5a8-7b1c-7e2d-8f3a-0000000000ad';
-const digest = (n: number) => `sha256:${String(n).padStart(64, '0')}`;
 const at = (minute: number) => new Date(Date.UTC(2026, 10, 27, 12, minute));
+const image = (tag: number) => `cp.example.com/${ORG}/${APP}:${String(tag)}`;
 
-function world() {
+function world(
+  options: { catalogPage?: number; failingTag?: string; failingAudit?: boolean } = {},
+) {
   const repositories = [
     `${ORG}/${APP}`,
     `${ORG}/${GONE}`,
@@ -22,33 +24,31 @@ function world() {
     'library/nginx',
     `${ORG}/not-an-id`,
   ];
-  const tags = new Map<string, Map<string, string>>([
-    [
-      `${ORG}/${APP}`,
-      new Map([
-        ...Array.from({ length: 8 }, (_, index) => [String(index + 1), digest(index + 1)] as const),
-        // Release 9's build failed after it pushed; `latest` names release 8's manifest.
-        ['9', digest(9)],
-        ['latest', digest(8)],
-      ]),
-    ],
-    [`${ORG}/${GONE}`, new Map([['1', digest(21)]])],
-    [`${ORG}/${FAILING}`, new Map([['1', digest(31)]])],
-    ['library/nginx', new Map([['1', digest(41)]])],
+  const tags = new Map<string, string[]>([
+    // Release 9's build failed after it pushed; `latest` is a tag no release runs.
+    [`${ORG}/${APP}`, ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'latest']],
+    [`${ORG}/${GONE}`, ['1']],
+    [`${ORG}/${FAILING}`, ['1']],
+    ['library/nginx', ['1']],
   ]);
   const deleted: string[] = [];
+  const catalogCalls: (string | undefined)[] = [];
   const registry: RegistryStorage = {
+    // Pages shorter than asked for, as a registry may answer before the end.
     repositories: (last, limit) => {
+      catalogCalls.push(last);
       const from = last === undefined ? 0 : repositories.indexOf(last) + 1;
-      return Promise.resolve(repositories.slice(from, from + limit));
+      return Promise.resolve(
+        repositories.slice(from, from + Math.min(limit, options.catalogPage ?? limit)),
+      );
     },
     tags: (repository) => {
       if (repository.endsWith(FAILING)) return Promise.reject(new Error('internal detail'));
-      return Promise.resolve([...(tags.get(repository)?.keys() ?? [])]);
+      return Promise.resolve([...(tags.get(repository) ?? [])]);
     },
-    digest: (repository, tag) => Promise.resolve(tags.get(repository)?.get(tag)),
-    deleteManifest: (repository, removed) => {
-      deleted.push(`${repository}@${removed}`);
+    deleteTag: (repository, tag) => {
+      if (tag === options.failingTag) return Promise.reject(new Error('internal detail'));
+      deleted.push(`${repository}:${tag}`);
       return Promise.resolve(true);
     },
   };
@@ -62,9 +62,20 @@ function world() {
               releases: [
                 ...Array.from({ length: 8 }, (_, index) => ({
                   number: index + 1,
+                  image: image(index + 1),
                   deployments: [{ state: 'succeeded', finishedAt: at(index) }],
                 })),
-                { number: 9, deployments: [{ state: 'failed', finishedAt: at(20) }] },
+                {
+                  number: 9,
+                  image: image(9),
+                  deployments: [{ state: 'failed', finishedAt: at(20) }],
+                },
+                // A rollback to release 2 made release 10, which runs release 2's image.
+                {
+                  number: 10,
+                  image: image(2),
+                  deployments: [{ state: 'succeeded', finishedAt: at(25) }],
+                },
               ],
             }
           : undefined,
@@ -76,10 +87,11 @@ function world() {
       tenants.push(organizationId);
       return work();
     },
-  } as DeploymentTransaction;
+  };
   const events: DomainEvent[] = [];
   const bus = {
     publish: (batch: DomainEvent[]) => {
+      if (options.failingAudit) return Promise.reject(new Error('audit store down'));
       events.push(...batch);
       return Promise.resolve();
     },
@@ -89,32 +101,33 @@ function world() {
     deleted,
     events,
     tenants,
+    catalogCalls,
   };
 }
 
 describe('image retention runs (ADR 0030)', () => {
-  it('removes what no rollback reaches, keeps a manifest a kept tag names, and audits it', async () => {
+  it('removes the tags no kept release runs, keeps the one a rollback runs, and audits it', async () => {
     const { retention, deleted, events } = world();
     const result = await retention.run(at(30));
-    // Releases 3 to 8 are the six last deployed with success; release 9 failed.
-    expect(deleted.filter((entry) => entry.startsWith(`${ORG}/${APP}@`)).sort()).toEqual(
-      [digest(1), digest(2), digest(9)].map((removed) => `${ORG}/${APP}@${removed}`),
+    // Releases 10 (release 2's image) and 4 to 8 are the six last deployed with success; release
+    // 9 failed, release 3 is the seventh, and no release runs tag 10 or `latest`.
+    expect(deleted.filter((entry) => entry.startsWith(`${ORG}/${APP}:`)).sort()).toEqual(
+      ['1', '10', '3', '9', 'latest'].map((tag) => `${ORG}/${APP}:${tag}`),
     );
-    expect(deleted).not.toContain(`${ORG}/${APP}@${digest(8)}`);
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
       type: 'application.images_pruned',
       organizationId: ORG,
       target: { type: 'application', id: APP },
-      payload: { applicationId: APP, tags: '1,2,9', count: 3 },
+      payload: { applicationId: APP, tags: '1,10,3,9,latest', count: 5 },
     });
-    expect(result).toEqual({ repositories: 5, deleted: 4 });
+    expect(result).toEqual({ repositories: 5, deleted: 6 });
   });
 
   it('empties the repository of an application that no longer exists, without an audit event', async () => {
     const { retention, deleted, events } = world();
     await retention.run(at(30));
-    expect(deleted).toContain(`${ORG}/${GONE}@${digest(21)}`);
+    expect(deleted).toContain(`${ORG}/${GONE}:1`);
     expect(events.every((event) => event.target.id !== GONE)).toBe(true);
   });
 
@@ -127,5 +140,34 @@ describe('image retention runs (ADR 0030)', () => {
     expect(deleted.some((entry) => entry.includes(FAILING))).toBe(false);
     // Each application's releases are read in its own organization's tenant scope.
     expect(new Set(tenants)).toEqual(new Set([ORG]));
+  });
+
+  it('goes on after a tag it cannot remove, and audits the others', async () => {
+    const { retention, deleted, events } = world({ failingTag: '3' });
+    await retention.run(at(30));
+    expect(deleted).not.toContain(`${ORG}/${APP}:3`);
+    expect(deleted).toContain(`${ORG}/${APP}:9`);
+    expect(events[0]?.payload).toMatchObject({ tags: '1,10,9,latest', count: 4 });
+  });
+
+  it('removes the tags even when the audit cannot be written, and goes on', async () => {
+    const { retention, deleted } = world({ failingAudit: true });
+    const result = await retention.run(at(30));
+    expect(deleted).toContain(`${ORG}/${APP}:1`);
+    expect(deleted).toContain(`${ORG}/${GONE}:1`);
+    expect(result.repositories).toBe(5);
+  });
+
+  it('reads the catalog past short pages, to the empty one', async () => {
+    const { retention, deleted, catalogCalls } = world({ catalogPage: 2 });
+    const result = await retention.run(at(30));
+    expect(result.repositories).toBe(5);
+    expect(deleted).toContain(`${ORG}/${GONE}:1`);
+    expect(catalogCalls).toEqual([
+      undefined,
+      `${ORG}/${GONE}`,
+      'library/nginx',
+      `${ORG}/not-an-id`,
+    ]);
   });
 });

@@ -26,12 +26,16 @@ export const REGISTRY_STORAGE = Symbol('RegistryStorage');
 export interface RegistryStorage {
   /** Repository names in order, at most `limit` after `last`. */
   repositories(last: string | undefined, limit: number): Promise<string[]>;
-  /** The repository's tags, at most `MAX_REGISTRY_TAGS`; none when it has no tag left. */
+  /**
+   * Every tag of the repository; none when it has no tag left. Throws when it has more than
+   * `MAX_REGISTRY_TAGS`: a partial list would leave out tags to keep.
+   */
   tags(repository: string): Promise<string[]>;
-  /** The digest of the manifest a tag names; undefined when the tag is gone. */
-  digest(repository: string, tag: string): Promise<string | undefined>;
-  /** Deletes a manifest and the tags that name it: false when it was gone already. */
-  deleteManifest(repository: string, digest: string): Promise<boolean>;
+  /**
+   * Deletes one tag, and only it: the manifest stays while another tag names it, and the
+   * registry's garbage collection removes it once none does. False when the tag was gone already.
+   */
+  deleteTag(repository: string, tag: string): Promise<boolean>;
 }
 
 /** The most tags the retention reads of one repository. */

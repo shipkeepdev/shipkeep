@@ -15,7 +15,11 @@ export class PrismaRetentionStore implements RetentionStore {
         projectId: true,
         environmentId: true,
         releases: {
-          select: { number: true, deployments: { select: { state: true, finishedAt: true } } },
+          select: {
+            number: true,
+            image: true,
+            deployments: { select: { state: true, finishedAt: true } },
+          },
         },
       },
     });

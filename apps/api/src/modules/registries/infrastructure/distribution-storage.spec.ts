@@ -6,7 +6,6 @@ import type { RegistryTokenKeyProvider } from '../../fleet/application/ports';
 import { DistributionStorage } from './distribution-storage';
 
 const REPOSITORY = '0190f5a8-7b1c-7e2d-8f3a-0000000000aa/0190f5a8-7b1c-7e2d-8f3a-0000000000ab';
-const DIGEST = `sha256:${'a'.repeat(64)}`;
 
 const keys: RegistryTokenKeyProvider = {
   registryKey: () => Promise.resolve({ keyId: 'kid', jwk: {} } as never),
@@ -18,8 +17,8 @@ const config = { get: () => 'http://registry:5000/' } as unknown as AppConfig;
 function fake(answer: (url: URL, init: RequestInit) => Response) {
   const calls: { method: string; url: URL; access: unknown }[] = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation((input, init = {}) => {
-    const url = new URL(String(input));
-    const token = String((init.headers as Record<string, string>)['authorization']).slice(7);
+    const url = new URL(input instanceof Request ? input.url : input);
+    const token = ((init.headers as Record<string, string>)['authorization'] ?? '').slice(7);
     const claims = JSON.parse(Buffer.from(token.split('.')[1] ?? '', 'base64url').toString()) as {
       access: unknown;
       sub: string;
@@ -45,7 +44,7 @@ describe('the registry as retention reads it (ADR 0030)', () => {
     const { storage, calls } = fake((url) =>
       url.pathname === '/v2/_catalog'
         ? json({ repositories: [REPOSITORY, 7] })
-        : json({ tags: ['1', '../x', '2'] }),
+        : json({ tags: url.searchParams.has('last') ? [] : ['1', '../x', '2'] }),
     );
     expect(await storage.repositories(undefined, 100)).toEqual([REPOSITORY]);
     expect(calls[0]?.url.search).toBe('?n=100');
@@ -56,43 +55,66 @@ describe('the registry as retention reads it (ADR 0030)', () => {
     ]);
   });
 
-  it('reads every page of tags, up to the bound', async () => {
+  it('reads every page of tags, past a short one, to the empty one', async () => {
     const page = (from: number, count: number) =>
       Array.from({ length: count }, (_, index) => `t${String(from + index).padStart(5, '0')}`);
     const { storage, calls } = fake((url) => {
       const last = url.searchParams.get('last');
-      return json({ tags: last === null ? page(0, 1000) : page(1000, 3) });
+      if (last === null) return json({ tags: page(0, 1000) });
+      if (last === 't00999') return json({ tags: page(1000, 3) });
+      return json({ tags: [] });
     });
     const tags = await storage.tags(REPOSITORY);
     expect(tags).toHaveLength(1003);
-    expect(calls[1]?.url.searchParams.get('last')).toBe('t00999');
+    expect(calls.map((call) => call.url.searchParams.get('last'))).toEqual([
+      null,
+      't00999',
+      't01002',
+    ]);
   });
 
-  it("resolves a tag's digest, deletes by digest, and takes 404 as gone", async () => {
-    const { storage, calls } = fake((url, init) => {
-      if (url.pathname.endsWith('/manifests/gone')) return new Response(null, { status: 404 });
-      if (init.method === 'HEAD')
-        return new Response(null, { status: 200, headers: { 'docker-content-digest': DIGEST } });
-      return new Response(null, { status: url.pathname.includes('b'.repeat(64)) ? 404 : 202 });
-    });
-    expect(await storage.digest(REPOSITORY, '7')).toBe(DIGEST);
-    expect(await storage.digest(REPOSITORY, 'gone')).toBeUndefined();
-    expect(await storage.deleteManifest(REPOSITORY, DIGEST)).toBe(true);
-    expect(await storage.deleteManifest(REPOSITORY, `sha256:${'b'.repeat(64)}`)).toBe(false);
-    expect(calls.map((call) => `${call.method} ${call.url.pathname}`)).toContain(
-      `DELETE /v2/${REPOSITORY}/manifests/${DIGEST}`,
+  it('refuses a tag list longer than it reads, and takes one of exactly that length', async () => {
+    const page = (from: number) =>
+      Array.from({ length: 1000 }, (_, index) => `t${String(from + index).padStart(5, '0')}`);
+    const answer = (pages: number) => (url: URL) => {
+      const last = url.searchParams.get('last');
+      const from = last === null ? 0 : Number(last.slice(1)) + 1;
+      return json({ tags: from < pages * 1000 ? page(from) : [] });
+    };
+    expect(await fake(answer(10)).storage.tags(REPOSITORY)).toHaveLength(10_000);
+    vi.restoreAllMocks();
+    await expect(fake(answer(11)).storage.tags(REPOSITORY)).rejects.toThrow('too many tags');
+  });
+
+  it('stops on a registry that answers the same page again', async () => {
+    const { storage } = fake(() => json({ tags: ['1', '2'] }));
+    await expect(storage.tags(REPOSITORY)).rejects.toThrow('repeated a page');
+  });
+
+  it('deletes one tag, never a manifest, and takes 404 as gone', async () => {
+    const { storage, calls } = fake(
+      (url) => new Response(null, { status: url.pathname.endsWith('/manifests/gone') ? 404 : 202 }),
     );
+    expect(await storage.deleteTag(REPOSITORY, '7')).toBe(true);
+    expect(await storage.deleteTag(REPOSITORY, 'gone')).toBe(false);
+    expect(calls.map((call) => `${call.method} ${call.url.pathname}`)).toEqual([
+      `DELETE /v2/${REPOSITORY}/manifests/7`,
+      `DELETE /v2/${REPOSITORY}/manifests/gone`,
+    ]);
+    expect(calls[0]?.access).toEqual([
+      { type: 'repository', name: REPOSITORY, actions: ['pull', 'delete'] },
+    ]);
   });
 
-  it('refuses a name, tag or digest it could not have read, before any call', async () => {
+  it('refuses a name or tag it could not have read, before any call', async () => {
     const { storage, calls } = fake(() => json({}));
     for (const attempt of [
       () => storage.tags('../v2/_catalog'),
       () => storage.tags('Upper/Case'),
-      () => storage.digest(REPOSITORY, 'a/../b'),
-      () => storage.digest(REPOSITORY, '-flag'),
-      () => storage.deleteManifest(REPOSITORY, 'sha256:short'),
-      () => storage.deleteManifest(`${REPOSITORY}?x=1`, DIGEST),
+      () => storage.deleteTag(REPOSITORY, 'a/../b'),
+      () => storage.deleteTag(REPOSITORY, '-flag'),
+      () => storage.deleteTag(REPOSITORY, `sha256:${'b'.repeat(64)}`),
+      () => storage.deleteTag(`${REPOSITORY}?x=1`, '1'),
     ])
       await expect(attempt()).rejects.toThrow();
     expect(calls).toEqual([]);
