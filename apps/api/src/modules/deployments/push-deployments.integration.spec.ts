@@ -79,7 +79,7 @@ describe('deployments from GitHub pushes', () => {
       await duringRead?.();
       return files.get(at);
     },
-    revoke: () => Promise.resolve(),
+    revoke: () => Promise.resolve(true),
   };
   const push = (at: string, pusher: string | null = 'octocat'): PushEvent => ({
     organizationId: fixture.organizationId,

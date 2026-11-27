@@ -151,9 +151,22 @@ export class GithubApiClient implements GithubApi {
     return answer.body;
   }
 
-  async revoke(token: Secret): Promise<void> {
-    // Best effort: a token that is not revoked still expires within the hour.
-    await this.call('DELETE', '/installation/token', token).catch(() => undefined);
+  async revoke(token: Secret): Promise<boolean> {
+    // 401: the token is no longer valid, which is what was asked. A token not revoked still
+    // expires within the hour; the caller decides whether to ask again.
+    try {
+      const { status } = await this.call(
+        'DELETE',
+        '/installation/token',
+        token,
+        undefined,
+        'json',
+        [401],
+      );
+      return status === 204 || status === 401 || status === 404;
+    } catch {
+      return false;
+    }
   }
 
   /**

@@ -104,7 +104,11 @@ export interface GithubApi {
    * name a file there. A larger file, or any other failure, is GitHub unavailable.
    */
   file(token: Secret, fullName: string, path: string, commit: string): Promise<string | undefined>;
-  revoke(token: Secret): Promise<void>;
+  /**
+   * Whether GitHub no longer honours the token: revoked now, or already invalid (expired or
+   * revoked). False when GitHub could not be asked.
+   */
+  revoke(token: Secret): Promise<boolean>;
 }
 
 export const GITHUB_MANIFESTS = Symbol('GithubManifests');

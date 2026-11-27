@@ -19,6 +19,7 @@ import { DeploymentPipeline } from './application/deployment-pipeline';
 import { ExecSessions } from './application/exec-sessions';
 import {
   ACTION_HISTORY,
+  BUILD_TOKENS,
   ACTION_QUEUE,
   DEPLOYMENT_STEPS,
   DEPLOYMENT_STORE,
@@ -68,6 +69,7 @@ import { NodeReplicasController } from './interface/node-replicas.controller';
     { provide: PIPELINE_STORE, useClass: PrismaPipelineStore },
     { provide: ACTION_QUEUE, useExisting: AgentActions },
     { provide: ACTION_HISTORY, useExisting: AgentActions },
+    { provide: BUILD_TOKENS, useExisting: AgentActions },
     { provide: DEPLOYMENT_STEPS, useClass: PrismaDeploymentSteps },
     DeploymentQueue,
     { provide: DEPLOYMENT_WAKER, useExisting: DeploymentQueue },

@@ -96,6 +96,10 @@ export class GithubSources implements RepositorySource {
     return { url: `https://github.com/${fullName}.git`, ...minted };
   }
 
+  async revoke(token: Secret): Promise<boolean> {
+    return this.github.revoke(token);
+  }
+
   /**
    * A token of the organization's App that reads one repository's contents, once the App and the
    * installation are checked. GitHub is asked outside any transaction.
