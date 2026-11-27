@@ -79,6 +79,7 @@ printf '' | egress_guard /system.slice/docker-0123.scope/shipkeep.slice | grep -
 guard=$(printf '127.0.0.53\n' | egress_guard /shipkeep.slice 997 127.0.0.53 10.0.0.2 2001:db8::53) || die 'the guard with a builder was refused'
 grep -qxF '    meta skuid 997 ct state new jump build' <<<"$guard" || die 'the builder is not matched'
 build_chain=$(sed -n '/chain build {/,/^  }/p' <<<"$guard")
+# shellcheck disable=SC2154 # build_blocked_ipv4 and build_blocked_ipv6 are set by deploy/install.sh, sourced above.
 for rule in \
   '    meta l4proto { tcp, udp } ct original ip daddr 127.0.0.53 ct original proto-dst 53 return' \
   '    meta l4proto { tcp, udp } ct original ip daddr 10.0.0.2 ct original proto-dst 53 return' \
@@ -125,6 +126,7 @@ for line in 'User=shipkeep-build' 'Group=shipkeep-build' 'Delegate=yes' 'Require
 done
 ! grep -qi docker <<<"$unit" || die 'the builder unit names Docker'
 grep -qF -- '--disable-host-loopback' <<<"$unit" || die "the builder reaches the host's loopback"
+# shellcheck disable=SC2154 # the BuildKit pins are set by deploy/install.sh, sourced above.
 [[ $buildkit_amd64_sha256 =~ ^[0-9a-f]{64}$ && $buildkit_arm64_sha256 =~ ^[0-9a-f]{64}$ && $buildkit_version =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die 'BuildKit is not pinned'
 # shellcheck disable=SC2016
 for cgroup in '' / shipkeep.slice /system.slice/docker.service /system.slice/evil.slice /shipkeep.slice/docker.service '/shipkeep.slice"' '/shipkeep.slice; drop' $'/shipkeep.slice\n' '/$(id)/shipkeep.slice' '/system slice/shipkeep.slice'; do
