@@ -91,11 +91,12 @@ describe('GitHub in Chromium', () => {
     write: () => Promise.resolve(),
     query: (logsql) => {
       if (!logsql.includes('stream="build"')) return Promise.resolve([]);
-      builtFrom ??= Date.now() - 20_000;
+      // Stamped just before the first read: after the deployment was queued, as a build would be.
+      builtFrom ??= Date.now() - 1_000;
       const base = builtFrom;
       return Promise.resolve(
         BUILD_OUTPUT.map((line, index) => ({
-          _time: new Date(base + index * 700).toISOString(),
+          _time: new Date(base + index * 40).toISOString(),
           _msg: line,
           stream: 'build',
           instance: 'build',

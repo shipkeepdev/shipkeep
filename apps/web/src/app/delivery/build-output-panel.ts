@@ -66,7 +66,7 @@ const FOLLOW_PX = 24;
         tabindex="0"
       >
         @for (l of lines(); track key(l)) {
-          <div class="whitespace-pre-wrap break-all text-[#C8C8CF]">
+          <div class="whitespace-pre-wrap wrap-anywhere text-[#C8C8CF]">
             <time class="text-dim3" [attr.datetime]="l.time">{{ clock(l.time) }} </time>{{ l.line }}
             @if (l.truncated) {
               <span class="text-dim"> …</span>
