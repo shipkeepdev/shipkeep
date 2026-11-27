@@ -100,7 +100,7 @@ func TestBuildImagePushesAndAnswersTheDigest(t *testing.T) {
 		t.Fatalf("%d builds", len(builder.requests))
 	}
 	got := builder.requests[0]
-	if got.Repository != "https://github.com/acme-corp/billing.git" || got.Commit != buildCommit || got.Context != "services/api" ||
+	if got.Kind != buildkit.Dockerfile || got.Repository != "https://github.com/acme-corp/billing.git" || got.Commit != buildCommit || got.Context != "services/api" ||
 		got.Dockerfile != "Dockerfile" || got.Target != buildTarget || got.Args["NODE_ENV"] != "production" ||
 		got.Token.Expose() != buildToken || got.Registry.Host != buildRegistry || got.Registry.Password.Expose() != buildPassword {
 		t.Fatalf("request = %+v", got)
@@ -112,29 +112,57 @@ func TestBuildImagePushesAndAnswersTheDigest(t *testing.T) {
 	}
 }
 
+// ADR 0030: Railpack and Nixpacks write their own build, so they take no Dockerfile, and their
+// arguments reach them as validated as a Dockerfile's.
+func TestBuildImageBuildsWithRailpackAndNixpacks(t *testing.T) {
+	for buildType, kind := range map[agentv1.BuildType]buildkit.Kind{
+		agentv1.BuildType_BUILD_TYPE_RAILPACK: buildkit.Railpack,
+		agentv1.BuildType_BUILD_TYPE_NIXPACKS: buildkit.Nixpacks,
+	} {
+		builder := &fakeBuilder{digest: "sha256:" + strings.Repeat("e", 64)}
+		action := validBuild()
+		action.BuildType = buildType
+		action.Args = map[string]string{"NODE_ENV": "production", "FLAG": "--frontend=evil"}
+		update := runBuild(t, builder, &lineRecorder{}, action)
+		if !succeeded(update) || len(builder.requests) != 1 {
+			t.Fatalf("%s: %v", buildType, update)
+		}
+		got := builder.requests[0]
+		if got.Kind != kind || got.Dockerfile != "" || got.Context != "services/api" || got.Args["FLAG"] != "--frontend=evil" {
+			t.Fatalf("%s: request = %+v", buildType, got)
+		}
+	}
+}
+
 // Every field is checked before anything runs: malicious values never reach BuildKit.
 func TestBuildImageRefusesMaliciousInput(t *testing.T) {
 	for name, change := range map[string]func(*agentv1.BuildImage){
-		"plain HTTP":           func(b *agentv1.BuildImage) { b.RepoUrl = "http://github.com/acme/billing.git" },
-		"SSH":                  func(b *agentv1.BuildImage) { b.RepoUrl = "git@github.com:acme/billing.git" },
-		"file":                 func(b *agentv1.BuildImage) { b.RepoUrl = "file:///var/run/docker.sock" },
-		"credentials in URL":   func(b *agentv1.BuildImage) { b.RepoUrl = "https://user:pass@github.com/acme/billing.git" },
-		"query":                func(b *agentv1.BuildImage) { b.RepoUrl = "https://github.com/acme/billing.git?ref=main" },
-		"fragment":             func(b *agentv1.BuildImage) { b.RepoUrl = "https://github.com/acme/billing.git#main:sub" },
-		"IP host":              func(b *agentv1.BuildImage) { b.RepoUrl = "https://169.254.169.254/latest/meta-data" },
-		"localhost":            func(b *agentv1.BuildImage) { b.RepoUrl = "https://localhost/acme/billing.git" },
-		"traversal in URL":     func(b *agentv1.BuildImage) { b.RepoUrl = "https://github.com/acme/../../etc/passwd" },
-		"encoded URL":          func(b *agentv1.BuildImage) { b.RepoUrl = "https://github.com/acme/%2e%2e/billing.git" },
-		"newline in URL":       func(b *agentv1.BuildImage) { b.RepoUrl = "https://github.com/acme/billing.git\nHost: x" },
-		"oversized URL":        func(b *agentv1.BuildImage) { b.RepoUrl = "https://github.com/" + strings.Repeat("a", 600) },
-		"short commit":         func(b *agentv1.BuildImage) { b.CommitSha = "0123456" },
-		"branch as commit":     func(b *agentv1.BuildImage) { b.CommitSha = "main" },
-		"uppercase commit":     func(b *agentv1.BuildImage) { b.CommitSha = strings.ToUpper(buildCommit) },
-		"option as commit":     func(b *agentv1.BuildImage) { b.CommitSha = "--upload-pack=touch /tmp/x" },
-		"control in token":     func(b *agentv1.BuildImage) { b.GitToken = "ghs_abc\r\nX-Injected: 1" },
-		"oversized token":      func(b *agentv1.BuildImage) { b.GitToken = strings.Repeat("a", 4097) },
-		"no build type":        func(b *agentv1.BuildImage) { b.BuildType = agentv1.BuildType_BUILD_TYPE_UNSPECIFIED },
-		"railpack not yet":     func(b *agentv1.BuildImage) { b.BuildType = agentv1.BuildType_BUILD_TYPE_RAILPACK },
+		"plain HTTP":         func(b *agentv1.BuildImage) { b.RepoUrl = "http://github.com/acme/billing.git" },
+		"SSH":                func(b *agentv1.BuildImage) { b.RepoUrl = "git@github.com:acme/billing.git" },
+		"file":               func(b *agentv1.BuildImage) { b.RepoUrl = "file:///var/run/docker.sock" },
+		"credentials in URL": func(b *agentv1.BuildImage) { b.RepoUrl = "https://user:pass@github.com/acme/billing.git" },
+		"query":              func(b *agentv1.BuildImage) { b.RepoUrl = "https://github.com/acme/billing.git?ref=main" },
+		"fragment":           func(b *agentv1.BuildImage) { b.RepoUrl = "https://github.com/acme/billing.git#main:sub" },
+		"IP host":            func(b *agentv1.BuildImage) { b.RepoUrl = "https://169.254.169.254/latest/meta-data" },
+		"localhost":          func(b *agentv1.BuildImage) { b.RepoUrl = "https://localhost/acme/billing.git" },
+		"traversal in URL":   func(b *agentv1.BuildImage) { b.RepoUrl = "https://github.com/acme/../../etc/passwd" },
+		"encoded URL":        func(b *agentv1.BuildImage) { b.RepoUrl = "https://github.com/acme/%2e%2e/billing.git" },
+		"newline in URL":     func(b *agentv1.BuildImage) { b.RepoUrl = "https://github.com/acme/billing.git\nHost: x" },
+		"oversized URL":      func(b *agentv1.BuildImage) { b.RepoUrl = "https://github.com/" + strings.Repeat("a", 600) },
+		"short commit":       func(b *agentv1.BuildImage) { b.CommitSha = "0123456" },
+		"branch as commit":   func(b *agentv1.BuildImage) { b.CommitSha = "main" },
+		"uppercase commit":   func(b *agentv1.BuildImage) { b.CommitSha = strings.ToUpper(buildCommit) },
+		"option as commit":   func(b *agentv1.BuildImage) { b.CommitSha = "--upload-pack=touch /tmp/x" },
+		"control in token":   func(b *agentv1.BuildImage) { b.GitToken = "ghs_abc\r\nX-Injected: 1" },
+		"oversized token":    func(b *agentv1.BuildImage) { b.GitToken = strings.Repeat("a", 4097) },
+		"no build type":      func(b *agentv1.BuildImage) { b.BuildType = agentv1.BuildType_BUILD_TYPE_UNSPECIFIED },
+		"unknown build type": func(b *agentv1.BuildImage) { b.BuildType = agentv1.BuildType(99) },
+		"railpack Dockerfile": func(b *agentv1.BuildImage) {
+			b.BuildType, b.Dockerfile = agentv1.BuildType_BUILD_TYPE_RAILPACK, "Dockerfile"
+		},
+		"nixpacks Dockerfile": func(b *agentv1.BuildImage) {
+			b.BuildType, b.Dockerfile = agentv1.BuildType_BUILD_TYPE_NIXPACKS, "../../etc/passwd"
+		},
 		"absolute context":     func(b *agentv1.BuildImage) { b.Context = "/etc" },
 		"context traversal":    func(b *agentv1.BuildImage) { b.Context = "services/../../etc" },
 		"dot context":          func(b *agentv1.BuildImage) { b.Context = "." },

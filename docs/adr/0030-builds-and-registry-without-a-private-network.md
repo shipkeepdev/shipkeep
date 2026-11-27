@@ -3,6 +3,7 @@
 - Status: Accepted
 - Date: 2026-11-24
 - Amends: ADR 0012
+- Amended: 2026-11-27, Railpack reads a copy of the repository (issue #215)
 
 ## Context
 
@@ -39,10 +40,10 @@ What changes is the network. ADR 0023's kernel rule only keeps loopback away, an
 The three of ADR 0012:
 
 - **`dockerfile`**: BuildKit's own frontend.
-- **`railpack`**: Railpack (MIT) writes its plan in a container, and BuildKit builds it with Railpack's frontend image.
-- **`nixpacks`**: Nixpacks (MIT) writes its Dockerfile in a container, and BuildKit builds it.
+- **`railpack`**: Railpack (MIT) writes its plan in a container, and BuildKit builds it with Railpack's frontend image. That frontend reads the repository and the plan only from directories the build's client serves, never from a source BuildKit fetched. So BuildKit fetches the repository and writes it, with the plan, to a directory of the agent's on the server (mode 0700, under its state directory); the agent serves both to the frontend through the build's session, without the Git token, and deletes them after the build. One build runs at a time on a server (ADR 0032), so a Railpack build first deletes whatever an interrupted one left. The build arguments are build secrets, as Railpack reads them: they are not in the image.
+- **`nixpacks`**: Nixpacks (MIT) writes its Dockerfile in a container, without network, and BuildKit builds it over the repository with the Dockerfile frontend. Nixpacks writes no plan file: the build arguments it would pass to `docker build` are read from the script it writes beside its Dockerfile, keeping only environment variable names and never BuildKit's own (`BUILDKIT_…`). It declares the application's arguments in its Dockerfile, which also sets them in the image's environment.
 
-Their images are pinned by digest in the agent, never on the host, so the agent still executes nothing on the host (CLAUDE.md rule 3).
+Railpack's image and Nixpacks' release archive are pinned in the agent, by digest and by SHA-256, never on the host, so the agent still executes nothing on the host (CLAUDE.md rule 3). Their cache mounts are each application's own: a key derived from the application's repository in the registry.
 
 ### The source
 
@@ -77,10 +78,13 @@ The build's output goes through the log stream of ADR 0029, under the deployment
 - The control plane's name must resolve to a public address that reaches its own machine from every server, so on one machine it must reach itself through that address. Behind a NAT that does not loop back, Git deployments do not work in this version: the egress proxy and the build rule refuse private addresses, and an exception would open the private network to every pull. `docs/INSTALL.md` will say so.
 - The registry holds every built image a rollback can reach. Its volume grows with the applications, about six images each.
 - A server that cannot reach the control plane cannot pull a new image. Running workloads keep running, as they do with any other registry (CLAUDE.md rule 10).
+- A Railpack build uses the server's disk for a copy of the repository while it runs, outside BuildKit's own bounds.
 - `actions.proto` is unchanged: `BuildImage` already has `push_credentials`, `git_token`, `build_type` and limits, and `PullImage` has its credentials.
 - The control plane publishes one more endpoint, the registry's token endpoint, which takes only action credentials.
 
 ## Alternatives considered
+
+- **Railpack's Go module inside the agent**, which would turn the plan into BuildKit operations over the source BuildKit fetched, with no copy on disk. It adds a large set of dependencies to the agent, and reads a plan the repository shapes in the process that talks to Docker.
 
 - **An external registry the user configures.** Rollback would depend on it, against ADR 0012.
 - **No registry, building on the target server.** It would be limited to one server per application.
