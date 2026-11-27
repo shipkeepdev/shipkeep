@@ -7935,6 +7935,11 @@
           },
           "configPath": {
             "type": "string"
+          },
+          "commitSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$",
+            "description": "The commit the configuration was last read from."
           }
         },
         "required": [
@@ -7942,7 +7947,8 @@
           "repositoryId",
           "fullName",
           "branch",
-          "configPath"
+          "configPath",
+          "commitSha"
         ]
       },
       "ApplicationDto": {
