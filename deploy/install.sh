@@ -201,8 +201,8 @@ subordinate_start() {
 buildkit_version=v0.35.1
 buildkit_amd64_sha256=b248c2b91698aafef11818fe8b681dc5e341581f7d5676709ff45ca1f29b0408
 buildkit_arm64_sha256=46c7d1799250bd8b31266ed718715ab9d3464bad0455d5bfbe48e2eeb92ca965
-# The builder's BuildKit configuration: one rootless OCI worker whose cache stays within a fifth
-# of the disk and leaves 15 % of it free.
+# The builder's BuildKit configuration: one rootless OCI worker whose cache stays within 70 % of the
+# builds' own filesystem (#548) and leaves a fifth of it free.
 buildkitd_config() {
   cat <<'CONFIG'
 root = "/var/lib/shipkeep-build/buildkit"
@@ -214,8 +214,9 @@ root = "/var/lib/shipkeep-build/buildkit"
   enabled = true
   rootless = true
   gc = true
-  maxUsedSpace = "20%"
-  minFreeSpace = "15%"
+  # Of the builds' own filesystem (#548): the cache may fill most of it, and a build the rest.
+  maxUsedSpace = "70%"
+  minFreeSpace = "20%"
 [worker.containerd]
   enabled = false
 CONFIG
@@ -241,6 +242,8 @@ Description=Shipkeep builder, rootless BuildKit
 After=network-online.target shipkeep.slice
 Wants=network-online.target
 Requires=shipkeep.slice
+# Its state lives on the builds' own filesystem (#548): never on the disk the applications use.
+RequiresMountsFor=/var/lib/shipkeep-build
 [Service]
 User=shipkeep-build
 Group=shipkeep-build
@@ -249,8 +252,6 @@ Delegate=yes
 Environment=XDG_RUNTIME_DIR=/run/shipkeep-build PATH=/usr/local/libexec/shipkeep-build:/usr/sbin:/usr/bin:/sbin:/bin
 RuntimeDirectory=shipkeep-build
 RuntimeDirectoryMode=0750
-StateDirectory=shipkeep-build
-StateDirectoryMode=0700
 ExecStartPre=+/usr/sbin/nft --file /etc/shipkeep-egress.nft
 ExecStart=/usr/bin/rootlesskit --net=slirp4netns --disable-host-loopback --copy-up=/etc --state-dir=/run/shipkeep-build/rootlesskit /usr/local/libexec/shipkeep-build/buildkitd --config /etc/shipkeep-build/buildkitd.toml
 Restart=always
@@ -345,7 +346,7 @@ NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
 PrivateTmp=true
-ReadWritePaths=/etc/shipkeep /var/lib/shipkeep /run/shipkeep
+ReadWritePaths=/etc/shipkeep /var/lib/shipkeep /run/shipkeep -/var/lib/shipkeep-build/exports
 UMask=0077
 [Install]
 WantedBy=multi-user.target
@@ -387,7 +388,8 @@ agent_unit_layout() {
   unit=$(<"$1")
   if [[ $unit == "$(legacy_agent_unit)" ]]; then
     printf 'legacy\n'
-  elif [[ $unit == "$(agent_unit)" ]]; then
+  elif [[ $unit == "$(agent_unit)" || $unit == "$(agent_unit | sed 's| -/var/lib/shipkeep-build/exports$||')" ]]; then
+    # The unit of before the builds' filesystem (#548) is rewritten like the current one.
     printf 'current\n'
   else
     return 1
@@ -618,6 +620,84 @@ prepare_builder() {
   install -m 0644 "$1/shipkeep-build.service" /etc/systemd/system/shipkeep-build.service
   systemctl daemon-reload
 }
+# The builds' filesystem (#548): a fixed-size ext4 image, loop-mounted where the builder keeps its
+# state and the agent its Railpack copies, so that a build that fills it fails without touching the
+# disk of the applications and the control plane.
+build_disk_image=/var/lib/shipkeep-build.img
+build_disk_mount=/var/lib/shipkeep-build
+# Its size in GiB: $2 when given (5 to 4096), else a fifth of the filesystem of /var/lib, whose size
+# in bytes is $1, between 10 and 100 GiB.
+build_disk_gib() {
+  local gib
+  if [[ -n ${2:-} ]]; then
+    [[ $2 =~ ^[1-9][0-9]{0,3}$ ]] && (($2 >= 5 && $2 <= 4096)) || return 1
+    printf '%s\n' "$2"
+    return 0
+  fi
+  [[ $1 =~ ^[0-9]+$ ]] || return 1
+  gib=$(($1 / 5 / 1073741824))
+  ((gib >= 10)) || gib=10
+  ((gib <= 100)) || gib=100
+  printf '%s\n' "$gib"
+}
+build_disk_unit() {
+  cat <<UNIT
+[Unit]
+Description=Shipkeep builds' filesystem
+[Mount]
+What=$build_disk_image
+Where=$build_disk_mount
+Type=ext4
+Options=loop,nodev,noatime,nodiscard
+[Install]
+WantedBy=local-fs.target
+UNIT
+}
+# Makes the builds' filesystem once, with the builder stopped, and mounts it: of $1 GiB when given,
+# else of the default size. An existing one is kept, whatever its size, and so is a filesystem the
+# operator mounted there before the first run. What the builder kept before is cache, and goes.
+prepare_build_disk() {
+  local unit size='' available own=''
+  unit=$(systemd-escape --path --suffix=mount "$build_disk_mount")
+  # Refused before anything stops: the builder goes on as it was.
+  if [[ ! -e $build_disk_image && ! -e /etc/systemd/system/$unit ]] && mountpoint -q "$build_disk_mount"; then
+    own=yes
+    printf 'The builds use the filesystem mounted at %s.\n' "$build_disk_mount"
+  elif [[ ! -e $build_disk_image ]]; then
+    size=$(build_disk_gib "$(df --output=size -B1 /var/lib | tail -n 1)" "$1") || fail 'Cannot read the size of /var/lib.'
+    available=$(df --output=avail -B1 /var/lib | tail -n 1)
+    [[ $available =~ ^[0-9]+$ ]] || fail 'Cannot read the free space of /var/lib.'
+    ((available >= (size + 5) * 1073741824)) ||
+      fail "The builds need ${size} GiB of their own and 5 GiB to spare on /var/lib; pass a smaller --build-disk (5 GiB at least)."
+  elif [[ -n $1 ]]; then
+    printf 'The builds filesystem exists already (%s): --build-disk applies to a new one only.\n' "$build_disk_image"
+  fi
+  systemctl stop shipkeep-build 2>/dev/null || true
+  if [[ -n $size ]]; then
+    if ! mountpoint -q "$build_disk_mount"; then rm -rf -- "$build_disk_mount/buildkit"; fi
+    rm -f -- "$build_disk_image.new"
+    # Its blocks are taken on /var/lib now, and stay taken: a discard at formatting, or the
+    # zeroing of inode tables after the first mount, would punch holes in the image, and a build
+    # would then take the server's disk as it writes. The tables are zeroed at formatting instead.
+    if ! fallocate -l "${size}G" "$build_disk_image.new" || ! chmod 0600 "$build_disk_image.new" ||
+      ! mkfs.ext4 -q -F -m 0 -E nodiscard,lazy_itable_init=0,lazy_journal_init=0 -L shipkeep-build "$build_disk_image.new"; then
+      rm -f -- "$build_disk_image.new"
+      fail 'Cannot make the builds filesystem.'
+    fi
+    mv -- "$build_disk_image.new" "$build_disk_image"
+  fi
+  if [[ -z $own ]]; then
+    install -d -m 0755 "$build_disk_mount"
+    build_disk_unit >"/etc/systemd/system/$unit"
+    chmod 0644 "/etc/systemd/system/$unit"
+    systemctl daemon-reload
+    systemctl enable --now --quiet "$unit"
+  fi
+  mountpoint -q "$build_disk_mount" || fail "The builds filesystem did not mount; inspect journalctl -u $unit."
+  chown shipkeep-build:shipkeep-build "$build_disk_mount"
+  chmod 0750 "$build_disk_mount"
+  install -d -o shipkeep -g shipkeep -m 0700 "$build_disk_mount/exports"
+}
 # Starts the builder, or restarts it on a migration, and waits for its socket.
 start_builder() {
   local attempt
@@ -633,7 +713,7 @@ start_builder() {
 [[ ${BASH_SOURCE[0]} == "$0" ]] || return 0
 umask 077
 export PATH=/usr/sbin:/usr/bin:/sbin:/bin
-control_plane='' fingerprint='' origin='' amd64='' arm64='' local_control_plane='' agent_file='' control_plane_only='' migrate=''
+control_plane='' fingerprint='' origin='' amd64='' arm64='' local_control_plane='' agent_file='' control_plane_only='' migrate='' build_disk=''
 while (($#)); do
   (($# >= 2)) || fail 'Missing option value.'
   case "$1" in
@@ -652,6 +732,8 @@ while (($#)); do
     # Brings a server set up by an earlier version of this installer to the current layout, and
     # keeps its identity, journal, applications and Caddy state (#490, ADR 0028).
     --migrate) migrate=$2 ;;
+    # The size in GiB of the builds' filesystem (#548): a fifth of the disk by default.
+    --build-disk) build_disk=$2 ;;
     *) fail 'Unknown option.' ;;
   esac
   shift 2
@@ -668,6 +750,7 @@ port=${control_plane##*:}
 [[ -z $control_plane_only || -z $local_control_plane ]] || fail 'A control-plane-only machine runs no application: give --local-control-plane on a single machine only.'
 [[ -z $control_plane_only || -n $agent_file ]] || fail 'A control plane machine installs the agent of its control plane image: pass --agent-file.'
 [[ -z $migrate || $migrate == yes ]] || fail 'Invalid --migrate: yes is the only value.'
+if [[ -n $build_disk ]]; then build_disk_gib 0 "$build_disk" >/dev/null || fail 'Invalid --build-disk: a size in GiB, from 5 to 4096.'; fi
 [[ -z $migrate || -z $local_control_plane$agent_file$control_plane_only ]] || fail 'Only a server for applications migrates: a control plane machine was set up by its own installer, with the current layout.'
 # The control plane's name, the host of the gateway address, is the name its route serves.
 control_plane_host=${control_plane%:*}
@@ -714,6 +797,10 @@ if [[ -n $migrate ]]; then
   for path in /usr/local/libexec/shipkeep-egress /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf /etc/shipkeep-build/buildkitd.toml /usr/local/libexec/shipkeep-build/buildkitd /usr/local/libexec/shipkeep-build/buildkit-runc /etc/systemd/system/shipkeep-build.service /etc/systemd/system/shipkeep-build.slice; do
     [[ ! -L $path && (! -e $path || -f $path) ]] || fail "$path is not a regular file; reconcile it manually."
   done
+  # The builds' filesystem of an earlier migration or installation (#548) is kept as it is.
+  for path in "$build_disk_image" "/etc/systemd/system/$(systemd-escape --path --suffix=mount "$build_disk_mount")"; do
+    [[ ! -L $path && (! -e $path || -f $path) ]] || fail "$path is not a regular file; reconcile it manually."
+  done
   # Its upgrade guard would put the previous binary back over the one installed here.
   if [[ -e /var/lib/shipkeep/upgrade.json ]] && grep -q '"state":"pending"' /var/lib/shipkeep/upgrade.json; then
     fail 'An agent upgrade is not confirmed yet. Wait until Servers shows it ended, then run this command again.'
@@ -745,6 +832,7 @@ if [[ -n $migrate ]]; then
   # The builder (ADR 0030), stopped until the guard holds its rule; the agent restarts below in
   # its group, for the socket.
   prepare_builder "$work"
+  prepare_build_disk "$build_disk"
   getent passwd shipkeep-egress >/dev/null || useradd --system --user-group --home-dir /nonexistent --no-create-home --shell /usr/sbin/nologin shipkeep-egress
   install_guard "$work"
   if systemctl is-active --quiet shipkeep-egress; then systemctl restart shipkeep-egress; fi
@@ -753,6 +841,8 @@ if [[ -n $migrate ]]; then
   # container still has its address, with the agent stopped so that nothing changes them meanwhile.
   agent_stopped=yes
   systemctl stop shipkeep-agent
+  # Railpack's work directory before the builds' filesystem (#548): what a cut build left there.
+  rm -rf -- /var/lib/shipkeep/builds
   printf 'Recording the routes of this server before Docker restarts.\n'
   if ! setpriv --reuid=shipkeep --regid=shipkeep --init-groups -- /usr/local/libexec/shipkeep-egress adopt-routes --config /etc/shipkeep/agent.yaml; then
     fail 'Stopped before the agent and Docker changed: the agent runs as before. Deploy again each application named above (a restart since its route was written sent its traffic elsewhere, or none of its containers runs), then run this command again.'
@@ -779,7 +869,9 @@ if [[ -n $migrate ]]; then
   printf 'Migrated (from the %s layout). Refresh Servers to verify ready; the agent can now be upgraded.\n' "$layout"
   exit 0
 fi
-for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep /etc/shipkeep-caddy.json /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-workloads.slice /usr/local/libexec/shipkeep-egress /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf /etc/tmpfiles.d/shipkeep.conf /etc/shipkeep-build /var/lib/shipkeep-build /run/shipkeep-build /usr/local/libexec/shipkeep-build /etc/systemd/system/shipkeep-build.service /etc/systemd/system/shipkeep-build.slice; do
+for path in /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep /etc/shipkeep-caddy.json /etc/shipkeep-egress.nft /etc/shipkeep-nftables.nft /etc/shipkeep-nftables-stop.nft /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-workloads.slice /usr/local/libexec/shipkeep-egress /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf /etc/tmpfiles.d/shipkeep.conf /etc/shipkeep-build /var/lib/shipkeep-build /run/shipkeep-build /usr/local/libexec/shipkeep-build /etc/systemd/system/shipkeep-build.service /etc/systemd/system/shipkeep-build.slice "$build_disk_image" "/etc/systemd/system/$(systemd-escape --path --suffix=mount "$build_disk_mount")"; do
+  # A disk the operator mounted for the builds, still empty, is theirs to give (#548).
+  if [[ $path == "$build_disk_mount" ]] && mountpoint -q "$path" && [[ -z $(find "$path" -mindepth 1 -maxdepth 1 ! -name lost+found -print -quit) ]]; then continue; fi
   [[ ! -e $path && ! -L $path ]] || fail 'Existing Shipkeep installation; refusing to overwrite it. To bring a server an earlier version set up to the current layout, run the same command with --migrate yes.'
 done
 for account in shipkeep shipkeep-caddy shipkeep-egress shipkeep-build; do
@@ -909,6 +1001,7 @@ else
   chmod 0644 /etc/systemd/system/shipkeep-{agent,caddy}.service
   # The builder (ADR 0030) starts once the egress guard holds its rule.
   prepare_builder "$work"
+  prepare_build_disk "$build_disk"
   install_egress "$work"
   start_builder
 fi
