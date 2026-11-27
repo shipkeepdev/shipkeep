@@ -21,13 +21,26 @@ const SECRET = /^[A-Za-z0-9_-]{43}$/;
 const SCOPE = /^repository:([a-z0-9][a-z0-9._/-]{0,254}):([a-z,*]{1,32})$/;
 const MAX_SCOPES = 8;
 
-export type RegistryAction = 'pull' | 'push';
+export type RegistryAction = 'pull' | 'push' | 'delete' | '*';
 
 /** One entry of a token's `access` claim. */
 export interface RegistryAccess {
-  readonly type: 'repository';
+  readonly type: 'repository' | 'registry';
   readonly name: string;
   readonly actions: RegistryAction[];
+}
+
+/** Who the control plane's own tokens are for: the retention of the registry's images. */
+export const RETENTION_SUBJECT = 'shipkeep-retention';
+
+/**
+ * What the retention may do, never a grant (ADR 0030): list the registry's repositories, or read
+ * and delete the manifests of one.
+ */
+export function retentionAccess(repository?: string): RegistryAccess[] {
+  return repository === undefined
+    ? [{ type: 'registry', name: 'catalog', actions: ['*'] }]
+    : [{ type: 'repository', name: repository, actions: ['pull', 'delete'] }];
 }
 
 /** What a grant allows: its application's repository, and pushing to it or not. */
