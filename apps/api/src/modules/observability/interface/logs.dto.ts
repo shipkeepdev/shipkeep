@@ -13,6 +13,7 @@ import {
 } from 'class-validator';
 
 import type { LogsAnswer } from '../application/logs-queries';
+import type { BuildLine } from '../domain/logs';
 import { MAX_LOG_RESULTS, MAX_LOG_TEXT } from '../domain/logs';
 
 /** A time the server cannot read in its own time zone. */
@@ -108,5 +109,51 @@ export class LogsDto {
 }
 
 export function logsDto(answer: LogsAnswer): LogsDto {
+  return { kept: answer.kept, lines: answer.lines.map((line) => ({ ...line })) };
+}
+
+export class BuildOutputQueryDto {
+  @ApiProperty({
+    required: false,
+    format: 'date-time',
+    description:
+      "The start of the deployment by default. A live view reads again from its last line's time, and again at once while an answer is full. With its offset (`Z` or `±hh:mm`).",
+  })
+  @IsOptional()
+  @IsDateString({ strict: true })
+  @Matches(WITH_OFFSET, { message: 'from must end with Z or an offset' })
+  from?: string;
+
+  @ApiProperty({
+    required: false,
+    type: 'integer',
+    minimum: 1,
+    maximum: MAX_LOG_RESULTS,
+    default: MAX_LOG_RESULTS,
+  })
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(MAX_LOG_RESULTS)
+  limit?: number;
+}
+
+export class BuildLineDto {
+  @ApiProperty({ format: 'date-time' }) time!: string;
+  @ApiProperty({ description: 'The line as the builder wrote it, its secrets redacted.' })
+  line!: string;
+  @ApiProperty({ description: 'The line was longer than 16 KiB and was cut.' }) truncated!: boolean;
+}
+
+export class BuildOutputDto {
+  @ApiProperty({ description: 'False when this installation keeps no logs.' }) kept!: boolean;
+  @ApiProperty({ type: [BuildLineDto], description: 'Oldest first.' }) lines!: BuildLineDto[];
+}
+
+export function buildOutputDto(answer: {
+  readonly kept: boolean;
+  readonly lines: readonly BuildLine[];
+}): BuildOutputDto {
   return { kept: answer.kept, lines: answer.lines.map((line) => ({ ...line })) };
 }

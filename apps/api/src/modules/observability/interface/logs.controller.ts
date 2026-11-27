@@ -2,13 +2,22 @@ import { BadRequestException, Controller, Get, Param, Query, Req } from '@nestjs
 import { ApiBearerAuth, ApiCookieAuth, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 
 import { ApplicationPathDto } from '../../apps/interface/application.dto';
+import { DeploymentPathDto } from '../../deployments/interface/deployment.dto';
 import { AllowApiToken } from '../../identity/interface/api-token-access';
 import { IdentityAttemptLimit } from '../../identity/interface/identity-rate.guard';
 import { RequireTenant } from '../../identity/interface/route-access';
 import { type IdentityRequest, resourceContext } from '../../identity/interface/session-http';
 import { LogsQueries } from '../application/logs-queries';
+import { MAX_LOG_RESULTS } from '../domain/logs';
 
-import { LogsDto, logsDto, LogsQueryDto } from './logs.dto';
+import {
+  BuildOutputDto,
+  buildOutputDto,
+  BuildOutputQueryDto,
+  LogsDto,
+  logsDto,
+  LogsQueryDto,
+} from './logs.dto';
 
 /** The longest period one search covers: the retention. */
 const MAX_PERIOD_MS = 30 * 86_400_000;
@@ -45,6 +54,33 @@ export class LogsController {
         to,
         limit: query.limit ?? 200,
         order: query.order,
+      }),
+    );
+  }
+
+  /** One deployment's build output (ADR 0032), oldest first, read live while the build runs. */
+  @Get(
+    ':organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/deployments/:deploymentId/build-output',
+  )
+  @RequireTenant('environment.read', 'environment')
+  @AllowApiToken('environment.read')
+  @ApiOkResponse({ type: BuildOutputDto })
+  async buildOutput(
+    @Req() request: IdentityRequest,
+    @Param() path: DeploymentPathDto,
+    @Query() query: BuildOutputQueryDto,
+  ): Promise<BuildOutputDto> {
+    const { applicationId, deploymentId, ...target } = path;
+    const to = new Date();
+    const from = query.from ? new Date(query.from) : undefined;
+    if (from && !(from.getTime() < to.getTime()))
+      throw new BadRequestException('from must be in the past.');
+    return buildOutputDto(
+      await this.logs.buildOutput(resourceContext(request), target, applicationId, deploymentId, {
+        from,
+        fromExact: query.from,
+        to,
+        limit: query.limit ?? MAX_LOG_RESULTS,
       }),
     );
   }

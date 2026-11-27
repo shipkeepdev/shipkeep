@@ -19,6 +19,7 @@ const targets: MetricsTargets = {
   onNode: () => Promise.resolve({ containers: [], hosts: [] }),
   buildsOnNode: () => Promise.resolve([]),
   nodeExists: () => Promise.resolve(true),
+  deploymentStart: () => Promise.resolve(undefined),
   environments: () =>
     Promise.resolve([
       { id: READ, projectId: PROJECT },

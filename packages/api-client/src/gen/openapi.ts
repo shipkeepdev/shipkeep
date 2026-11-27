@@ -980,6 +980,22 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/build-output": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["buildOutput"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/cancel": {
         readonly parameters: {
             readonly query?: never;
@@ -1744,6 +1760,20 @@ export type components = {
             readonly updatedAt: string;
             /** Format: uuid */
             readonly userId: string;
+        };
+        readonly BuildLineDto: {
+            /** @description The line as the builder wrote it, its secrets redacted. */
+            readonly line: string;
+            /** Format: date-time */
+            readonly time: string;
+            /** @description The line was longer than 16 KiB and was cut. */
+            readonly truncated: boolean;
+        };
+        readonly BuildOutputDto: {
+            /** @description False when this installation keeps no logs. */
+            readonly kept: boolean;
+            /** @description Oldest first. */
+            readonly lines: readonly components["schemas"]["BuildLineDto"][];
         };
         readonly ClonedEnvironmentDto: {
             /** @description The copied applications: not deployed, without domains. */
@@ -4502,6 +4532,35 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["DeploymentDto"];
+                };
+            };
+        };
+    };
+    readonly buildOutput: {
+        readonly parameters: {
+            readonly query?: {
+                /** @description The start of the deployment by default. A live view reads again from its last line's time, and again at once while an answer is full. With its offset (`Z` or `±hh:mm`). */
+                readonly from?: string;
+                readonly limit?: number;
+            };
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly deploymentId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["BuildOutputDto"];
                 };
             };
         };

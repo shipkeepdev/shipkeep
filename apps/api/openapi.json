@@ -6219,6 +6219,102 @@
           "observability"
         ]
       }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/deployments/{deploymentId}/build-output": {
+      "get": {
+        "operationId": "buildOutput",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "deploymentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "The start of the deployment by default. A live view reads again from its last line's time, and again at once while an answer is full. With its offset (`Z` or `±hh:mm`).",
+            "schema": {
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "minimum": 1,
+              "maximum": 500,
+              "default": 500,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuildOutputDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "observability"
+        ]
+      }
     }
   },
   "info": {
@@ -10377,6 +10473,48 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/LogLineDto"
+            }
+          }
+        },
+        "required": [
+          "kept",
+          "lines"
+        ]
+      },
+      "BuildLineDto": {
+        "type": "object",
+        "properties": {
+          "time": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "line": {
+            "type": "string",
+            "description": "The line as the builder wrote it, its secrets redacted."
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "The line was longer than 16 KiB and was cut."
+          }
+        },
+        "required": [
+          "time",
+          "line",
+          "truncated"
+        ]
+      },
+      "BuildOutputDto": {
+        "type": "object",
+        "properties": {
+          "kept": {
+            "type": "boolean",
+            "description": "False when this installation keeps no logs."
+          },
+          "lines": {
+            "description": "Oldest first.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BuildLineDto"
             }
           }
         },
