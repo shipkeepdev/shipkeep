@@ -10,6 +10,7 @@ import { OrganizationsModule } from '../organizations/organizations.module';
 import { TenantAccessModule } from '../organizations/tenant-access.module';
 
 import { ApplicationCommands } from './application/application-commands';
+import { RepositoryConfigs } from './application/repository-configs';
 import { ApplicationConfirmationTarget } from './application/application-confirmation-target';
 import { DomainCertificates } from './application/domain-certificates';
 import { EnvironmentClone } from './application/environment-clone';
@@ -39,6 +40,7 @@ import { ApplicationController } from './interface/application.controller';
   controllers: [ApplicationController],
   providers: [
     ApplicationCommands,
+    RepositoryConfigs,
     EnvironmentClone,
     ApplicationConfirmationTarget,
     DomainCertificates,
