@@ -32,7 +32,22 @@ type Step struct {
 type Plan struct {
 	Version string
 	Steps   []Step
+	// Lane is the executor gate the operation waits for (ADR 0032). Operations of one lane run one
+	// at a time; two lanes run side by side, so a lane's steps must touch nothing another lane's do.
+	Lane Lane
 }
+
+// Lane groups operations that must not run at the same time.
+type Lane uint8
+
+const (
+	// DefaultLane holds every action that changes Docker, Caddy or the host's routes.
+	DefaultLane Lane = iota
+	// BuildLane holds builds, which use BuildKit and the registry only: a long build leaves the
+	// server's other actions free to run.
+	BuildLane
+	laneCount
+)
 
 // Notify receives committed transitions for ActionUpdate delivery; errors pause further execution.
 type Notify func(context.Context, Operation) error
@@ -52,7 +67,7 @@ func (s *Store) Recover(ctx context.Context, request Request, plan Plan, notify 
 }
 
 func (s *Store) execute(ctx context.Context, request Request, plan Plan, notify Notify, recovery bool) (Operation, error) {
-	if !identifier.MatchString(plan.Version) || len(plan.Steps) == 0 || len(plan.Steps) > 64 {
+	if !identifier.MatchString(plan.Version) || len(plan.Steps) == 0 || len(plan.Steps) > 64 || plan.Lane >= laneCount {
 		return Operation{}, errors.New("invalid operation plan")
 	}
 	names := map[string]bool{}
@@ -62,9 +77,10 @@ func (s *Store) execute(ctx context.Context, request Request, plan Plan, notify 
 		}
 		names[step.Name] = true
 	}
+	gate := s.gates[plan.Lane]
 	select {
-	case s.executing <- struct{}{}:
-		defer func() { <-s.executing }()
+	case gate <- struct{}{}:
+		defer func() { <-gate }()
 	case <-ctx.Done():
 		return Operation{}, fmt.Errorf("wait for executor: %w", ctx.Err())
 	}
