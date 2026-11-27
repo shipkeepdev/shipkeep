@@ -70,9 +70,10 @@ type Operation struct {
 
 // Store owns one SQLite connection and an exclusive agent-process lock.
 type Store struct {
-	db        *sql.DB
-	lock      *os.File
-	executing chan struct{}
+	db   *sql.DB
+	lock *os.File
+	// One executor gate per lane: an operation holds its lane's gate for as long as it runs.
+	gates [laneCount]chan struct{}
 }
 
 const schema = `CREATE TABLE IF NOT EXISTS operations (
@@ -100,7 +101,10 @@ func Open(ctx context.Context, dir string) (*Store, error) {
 		_ = lock.Close()
 		return nil, errors.New("agent state is already in use")
 	}
-	store := &Store{lock: lock, executing: make(chan struct{}, 1)}
+	store := &Store{lock: lock}
+	for lane := range store.gates {
+		store.gates[lane] = make(chan struct{}, 1)
+	}
 	success := false
 	defer func() {
 		if !success {
