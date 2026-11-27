@@ -166,12 +166,12 @@ To turn email on later, set `SMTP_HOST` and `SMTP_FROM` in `.env`, and `SMTP_USE
 
 ## Add a server
 
-Each server needs a fresh Ubuntu 24.04 (amd64 or arm64) with `curl` and `sudo`, free ports 80 and 443 (and 7480 on loopback), and outbound access to the control plane on ports 443 and 7443. The control plane never connects to it. If `/etc/docker/daemon.json` exists, it must not set a proxy (`proxies`, `http-proxy`, `https-proxy`, `no-proxy`): the installer refuses it.
+Each server needs a fresh Ubuntu 24.04 (amd64 or arm64) with `curl` and `sudo`, free ports 80 and 443 (and 7480 on loopback), and outbound access to the control plane on ports 443 and 7443, and to `github.com` while it installs (the builder's BuildKit, below). The control plane never connects to it. If `/etc/docker/daemon.json` exists, it must not set a proxy (`proxies`, `http-proxy`, `https-proxy`, `no-proxy`): the installer refuses it.
 
 1. In the web UI, open **Servers**, enter your password and choose **Create a join token**. The token is shown once and expires after 15 minutes.
 2. Choose **Copy the command** and run it on the server. It downloads the installer from your control plane, checks its checksum, and runs it with `sudo`. If the checksum does not match, it says so and runs nothing.
 3. When asked, paste the join token. Its input is hidden, and it never appears in the command.
-4. The installer adds Docker (when absent) and Caddy, creates the `shipkeep-agent`, `shipkeep-caddy` and `shipkeep-egress` services and starts them. Back in **Servers**, the server shows as `ready` within a few seconds.
+4. The installer adds Docker (when absent) and Caddy, creates the `shipkeep-agent`, `shipkeep-caddy`, `shipkeep-egress` and `shipkeep-build` services and starts them. Back in **Servers**, the server shows as `ready` within a few seconds.
 
 Docker pulls every image through `shipkeep-egress`, a proxy on `127.0.0.1:7480` that connects only to public addresses over HTTPS, and an nftables table, `inet shipkeep_egress`, keeps the Docker daemon off the server's loopback (ADR 0023). This holds for every pull of this Docker daemon, including any you run yourself. The installer restarts Docker once to apply it, so containers already running restart with it.
 
@@ -180,7 +180,14 @@ Docker pulls every image through `shipkeep-egress`, a proxy on `127.0.0.1:7480` 
 - Registries on a private network are not supported yet.
 - A server installed before this change has neither the proxy nor the guard. Its agent keeps pulling as before until it is upgraded; an agent from this release refuses to pull on it. Install the server again to get them.
 
-On failure, `journalctl -u shipkeep-agent` (or `-u shipkeep-egress` for a refused pull) on the server says why. The installer refuses a server that already has Shipkeep or Caddy; [`deploy/README.md`](../deploy/README.md) lists what to remove to start over.
+Builds from a repository run on the server that runs the application, in `shipkeep-build`: rootless BuildKit (ADR 0030), as the `shipkeep-build` account, which is in no group that reaches Docker.
+
+- The installer downloads BuildKit's official release from GitHub and checks it against a SHA-256 written into the installer, which is itself checked by its own digest. It installs `rootlesskit`, `slirp4netns`, `uidmap` and `git` from Ubuntu, and gives the account 65536 subordinate ids after every range already given.
+- A build reaches public addresses only, on any port. The `build` chain of `inet shipkeep_egress` refuses loopback, private, shared and link-local ranges (cloud metadata included), and the server's own addresses except port 443, where its Caddy serves only what the internet sees. The name servers of `/etc/resolv.conf` stay reachable on port 53.
+- Builds run in `shipkeep-build.slice`, at most half the memory, and are the first the kernel kills. BuildKit keeps its cache in `/var/lib/shipkeep-build` within a fifth of the disk, and leaves 15 % of it free.
+- A server installed before builds gets the builder with `--migrate yes` on the installation command. Until then, builds on it fail with "the server's builder does not answer".
+
+On failure, `journalctl -u shipkeep-agent` (or `-u shipkeep-egress` for a refused pull, `-u shipkeep-build` for a build) on the server says why. The installer refuses a server that already has Shipkeep or Caddy; [`deploy/README.md`](../deploy/README.md) lists what to remove to start over.
 
 ## Back up and restore
 
@@ -321,7 +328,7 @@ systemctl daemon-reload
 **The server part.** To resume after adding this machine as a server failed halfway, remove only this part, as root, then run the installer with `--resume yes`. It stops and deletes every application on the machine, and keeps the control plane, its slice and its directory:
 
 ```sh
-systemctl disable --now shipkeep-agent shipkeep-caddy shipkeep-egress
+systemctl disable --now shipkeep-agent shipkeep-caddy shipkeep-egress shipkeep-build
 docker ps -aq --filter label=sk.managed=true | xargs -r docker rm -f
 nft delete table inet shipkeep_egress 2>/dev/null || true
 rm -rf /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep \
@@ -329,10 +336,12 @@ rm -rf /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep \
   /usr/local/libexec/shipkeep-egress /etc/tmpfiles.d/shipkeep.conf \
   /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service \
   /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-workloads.slice \
-  /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf
+  /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf \
+  /etc/shipkeep-build /var/lib/shipkeep-build /usr/local/libexec/shipkeep-build \
+  /etc/systemd/system/shipkeep-build.service /etc/systemd/system/shipkeep-build.slice
 apt-get purge -y caddy
 rm -f /etc/apt/sources.list.d/shipkeep-caddy.sources /etc/apt/keyrings/shipkeep-caddy.gpg /etc/apt/keyrings/shipkeep-caddy.asc
-userdel shipkeep-egress; userdel shipkeep-caddy; userdel shipkeep
+userdel shipkeep-build; userdel shipkeep-egress; userdel shipkeep-caddy; userdel shipkeep
 systemctl daemon-reload
 systemctl restart docker
 # The installer restarts Docker too: forget the restarts counted so far, or systemd refuses one.

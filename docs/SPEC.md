@@ -736,6 +736,8 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
     - the daemon goes through `shipkeep-egress` on `127.0.0.1:7480`, which serves `CONNECT` only and connects only to public addresses, checked by its dialer on the address it connects to (the ranges above, kept identical by a test);
     - an nftables table, `inet shipkeep_egress`, rejects the new connections of `shipkeep.slice`, the slice that holds the Docker daemon, to loopback, except to the proxy and to the loopback name servers on port 53. Docker loads it before `dockerd` starts, and `nftables.service` loads it in the same transaction as its own ruleset at start, reload and stop;
     - before each pull, the agent reads the daemon's proxy settings (`GET /info`) and refuses the pull (`egress_unguarded`) unless both are the proxy and `NO_PROXY` is empty. An agent started with `--dev` skips this.
+  - A server's builds (ADR 0030) run in `shipkeep-build`: rootlesskit (Ubuntu's package and AppArmor profile) starts BuildKit's `buildkitd`, pinned by SHA-256 in `deploy/install.sh`, in a user namespace of `shipkeep-build`, an account in no group that reaches Docker, with 65536 subordinate ids after every range already given, slirp4netns for its network and the host's loopback out of reach. Its socket, `/run/shipkeep-build/buildkitd.sock`, is for the `shipkeep-build` group, which the agent's account is in. It runs in `shipkeep-build.slice` (half the memory at most, CPU weight 50) with `OOMScoreAdjust=1000`, and keeps its cache within 20 % of the disk with 15 % left free.
+    - The `build` chain of `inet shipkeep_egress`, matched on the account's id, lets new connections reach public addresses on any port, the name servers of `/etc/resolv.conf` on port 53, and the server's own addresses on port 443 only; it rejects the server's other own addresses and the proxy's ranges, which a test keeps identical, with IPv4-mapped addresses. The builder loads the table before it starts.
   - Failures report `image_resolution_failed` with the registry and the status, never tokens. Registries on private networks are not supported yet (open question).
 
 ### 8.1 Identity security parameters
@@ -893,6 +895,8 @@ In production, the API serves `dist/apps/web/browser` (override with `WEB_DIST_D
 | Internationalization | English only for v0.1; strings externalized for later translation                  |
 
 ## 16. Open questions
+
+- Builds on one machine installed before builds: `--migrate yes` adds the builder to an application server, but refuses a machine that also hosts the control plane, so such a machine gets no builder yet. Until a migration covers it, its builds fail with `builder_unavailable`.
 
 - Installation-level audit access: system and account events (`organization_id` null, for example `fleet.installation_key.created`) are not readable by the runtime role. Proposal for M2.4a: an installation-administrator capability, held by the first owner and audited, with its own read context.
 
