@@ -7,6 +7,7 @@ import {
   ByteRate,
   distinctBuildLines,
   distinctLines,
+  exactTime,
   LOG_BATCH_MIN_BYTES,
   LOG_RETENTION_MS,
   type LogInput,
@@ -250,8 +251,17 @@ describe('log searches (ADR 0029)', () => {
     expect(logsQuery({ ...search, fromExact: '2026-11-24T11:00:00.123456789Z' })).toContain(
       '_time:[2026-11-24T11:00:00.123456789Z, 2026-11-24T12:00:00.000Z]',
     );
-    for (const fromExact of ['2026-11-24T11:00:00+01:00', '2026-11-24T11:00:00.1234567890Z', 'x'])
+    for (const fromExact of ['2026-11-24T11:00:00.1234567890Z', '2026-11-24T11:00:00+1:00', 'x'])
       expect(logsQuery({ ...search, fromExact })).toContain('_time:[2026-11-24T11:00:00.000Z,');
+  });
+
+  it('moves a time written with an offset to UTC, keeping its nine digits', () => {
+    expect(logsQuery({ ...search, fromExact: '2026-11-24T12:00:00.123456789+01:00' })).toContain(
+      '_time:[2026-11-24T11:00:00.123456789Z, ',
+    );
+    expect(exactTime('2026-11-24T00:30:00.5-02:30')).toBe('2026-11-24T03:00:00.5Z');
+    expect(exactTime('2026-11-24T11:00:00+01:00')).toBe('2026-11-24T10:00:00Z');
+    expect(exactTime('2026-11-24T25:00:00+01:00')).toBeUndefined();
   });
 
   it('reads forward from a time for a live view, so that nothing between two reads is missed', () => {
@@ -352,7 +362,7 @@ describe('build output searches (ADR 0032)', () => {
     expect(buildLogsQuery({ ...search, fromExact: '2026-11-24T11:00:00.123456789Z' })).toContain(
       '_time:[2026-11-24T11:00:00.123456789Z, ',
     );
-    for (const fromExact of ['2026-11-24T11:00:00+01:00', '2026-11-24T11:00:00Z] OR *', 'x'])
+    for (const fromExact of ['2026-11-24T11:00:00+01:00] OR *', '2026-11-24T11:00:00Z] OR *', 'x'])
       expect(buildLogsQuery({ ...search, fromExact })).toContain(
         '_time:[2026-11-24T11:00:00.000Z,',
       );

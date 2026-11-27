@@ -223,11 +223,20 @@ export function logsQuery(search: LogSearch): string {
   return `${parts.join(' ')} | sort by (${sort}) | limit ${String(search.limit)}`;
 }
 
-const EXACT_TIME = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?Z$/;
+const EXACT_TIME = /^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(\.\d{1,9})?(Z|[+-]\d{2}:\d{2})$/;
 
-/** A UTC time with up to nine digits of fraction, as it may go into the query; else undefined. */
-function exactTime(value: string | undefined): string | undefined {
-  return value !== undefined && EXACT_TIME.test(value) ? value : undefined;
+/**
+ * A time with up to nine digits of fraction, in UTC as it may go into the query; else undefined.
+ * One written with an offset is moved to UTC with its whole fraction, as the same time in UTC is.
+ */
+export function exactTime(value: string | undefined): string | undefined {
+  const match = value === undefined ? null : EXACT_TIME.exec(value);
+  if (!match) return undefined;
+  const [, seconds, fraction = '', zone] = match;
+  if (zone === 'Z') return value;
+  // An offset is whole minutes: moving the seconds moves the time, and the fraction stays as is.
+  const at = new Date(`${seconds}${zone}`);
+  return Number.isNaN(at.getTime()) ? undefined : `${at.toISOString().slice(0, 19)}${fraction}Z`;
 }
 
 /** A LogsQL quoted string: backslashes and quotes escaped, control characters removed. */
