@@ -16,6 +16,7 @@ import { AppModule } from './app.module';
 import { createApp } from './bootstrap';
 import { AgentGateway } from './modules/fleet/interface/agent-gateway';
 import { DeploymentWorker } from './modules/deployments/infrastructure/deployment-worker';
+import { PushWorker } from './modules/deployments/infrastructure/push-worker';
 import { ExecSessionChecks } from './modules/fleet/infrastructure/exec-session-checks';
 import { AgentUpgradeWorker } from './modules/fleet/infrastructure/agent-upgrade-worker';
 import { AppConfig } from './platform/config/app-config';
@@ -56,6 +57,7 @@ async function main(): Promise<void> {
     await app.init();
     await app.get(AgentGateway).start();
     await app.get(DeploymentWorker).start();
+    await app.get(PushWorker).start();
     await app.get(AgentUpgradeWorker).start();
     // Before the API listens: no exec session of this process exists yet (issue #489).
     await app.get(ExecSessionChecks).start();

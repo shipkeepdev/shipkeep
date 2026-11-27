@@ -110,6 +110,7 @@ export class PrismaPipelineStore implements PipelineStore {
       imageDigest: row.imageDigest,
       config: config as ShipkeepConfig,
       configSha: row.configSha,
+      commitSha: row.commitSha,
       createdBy: row.createdBy,
       createdAt: row.createdAt,
     };

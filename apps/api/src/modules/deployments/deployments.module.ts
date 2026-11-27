@@ -5,6 +5,7 @@ import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { AgentActions } from '../fleet/application/agent-actions';
 import { FleetModule } from '../fleet/fleet.module';
 import { AppsModule } from '../apps/apps.module';
+import { GitModule } from '../git/git.module';
 import { ConfirmationsModule } from '../confirmations/confirmations.module';
 import { IdentityModule } from '../identity/identity.module';
 import { TenantAccessModule } from '../organizations/tenant-access.module';
@@ -13,6 +14,7 @@ import { SecretsModule } from '../secrets/secrets.module';
 
 import { AllocationObservations } from './application/allocation-observations';
 import { DeploymentCommands } from './application/deployment-commands';
+import { PushDeployments } from './application/push-deployments';
 import { DeploymentPipeline } from './application/deployment-pipeline';
 import { ExecSessions } from './application/exec-sessions';
 import {
@@ -28,6 +30,7 @@ import {
 } from './application/ports';
 import { DeploymentQueue } from './infrastructure/deployment-queue';
 import { DeploymentWorker } from './infrastructure/deployment-worker';
+import { PushWorker } from './infrastructure/push-worker';
 import { PrismaDeploymentStore } from './infrastructure/prisma-deployment.store';
 import { PrismaDeploymentSteps } from './infrastructure/prisma-deployment-steps.store';
 import { PrismaObservationStore } from './infrastructure/prisma-observation.store';
@@ -45,6 +48,8 @@ import { NodeReplicasController } from './interface/node-replicas.controller';
     IdentityModule,
     TenantAccessModule,
     AppsModule,
+    // A Git application's configuration is read again when a push deploys it.
+    GitModule,
     SecretsModule,
     FleetModule,
     JobsModule,
@@ -70,7 +75,9 @@ import { NodeReplicasController } from './interface/node-replicas.controller';
     { provide: OBSERVATION_STORE, useClass: PrismaObservationStore },
     AllocationObservations,
     DeploymentWorker,
+    PushDeployments,
+    PushWorker,
   ],
-  exports: [DEPLOYMENT_STORE, IMAGE_RESOLVER, DeploymentWorker],
+  exports: [DEPLOYMENT_STORE, IMAGE_RESOLVER, DeploymentWorker, PushWorker],
 })
 export class DeploymentsModule {}

@@ -9,13 +9,16 @@ import {
   installationChange,
   MAX_WEBHOOK_BYTES,
   pingedApp,
+  pushOf,
   WebhookRejected,
 } from '../domain/github-webhook';
 
 import {
   GIT_TRANSACTION,
+  GITHUB_PUSHES,
   GITHUB_WEBHOOK_STORE,
   type GitTransaction,
+  type GithubPushes,
   type GithubWebhookStore,
 } from './ports';
 
@@ -43,6 +46,7 @@ export class GithubWebhooks {
   constructor(
     @Inject(GITHUB_WEBHOOK_STORE) private readonly store: GithubWebhookStore,
     @Inject(GIT_TRANSACTION) private readonly transaction: GitTransaction,
+    @Inject(GITHUB_PUSHES) private readonly pushes: GithubPushes,
     private readonly events: DomainEventBus,
   ) {}
 
@@ -84,8 +88,14 @@ export class GithubWebhooks {
         case 'installation':
         case 'installation_repositories':
           return this.installation(organizationId, delivery.event, payload, app.appId, now);
+        case 'push': {
+          // Queued with its record: the deployments context checks the branch head and deploys.
+          const push = pushOf(organizationId, payload);
+          if (!push) return 'ignored';
+          await this.pushes.enqueue(push);
+          return 'applied';
+        }
         default:
-          // Push events are recorded here and deploy nothing yet (M3.1, next step).
           return 'ignored';
       }
     });
