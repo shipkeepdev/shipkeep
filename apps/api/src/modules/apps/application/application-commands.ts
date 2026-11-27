@@ -1,7 +1,14 @@
 import { createHash } from 'node:crypto';
 
 import { Inject, Injectable } from '@nestjs/common';
-import { ConflictError, createEvent, NotFoundError, type Permission } from '@shipkeep/domain';
+import { parseShipkeepConfig } from '@shipkeep/config-schema';
+import {
+  ConflictError,
+  createEvent,
+  InvalidInputError,
+  NotFoundError,
+  type Permission,
+} from '@shipkeep/domain';
 
 import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { isPublicAddress } from '../../../platform/net/public-address';
@@ -15,6 +22,7 @@ import {
   type Application,
   applicationConfig,
   type ApplicationTarget,
+  assertConfigEditable,
   assertDomainsAvailable,
   assertSameName,
   type DomainDns,
@@ -33,6 +41,9 @@ import {
   DOMAIN_RESOLVER,
   type DomainCertificateStore,
   type DomainResolver,
+  REPOSITORY_SOURCE,
+  type RepositoryLocation,
+  type RepositorySource,
 } from './ports';
 
 /** What the domain list shows: where the name points, and the certificate nodes serve for it. */
@@ -57,7 +68,51 @@ export class ApplicationCommands {
     private readonly events: DomainEventBus,
     @Inject(CONTROL_PLANE_HOST) private readonly controlPlaneHost: string,
     @Inject(DOMAIN_CERTIFICATE_STORE) private readonly certificates: DomainCertificateStore,
+    @Inject(REPOSITORY_SOURCE) private readonly repositories: RepositorySource,
   ) {}
+
+  /**
+   * Creates an application whose configuration is the shipkeep.yml of a GitHub repository, read
+   * at the branch's head (ADR 0031). GitHub is asked between two checks of the caller's access,
+   * outside any transaction. Deploying stays a separate request.
+   */
+  async createFromRepository(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    location: RepositoryLocation,
+    now = new Date(),
+  ): Promise<Application> {
+    await this.scoped(context, 'deploy.run', target, () => Promise.resolve());
+    const read = await this.repositories.read(target.organizationId, location);
+    const parsed = parseShipkeepConfig(read.text);
+    if (!parsed.ok)
+      throw new InvalidInputError(
+        'invalid_application_config',
+        `The configuration at ${location.configPath} is invalid.`,
+        { issues: parsed.issues.slice(0, 20), commit: read.commitSha },
+      );
+    const config = applicationConfig(parsed.config, 'git');
+    assertDomainsAvailable(config.config, [this.controlPlaneHost]);
+    const repository = { ...location, fullName: read.fullName, commitSha: read.commitSha };
+    return this.scoped(context, 'deploy.run', target, async () => {
+      const created = await this.store.create(
+        target,
+        config,
+        sha256(config.canonical),
+        context.userId,
+        now,
+        repository,
+      );
+      if (!created)
+        throw new ConflictError(
+          'application_name_taken',
+          'An application with this name already exists in the environment.',
+        );
+      await this.claimDomains(context, created, now);
+      await this.audit('created', context, created, now, undefined, read.commitSha);
+      return created;
+    });
+  }
 
   create(
     context: SecurityContext,
@@ -104,6 +159,7 @@ export class ApplicationCommands {
       if (!found || !(await this.store.lock(found))) throw new NotFoundError('application');
       const current = await this.store.find(target, applicationId);
       if (!current) throw new NotFoundError('application');
+      assertConfigEditable(current);
       assertSameName(current, config);
       const changed = () =>
         new ConflictError(
@@ -229,6 +285,7 @@ export class ApplicationCommands {
     application: Application,
     now: Date,
     previousSha?: string,
+    commitSha?: string,
   ): Promise<void> {
     return this.events.publish([
       createEvent({
@@ -242,6 +299,15 @@ export class ApplicationCommands {
           environmentId: application.environmentId,
           name: application.name,
           source: application.source,
+          ...(application.repository
+            ? {
+                repository: application.repository.fullName,
+                repositoryId: application.repository.repositoryId,
+                branch: application.repository.branch,
+                configPath: application.repository.configPath,
+              }
+            : {}),
+          ...(commitSha ? { commitSha } : {}),
           configSha: application.configSha,
           ...(previousSha ? { previousConfigSha: previousSha } : {}),
         },

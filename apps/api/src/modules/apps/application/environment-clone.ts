@@ -94,7 +94,15 @@ export class EnvironmentClone {
           // An environment-level permission: checked on the new one, inside this transaction.
           await this.access.require(context.userId, 'deploy.run', target);
           const created: Application[] = [];
-          for (const original of await this.applications.list(source)) {
+          const originals = await this.applications.list(source);
+          // A copy would follow the same branch, and the repository's next configuration would
+          // bring back the domains the original serves: refused until a copy can follow another.
+          if (originals.some((original) => original.source === 'git'))
+            throw new ConflictError(
+              'environment_has_git_applications',
+              'An environment with applications deployed from a repository cannot be cloned yet.',
+            );
+          for (const original of originals) {
             const config = clonedConfig(original.config);
             const copy = await this.applications.create(
               target,

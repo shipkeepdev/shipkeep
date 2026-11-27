@@ -1,12 +1,32 @@
 import { type ShipkeepConfig, validateShipkeepConfig } from '@shipkeep/config-schema';
-import { InvalidInputError } from '@shipkeep/domain';
+import { ConflictError, InvalidInputError } from '@shipkeep/domain';
 
 import { type NodeStatus, observedStatus } from '../../fleet/domain/node';
 import { canonicalIpAddress } from '../../fleet/domain/node-address';
 
-/** Sources the control plane can deploy today; `git` and `compose` arrive with M3.1 and M3.8. */
-export const APPLICATION_SOURCES = ['image'] as const;
+/**
+ * Sources the control plane can deploy today: an image named in the stored configuration, or a
+ * GitHub repository whose shipkeep.yml holds the configuration (M3.1). `compose` arrives with M3.8.
+ */
+export const APPLICATION_SOURCES = ['image', 'git'] as const;
 export type ApplicationSource = (typeof APPLICATION_SOURCES)[number];
+
+/**
+ * Where a Git application's configuration lives (ADR 0031, SPEC 4): a repository that an
+ * installation of the organization's GitHub App reaches, a branch, and the path of shipkeep.yml.
+ * GitHub's identifiers are what the control plane trusts; the name is kept for its calls and for
+ * display, and is refreshed when GitHub reports a rename.
+ */
+export interface ApplicationRepository {
+  readonly installationId: number;
+  readonly repositoryId: number;
+  /** `owner/name`, as GitHub names it. */
+  readonly fullName: string;
+  readonly branch: string;
+  readonly configPath: string;
+  /** The commit the configuration was last read from: a release of it records the same. */
+  readonly commitSha: string;
+}
 
 /** Largest stored configuration, as canonical JSON. Matches the agent-bound action size budget. */
 export const MAX_APPLICATION_CONFIG_BYTES = 64 * 1024;
@@ -22,6 +42,8 @@ export interface Application extends ApplicationTarget {
   readonly id: string;
   readonly name: string;
   readonly source: ApplicationSource;
+  /** With source `git` only. */
+  readonly repository: ApplicationRepository | null;
   readonly config: ShipkeepConfig;
   /** SHA-256 of the canonical JSON configuration, lower-case hex. */
   readonly configSha: string;
@@ -95,11 +117,15 @@ export function assertConfigApplied(config: ShipkeepConfig): void {
 }
 
 /**
- * Validates a `shipkeep.yml` document (already parsed) for an application created through the API.
- * Only image sources are accepted until git and Compose sources land; the image reference itself
- * is checked by the schema. Errors list JSON pointers and schema messages, never input values.
+ * Validates a `shipkeep.yml` document (already parsed) for an application, whether it was sent to
+ * the API or read from its repository. Until builds land (M3.3), both name a built image
+ * (`build.type: image`); the image reference itself is checked by the schema. Errors list JSON
+ * pointers and schema messages, never input values.
  */
-export function applicationConfig(value: unknown): ApplicationConfig {
+export function applicationConfig(
+  value: unknown,
+  source: ApplicationSource = 'image',
+): ApplicationConfig {
   const result = validateShipkeepConfig(value);
   if (!result.ok)
     throw new InvalidInputError('invalid_application_config', 'The configuration is invalid.', {
@@ -107,10 +133,16 @@ export function applicationConfig(value: unknown): ApplicationConfig {
     });
   const config = result.config;
   if (config.build?.type !== 'image')
-    throw new InvalidInputError(
-      'unsupported_application_source',
-      'Only image applications (build.type: image) can be created for now.',
-    );
+    throw source === 'git'
+      ? new InvalidInputError(
+          'unsupported_build_type',
+          'Building from the repository is not supported yet: set build.type to image, with the image your CI builds.',
+          { field: '/build/type' },
+        )
+      : new InvalidInputError(
+          'unsupported_application_source',
+          'Only image applications (build.type: image) can be created for now.',
+        );
   assertConfigApplied(config);
   // Wildcards need DNS-01 (SPEC 2.2), which neither the agent nor the control plane offers yet.
   if (config.domains?.some((hostname) => hostname.startsWith('*.')))
@@ -124,7 +156,7 @@ export function applicationConfig(value: unknown): ApplicationConfig {
       'application_config_too_large',
       `The configuration exceeds ${String(MAX_APPLICATION_CONFIG_BYTES)} bytes.`,
     );
-  return { name: config.name, source: 'image', config, canonical };
+  return { name: config.name, source, config, canonical };
 }
 
 /**
@@ -132,9 +164,21 @@ export function applicationConfig(value: unknown): ApplicationConfig {
  * document without `domains`, which stay with the application that serves them. Secret names are
  * kept, so the copy shows which secrets the new environment still needs.
  */
-export function clonedConfig(config: ShipkeepConfig): ApplicationConfig {
+export function clonedConfig(
+  config: ShipkeepConfig,
+  source: ApplicationSource = 'image',
+): ApplicationConfig {
   const { domains: _domains, ...rest } = config;
-  return applicationConfig(rest);
+  return applicationConfig(rest, source);
+}
+
+/** A Git application's configuration is its repository's: the API does not replace it. */
+export function assertConfigEditable(application: Pick<Application, 'source'>): void {
+  if (application.source === 'git')
+    throw new ConflictError(
+      'application_config_in_repository',
+      "This application's configuration is the shipkeep.yml in its repository: change it there.",
+    );
 }
 
 /**

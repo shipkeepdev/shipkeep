@@ -68,11 +68,15 @@ export const GITHUB_API = Symbol('GithubApi');
 /** GitHub's REST API, as the organization's App (ADR 0031). */
 export interface GithubApi {
   appJwt(appId: number, privateKey: Secret, now: Date): Secret;
+  /**
+   * A token for an installation, scoped to what a call needs. Undefined when GitHub refuses the
+   * repositories asked for: they are not, or no longer, in the installation.
+   */
   installationToken(
     jwt: Secret,
     installationId: number,
     scope: TokenScope,
-  ): Promise<{ token: Secret; expiresAt: Date }>;
+  ): Promise<{ token: Secret; expiresAt: Date } | undefined>;
   repositories(
     token: Secret,
     installationId: number,
@@ -80,6 +84,17 @@ export interface GithubApi {
   ): Promise<{ repositories: GithubRepository[]; truncated: boolean }>;
   /** The commit a branch points to; undefined when the repository or branch is unknown. */
   branchHead(token: Secret, fullName: string, branch: string): Promise<string | undefined>;
+  /** A repository by GitHub's identifier; undefined when the token does not reach it. */
+  repository(
+    token: Secret,
+    installationId: number,
+    repositoryId: number,
+  ): Promise<GithubRepository | undefined>;
+  /**
+   * A file's text at a commit, at most the largest shipkeep.yml; undefined when the path does not
+   * name a file there. A larger file, or any other failure, is GitHub unavailable.
+   */
+  file(token: Secret, fullName: string, path: string, commit: string): Promise<string | undefined>;
   revoke(token: Secret): Promise<void>;
 }
 

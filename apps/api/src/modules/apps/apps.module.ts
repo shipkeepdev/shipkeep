@@ -4,6 +4,7 @@ import { AppConfig } from '../../platform/config/app-config';
 import { PrismaUnitOfWork } from '../../platform/prisma/prisma-unit-of-work';
 import { ConfirmationsModule } from '../confirmations/confirmations.module';
 import { FleetModule } from '../fleet/fleet.module';
+import { GitModule } from '../git/git.module';
 import { IdentityModule } from '../identity/identity.module';
 import { OrganizationsModule } from '../organizations/organizations.module';
 import { TenantAccessModule } from '../organizations/tenant-access.module';
@@ -32,6 +33,8 @@ import { ApplicationController } from './interface/application.controller';
     ConfirmationsModule,
     FleetModule,
     OrganizationsModule,
+    // A Git application's configuration is read from its repository.
+    GitModule,
   ],
   controllers: [ApplicationController],
   providers: [

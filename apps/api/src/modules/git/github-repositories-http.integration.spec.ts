@@ -76,6 +76,8 @@ describe('GitHub repositories over HTTP', () => {
         truncated: false,
       }),
     branchHead: () => Promise.resolve(undefined),
+    repository: () => Promise.resolve(undefined),
+    file: () => Promise.resolve(undefined),
     revoke: (token) => {
       revoked.push(token.expose());
       return Promise.resolve();

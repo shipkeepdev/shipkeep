@@ -82,9 +82,12 @@ export class GithubRepositories {
       try {
         // A JWT for each installation: it lasts nine minutes, a long listing may not.
         const jwt = this.github.appJwt(app.appId, app.privateKey, new Date());
-        const { token } = await this.github.installationToken(jwt, installationId, {
+        const minted = await this.github.installationToken(jwt, installationId, {
           permissions: { metadata: 'read' },
         });
+        // Asked for no repository, GitHub never refuses one; an empty answer is unreachable.
+        if (!minted) throw new ServiceUnavailableException();
+        const { token } = minted;
         try {
           const page = await this.github.repositories(token, installationId, room);
           repositories.push(...page.repositories);
