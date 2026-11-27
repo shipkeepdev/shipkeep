@@ -39,6 +39,9 @@ const REASONS: Readonly<Record<NonNullable<AgentAction['reason']>, string | null
   upgrade_unverified: 'release did not verify',
   upgrade_unavailable: 'release download failed',
   upgrade_in_progress: 'another upgrade not confirmed yet',
+  build_failed: 'build failed',
+  build_timeout: 'build took too long',
+  builder_unavailable: 'builder not answering',
   unknown: 'unknown error',
 };
 

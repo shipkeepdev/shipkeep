@@ -77,6 +77,7 @@ type handlerOptions struct {
 	routeBook       *RouteBook
 	upgrader        *Upgrader
 	exec            *execSettings
+	builds          *buildSettings
 	controlPlane    bool
 }
 
