@@ -211,6 +211,12 @@ describe('GitHub REST API as the App', () => {
 
 describe('the writes of a configuration change (#214)', () => {
   const commit = 'c'.repeat(40);
+  /** The JSON body a call sent. */
+  const sent = (call: { init: RequestInit } | undefined): unknown => {
+    const body = call?.init.body;
+    if (typeof body !== 'string') throw new Error('The call sent no text body.');
+    return JSON.parse(body) as unknown;
+  };
   const blob = 'b'.repeat(40);
   const encoded = (text: string) =>
     // GitHub cuts the base64 into lines of 60 characters.
@@ -269,18 +275,30 @@ describe('the writes of a configuration change (#214)', () => {
     );
     expect(calls[0]?.url).toBe('https://api.github.com/repos/acme-corp/web/git/refs');
     expect(calls[0]?.init.method).toBe('POST');
-    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({
+    expect(sent(calls[0])).toEqual({
       ref: 'refs/heads/shipkeep/config-1',
       sha: commit,
     });
+    // 422 means a taken name only when the branch is there.
+    const taken = github((url) =>
+      url.endsWith('/git/refs')
+        ? json(422, { message: 'Reference already exists' })
+        : json(200, { commit: { sha: commit } }),
+    );
     expect(
-      await github(() => json(422, { message: 'Reference already exists' })).client.createBranch(
-        token,
-        'acme-corp/web',
-        'shipkeep/config-1',
-        commit,
-      ),
+      await taken.client.createBranch(token, 'acme-corp/web', 'shipkeep/config-1', commit),
     ).toBe(false);
+    expect(taken.calls[1]?.url).toBe(
+      'https://api.github.com/repos/acme-corp/web/branches/shipkeep%2Fconfig-1',
+    );
+    const refused = github((url) =>
+      url.endsWith('/git/refs')
+        ? json(422, { message: 'Validation Failed' })
+        : new Response(null, { status: 404 }),
+    );
+    await expect(
+      refused.client.createBranch(token, 'acme-corp/web', 'shipkeep/config-1', commit),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 
   it('commits one file over the blob it read, and says when GitHub refuses it', async () => {
@@ -304,7 +322,7 @@ describe('the writes of a configuration change (#214)', () => {
     });
     expect(calls[0]?.url).toBe('https://api.github.com/repos/acme-corp/web/contents/shipkeep.yml');
     expect(calls[0]?.init.method).toBe('PUT');
-    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({
+    expect(sent(calls[0])).toEqual({
       message: change.message,
       content: Buffer.from(text).toString('base64'),
       sha: blob,
@@ -341,7 +359,7 @@ describe('the writes of a configuration change (#214)', () => {
       url: 'https://github.com/acme-corp/web/pull/42',
     });
     expect(calls[0]?.url).toBe('https://api.github.com/repos/acme-corp/web/pulls');
-    expect(JSON.parse(String(calls[0]?.init.body))).toEqual(request);
+    expect(sent(calls[0])).toEqual(request);
     expect(
       await github(() =>
         json(422, { message: 'A pull request already exists' }),

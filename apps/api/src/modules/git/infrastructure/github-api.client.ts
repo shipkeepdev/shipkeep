@@ -192,7 +192,7 @@ export class GithubApiClient implements GithubApi {
     commit: string,
   ): Promise<boolean> {
     if (!validRepository(fullName, branch) || !validCommit(commit)) throw githubUnavailable();
-    // GitHub answers 422 when the reference exists already.
+    // GitHub answers 422 when the reference exists already, among other refusals.
     const answer = await this.call(
       'POST',
       `/repos/${repositoryPath(fullName)}/git/refs`,
@@ -201,9 +201,11 @@ export class GithubApiClient implements GithubApi {
       'json',
       [422],
     );
-    if (answer.status === 422) return false;
-    if (answer.status !== 201) throw githubUnavailable();
-    return true;
+    if (answer.status === 201) return true;
+    // 422 also answers a validation or abuse check: the name is taken only if the branch exists.
+    if (answer.status === 422 && (await this.branchHead(token, fullName, branch)) !== undefined)
+      return false;
+    throw githubUnavailable();
   }
 
   async writeFile(
