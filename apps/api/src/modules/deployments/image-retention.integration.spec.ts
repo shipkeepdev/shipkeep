@@ -29,7 +29,7 @@ const sha256 = (data: Buffer) => `sha256:${createHash('sha256').update(data).dig
 describe('image retention with Distribution', () => {
   let fixture: Awaited<ReturnType<typeof tenantHttpFixture>>;
   let registry: Awaited<ReturnType<typeof distribution>> | undefined;
-  let admin: Client;
+  let admin: Client | undefined;
   let directory = '';
   let service = '';
 
@@ -42,12 +42,16 @@ describe('image retention with Distribution', () => {
     admin = new Client({ connectionString: fixture.databaseUrl });
     await admin.connect();
   });
+  // Whatever failed before, the fixture closes: its database role outlives it otherwise.
   afterAll(async () => {
     Reflect.deleteProperty(process.env, 'REGISTRY_JWKS_FILE');
-    await admin.end();
-    await registry?.stop();
-    await fixture.close();
-    await rm(directory, { recursive: true, force: true });
+    try {
+      await admin?.end();
+      await registry?.stop();
+    } finally {
+      await fixture.close();
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   /** A push token the control plane signs, as a build's grant buys one. */
@@ -126,7 +130,7 @@ describe('image retention with Distribution', () => {
         .post(`${fixture.environment}/applications/${applicationId}/deployments`, 'owner', {})
         .expect(201);
       if (number === 9) break;
-      await admin.query(
+      await admin?.query(
         `UPDATE deployments SET state = 'succeeded', finished_at = now() + make_interval(secs => $2)
          WHERE id = $1`,
         [(deployed.body as { deployment: { id: string } }).deployment.id, number],
