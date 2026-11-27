@@ -74,6 +74,60 @@ grep -qxF '    ip daddr 127.0.0.0/8 reject' <<<"$guard" || die 'loopback is not 
 grep -qxF '    ip6 daddr ::1 reject' <<<"$guard" || die 'IPv6 loopback is not refused'
 [[ $(grep -c ' return$' <<<"$guard") == 3 ]] || die 'unexpected exceptions'
 printf '' | egress_guard /system.slice/docker-0123.scope/shipkeep.slice | grep -qF 'level 3 "system.slice/docker-0123.scope/shipkeep.slice"' || die 'a nested cgroup'
+# The builder's rule (ADR 0030): public addresses only, the name servers on port 53, and the
+# server's own addresses on 443 alone, where its Caddy serves what the internet sees.
+guard=$(printf '127.0.0.53\n' | egress_guard /shipkeep.slice 997 127.0.0.53 10.0.0.2 2001:db8::53) || die 'the guard with a builder was refused'
+grep -qxF '    meta skuid 997 ct state new jump build' <<<"$guard" || die 'the builder is not matched'
+build_chain=$(sed -n '/chain build {/,/^  }/p' <<<"$guard")
+# shellcheck disable=SC2154 # build_blocked_ipv4 and build_blocked_ipv6 are set by deploy/install.sh, sourced above.
+for rule in \
+  '    meta l4proto { tcp, udp } ct original ip daddr 127.0.0.53 ct original proto-dst 53 return' \
+  '    meta l4proto { tcp, udp } ct original ip daddr 10.0.0.2 ct original proto-dst 53 return' \
+  '    meta l4proto { tcp, udp } ct original ip6 daddr 2001:db8::53 ct original proto-dst 53 return' \
+  '    fib daddr type local tcp dport 443 return' \
+  '    fib daddr type local reject' \
+  "    ip daddr { $build_blocked_ipv4 } reject" \
+  "    ip6 daddr { $build_blocked_ipv6 } reject"; do
+  grep -qxF -- "$rule" <<<"$build_chain" || die "the build rule misses: $rule"
+done
+[[ $(grep -c ' return$' <<<"$build_chain") == 4 ]] || die 'unexpected exceptions for builds'
+# Its exceptions come first, then the refusals.
+[[ $(grep -n 'fib daddr type local reject' <<<"$build_chain" | cut -d: -f1) -gt $(grep -n 'dport 443 return' <<<"$build_chain" | cut -d: -f1) ]] || die 'the own-address refusal comes before its exception'
+! grep -q 'chain build' <<<"$(printf '' | egress_guard /shipkeep.slice)" || die 'a build chain without a builder'
+# shellcheck disable=SC2016
+for uid in 0 -1 abc '997; drop' 12345678901 ' 997'; do
+  refused egress_guard /shipkeep.slice "$uid" </dev/null || die "accepted the builder id $uid"
+done
+# shellcheck disable=SC2016
+for server in '1.2.3.4; drop' '$(id)' 'example.com' '1.2.3.4 }' ''; do
+  refused egress_guard /shipkeep.slice 997 "$server" </dev/null || die "accepted the name server $server"
+done
+cat >"$work/resolv-all.conf" <<'RESOLV'
+nameserver 10.0.0.2
+nameserver 127.0.0.53 # the stub
+nameserver 2001:4860:4860::8888
+nameserver 999.1.1.1
+nameserver 010.000.000.002
+nameserver 1.1.1.1 extra
+# nameserver 9.9.9.9
+nameserver $(id)
+search example.com
+RESOLV
+[[ $(resolv_nameservers "$work/resolv-all.conf" | tr '\n' ' ') == '10.0.0.2 127.0.0.53 2001:4860:4860::8888 10.0.0.2 ' ]] || die "name servers: $(resolv_nameservers "$work/resolv-all.conf" | tr '\n' ' ')"
+# The builder's 65536 subordinate ids start after every range already given, at 100000 at least.
+printf 'ubuntu:100000:65536\nother:300000:10\nbroken:x:1\n' >"$work/subuid"
+printf 'group:200000:65536\n' >"$work/subgid"
+[[ $(subordinate_start "$work/subuid" "$work/subgid") == 300010 ]] || die 'a subordinate range overlaps'
+[[ $(subordinate_start "$work/none" "$work/none") == 100000 ]] || die 'no subordinate range to start from'
+# The builder runs as shipkeep-build, loads the guard first, and never touches Docker.
+unit=$(builder_unit)
+for line in 'User=shipkeep-build' 'Group=shipkeep-build' 'Delegate=yes' 'Requires=shipkeep.slice' 'ExecStartPre=+/usr/sbin/nft --file /etc/shipkeep-egress.nft' 'OOMScoreAdjust=1000'; do
+  grep -qxF "$line" <<<"$unit" || die "the builder unit misses $line"
+done
+! grep -qi docker <<<"$unit" || die 'the builder unit names Docker'
+grep -qF -- '--disable-host-loopback' <<<"$unit" || die "the builder reaches the host's loopback"
+# shellcheck disable=SC2154 # the BuildKit pins are set by deploy/install.sh, sourced above.
+[[ $buildkit_amd64_sha256 =~ ^[0-9a-f]{64}$ && $buildkit_arm64_sha256 =~ ^[0-9a-f]{64}$ && $buildkit_version =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die 'BuildKit is not pinned'
 # shellcheck disable=SC2016
 for cgroup in '' / shipkeep.slice /system.slice/docker.service /system.slice/evil.slice /shipkeep.slice/docker.service '/shipkeep.slice"' '/shipkeep.slice; drop' $'/shipkeep.slice\n' '/$(id)/shipkeep.slice' '/system slice/shipkeep.slice'; do
   refused egress_guard "$cgroup" </dev/null || die "accepted the cgroup $cgroup"
