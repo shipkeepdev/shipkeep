@@ -1786,7 +1786,7 @@ export type components = {
             readonly totp?: string;
         };
         readonly CreateApplicationDto: {
-            /** @description The shipkeep.yml document as JSON (SPEC 2), validated against the schema. Only build.type image is accepted for now. Secrets are listed by name; values are set through the secrets API. */
+            /** @description The shipkeep.yml document as JSON (SPEC 2), validated against the schema. Only build.type image is accepted here: an application built from its repository is created from it. Secrets are listed by name; values are set through the secrets API. */
             readonly config: {
                 readonly [key: string]: unknown;
             };
@@ -2623,7 +2623,7 @@ export type components = {
             readonly actionId: string;
         };
         readonly UpdateApplicationConfigDto: {
-            /** @description The shipkeep.yml document as JSON (SPEC 2), validated against the schema. Only build.type image is accepted for now. Secrets are listed by name; values are set through the secrets API. */
+            /** @description The shipkeep.yml document as JSON (SPEC 2), validated against the schema. Only build.type image is accepted here: an application built from its repository is created from it. Secrets are listed by name; values are set through the secrets API. */
             readonly config: {
                 readonly [key: string]: unknown;
             };

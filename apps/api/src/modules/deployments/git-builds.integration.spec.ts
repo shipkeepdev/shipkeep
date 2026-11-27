@@ -1,6 +1,6 @@
 import { fromBinary } from '@bufbuild/protobuf';
 import { Secret } from '@shipkeep/domain';
-import { ActionRequestSchema } from '@shipkeep/proto-ts';
+import { ActionRequestSchema, BuildType } from '@shipkeep/proto-ts';
 import { Client } from 'pg';
 
 import { AppConfig } from '../../platform/config/app-config';
@@ -37,6 +37,8 @@ build:
 run:
   port: 3000
 `;
+/** The configuration GitHub serves: a Dockerfile build, or another one a test asks for. */
+let served = CONFIG;
 const basic = (user: string, password: string) =>
   `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`;
 
@@ -82,7 +84,7 @@ describe('deployments built from a repository', () => {
         private: true,
       }),
     branchHead: () => Promise.resolve(HEAD),
-    file: () => Promise.resolve(CONFIG),
+    file: () => Promise.resolve(served),
     revoke: () => Promise.resolve(),
   };
 
@@ -267,5 +269,36 @@ describe('deployments built from a repository', () => {
     expect(
       JSON.stringify(await auditLog().findMany({ where: { targetId: applicationId } })),
     ).not.toContain(TOKEN);
+  });
+
+  it('asks the server to build with Nixpacks, with no Dockerfile', async () => {
+    served =
+      'version: 1\nname: nixpacks-api\nbuild:\n  type: nixpacks\n  context: ./web/\nrun:\n  port: 3000\n';
+    try {
+      const created = await fixture
+        .post(`${fixture.environment}/applications/github`, 'owner', {
+          installationId: 41,
+          repositoryId: 778,
+          branch: 'main',
+        })
+        .expect(201);
+      const applicationId = (created.body as { id: string }).id;
+      const deployed = await fixture
+        .post(`${fixture.environment}/applications/${applicationId}/deployments`, 'owner', {})
+        .expect(201);
+      const { deployment } = deployed.body as { deployment: { id: string } };
+      await fixture.app.get(DeploymentPipeline).run(fixture.organizationId, deployment.id);
+      const build = await queued(`d:${deployment.id}:build`);
+      if (build?.case !== 'buildImage') throw new Error('no build was queued');
+      expect(build.value).toMatchObject({
+        buildType: BuildType.NIXPACKS,
+        context: 'web',
+        dockerfile: '',
+        commitSha: HEAD,
+        targetRef: `${host()}/${fixture.organizationId}/${applicationId}:1`,
+      });
+    } finally {
+      served = CONFIG;
+    }
   });
 });

@@ -47,7 +47,6 @@ describe('applications from a GitHub repository over HTTP', () => {
   };
   const files: Record<string, string> = {
     'shipkeep.yml': config(`{ type: image, image: "${IMAGE}" }`),
-    'deploy/build.yaml': config('{ type: railpack }'),
     'bad.yml': 'version: 1\nname: [unclosed\n',
   };
   const github: GithubApi = {
@@ -149,7 +148,6 @@ describe('applications from a GitHub repository over HTTP', () => {
     await refused({ configPath: 'missing.yml' }, 400, 'github_config_not_found');
     const invalid = await refused({ configPath: 'bad.yml' }, 400, 'invalid_application_config');
     expect(invalid).toMatchObject({ details: { commit: HEAD } });
-    await refused({ configPath: 'deploy/build.yaml' }, 400, 'unsupported_build_type');
     expect(revoked).toHaveLength(scopes.length);
 
     const created = await create({}).expect(201);

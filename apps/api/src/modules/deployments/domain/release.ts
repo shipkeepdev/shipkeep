@@ -59,11 +59,11 @@ export function releaseDraft(
   const release = config.release !== undefined;
   if (config.build?.type === 'image' && config.build.image)
     return { image: config.build.image, plan: { build: false, release }, secrets };
-  if (config.build?.type === 'dockerfile' && built)
+  if (config.build && config.build.type !== 'image' && built)
     return { image: built.repository, plan: { build: true, release }, secrets };
   throw new InvalidInputError(
     'unsupported_application_source',
-    'Only image applications, and applications built from their repository with a Dockerfile, can be deployed for now.',
+    'Only image applications, and applications built from their repository, can be deployed.',
   );
 }
 

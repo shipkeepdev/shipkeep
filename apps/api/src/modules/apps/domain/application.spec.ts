@@ -80,17 +80,18 @@ describe('applicationConfig', () => {
       expect(rejection(unsupported).code).toBe('unsupported_application_source');
   });
 
-  it("reads a Git application's configuration as such, and refuses a build until builds land", () => {
+  it("reads a Git application's configuration as such, built with a Dockerfile, Railpack or Nixpacks", () => {
     expect(applicationConfig(image(), 'git')).toMatchObject({ source: 'git', name: 'billing-api' });
     expect(applicationConfig(image()).source).toBe('image');
-    let refused: unknown;
-    try {
-      applicationConfig(image({ build: { type: 'railpack' } }), 'git');
-    } catch (error: unknown) {
-      refused = error;
+    for (const type of ['dockerfile', 'railpack', 'nixpacks']) {
+      expect(applicationConfig(image({ build: { type } }), 'git').config.build).toEqual({ type });
+      // Without a repository, there is nothing to build.
+      expect(rejection(image({ build: { type } })).code).toBe('unsupported_application_source');
     }
-    expect(refused).toBeInstanceOf(InvalidInputError);
-    expect((refused as InvalidInputError).code).toBe('unsupported_build_type');
+    // Railpack and Nixpacks write their own build: a Dockerfile path is refused by the schema.
+    expect(rejection(image({ build: { type: 'nixpacks', dockerfile: 'Dockerfile' } })).code).toBe(
+      'invalid_application_config',
+    );
     expect(
       clonedConfig(applicationConfig(image({ domains: ['a.example.com'] })).config, 'git'),
     ).toMatchObject({

@@ -120,8 +120,8 @@ export function assertConfigApplied(config: ShipkeepConfig): void {
  * Validates a `shipkeep.yml` document (already parsed) for an application, whether it was sent to
  * the API or read from its repository. An application created with an image names a built image
  * (`build.type: image`); one whose configuration is a repository's may also be built from that
- * repository with its Dockerfile (ADR 0030). Railpack and Nixpacks follow. Errors list JSON
- * pointers and schema messages, never input values.
+ * repository, with its Dockerfile, Railpack or Nixpacks (ADR 0030). Errors list JSON pointers and
+ * schema messages, never input values.
  */
 export function applicationConfig(
   value: unknown,
@@ -133,18 +133,11 @@ export function applicationConfig(
       issues: result.issues.slice(0, MAX_REPORTED_ISSUES),
     });
   const config = result.config;
-  const type = config.build?.type;
-  if (type !== 'image' && !(source === 'git' && type === 'dockerfile'))
-    throw source === 'git'
-      ? new InvalidInputError(
-          'unsupported_build_type',
-          'Railpack and Nixpacks builds are not supported yet: build with a Dockerfile (build.type: dockerfile), or set build.type to image with the image your CI builds.',
-          { field: '/build/type' },
-        )
-      : new InvalidInputError(
-          'unsupported_application_source',
-          'An application created without a repository runs an image (build.type: image): to build one, create the application from its repository.',
-        );
+  if (config.build?.type !== 'image' && source !== 'git')
+    throw new InvalidInputError(
+      'unsupported_application_source',
+      'An application created without a repository runs an image (build.type: image): to build one, create the application from its repository.',
+    );
   assertConfigApplied(config);
   // Wildcards need DNS-01 (SPEC 2.2), which neither the agent nor the control plane offers yet.
   if (config.domains?.some((hostname) => hostname.startsWith('*.')))
