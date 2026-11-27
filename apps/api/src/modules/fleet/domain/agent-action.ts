@@ -125,6 +125,9 @@ export const ACTION_REASONS = [
   'upgrade_unverified',
   'upgrade_unavailable',
   'upgrade_in_progress',
+  'build_failed',
+  'build_timeout',
+  'builder_unavailable',
   'unknown',
 ] as const;
 export type ActionReason = (typeof ACTION_REASONS)[number];
@@ -156,6 +159,10 @@ const AGENT_ERRORS: Readonly<Record<string, ActionReason>> = {
   'the release archive did not verify': 'upgrade_unverified',
   'the release archive could not be downloaded': 'upgrade_unavailable',
   'another upgrade of the agent is not confirmed yet': 'upgrade_in_progress',
+  // Why a BuildImage failed (ADR 0030): the build's output says more.
+  'the build failed: its output says why': 'build_failed',
+  'the build did not finish in time': 'build_timeout',
+  "the server's builder does not answer": 'builder_unavailable',
 };
 /** The causes of a failed step: the only reasons an undone (compensated) action is given. */
 const STEP_CAUSES: ReadonlySet<ActionReason> = new Set([
@@ -173,6 +180,9 @@ const STEP_CAUSES: ReadonlySet<ActionReason> = new Set([
   'upgrade_unverified',
   'upgrade_unavailable',
   'upgrade_in_progress',
+  'build_failed',
+  'build_timeout',
+  'builder_unavailable',
 ]);
 
 /**

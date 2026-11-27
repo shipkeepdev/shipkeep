@@ -107,6 +107,25 @@ describe('agent action rows', () => {
     }
   });
 
+  it('says why a build failed, in French too (ADR 0030)', () => {
+    const labels = {
+      build_failed: 'build failed',
+      build_timeout: 'build took too long',
+      builder_unavailable: 'builder not answering',
+    } as const;
+    for (const [reason, label] of Object.entries(labels)) {
+      const row = agentActionRow({
+        ...base,
+        kind: 'buildImage',
+        state: 'compensated',
+        outcome: 'compensated',
+        reason: reason as keyof typeof labels,
+      });
+      expect(row.reason).toBe(label);
+      expect(FR[label], label).toBeTruthy();
+    }
+  });
+
   it('says why a pull was undone, in French too, and why a deployment failed', () => {
     const undone = (reason: AgentAction['reason']) =>
       agentActionRow({

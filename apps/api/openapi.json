@@ -7192,6 +7192,9 @@
               "upgrade_unverified",
               "upgrade_unavailable",
               "upgrade_in_progress",
+              "build_failed",
+              "build_timeout",
+              "builder_unavailable",
               "unknown",
               null
             ],
@@ -9493,6 +9496,9 @@
               "upgrade_unverified",
               "upgrade_unavailable",
               "upgrade_in_progress",
+              "build_failed",
+              "build_timeout",
+              "builder_unavailable",
               "unknown",
               null
             ]

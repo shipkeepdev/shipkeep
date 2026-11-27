@@ -57,12 +57,12 @@ func TestRealBuildKitBuildsAndPushesARepositoryAtItsCommit(t *testing.T) {
 		t.Fatalf("output:\n%s", output)
 	}
 	// The registry holds the tag, at the digest the build answered.
-	request, err := http.NewRequestWithContext(ctx, http.MethodHead, registryURL+"/v2/it/app/manifests/"+commit[:12], nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodHead, registryURL+"/v2/it/app/manifests/"+commit[:12], nil) //nolint:gosec // the test's own registry, from its environment
 	if err != nil {
 		t.Fatal(err)
 	}
 	request.Header.Set("Accept", "application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json")
-	response, err := http.DefaultClient.Do(request)
+	response, err := http.DefaultClient.Do(request) //nolint:gosec // the test's own registry, from its environment
 	if err != nil {
 		t.Fatal(err)
 	}
