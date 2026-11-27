@@ -145,10 +145,39 @@ jobs:
           address=$(docker inspect --format '{{(index .NetworkSettings.Networks "sk-it").IPAddress}}' sk-it-caddy)
           echo "SHIPKEEP_IT_CADDY_ADMIN=$RUNNER_TEMP/caddy/admin.sock" >> "$GITHUB_ENV"
           echo "SHIPKEEP_IT_CADDY_ADDRESS=$address:80" >> "$GITHUB_ENV"
-      - run: go test -tags integration -count=1 -v -run '^TestReal' ./agent/internal/actions/ ./agent/internal/docker/ ./agent/internal/logship/
-      - name: Caddy logs
+      - name: Start BuildKit and a registry on the test network
+        # ADR 0030: BuildKit builds this repository from GitHub at the commit under test and pushes
+        # to a registry it reaches over plain HTTP on the test network.
+        env:
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/buildkit"
+          printf '[registry."sk-it-registry:5000"]\n  http = true\n' > "$RUNNER_TEMP/buildkit/buildkitd.toml"
+          registry=$(sed -n 's/^ *image: \(registry:[^ ]*\)$/\1/p' deploy/control-plane/compose.yml)
+          test -n "$registry"
+          docker run -d --name sk-it-registry --network sk-it -p 127.0.0.1:5000:5000 "$registry"
+          docker run -d --name sk-it-buildkit --network sk-it --privileged -p 127.0.0.1:1234:1234 \
+            -v "$RUNNER_TEMP/buildkit/buildkitd.toml:/etc/buildkit/buildkitd.toml:ro" \
+            moby/buildkit:v0.35.1@sha256:baf6138eb8c37644800c7c913fba051e840ebb9ba13eaf92d92ef9a1712d0b4c --addr tcp://0.0.0.0:1234
+          for _ in $(seq 1 30); do
+            docker logs sk-it-buildkit 2>&1 | grep -q 'running server' && break
+            sleep 1
+          done
+          {
+            echo "SHIPKEEP_IT_BUILDKIT=tcp://127.0.0.1:1234"
+            echo "SHIPKEEP_IT_BUILD_REGISTRY=sk-it-registry:5000"
+            echo "SHIPKEEP_IT_BUILD_REGISTRY_URL=http://127.0.0.1:5000"
+            echo "SHIPKEEP_IT_BUILD_REPOSITORY=https://github.com/$REPOSITORY.git"
+            echo "SHIPKEEP_IT_BUILD_COMMIT=$COMMIT"
+          } >> "$GITHUB_ENV"
+      - run: go test -tags integration -count=1 -v -run '^TestReal' ./agent/internal/actions/ ./agent/internal/docker/ ./agent/internal/logship/ ./agent/internal/buildkit/
+      - name: Caddy, BuildKit and registry logs
         if: failure()
-        run: docker logs sk-it-caddy
+        run: |
+          docker logs sk-it-caddy
+          docker logs sk-it-buildkit
+          docker logs sk-it-registry
 
   generated-code:
     name: Generated code is up to date

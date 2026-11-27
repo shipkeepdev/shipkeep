@@ -15,6 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/shipkeepdev/shipkeep/agent/internal/actions"
+	"github.com/shipkeepdev/shipkeep/agent/internal/buildkit"
 	"github.com/shipkeepdev/shipkeep/agent/internal/caddy"
 	"github.com/shipkeepdev/shipkeep/agent/internal/certwatch"
 	"github.com/shipkeepdev/shipkeep/agent/internal/config"
@@ -137,6 +138,10 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	// Sessions end with this gateway run, each saying so, before the journal closes.
 	defer sessions.Close()
 	options = append(options, actions.WithExec(actions.DockerExec(engine), execStreams{streams}, sessions))
+	// Builds with the server's rootless BuildKit (ADR 0030), in their own lane (ADR 0032). Their
+	// output joins the log stream in the next step of #215; until then it goes nowhere, never to
+	// the agent's own log, which a build's output must not reach.
+	options = append(options, actions.WithBuilds(buildkit.Client{Address: "unix://" + a.cfg.Build.Socket}, discardBuildLines{}))
 	// Node, container and route metrics, sent on the stream when the control plane accepts them.
 	sampler := &metrics.Sampler{Containers: engine, Proc: "/proc", Sys: "/sys", Logger: a.logger}
 	if ownsCaddy(a.cfg.Node.Role) {
@@ -193,6 +198,12 @@ func shipLogs(streams *gateway.Streams, shipper *logship.Shipper, logger *slog.L
 }
 
 // execStreams opens exec sessions' streams on the gateway session's connection.
+// discardBuildLines drops build output until the log stream carries it (ADR 0032).
+type discardBuildLines struct{}
+
+// Line drops the line.
+func (discardBuildLines) Line(string, string) {}
+
 type execStreams struct{ streams *gateway.Streams }
 
 // OpenExec opens an ExecStream, which ends with ctx or with the session's connection.

@@ -1476,7 +1476,7 @@ export type components = {
              */
             readonly outcome: "in_progress" | "succeeded" | "refused" | "failed" | "expired" | "cancelled" | "compensated";
             /** @enum {string|null} */
-            readonly reason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "registry_denied" | "image_not_found" | "registry_unreachable" | "registry_untrusted" | "disk_full" | "image_volume_undeclared" | "egress_unguarded" | "container_name_taken" | "upgrade_dev_build" | "upgrade_not_newer" | "upgrade_unit_outdated" | "upgrade_unverified" | "upgrade_unavailable" | "upgrade_in_progress" | "unknown" | null;
+            readonly reason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "registry_denied" | "image_not_found" | "registry_unreachable" | "registry_untrusted" | "disk_full" | "image_volume_undeclared" | "egress_unguarded" | "container_name_taken" | "upgrade_dev_build" | "upgrade_not_newer" | "upgrade_unit_outdated" | "upgrade_unverified" | "upgrade_unavailable" | "upgrade_in_progress" | "build_failed" | "build_timeout" | "builder_unavailable" | "unknown" | null;
             readonly result: components["schemas"]["AgentActionResultDto"] | null;
             /** @enum {string} */
             readonly state: "queued" | "pending" | "running" | "succeeded" | "failed" | "cancelled" | "compensating" | "compensated" | "expired";
@@ -1528,7 +1528,7 @@ export type components = {
              * @description Why the agent refused or failed the upgrade, when `reason` is `action_failed`.
              * @enum {string|null}
              */
-            readonly actionReason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "registry_denied" | "image_not_found" | "registry_unreachable" | "registry_untrusted" | "disk_full" | "image_volume_undeclared" | "egress_unguarded" | "container_name_taken" | "upgrade_dev_build" | "upgrade_not_newer" | "upgrade_unit_outdated" | "upgrade_unverified" | "upgrade_unavailable" | "upgrade_in_progress" | "unknown" | null;
+            readonly actionReason: "malformed_request" | "unsupported_action" | "stale_lease_epoch" | "invalid_input" | "idempotency_conflict" | "deadline_exceeded" | "action_failed" | "registry_denied" | "image_not_found" | "registry_unreachable" | "registry_untrusted" | "disk_full" | "image_volume_undeclared" | "egress_unguarded" | "container_name_taken" | "upgrade_dev_build" | "upgrade_not_newer" | "upgrade_unit_outdated" | "upgrade_unverified" | "upgrade_unavailable" | "upgrade_in_progress" | "build_failed" | "build_timeout" | "builder_unavailable" | "unknown" | null;
             /**
              * Format: uuid
              * @description The server whose turn it was.

@@ -63,6 +63,10 @@ describe('summarizeAction', () => {
       'the release archive did not verify': 'upgrade_unverified',
       'the release archive could not be downloaded': 'upgrade_unavailable',
       'another upgrade of the agent is not confirmed yet': 'upgrade_in_progress',
+      // BuildImage (ADR 0030)
+      'the build failed: its output says why': 'build_failed',
+      'the build did not finish in time': 'build_timeout',
+      "the server's builder does not answer": 'builder_unavailable',
     } as const;
     for (const [error, reason] of Object.entries(causes)) {
       // A failed step is usually undone, so its action ends compensated.

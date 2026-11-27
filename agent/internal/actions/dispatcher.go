@@ -50,6 +50,9 @@ var failureTexts = map[string]string{
 	causeUpgradeUnverified:          "the release archive did not verify",
 	causeUpgradeUnavailable:         "the release archive could not be downloaded",
 	causeUpgradeInProgress:          "another upgrade of the agent is not confirmed yet",
+	causeBuildFailed:                "the build failed: its output says why",
+	causeBuildTimeout:               "the build did not finish in time",
+	causeBuilderUnavailable:         "the server's builder does not answer",
 }
 
 // failureText is the fixed text for a failed operation: its cause when the agent lists it.

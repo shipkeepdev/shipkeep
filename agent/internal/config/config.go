@@ -33,6 +33,7 @@ type Config struct {
 	Paths        Paths        `yaml:"paths"`
 	Docker       Docker       `yaml:"docker"`
 	Caddy        Caddy        `yaml:"caddy"`
+	Build        Build        `yaml:"build"`
 	Log          Log          `yaml:"log"`
 	Intervals    Intervals    `yaml:"intervals"`
 
@@ -151,6 +152,13 @@ type Caddy struct {
 	AdminSocket string `yaml:"admin_socket"`
 }
 
+// Build configures the server's builder (ADR 0030).
+type Build struct {
+	// Socket is the Unix socket of the rootless BuildKit daemon the installer runs as
+	// shipkeep-build. A server without it answers each build that its builder does not answer.
+	Socket string `yaml:"socket"`
+}
+
 // Log configures structured logging.
 type Log struct {
 	// Level is one of debug, info, warn, error.
@@ -175,6 +183,7 @@ func Default() Config {
 		},
 		Docker: Docker{Host: "unix:///var/run/docker.sock"},
 		Caddy:  Caddy{AdminSocket: "/run/shipkeep/caddy-admin.sock"},
+		Build:  Build{Socket: "/run/shipkeep-build/buildkitd.sock"},
 		Log:    Log{Level: "info", Format: "json"},
 		Intervals: Intervals{
 			Heartbeat: 5 * time.Second,
@@ -192,6 +201,7 @@ func DevDefault(baseDir string) Config {
 	cfg.Paths.StateDir = filepath.Join(baseDir, "state")
 	cfg.Paths.RunDir = filepath.Join(baseDir, "run")
 	cfg.Caddy.AdminSocket = filepath.Join(baseDir, "run", "caddy-admin.sock")
+	cfg.Build.Socket = filepath.Join(baseDir, "run", "buildkitd.sock")
 	cfg.Log.Level = "debug"
 	cfg.Log.Format = "text"
 	return cfg
@@ -324,6 +334,7 @@ func (c Config) Validate() error {
 		"paths.state_dir":    c.Paths.StateDir,
 		"paths.run_dir":      c.Paths.RunDir,
 		"caddy.admin_socket": c.Caddy.AdminSocket,
+		"build.socket":       c.Build.Socket,
 	} {
 		if err := validatePath(p); err != nil {
 			add("%s: %v", name, err)
