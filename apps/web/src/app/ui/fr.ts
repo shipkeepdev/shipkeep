@@ -729,6 +729,12 @@ export const FR: Readonly<Record<string, string>> = {
   'refused since {since} · certificate valid until {until}':
     "refusé depuis le {since} · certificat valable jusqu'au {until}",
   'Re-adopt': 'Réadopter',
+  certificate: 'certificat',
+  'Check first that {name} holds this certificate: on that server, this command prints serial={serial}.':
+    'Vérifiez d’abord que {name} détient ce certificat : sur ce serveur, cette commande affiche serial={serial}.',
+  'Command to read the serial': 'Commande pour lire le numéro de série',
+  'The certificate waiting for {name} changed before it was re-adopted, and nothing was re-adopted. Check the new serial on the server before you re-adopt it.':
+    'Le certificat en attente pour {name} a changé avant sa réadoption, et rien n’a été réadopté. Vérifiez le nouveau numéro de série sur le serveur avant de le réadopter.',
   'Re-adopt {name}': 'Réadopter {name}',
   'Re-adopting…': 'Réadoption…',
   'Your password is required: {name} gets back what this organization lets a server do.':
