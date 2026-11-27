@@ -2120,6 +2120,7 @@ export const FR: Readonly<Record<string, string>> = {
     'Il part sur une branche à lui, dans une pull request vers {branch}.',
   'Writing…': 'Écriture…',
   'Commit to {branch}': 'Commiter sur {branch}',
+  'Back to editing': 'Revenir à l’édition',
   'This draft leaves the file as it is: there is nothing to write.':
     'Ce brouillon laisse le fichier tel quel : il n’y a rien à écrire.',
   'The latest file is loaded. Your draft is unchanged: review it again.':

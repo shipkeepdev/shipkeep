@@ -131,6 +131,12 @@ export class RepositoryConfigStore {
     await this.load(true);
   }
 
+  /** Leaves the review: the draft stays as it was, to edit further. */
+  back(): void {
+    if (this.runner.busy()) return;
+    this.clear();
+  }
+
   /** After a conflict: reads the file again, and keeps the draft to review against it. */
   async reload(): Promise<void> {
     if (this.runner.busy()) return;

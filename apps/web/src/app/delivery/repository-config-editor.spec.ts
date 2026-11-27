@@ -157,6 +157,8 @@ describe("a Git application's shipkeep.yml, edited here (#214)", () => {
     expect(diff).toContain('+ scale:');
     expect(diff).toContain('+   replicas: 3');
     expect(page.text()).toContain('It goes to a branch of its own, in a pull request into main.');
+    // The review replaced its button: the focus is on the next step.
+    expect(document.activeElement).toBe(page.button('Open a pull request'));
     page.button('Open a pull request')?.click();
     await page.settle();
     expect(page.api.changeRepositoryConfig).toHaveBeenCalledWith(
@@ -168,6 +170,7 @@ describe("a Git application's shipkeep.yml, edited here (#214)", () => {
     expect(page.text()).toContain(
       'Pull request #12 opened. Merging it into main deploys the change.',
     );
+    expect(document.activeElement?.getAttribute('role')).toBe('status');
     expect(page.root().querySelector<HTMLAnchorElement>('a[href]')?.href).toBe(
       'https://github.com/acme-corp/billing/pull/12',
     );
@@ -175,6 +178,18 @@ describe("a Git application's shipkeep.yml, edited here (#214)", () => {
     expect(page.root().querySelector('pre')).toBeNull();
     expect(page.editor()?.value).toBe(TEXT);
     expect(page.api.repositoryConfig).toHaveBeenCalledTimes(2);
+  });
+
+  it('goes back to the draft from a review, with the focus in the editor', async () => {
+    const page = setup();
+    await page.settle();
+    page.type(`${TEXT}scale:\n  replicas: 3\n`);
+    await page.review();
+    page.button('Back to editing')?.click();
+    await page.settle();
+    expect(page.root().querySelector('pre')).toBeNull();
+    expect(page.editor()?.value).toBe(`${TEXT}scale:\n  replicas: 3\n`);
+    expect(document.activeElement).toBe(page.editor());
   });
 
   it('commits when the project says so', async () => {
