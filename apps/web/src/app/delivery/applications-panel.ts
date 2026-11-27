@@ -13,6 +13,7 @@ import { type ConfigIssue, parseShipkeepConfig } from '@shipkeep/config-schema';
 
 import { deploymentStatus } from '../dashboard/format';
 import { MutationRunner } from '../identity/mutation-runner';
+
 import { Icon } from '../shell/icon';
 import { IssueText } from '../ui/config-issue';
 import { T } from '../ui/i18n';
@@ -25,6 +26,7 @@ import {
   type Deployment,
   type EnvironmentRef,
 } from './delivery-api';
+import { GithubApplicationForm } from './github-application-form';
 
 /** Starting point for a new application: an image, a port and a health check. */
 export const EXAMPLE_CONFIG = `version: 1
@@ -43,7 +45,7 @@ run:
 /** Applications of an environment, and creating one from a shipkeep.yml document. */
 @Component({
   selector: 'sk-applications-panel',
-  imports: [Icon, IssueText, ReactiveFormsModule, RouterLink, T],
+  imports: [GithubApplicationForm, Icon, IssueText, ReactiveFormsModule, RouterLink, T],
   providers: [MutationRunner],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -181,6 +183,8 @@ run:
           </div>
         </form>
       </section>
+
+      <sk-github-application-form [environment]="environment()" (created)="created()" />
     </div>
   `,
 })
@@ -248,9 +252,17 @@ export class ApplicationsPanel {
     if (applied && load === this.#loads && this.environment() === ref) this.loadedFor.set(ref);
   }
 
+  /** What the application deploys: its repository and branch, or its image. */
   protected image(application: Application): string {
+    if (application.repository)
+      return `${application.repository.fullName} · ${application.repository.branch}`;
     const build = (application.config as { build?: { image?: unknown } }).build;
     return typeof build?.image === 'string' ? build.image : application.source;
+  }
+
+  /** An application created from GitHub: the list shows it. */
+  protected async created(): Promise<void> {
+    await this.reload(this.environment());
   }
 
   protected async create(): Promise<void> {

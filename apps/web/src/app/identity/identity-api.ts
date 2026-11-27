@@ -20,20 +20,31 @@ type Result<T> = { data?: T; error?: unknown; response: Response };
 export interface RequestProblem {
   readonly code: string;
   readonly index?: number;
+  /** A GitHub App's page, when GitHub created an App the control plane could not keep. */
+  readonly appUrl?: string;
 }
 
-/** Reads `{ code, details: { index } }` from an RFC 9457 body, or undefined. */
+const GITHUB_APP_PAGE = /^https:\/\/github\.com\/apps\/[a-z0-9-]{1,64}$/;
+
+/** Reads `{ code, details: { index, appUrl } }` from an RFC 9457 body, or undefined. */
 export function requestProblem(body: unknown): RequestProblem | undefined {
   if (typeof body !== 'object' || body === null) return undefined;
   const { code, details } = body as { code?: unknown; details?: unknown };
   if (typeof code !== 'string' || !/^[a-z][a-z0-9_]{0,63}$/.test(code)) return undefined;
-  const index =
+  const fields =
     typeof details === 'object' && details !== null
-      ? (details as { index?: unknown }).index
-      : undefined;
-  return typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < 1000
-    ? { code, index }
-    : { code };
+      ? (details as { index?: unknown; appUrl?: unknown })
+      : {};
+  const index = fields.index;
+  const appUrl = fields.appUrl;
+  return {
+    code,
+    ...(typeof index === 'number' && Number.isInteger(index) && index >= 0 && index < 1000
+      ? { index }
+      : {}),
+    // Only a GitHub App page is ever linked from a refusal.
+    ...(typeof appUrl === 'string' && GITHUB_APP_PAGE.test(appUrl) ? { appUrl } : {}),
+  };
 }
 
 /** The refusal of an installation without SMTP (ADR 0020): starting again cannot change it. */
