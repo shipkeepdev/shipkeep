@@ -1,4 +1,4 @@
-import type { LogLine } from './delivery-api';
+import type { BuildLine, LogLine } from './delivery-api';
 
 /** Lines the view keeps; older ones scroll away. */
 export const MAX_LINES = 1000;
@@ -49,8 +49,8 @@ export function overlapFrom(newest: string): string {
 export const FORWARD_ROUNDS = 5;
 
 /** What a forward read found, and where the next one goes on when it stopped before the end. */
-export interface ForwardRead {
-  readonly lines: LogLine[];
+export interface ForwardRead<L extends { readonly time: string } = LogLine> {
+  readonly lines: L[];
   /** Set when the last page came back full after FORWARD_ROUNDS: more lines wait from there. */
   readonly resume?: string;
 }
@@ -61,13 +61,13 @@ export interface ForwardRead {
  * ends the reading, so that it always moves forward. When the rounds run out on a full page, the
  * read says where to go on, so the next one does not read the same lines again.
  */
-export async function readForward(
-  page: (from: string) => Promise<readonly LogLine[]>,
+export async function readForward<L extends { readonly time: string }>(
+  page: (from: string) => Promise<readonly L[]>,
   from: string,
   limit: number,
   rounds = FORWARD_ROUNDS,
-): Promise<ForwardRead> {
-  const lines: LogLine[] = [];
+): Promise<ForwardRead<L>> {
+  const lines: L[] = [];
   let cursor = from;
   for (let round = 0; round < rounds; round++) {
     const answer = await page(cursor);
@@ -77,4 +77,33 @@ export async function readForward(
     cursor = last.time;
   }
   return { lines, resume: cursor };
+}
+
+/** Build lines the deployment page keeps: as many as the agent holds for one build. */
+export const MAX_BUILD_LINES = 8192;
+
+/** A build line's key: the same line comes back when the page reads again from a little before. */
+export function buildLineKey(line: BuildLine): string {
+  return `${line.time}|${line.line}`;
+}
+
+/**
+ * A build's output, oldest first: fresh lines among the known ones, without repeats, and how many
+ * of the oldest went to keep MAX_BUILD_LINES.
+ */
+export function mergeBuildLines(
+  known: readonly BuildLine[],
+  fresh: readonly BuildLine[],
+): { lines: BuildLine[]; dropped: number } {
+  const seen = new Set(known.map(buildLineKey));
+  const added = fresh.filter((line) => {
+    const key = buildLineKey(line);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  // Times have nine digits of fraction: as text they sort as times.
+  const all = [...known, ...added].sort((a, b) => (a.time < b.time ? -1 : a.time > b.time ? 1 : 0));
+  const dropped = Math.max(0, all.length - MAX_BUILD_LINES);
+  return { lines: all.slice(dropped), dropped };
 }
