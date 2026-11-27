@@ -184,7 +184,8 @@ Builds from a repository run on the server that runs the application, in `shipke
 
 - The installer downloads BuildKit's official release from GitHub and checks it against a SHA-256 written into the installer, which is itself checked by its own digest. It installs `rootlesskit`, `slirp4netns`, `uidmap` and `git` from Ubuntu, and gives the account 65536 subordinate ids after every range already given.
 - A build reaches public addresses only, on any port. The `build` chain of `inet shipkeep_egress` refuses loopback, private, shared and link-local ranges (cloud metadata included), and the server's own addresses except port 443, where its Caddy serves only what the internet sees. The name servers of `/etc/resolv.conf` stay reachable on port 53.
-- Builds run in `shipkeep-build.slice`, at most half the memory, and are the first the kernel kills. Between builds, BuildKit's garbage collection keeps its cache in `/var/lib/shipkeep-build` within a fifth of the disk, and frees it when less than 15 % of the disk is left. A build in progress is not bounded by it: a very large build can still fill a disk shared with the applications.
+- Builds run in `shipkeep-build.slice`, at most half the memory, and are the first the kernel kills.
+- Builds have a disk of their own: the installer takes a fifth of the disk that holds `/var/lib`, between 10 and 100 GiB, as `/var/lib/shipkeep-build.img`, an ext4 image whose blocks it reserves, and mounts it on `/var/lib/shipkeep-build`. Pass `--build-disk <GiB>` (5 to 4096) for another size; the installer refuses when `/var/lib` lacks that size and 5 GiB more. BuildKit keeps its cache there, within 70 % of it, and the agent the copy of the repository a Railpack build reads. A build that fills it fails with "no space left on device"; the applications' disk is not touched. To give builds a disk of your own, mount it on `/var/lib/shipkeep-build`, empty, before running the installer: it is used as it is. An existing builds filesystem is kept: `--build-disk` applies to a new one only.
 - An application server installed before builds gets the builder with `--migrate yes` on the installation command. A machine that also runs the control plane cannot get it that way yet (an open question in SPEC, section 16). Until then, builds on such a server fail with "the server's builder does not answer".
 
 On failure, `journalctl -u shipkeep-agent` (or `-u shipkeep-egress` for a refused pull, `-u shipkeep-build` for a build) on the server says why. The installer refuses a server that already has Shipkeep or Caddy; [`deploy/README.md`](../deploy/README.md) lists what to remove to start over.
@@ -276,7 +277,7 @@ A server's agent can replace itself with a signed release (ADR 0028). After a co
 
   The migration checks everything before changing anything. It accepts only a server this installer set up for applications, for the control plane that shows the command. Its units must be unchanged. Otherwise it refuses and names what to reconcile.
 
-  It records the route of each application on the server, then installs the new agent, its service with the upgrade guard, and the egress proxy of the Docker daemon (ADR 0023). Docker restarts once, and running containers restart with it. Routes follow them to their new addresses. A route whose traffic already goes elsewhere stops the migration before the agent or Docker changes. So does an application none of whose containers runs. Deploy that application again, then run the command again.
+  It records the route of each application on the server, then installs the new agent, its service with the upgrade guard, and the egress proxy of the Docker daemon (ADR 0023). The builds get their filesystem as on a new server, `--build-disk` included; the builder's cache of before is dropped once. Docker restarts once, and running containers restart with it. Routes follow them to their new addresses. A route whose traffic already goes elsewhere stops the migration before the agent or Docker changes. So does an application none of whose containers runs. Deploy that application again, then run the command again.
 
   If the migration stops, the agent runs again, and running the same command again goes on from where it stopped. An agent that says its service predates upgrades is migrated the same way.
 
@@ -329,6 +330,8 @@ systemctl daemon-reload
 
 ```sh
 systemctl disable --now shipkeep-agent shipkeep-caddy shipkeep-egress shipkeep-build
+# The builds' filesystem, once its builder is stopped.
+systemctl disable --now 'var-lib-shipkeep\x2dbuild.mount' 2>/dev/null || true
 docker ps -aq --filter label=sk.managed=true | xargs -r docker rm -f
 nft delete table inet shipkeep_egress 2>/dev/null || true
 rm -rf /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep \
@@ -337,8 +340,9 @@ rm -rf /etc/shipkeep /var/lib/shipkeep /var/lib/shipkeep-caddy /run/shipkeep \
   /etc/systemd/system/shipkeep-agent.service /etc/systemd/system/shipkeep-caddy.service /etc/systemd/system/shipkeep-egress.service \
   /etc/systemd/system/shipkeep.slice /etc/systemd/system/shipkeep-workloads.slice \
   /etc/systemd/system/docker.service.d/shipkeep-egress.conf /etc/systemd/system/nftables.service.d/shipkeep-egress.conf \
-  /etc/shipkeep-build /var/lib/shipkeep-build /usr/local/libexec/shipkeep-build \
-  /etc/systemd/system/shipkeep-build.service /etc/systemd/system/shipkeep-build.slice
+  /etc/shipkeep-build /var/lib/shipkeep-build /var/lib/shipkeep-build.img /usr/local/libexec/shipkeep-build \
+  /etc/systemd/system/shipkeep-build.service /etc/systemd/system/shipkeep-build.slice \
+  '/etc/systemd/system/var-lib-shipkeep\x2dbuild.mount'
 apt-get purge -y caddy
 rm -f /etc/apt/sources.list.d/shipkeep-caddy.sources /etc/apt/keyrings/shipkeep-caddy.gpg /etc/apt/keyrings/shipkeep-caddy.asc
 userdel shipkeep-build; userdel shipkeep-egress; userdel shipkeep-caddy; userdel shipkeep
