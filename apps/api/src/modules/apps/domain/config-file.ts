@@ -1,4 +1,4 @@
-import { InvalidInputError } from '@shipkeep/domain';
+import { ConflictError, InvalidInputError } from '@shipkeep/domain';
 import { type Document, isMap, isScalar, parseDocument } from 'yaml';
 
 import { canonicalJson } from './application';
@@ -7,6 +7,14 @@ import { canonicalJson } from './application';
  * Writing a Git application's shipkeep.yml back from the interface (#214, ADR 0031). Pure: the
  * caller reads the file and writes the text this answers.
  */
+
+/** The file changed in the repository since a change was prepared against it. */
+export function configFileChanged(): ConflictError {
+  return new ConflictError(
+    'config_file_changed',
+    'The file changed in the repository since it was read: review the change again.',
+  );
+}
 
 /** Lines kept around each change in a diff. */
 const CONTEXT = 3;
