@@ -56,6 +56,13 @@ const (
 	maxBuildLine     = 16 << 10
 )
 
+// buildKinds are the build types a server builds (ADR 0030).
+var buildKinds = map[agentv1.BuildType]buildkit.Kind{
+	agentv1.BuildType_BUILD_TYPE_DOCKERFILE: buildkit.Dockerfile,
+	agentv1.BuildType_BUILD_TYPE_RAILPACK:   buildkit.Railpack,
+	agentv1.BuildType_BUILD_TYPE_NIXPACKS:   buildkit.Nixpacks,
+}
+
 var (
 	// A path inside the repository: relative segments of safe characters, never `.` or `..`.
 	buildPathSegment = regexp.MustCompile(`^[A-Za-z0-9_@+-][A-Za-z0-9._@+-]*$`)
@@ -116,7 +123,11 @@ func buildImage(settings *buildSettings, req *agentv1.ActionRequest) (journal.Pl
 // buildRequest checks every field before anything runs: the repository is HTTPS without
 // credentials, paths stay inside it, the push goes to the registry the credentials are for.
 func buildRequest(action *agentv1.BuildImage) (buildkit.Request, time.Duration, error) {
-	if action == nil || action.GetBuildType() != agentv1.BuildType_BUILD_TYPE_DOCKERFILE {
+	if action == nil {
+		return buildkit.Request{}, 0, errInput
+	}
+	kind, ok := buildKinds[action.GetBuildType()]
+	if !ok {
 		return buildkit.Request{}, 0, errInput
 	}
 	if !validRepositoryURL(action.GetRepoUrl()) || !commitHash.MatchString(action.GetCommitSha()) {
@@ -130,12 +141,18 @@ func buildRequest(action *agentv1.BuildImage) (buildkit.Request, time.Duration, 
 	if !ok {
 		return buildkit.Request{}, 0, errInput
 	}
+	// Railpack and Nixpacks write their own build: a Dockerfile path means another build type.
 	dockerfile := action.GetDockerfile()
-	if dockerfile == "" {
+	switch {
+	case kind != buildkit.Dockerfile && dockerfile != "":
+		return buildkit.Request{}, 0, errInput
+	case kind == buildkit.Dockerfile && dockerfile == "":
 		dockerfile = "Dockerfile"
 	}
-	if dockerfile, ok = buildPath(dockerfile, false); !ok {
-		return buildkit.Request{}, 0, errInput
+	if kind == buildkit.Dockerfile {
+		if dockerfile, ok = buildPath(dockerfile, false); !ok {
+			return buildkit.Request{}, 0, errInput
+		}
 	}
 	args := action.GetArgs()
 	if len(args) > maxBuildArgs {
@@ -159,6 +176,7 @@ func buildRequest(action *agentv1.BuildImage) (buildkit.Request, time.Duration, 
 		return buildkit.Request{}, 0, errInput
 	}
 	return buildkit.Request{
+		Kind:       kind,
 		Repository: action.GetRepoUrl(),
 		Commit:     action.GetCommitSha(),
 		Token:      secret.NewString(token),
