@@ -14,7 +14,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file shipkeep/agent/v1/logs.proto.
  */
 export const file_shipkeep_agent_v1_logs: GenFile = /*@__PURE__*/
-  fileDesc("ChxzaGlwa2VlcC9hZ2VudC92MS9sb2dzLnByb3RvEhFzaGlwa2VlcC5hZ2VudC52MSJ1Cg9TaGlwTG9nc1JlcXVlc3QSKwoEb3BlbhgBIAEoCzIbLnNoaXBrZWVwLmFnZW50LnYxLkxvZ3NPcGVuSAASLAoFYmF0Y2gYAiABKAsyGy5zaGlwa2VlcC5hZ2VudC52MS5Mb2dCYXRjaEgAQgcKBWZyYW1lIkUKEFNoaXBMb2dzUmVzcG9uc2USKAoDYWNrGAEgASgLMhkuc2hpcGtlZXAuYWdlbnQudjEuTG9nQWNrSABCBwoFZnJhbWUiHwoITG9nc09wZW4SEwoLbGVhc2VfZXBvY2gYASABKAQiRQoITG9nQmF0Y2gSCwoDc2VxGAEgASgEEiwKB2VudHJpZXMYAiADKAsyGy5zaGlwa2VlcC5hZ2VudC52MS5Mb2dFbnRyeSKWAQoITG9nRW50cnkSEQoJY29udGFpbmVyGAEgASgJEiwKBnN0cmVhbRgCIAEoDjIcLnNoaXBrZWVwLmFnZW50LnYxLkxvZ1N0cmVhbRIoCgR0aW1lGAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIMCgRsaW5lGAQgASgJEhEKCXRydW5jYXRlZBgFIAEoCCIVCgZMb2dBY2sSCwoDc2VxGAEgASgEKlUKCUxvZ1N0cmVhbRIaChZMT0dfU1RSRUFNX1VOU1BFQ0lGSUVEEAASFQoRTE9HX1NUUkVBTV9TVERPVVQQARIVChFMT0dfU1RSRUFNX1NUREVSUhACQssBChVjb20uc2hpcGtlZXAuYWdlbnQudjFCCUxvZ3NQcm90b1ABWkFnaXRodWIuY29tL3NoaXBrZWVwZGV2L3NoaXBrZWVwL2xpYi9nZW4vc2hpcGtlZXAvYWdlbnQvdjE7YWdlbnR2MaICA1NBWKoCEVNoaXBrZWVwLkFnZW50LlYxygIRU2hpcGtlZXBcQWdlbnRcVjHiAh1TaGlwa2VlcFxBZ2VudFxWMVxHUEJNZXRhZGF0YeoCE1NoaXBrZWVwOjpBZ2VudDo6VjFiBnByb3RvMw", [file_google_protobuf_timestamp]);
+  fileDesc("ChxzaGlwa2VlcC9hZ2VudC92MS9sb2dzLnByb3RvEhFzaGlwa2VlcC5hZ2VudC52MSJ1Cg9TaGlwTG9nc1JlcXVlc3QSKwoEb3BlbhgBIAEoCzIbLnNoaXBrZWVwLmFnZW50LnYxLkxvZ3NPcGVuSAASLAoFYmF0Y2gYAiABKAsyGy5zaGlwa2VlcC5hZ2VudC52MS5Mb2dCYXRjaEgAQgcKBWZyYW1lIkUKEFNoaXBMb2dzUmVzcG9uc2USKAoDYWNrGAEgASgLMhkuc2hpcGtlZXAuYWdlbnQudjEuTG9nQWNrSABCBwoFZnJhbWUiHwoITG9nc09wZW4SEwoLbGVhc2VfZXBvY2gYASABKAQiRQoITG9nQmF0Y2gSCwoDc2VxGAEgASgEEiwKB2VudHJpZXMYAiADKAsyGy5zaGlwa2VlcC5hZ2VudC52MS5Mb2dFbnRyeSKpAQoITG9nRW50cnkSEQoJY29udGFpbmVyGAEgASgJEiwKBnN0cmVhbRgCIAEoDjIcLnNoaXBrZWVwLmFnZW50LnYxLkxvZ1N0cmVhbRIoCgR0aW1lGAMgASgLMhouZ29vZ2xlLnByb3RvYnVmLlRpbWVzdGFtcBIMCgRsaW5lGAQgASgJEhEKCXRydW5jYXRlZBgFIAEoCBIRCglhY3Rpb25faWQYBiABKAkiFQoGTG9nQWNrEgsKA3NlcRgBIAEoBCpVCglMb2dTdHJlYW0SGgoWTE9HX1NUUkVBTV9VTlNQRUNJRklFRBAAEhUKEUxPR19TVFJFQU1fU1RET1VUEAESFQoRTE9HX1NUUkVBTV9TVERFUlIQAkLLAQoVY29tLnNoaXBrZWVwLmFnZW50LnYxQglMb2dzUHJvdG9QAVpBZ2l0aHViLmNvbS9zaGlwa2VlcGRldi9zaGlwa2VlcC9saWIvZ2VuL3NoaXBrZWVwL2FnZW50L3YxO2FnZW50djGiAgNTQViqAhFTaGlwa2VlcC5BZ2VudC5WMcoCEVNoaXBrZWVwXEFnZW50XFYx4gIdU2hpcGtlZXBcQWdlbnRcVjFcR1BCTWV0YWRhdGHqAhNTaGlwa2VlcDo6QWdlbnQ6OlYxYgZwcm90bzM", [file_google_protobuf_timestamp]);
 
 /**
  * Agent to control plane.
@@ -123,7 +123,7 @@ export const LogBatchSchema: GenMessage<LogBatch> = /*@__PURE__*/
 export type LogEntry = Message<"shipkeep.agent.v1.LogEntry"> & {
   /**
    * The managed container's name, as the agent created it; the control plane maps it to an
-   * allocation and never writes it as a label.
+   * allocation and never writes it as a label. Empty for an action's output (action_id).
    *
    * @generated from field: string container = 1;
    */
@@ -154,6 +154,14 @@ export type LogEntry = Message<"shipkeep.agent.v1.LogEntry"> & {
    * @generated from field: bool truncated = 5;
    */
   truncated: boolean;
+
+  /**
+   * The action whose output this is, a build's (ADR 0032); container is then empty. The control
+   * plane labels the line with the deployment it queued that action for.
+   *
+   * @generated from field: string action_id = 6;
+   */
+  actionId: string;
 };
 
 /**

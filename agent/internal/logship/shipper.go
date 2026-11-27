@@ -56,6 +56,9 @@ type Shipper struct {
 	// Scan is how often running containers are listed; Flush how long a batch may wait.
 	Scan  time.Duration
 	Flush time.Duration
+	// Builds, optional, holds the output of the server's builds, sent with the containers' lines
+	// (ADR 0032).
+	Builds *BuildOutput
 	// legacy holds the containers without secret names already reported.
 	legacy sync.Map
 }
@@ -65,11 +68,15 @@ type line struct {
 	entry     *agentv1.LogEntry
 	// at is where to read the container again from once the line is kept (LogLine.Resume).
 	at time.Time
+	// build is the line's place in Builds, for an action's output.
+	build uint64
 }
 
 type batch struct {
 	seq    uint64
 	latest map[string]time.Time
+	// build is the last build line the batch holds: acknowledged, Builds forgets up to it.
+	build uint64
 }
 
 // Run ships logs on stream until ctx ends or the stream fails. Running containers are followed
@@ -85,6 +92,9 @@ func (s *Shipper) Run(ctx context.Context, stream Stream, epoch uint64) error {
 	defer following.Wait()
 	defer cancel()
 	following.Go(func() { s.follow(ctx, lines) })
+	if s.Builds != nil {
+		following.Go(func() { s.relayBuilds(ctx, lines) })
+	}
 	// Acknowledgements free places in flight and move cursors.
 	inFlight := make(chan batch, MaxInFlight)
 	acked := make(chan error, 1)
@@ -94,6 +104,7 @@ func (s *Shipper) Run(ctx context.Context, stream Stream, epoch uint64) error {
 		pending []*agentv1.LogEntry
 		latest  = map[string]time.Time{}
 		size    int
+		build   uint64
 	)
 	flush := time.NewTicker(s.every(s.Flush, time.Second))
 	defer flush.Stop()
@@ -104,7 +115,7 @@ func (s *Shipper) Run(ctx context.Context, stream Stream, epoch uint64) error {
 		seq++
 		// Taking a place first waits while four batches wait for their acknowledgement.
 		select {
-		case inFlight <- batch{seq: seq, latest: latest}:
+		case inFlight <- batch{seq: seq, latest: latest, build: build}:
 		case <-ctx.Done():
 			return ctx.Err()
 		case err := <-acked:
@@ -113,7 +124,7 @@ func (s *Shipper) Run(ctx context.Context, stream Stream, epoch uint64) error {
 		if err := stream.Send(&agentv1.ShipLogsRequest{Frame: &agentv1.ShipLogsRequest_Batch{Batch: &agentv1.LogBatch{Seq: seq, Entries: pending}}}); err != nil {
 			return fmt.Errorf("send log batch: %w", err)
 		}
-		pending, latest, size = nil, map[string]time.Time{}, 0
+		pending, latest, size, build = nil, map[string]time.Time{}, 0, 0
 		return nil
 	}
 	for {
@@ -135,9 +146,10 @@ func (s *Shipper) Run(ctx context.Context, stream Stream, epoch uint64) error {
 			}
 			pending = append(pending, next.entry)
 			size += cost
-			if next.at.After(latest[next.container]) {
+			if next.container != "" && next.at.After(latest[next.container]) {
 				latest[next.container] = next.at
 			}
+			build = max(build, next.build)
 		}
 	}
 }
@@ -166,6 +178,37 @@ func (s *Shipper) acknowledge(ctx context.Context, stream Stream, inFlight <-cha
 			if err := s.Cursors.SetLogCursor(ctx, container, at); err != nil {
 				return err
 			}
+		}
+		if sent.build > 0 {
+			s.Builds.acknowledged(sent.build)
+		}
+	}
+}
+
+// relayBuilds sends the build lines this stream has not sent yet, from the oldest one the control
+// plane has not acknowledged, until ctx ends.
+func (s *Shipper) relayBuilds(ctx context.Context, lines chan<- line) {
+	var sent uint64
+	idle := time.NewTicker(time.Second)
+	defer idle.Stop()
+	for {
+		entries := s.Builds.after(sent, MaxEntries)
+		for _, entry := range entries {
+			select {
+			case lines <- line{entry: entry.entry, build: entry.seq}:
+				sent = entry.seq
+			case <-ctx.Done():
+				return
+			}
+		}
+		if len(entries) > 0 {
+			continue
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-s.Builds.ready:
+		case <-idle.C:
 		}
 	}
 }
