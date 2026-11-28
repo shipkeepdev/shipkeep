@@ -119,8 +119,18 @@ export interface GithubApi {
     path: string,
     ref: string,
   ): Promise<RepositoryFile | undefined>;
-  /** Creates `branch` at `commit`; false when a branch of that name exists already. */
-  createBranch(token: Secret, fullName: string, branch: string, commit: string): Promise<boolean>;
+  /**
+   * Creates `branch` at `commit`; false when a branch of that name exists already, `refused` when
+   * GitHub refuses it otherwise, as a rule on branch names does.
+   */
+  createBranch(
+    token: Secret,
+    fullName: string,
+    branch: string,
+    commit: string,
+  ): Promise<boolean | 'refused'>;
+  /** The message of `commit`; undefined when the repository has no such commit. */
+  commitMessage(token: Secret, fullName: string, commit: string): Promise<string | undefined>;
   /**
    * Replaces the file on `branch`, whose blob is `blobSha`, in one commit. `refused` when GitHub
    * does not take it: the file changed since, or a rule protects the branch.
@@ -147,6 +157,13 @@ export interface GithubApi {
       readonly body: string;
     },
   ): Promise<OpenedPullRequest | 'refused'>;
+  /** The open pull request of `head` into `base`, if there is one. */
+  openPullRequestFrom(
+    token: Secret,
+    fullName: string,
+    head: string,
+    base: string,
+  ): Promise<OpenedPullRequest | undefined>;
   /**
    * Whether GitHub no longer honours the token: revoked now, or already invalid (expired or
    * revoked). False when GitHub could not be asked.

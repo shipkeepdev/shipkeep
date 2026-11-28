@@ -9,10 +9,17 @@ const unexpected = (): Promise<never> =>
  */
 export const noGithubWrites: Pick<
   GithubApi,
-  'fileAt' | 'createBranch' | 'writeFile' | 'openPullRequest'
+  | 'fileAt'
+  | 'createBranch'
+  | 'writeFile'
+  | 'openPullRequest'
+  | 'commitMessage'
+  | 'openPullRequestFrom'
 > = {
   fileAt: () => Promise.resolve(undefined),
   createBranch: unexpected,
   writeFile: unexpected,
   openPullRequest: unexpected,
+  commitMessage: unexpected,
+  openPullRequestFrom: unexpected,
 };

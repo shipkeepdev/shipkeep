@@ -261,6 +261,8 @@ function world(
     {
       read: () => Promise.reject(new Error('no repository')),
       readForChange: () => Promise.reject(new Error('no repository')),
+      writeConfig: () => Promise.reject(new Error('no repository')),
+      writtenChange: () => Promise.reject(new Error('no repository')),
       buildAccess: () => Promise.reject(new Error('no repository')),
       revoke: () => Promise.reject(new Error('no repository')),
     },

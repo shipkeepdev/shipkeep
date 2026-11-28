@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   type CallHandler,
   type ExecutionContext,
@@ -27,6 +29,9 @@ import {
   resourceContext,
 } from './session-http';
 import { ROUTE_ACCESS, type RouteAccess, routeTarget } from './route-access';
+
+/** Bodies larger than this are matched by their digest. */
+const LARGE_BODY = 16_384;
 
 const resultSchema = z
   .object({ body: z.unknown(), cookies: z.array(z.string().max(4096)).max(2) })
@@ -76,11 +81,18 @@ export class IdentityReplayInterceptor implements NestInterceptor {
       request.body && typeof request.body === 'object' && !Array.isArray(request.body)
         ? Object.fromEntries(Object.entries(request.body).sort(([a], [b]) => a.localeCompare(b)))
         : request.body;
+    // A large body, such as a whole configuration, is kept as its digest: a retry is matched as
+    // exactly, and the stored request stays within its bound.
+    const serialized = JSON.stringify(body ?? null);
+    const request_ =
+      serialized.length > LARGE_BODY
+        ? { bodySha256: createHash('sha256').update(serialized).digest('hex') }
+        : { body: body ?? null };
     // Anonymous account actions already prove their credentials in the body. Logout is bound
     // to the exact session/CSRF pair, so a retry cannot authorize a different browser session.
     const input = new Secret(
       JSON.stringify({
-        body: body ?? null,
+        ...request_,
         ...(request.identity
           ? {
               kind: request.identity.kind,
