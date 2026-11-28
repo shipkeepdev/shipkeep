@@ -162,6 +162,9 @@ describe('GitHub in Chromium', () => {
     fileAt: () =>
       Promise.resolve({ blobSha: createHash('sha1').update(CONFIG).digest('hex'), text: CONFIG }),
     createBranch: () => Promise.resolve(true),
+    // A new branch holds no earlier attempt of the change, and has no pull request open yet.
+    commitMessage: () => Promise.resolve(undefined),
+    openPullRequestFrom: () => Promise.resolve(undefined),
     writeFile: (_token, _fullName, change) => {
       written.push({ branch: change.branch, text: change.text });
       return Promise.resolve({
@@ -358,7 +361,7 @@ describe('GitHub in Chromium', () => {
     // Only the lines added: the comments and the rest of the file are as the repository has them.
     expect(written).toEqual([
       {
-        branch: expect.stringMatching(/^shipkeep\/config-[0-9a-f]{12}$/) as string,
+        branch: expect.stringMatching(/^shipkeep\/config-[0-9a-f]{16}$/) as string,
         text: `${CONFIG}scale:\n  replicas: 3\n`,
       },
     ]);
