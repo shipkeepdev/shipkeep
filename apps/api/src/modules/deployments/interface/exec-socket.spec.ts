@@ -4,7 +4,7 @@ import type { AuditEventReader } from '../../audit/application/audit-event-reade
 
 import type { HttpAdapterHost } from '@nestjs/core';
 import type { DomainEvent } from '@shipkeep/domain';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import WebSocket from 'ws';
 
 import type { AppConfig } from '../../../platform/config/app-config';
@@ -55,6 +55,8 @@ async function world(
   } = {},
 ) {
   const published: DomainEvent[] = [];
+  /** Sign-in lookups made: each reads the session and writes its activity. */
+  let signIns = 0;
   const registry = new ExecSessionRegistry(
     {
       runTenant: (_org: string, work: () => Promise<unknown>) => work(),
@@ -89,6 +91,7 @@ async function world(
     } as unknown as AppConfig,
     {
       authenticate: async () => {
+        signIns++;
         await options.slow;
         return options.signedOut
           ? Promise.reject(new Error('signed out'))
@@ -115,6 +118,7 @@ async function world(
     socket,
     url: `ws://127.0.0.1:${String(port)}/api/v1/exec/${SESSION}`,
     port,
+    signIns: () => signIns,
   };
 }
 
@@ -337,6 +341,68 @@ describe('the WebSocket handshake', () => {
     const w = await world({ signedOut: true });
     for (let i = 0; i < 20; i++) expect(await connect(w.url, allowed)).toBe(401);
     expect(await connect(w.url, allowed)).toBe(429);
+  });
+
+  // #546: a signed-in browser asking again and again for a session it cannot join.
+  it('stops refused joins after the sign-in too, before another sign-in lookup', async () => {
+    const w = await world();
+    const unknown = w.url.replace(SESSION, '019d0000-0000-7000-8000-000000000000');
+    for (let i = 0; i < 20; i++) expect(await connect(unknown, allowed)).toBe(404);
+    expect(w.signIns()).toBe(20);
+    expect(await connect(unknown, allowed)).toBe(429);
+    // Its own session too, until the minute is over: no lookup is made meanwhile.
+    expect(await connect(w.url, allowed)).toBe(429);
+    expect(w.signIns()).toBe(20);
+    const later = Date.now() + 61_000;
+    vi.spyOn(Date, 'now').mockReturnValue(later);
+    try {
+      const ws = await connect(w.url, allowed);
+      expect(typeof ws).not.toBe('number');
+      if (typeof ws !== 'number') ws.terminate();
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it('counts the joins of a session already joined, of another person or without permission', async () => {
+    const joined = await world();
+    const first = await connect(joined.url, allowed);
+    expect(typeof first).not.toBe('number');
+    for (let i = 0; i < 20; i++) expect(await connect(joined.url, allowed)).toBe(404);
+    expect(await connect(joined.url, allowed)).toBe(429);
+    if (typeof first !== 'number') first.terminate();
+    for (const refused of [await world({ user: OTHER }), await world({ denied: true })]) {
+      for (let i = 0; i < 20; i++) expect(await connect(refused.url, allowed)).toBe(404);
+      expect(await connect(refused.url, allowed)).toBe(429);
+      expect(refused.signIns()).toBe(20);
+    }
+  });
+
+  it('lets a join through after refusals that stay within the budget', async () => {
+    const w = await world();
+    const unknown = w.url.replace(SESSION, '019d0000-0000-7000-8000-000000000000');
+    for (let i = 0; i < 19; i++) expect(await connect(unknown, allowed)).toBe(404);
+    const ws = await connect(w.url, allowed);
+    expect(typeof ws).not.toBe('number');
+    if (typeof ws !== 'number') ws.terminate();
+  });
+
+  it('counts joins still being checked, so that concurrent ones cannot pass the budget', async () => {
+    let release = (): void => undefined;
+    const slow = new Promise<void>((resolve) => (release = resolve));
+    const w = await world({ slow });
+    const unknown = w.url.replace(SESSION, '019d0000-0000-7000-8000-000000000000');
+    const answers = Array.from({ length: 25 }, () => connect(unknown, allowed));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    // Twenty are being checked; the five others were refused before any lookup.
+    expect(w.signIns()).toBe(20);
+    release();
+    const statuses = await Promise.all(answers);
+    expect(statuses.filter((status) => status === 429)).toHaveLength(5);
+    expect(statuses.filter((status) => status === 404)).toHaveLength(20);
+    // They were all refused: the budget is used up for the minute.
+    expect(await connect(w.url, allowed)).toBe(429);
+    expect(w.signIns()).toBe(20);
   });
 
   it('counts failed joins by the client a trusted proxy forwarded, not by the proxy', async () => {
