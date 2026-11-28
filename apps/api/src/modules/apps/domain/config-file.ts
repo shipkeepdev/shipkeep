@@ -1,4 +1,4 @@
-import { ConflictError, InvalidInputError } from '@shipkeep/domain';
+import { ConflictError, DomainError, InvalidInputError } from '@shipkeep/domain';
 import { type Document, isAlias, isMap, isPair, isScalar, isSeq, parseDocument, visit } from 'yaml';
 
 import { canonicalJson } from './application';
@@ -14,6 +14,22 @@ export function configFileChanged(): ConflictError {
     'config_file_changed',
     'The file changed in the repository since it was read: review the change again.',
   );
+}
+
+/**
+ * A change written to its repository whose audit event could not be recorded: the command fails,
+ * as any whose audit fails. Sent again, the change is found where it was written, not written
+ * twice, and recorded then (#214).
+ */
+export class ConfigWrittenUnrecordedError extends DomainError {
+  readonly kind = 'unavailable' as const;
+  readonly code = 'config_written_unrecorded';
+
+  constructor() {
+    super(
+      'The change was written to the repository, but could not be recorded: send it again, it is not written twice.',
+    );
+  }
 }
 
 /** Lines kept around each change in a diff. */

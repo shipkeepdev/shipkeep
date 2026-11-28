@@ -52,6 +52,9 @@ describe("a Git application's shipkeep.yml over HTTP", () => {
   let file = FILE;
   /** Branches GitHub refuses a commit on, as a protected branch does. */
   const protectedBranches = new Set<string>();
+  // The branch's head and each commit's message: a commit on main moves it on, as GitHub would.
+  let mainHead = HEAD;
+  const messages = new Map<string, string>([[HEAD, 'Add shipkeep.yml']]);
   const written: { branch: string; text: string }[] = [];
   const pulls: { head: string; base: string; title: string; body: string }[] = [];
   const manifests: GithubManifests = {
@@ -86,19 +89,26 @@ describe("a Git application's shipkeep.yml over HTTP", () => {
         private: true,
       }),
     branchHead: (_token, _fullName, branch) =>
-      Promise.resolve(branch === 'main' ? HEAD : undefined),
+      Promise.resolve(branch === 'main' ? mainHead : undefined),
     file: () => Promise.resolve(file),
     ...noGithubWrites,
     fileAt: (_token, _fullName, path, ref) =>
       Promise.resolve(
-        path === 'shipkeep.yml' && (ref === HEAD || ref === 'main')
+        path === 'shipkeep.yml' && (ref === mainHead || ref === 'main')
           ? { blobSha: blobOf(file), text: file }
           : undefined,
       ),
     createBranch: () => Promise.resolve(true),
+    commitMessage: (_token, _fullName, commit) => Promise.resolve(messages.get(commit)),
+    openPullRequestFrom: () => Promise.resolve(undefined),
     writeFile: (_token, _fullName, change) => {
       if (protectedBranches.has(change.branch)) return Promise.resolve('refused');
       written.push({ branch: change.branch, text: change.text });
+      messages.set('e'.repeat(40), change.message);
+      if (change.branch === 'main') {
+        file = change.text;
+        mainHead = 'e'.repeat(40);
+      }
       return Promise.resolve({
         commitSha: 'e'.repeat(40),
         url: `https://github.com/acme-corp/storefront/commit/${'e'.repeat(40)}`,
@@ -281,7 +291,7 @@ describe("a Git application's shipkeep.yml over HTTP", () => {
       commitSha: 'e'.repeat(40),
     });
     const branch = (answer.body as { branch: string }).branch;
-    expect(branch).toMatch(/^shipkeep\/config-[0-9a-f]{12}$/);
+    expect(branch).toMatch(/^shipkeep\/config-[0-9a-f]{16}$/);
     expect(written.at(-1)).toEqual({
       branch,
       text: FILE.replace('replicas: 1 #', 'replicas: 3 #'),
@@ -331,12 +341,25 @@ describe("a Git application's shipkeep.yml over HTTP", () => {
       .expect(201);
     expect(committed.body).toMatchObject({ via: 'commit', commitSha: 'e'.repeat(40) });
     expect(written.at(-1)).toMatchObject({ branch: 'main' });
-    protectedBranches.add('main');
-    const pulled = await fixture
+    // Sent again, as after an answer that never arrived: the branch moved on by this very change,
+    // which is answered with its commit, not written twice.
+    const count = written.length;
+    const again = await fixture
       .post(`${path()}/changes`, 'owner', { config: next, blobSha: blobOf(FILE) })
+      .expect(201);
+    expect(again.body).toEqual(committed.body);
+    expect(written).toHaveLength(count);
+    // On the file as it is now, a protected branch makes a pull request of another change.
+    protectedBranches.add('main');
+    const later = document();
+    later.scale['replicas'] = 6;
+    const pulled = await fixture
+      .post(`${path()}/changes`, 'owner', { config: later, blobSha: blobOf(file) })
       .expect(201);
     expect(pulled.body).toMatchObject({ via: 'pull_request', number: 7 });
     protectedBranches.clear();
+    file = FILE;
+    mainHead = HEAD;
     await admin.query(`UPDATE projects SET git_write_mode = 'pull_request' WHERE id = $1`, [
       fixture.projectId,
     ]);

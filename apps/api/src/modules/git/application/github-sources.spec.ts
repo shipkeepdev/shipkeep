@@ -16,7 +16,12 @@ const location = {
   branch: 'main',
   configPath: 'shipkeep.yml',
 };
+/** The change's name, as RepositoryConfigs makes it, its marker, and its pull request's branch. */
+const ID = 'ab'.repeat(32);
+const MARKER = `Shipkeep-Change: ${ID}`;
+const BRANCH = `shipkeep/config-${ID.slice(0, 16)}`;
 const change = (mode: 'commit' | 'pull_request'): RepositoryConfigChange => ({
+  changeId: ID,
   blobSha: BLOB,
   text: 'version: 1\n',
   title: 'Change the configuration of web',
@@ -24,16 +29,28 @@ const change = (mode: 'commit' | 'pull_request'): RepositoryConfigChange => ({
   mode,
 });
 
-/** A repository whose file has blob BLOB at HEAD; `refuse` makes GitHub refuse writes to a branch. */
+/**
+ * A repository whose file has blob BLOB at HEAD, on `main`. `refuse` makes GitHub refuse writes to
+ * a branch; `existing` are branches there already, at a commit; `messages` are commits' messages;
+ * `open` the pull requests open from a branch; `refuseBranch` makes GitHub refuse a new branch.
+ */
 function world(
-  options: { refuse?: string; blobAfterRefusal?: string; takenBranches?: number } = {},
+  options: {
+    refuse?: string;
+    blobAfterRefusal?: string;
+    existing?: Record<string, string>;
+    messages?: Record<string, string>;
+    open?: Record<string, { number: number; url: string }>;
+    refuseBranch?: boolean;
+  } = {},
 ) {
   const writes: { branch: string; message: string; blobSha: string }[] = [];
   const branches: string[] = [];
   const pulls: { head: string; base: string; title: string }[] = [];
   const scopes: TokenScope[] = [];
   const revoked: string[] = [];
-  let taken = options.takenBranches ?? 0;
+  const heads: Record<string, string> = { main: HEAD, ...options.existing };
+  const messages: Record<string, string> = { ...options.messages };
   let refused = false;
   const github = {
     appJwt: () => new Secret('jwt'),
@@ -49,7 +66,8 @@ function world(
         defaultBranch: 'main',
         private: true,
       }),
-    branchHead: () => Promise.resolve(HEAD),
+    branchHead: (_token: Secret, _fullName: string, branch: string) =>
+      Promise.resolve(heads[branch]),
     fileAt: (_token: Secret, _fullName: string, _path: string, ref: string) =>
       Promise.resolve({
         blobSha: refused && ref === 'main' ? (options.blobAfterRefusal ?? BLOB) : BLOB,
@@ -57,13 +75,14 @@ function world(
       }),
     createBranch: (_token: Secret, _fullName: string, branch: string, commit: string) => {
       expect(commit).toBe(HEAD);
-      if (taken > 0) {
-        taken--;
-        return Promise.resolve(false);
-      }
+      if (options.refuseBranch) return Promise.resolve('refused' as const);
+      if (heads[branch]) return Promise.resolve(false);
+      heads[branch] = commit;
       branches.push(branch);
       return Promise.resolve(true);
     },
+    commitMessage: (_token: Secret, _fullName: string, commit: string) =>
+      Promise.resolve(messages[commit]),
     writeFile: (
       _token: Secret,
       _fullName: string,
@@ -74,11 +93,15 @@ function world(
         return Promise.resolve('refused' as const);
       }
       writes.push({ branch: file.branch, message: file.message, blobSha: file.blobSha });
+      heads[file.branch] = COMMIT;
+      messages[COMMIT] = file.message;
       return Promise.resolve({
         commitSha: COMMIT,
         url: `https://github.com/acme-corp/web/commit/${COMMIT}`,
       });
     },
+    openPullRequestFrom: (_token: Secret, _fullName: string, head: string) =>
+      Promise.resolve(options.open?.[head]),
     openPullRequest: (
       _token: Secret,
       _fullName: string,
@@ -120,7 +143,7 @@ describe("a change of a Git application's file, written to its repository (#214)
     expect(w.writes).toEqual([
       {
         branch: 'main',
-        message: 'Change the configuration of web\n\nMade in Shipkeep.',
+        message: `Change the configuration of web\n\nMade in Shipkeep.\n\n${MARKER}`,
         blobSha: BLOB,
       },
     ]);
@@ -134,16 +157,17 @@ describe("a change of a Git application's file, written to its repository (#214)
     expect(w.revoked).toEqual(['ghs_token_write']);
   });
 
-  it('opens a pull request from a branch of its own in pull request mode', async () => {
+  it('opens a pull request from a branch named after the change in pull request mode', async () => {
     const w = world();
     const written = await w.sources.writeConfig('org', location, change('pull_request'));
-    expect(written).toMatchObject({
+    expect(written).toEqual({
       via: 'pull_request',
+      commitSha: COMMIT,
+      branch: BRANCH,
       number: 12,
       url: 'https://github.com/acme-corp/web/pull/12',
     });
-    expect(w.branches).toHaveLength(1);
-    expect(w.branches[0]).toMatch(/^shipkeep\/config-[0-9a-f]{12}$/);
+    expect(w.branches).toEqual([BRANCH]);
     expect(w.writes.map((write) => write.branch)).toEqual(w.branches);
     expect(w.pulls).toEqual([
       { head: w.branches[0], base: 'main', title: 'Change the configuration of web' },
@@ -179,15 +203,82 @@ describe("a change of a Git application's file, written to its repository (#214)
     expect(stale.branches).toEqual([]);
   });
 
-  it('tries other branch names when one is taken, and gives up after three', async () => {
-    const once = world({ takenBranches: 1 });
-    await once.sources.writeConfig('org', location, change('pull_request'));
-    expect(once.branches).toHaveLength(1);
-    const always = world({ takenBranches: 3 });
+  // #214 review: a retry after an answer that never arrived finds what the first attempt wrote.
+  it('takes up the pull request of an earlier attempt instead of opening another', async () => {
+    const earlier = 'f'.repeat(40);
+    const pull = { number: 7, url: 'https://github.com/acme-corp/web/pull/7' };
+    const w = world({
+      existing: { [BRANCH]: earlier },
+      messages: { [earlier]: `Change the configuration of web\n\n${MARKER}` },
+      open: { [BRANCH]: pull },
+    });
+    expect(await w.sources.writeConfig('org', location, change('pull_request'))).toEqual({
+      via: 'pull_request',
+      commitSha: earlier,
+      branch: BRANCH,
+      ...pull,
+    });
+    expect(w.writes).toEqual([]);
+    expect(w.pulls).toEqual([]);
+    // Its pull request closed meanwhile: another is opened from the same branch, not written again.
+    const closed = world({
+      existing: { [BRANCH]: earlier },
+      messages: { [earlier]: `Change the configuration of web\n\n${MARKER}` },
+    });
+    await closed.sources.writeConfig('org', location, change('pull_request'));
+    expect(closed.writes).toEqual([]);
+    expect(closed.pulls).toEqual([
+      { head: BRANCH, base: 'main', title: 'Change the configuration of web' },
+    ]);
+  });
+
+  it('writes on the branch an earlier attempt made and left as it was', async () => {
+    const w = world({ existing: { [BRANCH]: HEAD } });
+    await w.sources.writeConfig('org', location, change('pull_request'));
+    expect(w.writes.map((write) => write.branch)).toEqual([BRANCH]);
+    expect(w.pulls).toHaveLength(1);
+  });
+
+  it('writes nothing over a branch of that name that holds something else', async () => {
+    const other = 'd'.repeat(40);
+    const w = world({
+      existing: { [BRANCH]: other },
+      messages: { [other]: "Someone else's commit" },
+    });
     await expect(
-      always.sources.writeConfig('org', location, change('pull_request')),
+      w.sources.writeConfig('org', location, change('pull_request')),
     ).rejects.toMatchObject({ code: 'repository_refused_change' });
-    expect(always.writes).toEqual([]);
+    expect(w.writes).toEqual([]);
+    expect(w.pulls).toEqual([]);
+  });
+
+  it('answers a refused branch as a refused change, not as GitHub unavailable', async () => {
+    const w = world({ refuseBranch: true });
+    await expect(
+      w.sources.writeConfig('org', location, change('pull_request')),
+    ).rejects.toMatchObject({ code: 'repository_refused_change' });
+    expect(w.writes).toEqual([]);
+    expect(w.revoked).toHaveLength(1);
+  });
+
+  it('finds the commit of an earlier attempt at the head of the branch, with a read token', async () => {
+    const committed = world({
+      existing: { main: COMMIT },
+      messages: { [COMMIT]: `Change the configuration of web\n\nMade in Shipkeep.\n\n${MARKER}` },
+    });
+    expect(await committed.sources.writtenChange('org', location, ID)).toEqual({
+      via: 'commit',
+      commitSha: COMMIT,
+      url: `https://github.com/acme-corp/web/commit/${COMMIT}`,
+    });
+    expect(committed.scopes.map((scope) => scope.permissions)).toEqual([
+      { contents: 'read', metadata: 'read' },
+    ]);
+    expect(committed.revoked).toHaveLength(1);
+    // A head another change made, or another name, is not this change.
+    const other = world({ messages: { [HEAD]: 'Fix the port' } });
+    expect(await other.sources.writtenChange('org', location, ID)).toBeUndefined();
+    expect(await committed.sources.writtenChange('org', location, 'cd'.repeat(32))).toBeUndefined();
   });
 
   it('refuses a location Git does not allow before any token is asked', async () => {

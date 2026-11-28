@@ -32,6 +32,12 @@ export type GitWriteMode = 'commit' | 'pull_request';
 
 /** A change of the file, written against the blob it was made from (#214). */
 export interface RepositoryConfigChange {
+  /**
+   * The change's own name: a digest of where it goes, the blob it was made against and the
+   * document asked for. Its commits carry it, and its pull request's branch is named after it, so
+   * an attempt that repeats an earlier one finds what that one wrote (#214).
+   */
+  readonly changeId: string;
   readonly blobSha: string;
   readonly text: string;
   /** The commit's first line, and the pull request's title. */
@@ -88,6 +94,16 @@ export interface RepositorySource {
     location: RepositoryLocation,
     change: RepositoryConfigChange,
   ): Promise<WrittenConfigChange>;
+  /**
+   * The commit at the branch's head when its message carries `changeId`: an earlier attempt of the
+   * same change committed it, and the branch moved on by that commit. Read with a token that reads
+   * that repository's contents only.
+   */
+  writtenChange(
+    organizationId: string,
+    location: RepositoryLocation,
+    changeId: string,
+  ): Promise<WrittenConfigChange | undefined>;
   /**
    * What a build fetches the repository with (ADR 0030): its HTTPS URL, under its current name,
    * and a token that reads that repository's contents and nothing else, until it expires. The
