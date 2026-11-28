@@ -112,8 +112,9 @@ func buildImage(settings *buildSettings, req *agentv1.ActionRequest) (journal.Pl
 				line("the build did not finish in time")
 				return journal.Outcome{}, causeError{cause: causeBuildTimeout}
 			default:
-				// What failed before BuildKit printed it, such as the agent's own preparation.
-				for _, text := range strings.Split(err.Error(), "\n") {
+				// What failed before BuildKit printed it, such as the agent's own preparation. The whole
+				// text is redacted first: a secret cut at a line break would escape a line's match.
+				for _, text := range strings.Split(redact(err.Error()), "\n") {
 					line("the build failed: " + text)
 				}
 				return journal.Outcome{}, causeError{cause: causeBuildFailed}
@@ -175,7 +176,8 @@ func buildRequest(action *agentv1.BuildImage) (buildkit.Request, time.Duration, 
 		return buildkit.Request{}, 0, errInput
 	}
 	registry, err := registryAuth(action.GetPushCredentials(), target[1])
-	if err != nil || registry == nil || len(registry.Password.Expose()) < minHiddenSecret {
+	// The redactor hides a credential whole: one with a line break could be printed in pieces.
+	if err != nil || registry == nil || len(registry.Password.Expose()) < minHiddenSecret || !printable(registry.Password.Expose(), 4096) {
 		return buildkit.Request{}, 0, errInput
 	}
 	timeout, ok := buildTimeout(action.GetLimits())

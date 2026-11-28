@@ -191,12 +191,14 @@ func TestBuildImageRefusesMaliciousInput(t *testing.T) {
 		},
 		"credentials elsewhere": func(b *agentv1.BuildImage) { b.PushCredentials.Server = "evil.example" },
 		// Too short for the redactor to hide in the build's output.
-		"short git token":     func(b *agentv1.BuildImage) { b.GitToken = "abc" },
-		"short push password": func(b *agentv1.BuildImage) { b.PushCredentials.Password = "abc" },
-		"timeout too short":   func(b *agentv1.BuildImage) { b.Limits.Timeout = durationpb.New(time.Second) },
-		"timeout too long":    func(b *agentv1.BuildImage) { b.Limits.Timeout = durationpb.New(3 * time.Hour) },
-		"negative timeout":    func(b *agentv1.BuildImage) { b.Limits.Timeout = durationpb.New(-time.Minute) },
-		"oversized memory":    func(b *agentv1.BuildImage) { b.Limits.MemoryBytes = 1 << 50 },
+		"short git token":        func(b *agentv1.BuildImage) { b.GitToken = "abc" },
+		"short push password":    func(b *agentv1.BuildImage) { b.PushCredentials.Password = "abc" },
+		"broken push password":   func(b *agentv1.BuildImage) { b.PushCredentials.Password = "first-half\nsecond-half" },
+		"git token with a break": func(b *agentv1.BuildImage) { b.GitToken = "ghs_first\nghs_second" },
+		"timeout too short":      func(b *agentv1.BuildImage) { b.Limits.Timeout = durationpb.New(time.Second) },
+		"timeout too long":       func(b *agentv1.BuildImage) { b.Limits.Timeout = durationpb.New(3 * time.Hour) },
+		"negative timeout":       func(b *agentv1.BuildImage) { b.Limits.Timeout = durationpb.New(-time.Minute) },
+		"oversized memory":       func(b *agentv1.BuildImage) { b.Limits.MemoryBytes = 1 << 50 },
 	} {
 		action := validBuild()
 		change(action)
