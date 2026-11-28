@@ -35,9 +35,6 @@ type Client struct {
 	// upsert, a removal, a change of those hosts and the securing of old routes each read a value
 	// and write it back, and actions run concurrently.
 	routes sync.Mutex
-	// betweenWrites, nil outside tests, runs in ApplyRoute after the route is written and before
-	// its hosts join the TLS-off list, with the lock held.
-	betweenWrites func()
 }
 
 // New returns a client for the admin socket at path.
@@ -184,47 +181,45 @@ func (c *Client) EnsureControlPlaneRoutes(ctx context.Context, wanted []Route) (
 	}
 	c.routes.Lock()
 	defer c.routes.Unlock()
-	path := "/config/apps/http/servers/" + Server + "/routes"
-	// The other routes are kept as Caddy returned them, so that fields this client does not model
-	// survive the rewrite.
-	var raw []json.RawMessage
-	if _, err := c.get(ctx, path, &raw); err != nil {
-		return false, fmt.Errorf("read caddy routes: %w", err)
-	}
-	routes := make([]Route, len(raw))
-	for i := range raw {
-		if err := json.Unmarshal(raw[i], &routes[i]); err != nil {
-			return false, fmt.Errorf("decode caddy route: %w", err)
-		}
-	}
+	// One write of the server, as for a route switch: Caddy loads the fixed routes first in the list
+	// and the control plane's name under automatic HTTPS together, so no configuration lacks them
+	// and lets an application route answer for the host. The other routes are kept as Caddy
+	// returned them, so that fields this client does not model survive the rewrite.
 	changed := false
-	if len(routes) < len(wanted) || !reflect.DeepEqual(routes[:len(wanted)], wanted) {
-		// One PATCH replaces the whole list: Caddy applies it at once, so no intermediate
-		// configuration lacks the fixed routes and lets an application route answer for the host.
-		next := make([]any, 0, len(raw)+len(wanted))
-		for _, route := range wanted {
-			next = append(next, route)
-		}
-		for i, route := range routes {
-			if !slices.ContainsFunc(wanted, func(w Route) bool { return w.ID == route.ID }) {
-				next = append(next, raw[i])
+	hosts := wanted[0].Match[0].Host
+	err := c.writeServer(ctx, func(raw []json.RawMessage, skip []string) ([]json.RawMessage, []string, bool, error) {
+		routes := make([]Route, len(raw))
+		for i := range raw {
+			if err := json.Unmarshal(raw[i], &routes[i]); err != nil {
+				return nil, nil, false, fmt.Errorf("decode caddy route: %w", err)
 			}
 		}
-		if err := c.do(ctx, http.MethodPatch, path, next, nil); err != nil {
-			return false, fmt.Errorf("replace caddy routes: %w", err)
+		next := raw
+		reorder := len(routes) < len(wanted) || !reflect.DeepEqual(routes[:len(wanted)], wanted)
+		if reorder {
+			next = make([]json.RawMessage, 0, len(raw)+len(wanted))
+			for _, route := range wanted {
+				written, err := json.Marshal(route)
+				if err != nil {
+					return nil, nil, false, fmt.Errorf("encode caddy route: %w", err)
+				}
+				next = append(next, written)
+			}
+			for i, route := range routes {
+				if !slices.ContainsFunc(wanted, func(w Route) bool { return w.ID == route.ID }) {
+					next = append(next, raw[i])
+				}
+			}
 		}
-		changed = true
-	}
-	var plain automaticHTTPS
-	if _, err := c.get(ctx, "/config/apps/http/servers/"+Server+"/automatic_https", &plain); err != nil {
-		return changed, fmt.Errorf("read caddy automatic https: %w", err)
-	}
-	hosts := wanted[0].Match[0].Host
-	if slices.ContainsFunc(plain.Skip, func(host string) bool { return slices.Contains(hosts, host) }) {
-		if err := c.setPlainHosts(ctx, nil, hosts); err != nil {
-			return changed, fmt.Errorf("serve control plane over https: %w", err)
+		secure := slices.ContainsFunc(skip, func(host string) bool { return slices.Contains(hosts, host) })
+		if secure {
+			skip = plainHosts(skip, nil, hosts)
 		}
-		changed = true
+		changed = reorder || secure
+		return next, skip, changed, nil
+	})
+	if err != nil {
+		return false, fmt.Errorf("repair control plane routes: %w", err)
 	}
 	return changed, nil
 }
@@ -276,7 +271,7 @@ func (c *Client) EnsureServer(ctx context.Context) error {
 		if level.child == "" {
 			return c.secureRoutes(ctx)
 		}
-		return c.do(ctx, http.MethodPut, level.path+"/"+level.child, level.value, nil)
+		return c.do(ctx, http.MethodPut, level.path+"/"+level.child, level.value)
 	}
 	return errors.New("caddy has no configuration root; its admin endpoint is not configured by the installer")
 }
@@ -323,7 +318,7 @@ func (c *Client) secureRoutes(ctx context.Context) error {
 			secured[index].Protocol, changed = HTTPS, true
 		}
 		if changed {
-			if err := c.do(ctx, http.MethodPatch, "/id/"+route.ID+"/match", secured, nil); err != nil {
+			if err := c.do(ctx, http.MethodPatch, "/id/"+route.ID+"/match", secured); err != nil {
 				return fmt.Errorf("secure caddy route: %w", err)
 			}
 		}
@@ -339,26 +334,34 @@ func (c *Client) UpsertRoute(ctx context.Context, route Route) error {
 	return c.upsertRoute(ctx, route)
 }
 
-// ApplyRoute writes a route and moves its hosts in or out of the hosts without TLS, as one unit
-// that no other route change and no securing of old routes can interleave with. The order keeps
-// every host reachable if a write fails: hosts leave the TLS-off list before the route changes
-// (until then the old route still answers them, now with a certificate), and join it only after
-// the route answers plain HTTP. The other order could leave a host without a certificate behind a
-// route that answers HTTPS only.
+// ApplyRoute writes a route and moves its hosts in or out of the hosts without TLS in one write of
+// the Shipkeep server (#438): Caddy loads one configuration for the switch, and the route never
+// disagrees with the TLS-off list. No other route change and no securing of old routes can
+// interleave with it. A refused write leaves the previous configuration whole, so every host stays
+// reachable.
 func (c *Client) ApplyRoute(ctx context.Context, route Route, plainAdd, plainRemove []string) error {
 	c.routes.Lock()
 	defer c.routes.Unlock()
-	if err := c.setPlainHosts(ctx, nil, plainRemove); err != nil {
-		return fmt.Errorf("set plain hosts: %w", err)
+	if !metricsSafe([]Route{route}) {
+		// Per-host metrics stop before the route exists: see EnableRequestMetrics.
+		if err := c.setPerHost(ctx, false); err != nil {
+			return err
+		}
 	}
-	if err := c.upsertRoute(ctx, route); err != nil {
-		return fmt.Errorf("upsert route: %w", err)
+	written, err := json.Marshal(route)
+	if err != nil {
+		return fmt.Errorf("encode caddy route: %w", err)
 	}
-	if c.betweenWrites != nil {
-		c.betweenWrites()
-	}
-	if err := c.setPlainHosts(ctx, plainAdd, nil); err != nil {
-		return fmt.Errorf("set plain hosts: %w", err)
+	err = c.writeServer(ctx, func(routes []json.RawMessage, skip []string) ([]json.RawMessage, []string, bool, error) {
+		if at := routeIndex(routes, route.ID); at >= 0 {
+			routes[at] = written
+		} else {
+			routes = append(routes, written)
+		}
+		return routes, plainHosts(skip, plainAdd, plainRemove), true, nil
+	})
+	if err != nil {
+		return fmt.Errorf("apply route: %w", err)
 	}
 	return nil
 }
@@ -376,9 +379,9 @@ func (c *Client) upsertRoute(ctx context.Context, route Route) error {
 		return err
 	}
 	if present {
-		return c.do(ctx, http.MethodPatch, "/id/"+route.ID, route, nil)
+		return c.do(ctx, http.MethodPatch, "/id/"+route.ID, route)
 	}
-	return c.do(ctx, http.MethodPost, "/config/apps/http/servers/"+Server+"/routes", route, nil)
+	return c.do(ctx, http.MethodPost, "/config/apps/http/servers/"+Server+"/routes", route)
 }
 
 // TLSHosts lists the host names the Shipkeep server serves over HTTPS, sorted and without
@@ -430,45 +433,124 @@ func (c *Client) Route(ctx context.Context, id string) (Route, bool, error) {
 	return route, present, err
 }
 
-// RemoveRoute deletes a route; a missing route is already removed.
-func (c *Client) RemoveRoute(ctx context.Context, id string) error {
+// RemoveRoute deletes a route and takes plainRemove out of the hosts without TLS, in one write of
+// the Shipkeep server (#438). A missing route is already removed: with no host to take out either,
+// nothing is written.
+func (c *Client) RemoveRoute(ctx context.Context, id string, plainRemove []string) error {
 	c.routes.Lock()
 	defer c.routes.Unlock()
-	err := c.do(ctx, http.MethodDelete, "/id/"+id, nil, nil)
-	if errors.Is(err, ErrNotFound) {
+	return c.writeServer(ctx, func(routes []json.RawMessage, skip []string) ([]json.RawMessage, []string, bool, error) {
+		kept := plainHosts(skip, nil, plainRemove)
+		at := routeIndex(routes, id)
+		if at >= 0 {
+			routes = slices.Delete(routes, at, at+1)
+		}
+		return routes, kept, at >= 0 || !slices.Equal(kept, plainHosts(skip, nil, nil)), nil
+	})
+}
+
+// errChanged is Caddy's 412 to a write whose If-Match no longer holds: the configuration changed
+// after it was read.
+var errChanged = errors.New("caddy: the configuration changed meanwhile")
+
+// serverWrites bounds the attempts of one server write that a change in between refused.
+const serverWrites = 3
+
+// writeServer reads the Shipkeep server, lets change rewrite its routes and its hosts without TLS,
+// and writes it back in one request, so that Caddy loads one configuration for the whole change:
+// each load closes the previous one's idle connections, and a client that sends on one of them at
+// that instant gets a reset (#437). The server's other fields are kept as they are. The write
+// carries the read's ETag (If-Match), and is made again from a new read when the configuration
+// changed in between. change reports whether there is anything to write.
+func (c *Client) writeServer(ctx context.Context, change func(routes []json.RawMessage, skip []string) ([]json.RawMessage, []string, bool, error)) error {
+	path := "/config/apps/http/servers/" + Server
+	for attempt := 1; ; attempt++ {
+		var stored map[string]json.RawMessage
+		etag, present, err := c.getTagged(ctx, path, &stored)
+		if err != nil {
+			return err
+		}
+		if !present {
+			return errors.New("caddy has no shipkeep server")
+		}
+		var routes []json.RawMessage
+		if err := decodeField(stored, "routes", &routes); err != nil {
+			return err
+		}
+		automatic := map[string]json.RawMessage{}
+		if err := decodeField(stored, "automatic_https", &automatic); err != nil {
+			return err
+		}
+		var skip []string
+		if err := decodeField(automatic, "skip", &skip); err != nil {
+			return err
+		}
+		routes, skip, changed, err := change(routes, skip)
+		if err != nil || !changed {
+			return err
+		}
+		if err := setField(stored, "routes", routes, len(routes) > 0); err != nil {
+			return err
+		}
+		if err := setField(automatic, "skip", skip, len(skip) > 0); err != nil {
+			return err
+		}
+		if err := setField(stored, "automatic_https", automatic, len(automatic) > 0); err != nil {
+			return err
+		}
+		_, err = c.send(ctx, http.MethodPatch, path, stored, etag, nil)
+		if !errors.Is(err, errChanged) || attempt == serverWrites {
+			return err
+		}
+	}
+}
+
+// plainHosts is skip without remove and with add, sorted and without duplicates.
+func plainHosts(skip, add, remove []string) []string {
+	hosts := slices.DeleteFunc(slices.Clone(skip), func(host string) bool { return slices.Contains(remove, host) })
+	for _, host := range add {
+		if !slices.Contains(hosts, host) {
+			hosts = append(hosts, host)
+		}
+	}
+	slices.Sort(hosts)
+	return slices.Compact(hosts)
+}
+
+// routeIndex is the position of the route with this id in routes, or -1.
+func routeIndex(routes []json.RawMessage, id string) int {
+	return slices.IndexFunc(routes, func(raw json.RawMessage) bool {
+		var route struct {
+			ID string `json:"@id"`
+		}
+		return json.Unmarshal(raw, &route) == nil && route.ID == id
+	})
+}
+
+// decodeField reads object[name] into out; an absent or null field leaves out as it is.
+func decodeField(object map[string]json.RawMessage, name string, out any) error {
+	raw, ok := object[name]
+	if !ok || string(bytes.TrimSpace(raw)) == "null" {
 		return nil
 	}
-	return err
+	if err := json.Unmarshal(raw, out); err != nil {
+		return fmt.Errorf("decode caddy %s: %w", name, err)
+	}
+	return nil
 }
 
-// SetPlainHosts adds or removes hosts from automatic HTTPS (TLS mode off).
-func (c *Client) SetPlainHosts(ctx context.Context, add, remove []string) error {
-	c.routes.Lock()
-	defer c.routes.Unlock()
-	return c.setPlainHosts(ctx, add, remove)
-}
-
-func (c *Client) setPlainHosts(ctx context.Context, add, remove []string) error {
-	path := "/config/apps/http/servers/" + Server + "/automatic_https"
-	var current automaticHTTPS
-	present, err := c.get(ctx, path, &current)
+// setField writes value as object[name], or removes the field when keep is false.
+func setField(object map[string]json.RawMessage, name string, value any, keep bool) error {
+	if !keep {
+		delete(object, name)
+		return nil
+	}
+	raw, err := json.Marshal(value)
 	if err != nil {
-		return err
+		return fmt.Errorf("encode caddy %s: %w", name, err)
 	}
-	skip := slices.DeleteFunc(slices.Clone(current.Skip), func(host string) bool { return slices.Contains(remove, host) })
-	for _, host := range add {
-		if !slices.Contains(skip, host) {
-			skip = append(skip, host)
-		}
-	}
-	slices.Sort(skip)
-	if !present {
-		if len(skip) == 0 {
-			return nil
-		}
-		return c.do(ctx, http.MethodPut, path, automaticHTTPS{Skip: skip}, nil)
-	}
-	return c.do(ctx, http.MethodPatch, path, automaticHTTPS{Skip: skip}, nil)
+	object[name] = raw
+	return nil
 }
 
 // errUnreachablePath is Caddy's 400 to a read: a parent of the path does not exist.
@@ -485,21 +567,27 @@ func (c *Client) exists(ctx context.Context, path string) (bool, error) {
 }
 
 func (c *Client) get(ctx context.Context, path string, out any) (bool, error) {
+	_, present, err := c.getTagged(ctx, path, out)
+	return present, err
+}
+
+// getTagged is get, with the ETag Caddy answered: what a write of the same path sends as If-Match.
+func (c *Client) getTagged(ctx context.Context, path string, out any) (string, bool, error) {
 	var raw json.RawMessage
-	err := c.do(ctx, http.MethodGet, path, nil, &raw)
+	etag, err := c.send(ctx, http.MethodGet, path, nil, "", &raw)
 	if errors.Is(err, ErrNotFound) {
-		return false, nil
+		return "", false, nil
 	}
 	if err != nil {
-		return false, err
+		return "", false, err
 	}
 	if len(bytes.TrimSpace(raw)) == 0 || string(bytes.TrimSpace(raw)) == "null" {
-		return false, nil
+		return etag, false, nil
 	}
 	if err := json.Unmarshal(raw, out); err != nil {
-		return false, fmt.Errorf("decode caddy response: %w", err)
+		return "", false, fmt.Errorf("decode caddy response: %w", err)
 	}
-	return true, nil
+	return etag, true, nil
 }
 
 // EnableRequestMetrics turns Caddy's request metrics per host name on (ADR 0024) when every route
@@ -564,12 +652,12 @@ func (c *Client) setPerHost(ctx context.Context, on bool) error {
 	case isOn == on:
 		return nil
 	case !found && on:
-		err = c.do(ctx, http.MethodPut, "/config/apps/http/metrics", map[string]bool{"per_host": true}, nil)
+		err = c.do(ctx, http.MethodPut, "/config/apps/http/metrics", map[string]bool{"per_host": true})
 	case !found:
 		return nil
 	default:
 		// POST sets one key of an object, whether it is there or not; PATCH would need it there.
-		err = c.do(ctx, http.MethodPost, "/config/apps/http/metrics/per_host", on, nil)
+		err = c.do(ctx, http.MethodPost, "/config/apps/http/metrics/per_host", on)
 	}
 	if err != nil {
 		return fmt.Errorf("set caddy request metrics: %w", err)
@@ -601,49 +689,62 @@ func (c *Client) RequestMetrics(ctx context.Context) ([]byte, error) {
 	return data, nil
 }
 
-func (c *Client) do(ctx context.Context, method, path string, body, out any) error {
+func (c *Client) do(ctx context.Context, method, path string, body any) error {
+	_, err := c.send(ctx, method, path, body, "", nil)
+	return err
+}
+
+// send makes one admin request and answers Caddy's ETag. A write with ifMatch is made only if the
+// configuration at path is still the one with that ETag.
+func (c *Client) send(ctx context.Context, method, path string, body any, ifMatch string, out any) (string, error) {
 	var reader io.Reader
 	if body != nil {
 		data, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("encode caddy request: %w", err)
+			return "", fmt.Errorf("encode caddy request: %w", err)
 		}
 		reader = bytes.NewReader(data)
 	}
 	request, err := http.NewRequestWithContext(ctx, method, "http://caddy"+path, reader)
 	if err != nil {
-		return fmt.Errorf("build caddy request: %w", err)
+		return "", fmt.Errorf("build caddy request: %w", err)
 	}
 	if body != nil {
 		request.Header.Set("Content-Type", "application/json")
 	}
+	if ifMatch != "" {
+		request.Header.Set("If-Match", ifMatch)
+	}
 	response, err := c.http.Do(request)
 	if err != nil {
-		return fmt.Errorf("caddy %s: %w", method, err)
+		return "", fmt.Errorf("caddy %s: %w", method, err)
 	}
 	defer response.Body.Close() //nolint:errcheck // read-only body
 	data, err := io.ReadAll(io.LimitReader(response.Body, maxBody+1))
 	if err != nil {
-		return fmt.Errorf("read caddy response: %w", err)
+		return "", fmt.Errorf("read caddy response: %w", err)
 	}
 	if len(data) > maxBody {
-		return errors.New("caddy response too large")
+		return "", errors.New("caddy response too large")
 	}
+	etag := response.Header.Get("Etag")
 	switch {
 	case response.StatusCode == http.StatusNotFound:
-		return ErrNotFound
+		return "", ErrNotFound
+	case response.StatusCode == http.StatusPreconditionFailed:
+		return "", errChanged
 	case response.StatusCode == http.StatusBadRequest && method == http.MethodGet:
 		// Caddy answers a read below a missing parent ("invalid traversal path") with 400, not 404.
 		// Only EnsureServer, which walks up to the first existing level, reads this as "missing".
-		return errUnreachablePath
+		return "", errUnreachablePath
 	case response.StatusCode/100 != 2:
 		// Caddy error text can contain configuration: report the status only.
-		return fmt.Errorf("caddy %s: status %d", method, response.StatusCode)
+		return "", fmt.Errorf("caddy %s: status %d", method, response.StatusCode)
 	case out == nil || len(data) == 0:
-		return nil
+		return etag, nil
 	}
 	if err := json.Unmarshal(data, out); err != nil {
-		return fmt.Errorf("decode caddy response: %w", err)
+		return "", fmt.Errorf("decode caddy response: %w", err)
 	}
-	return nil
+	return etag, nil
 }

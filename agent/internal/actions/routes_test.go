@@ -155,41 +155,38 @@ func (f *fakeRouter) Route(_ context.Context, id string) (caddy.Route, bool, err
 	return route, ok, nil
 }
 
-// ApplyRoute follows the order of the Caddy client: removals, the route, then additions.
-func (f *fakeRouter) ApplyRoute(ctx context.Context, route caddy.Route, add, remove []string) error {
+// ApplyRoute is one write, as in the Caddy client: a refused one changes nothing.
+func (f *fakeRouter) ApplyRoute(_ context.Context, route caddy.Route, add, remove []string) error {
 	f.wrote()
-	if err := f.SetPlainHosts(ctx, nil, remove); err != nil {
-		return err
-	}
 	f.mu.Lock()
+	defer f.mu.Unlock()
 	if f.failUpsert {
-		f.mu.Unlock()
-		return errors.New("caddy POST: status 400")
+		return errors.New("caddy PATCH: status 400")
 	}
 	f.routes[route.ID] = route
-	f.mu.Unlock()
-	return f.SetPlainHosts(ctx, add, nil)
+	f.setPlain(add, remove)
+	return nil
 }
-func (f *fakeRouter) RemoveRoute(_ context.Context, id string) error {
+func (f *fakeRouter) RemoveRoute(_ context.Context, id string, remove []string) error {
 	f.wrote()
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.failRemove {
-		return errors.New("caddy DELETE: status 500")
+		return errors.New("caddy PATCH: status 500")
 	}
 	delete(f.routes, id)
+	f.setPlain(nil, remove)
 	return nil
 }
-func (f *fakeRouter) SetPlainHosts(_ context.Context, add, remove []string) error {
-	f.mu.Lock()
-	defer f.mu.Unlock()
+
+// setPlain changes the hosts without TLS; the caller holds the lock.
+func (f *fakeRouter) setPlain(add, remove []string) {
 	f.plain = slices.DeleteFunc(f.plain, func(host string) bool { return slices.Contains(remove, host) })
 	for _, host := range add {
 		if !slices.Contains(f.plain, host) {
 			f.plain = append(f.plain, host)
 		}
 	}
-	return nil
 }
 
 func routeRequest(t *testing.T, router *fakeRouter, slept *[]time.Duration, req *agentv1.ActionRequest) *agentv1.ActionUpdate {

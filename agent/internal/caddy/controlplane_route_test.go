@@ -132,9 +132,9 @@ func TestControlPlaneRouteLeavesTheHostsWithoutTLS(t *testing.T) {
 	}
 }
 
-// A repair of the control plane's route waits for a route change in progress: between the write of
-// a route with TLS off and the addition of its host to the hosts without TLS, securing old routes
-// would make it answer HTTPS only (#378 review).
+// A repair of the control plane's route waits for a route change in progress: in the middle of the
+// write of a route with TLS off and its host, securing old routes would make it answer HTTPS only
+// (#378 review).
 func TestControlPlaneRouteWaitsForARouteChangeInProgress(t *testing.T) {
 	client, fake := admin(t)
 	ctx := context.Background()
@@ -142,44 +142,32 @@ func TestControlPlaneRouteWaitsForARouteChangeInProgress(t *testing.T) {
 		t.Fatal(err)
 	}
 	plain := Route{ID: RouteID("plain"), Match: []Match{{Host: []string{"plain.example.com"}}}, Handle: []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{{Dial: "10.0.0.2:80"}}}}, Terminal: true}
+	reached, release := hold(t, fake, "PATCH "+serverPath)
+	applied := make(chan error, 1)
+	go func() { applied <- client.ApplyRoute(ctx, plain, []string{"plain.example.com"}, nil) }()
+	<-reached
+	fake.mu.Lock()
+	before := len(fake.requests)
+	fake.mu.Unlock()
 	repaired := make(chan error, 1)
-	requests := func() []string {
-		fake.mu.Lock()
-		defer fake.mu.Unlock()
-		return slices.Clone(fake.requests)
+	go func() {
+		_, err := client.EnsureControlPlaneRoutes(ctx, ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080", "127.0.0.1:5000"))
+		repaired <- err
+	}()
+	// The repair reaches Caddy first for EnsureServer, before the lock; under the lock, its securing
+	// reads the routes. It must not before the change ends.
+	time.Sleep(100 * time.Millisecond)
+	fake.mu.Lock()
+	read := slices.Contains(fake.requests[before:], "GET "+serverPath+"/routes")
+	fake.mu.Unlock()
+	if read {
+		t.Error("the repair read the routes in the middle of a route change")
 	}
-	// Polls until seen holds, or fails after a bound: a regression must not hang the test.
-	waitFor := func(seen func([]string) bool) bool {
-		deadline := time.Now().Add(2 * time.Second)
-		for time.Now().Before(deadline) {
-			if seen(requests()) {
-				return true
-			}
-			time.Sleep(time.Millisecond)
-		}
-		return false
-	}
-	client.betweenWrites = func() {
-		before := len(requests())
-		go func() {
-			_, err := client.EnsureControlPlaneRoutes(ctx, ControlPlaneRoutes("shipkeep.example.com", "127.0.0.1:8080", "127.0.0.1:5000"))
-			repaired <- err
-		}()
-		// The repair is running once Caddy got its first request, which comes before the lock.
-		if !waitFor(func(r []string) bool { return len(r) > before }) {
-			t.Error("the repair never started")
-			return
-		}
-		// Under the lock, the repair reads the routes. It must not before the change ends.
-		routes := "GET /config/apps/http/servers/" + Server + "/routes"
-		if waitFor(func(r []string) bool { return slices.Contains(r[before:], routes) }) {
-			t.Error("the repair read the routes in the middle of a route change")
-		}
-	}
-	if err := client.ApplyRoute(ctx, plain, []string{"plain.example.com"}, nil); err != nil {
+	release()
+	if err := within(t, applied, "the route change"); err != nil {
 		t.Fatal(err)
 	}
-	if err := <-repaired; err != nil {
+	if err := within(t, repaired, "the repair"); err != nil {
 		t.Fatal(err)
 	}
 	fake.mu.Lock()
@@ -193,7 +181,7 @@ func TestControlPlaneRouteWaitsForARouteChangeInProgress(t *testing.T) {
 	}
 }
 
-// The repair is one write that replaces the list: Caddy never runs a configuration where the fixed
+// The repair is one write of the server: Caddy never runs a configuration where the fixed
 // routes are missing and an application wildcard answers for the control plane's name. The other
 // routes keep their order and the fields this client does not model.
 func TestControlPlaneRouteRepairIsOneWrite(t *testing.T) {
@@ -215,11 +203,11 @@ func TestControlPlaneRouteRepairIsOneWrite(t *testing.T) {
 	defer fake.mu.Unlock()
 	routeWrites := []string{}
 	for _, request := range fake.requests[writes:] {
-		if !strings.HasPrefix(request, "GET ") && !strings.HasSuffix(request, "/automatic_https") {
+		if !strings.HasPrefix(request, "GET ") {
 			routeWrites = append(routeWrites, request)
 		}
 	}
-	if !slices.Equal(routeWrites, []string{"PATCH /config/apps/http/servers/" + Server + "/routes"}) {
+	if !slices.Equal(routeWrites, []string{"PATCH " + serverPath}) {
 		t.Fatalf("route writes = %v", routeWrites)
 	}
 	if order := fake.ordered(); !slices.Equal(order, []string{ControlPlaneRegistryRouteID, ControlPlaneRouteID, ControlPlaneRedirectRouteID, RouteID("b"), RouteID("a")}) {

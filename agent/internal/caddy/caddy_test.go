@@ -2,7 +2,9 @@ package caddy
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"maps"
 	"net"
@@ -26,7 +28,7 @@ type fakeAdmin struct {
 	order    []string
 	skip     []string
 	requests []string
-	// gate, when set, holds the request "METHOD path" named gated until it is closed; reached is
+	// gate, when set, holds the first request "METHOD path" named gated until it is closed; reached is
 	// closed when that request arrives.
 	gated         string
 	gate, reached chan struct{}
@@ -34,12 +36,79 @@ type fakeAdmin struct {
 	failRoutes bool
 	// metrics is the request metrics setting, when a test sets one.
 	metrics string
+	// fields are the Shipkeep server's fields other than routes and automatic_https.
+	fields map[string]json.RawMessage
+	// stale makes Caddy refuse that many server writes with 412, as after a change in between.
+	stale int
+}
+
+const serverPath = "/config/apps/http/servers/" + Server
+
+// serverJSON is the Shipkeep server as Caddy answers it: its fields, routes and hosts without TLS.
+func (f *fakeAdmin) serverJSON() []byte {
+	object := map[string]any{}
+	for name, value := range f.fields {
+		object[name] = value
+	}
+	if f.fields == nil {
+		object["listen"] = []string{":443"}
+	}
+	ids := f.ordered()
+	if len(ids) > 0 {
+		routes := make([]json.RawMessage, 0, len(ids))
+		for _, id := range ids {
+			routes = append(routes, f.routes[id])
+		}
+		object["routes"] = routes
+	}
+	if f.skip != nil {
+		object["automatic_https"] = map[string][]string{"skip": f.skip}
+	}
+	body, _ := json.Marshal(object)
+	return body
+}
+
+// etag is the ETag Caddy answers for the server: its path and a hash of its configuration.
+func (f *fakeAdmin) etag() string {
+	sum := sha256.Sum256(f.serverJSON())
+	return fmt.Sprintf(`"%s %x"`, serverPath, sum[:8])
+}
+
+// writeServer stores a server write, as Caddy replaces the whole value at the path.
+func (f *fakeAdmin) writeServer(body []byte) {
+	var object map[string]json.RawMessage
+	_ = json.Unmarshal(body, &object)
+	var list []json.RawMessage
+	_ = json.Unmarshal(object["routes"], &list)
+	f.routes, f.order = map[string]json.RawMessage{}, []string{}
+	for _, raw := range list {
+		var route Route
+		_ = json.Unmarshal(raw, &route)
+		f.routes[route.ID] = raw
+		f.order = append(f.order, route.ID)
+	}
+	f.skip = nil
+	if raw, ok := object["automatic_https"]; ok {
+		var automatic automaticHTTPS
+		_ = json.Unmarshal(raw, &automatic)
+		f.skip = automatic.Skip
+		if f.skip == nil {
+			f.skip = []string{}
+		}
+	}
+	delete(object, "routes")
+	delete(object, "automatic_https")
+	f.fields = object
 }
 
 func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	f.mu.Lock()
 	gated := f.gate != nil && r.Method+" "+r.URL.Path == f.gated
 	gate, reached := f.gate, f.reached
+	if gated {
+		// Once: the same request made again afterwards goes through.
+		f.gated = ""
+	}
 	f.mu.Unlock()
 	if gated {
 		close(reached)
@@ -53,8 +122,18 @@ func (f *fakeAdmin) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		(r.Method == http.MethodPatch && strings.HasPrefix(r.URL.Path, "/id/")) ||
 		(r.Method == http.MethodPatch && r.URL.Path == "/config/apps/http/servers/"+Server+"/routes")
 	switch {
-	case routeWrite && f.failRoutes:
+	case (routeWrite || (r.Method == http.MethodPatch && r.URL.Path == serverPath)) && f.failRoutes:
 		http.Error(w, "private config detail", http.StatusBadRequest)
+	case r.Method == http.MethodGet && r.URL.Path == serverPath && f.server:
+		w.Header().Set("Etag", f.etag())
+		_, _ = w.Write(f.serverJSON())
+	case r.Method == http.MethodPatch && r.URL.Path == serverPath && f.server:
+		if f.stale > 0 || r.Header.Get("If-Match") != f.etag() {
+			f.stale = max(f.stale-1, 0)
+			http.Error(w, `{"error":"If-Match header did not match current config hash"}`, http.StatusPreconditionFailed)
+			return
+		}
+		f.writeServer(body)
 	case (r.Method == http.MethodPut || r.Method == http.MethodPatch) && r.URL.Path == "/config/apps/http/servers/"+Server+"/automatic_https":
 		var value automaticHTTPS
 		_ = json.Unmarshal(body, &value)
@@ -204,11 +283,20 @@ func TestClientBootstrapsWithoutLoadAndUpsertsById(t *testing.T) {
 	if err != nil || !ok || stored.Handle[0].Upstreams[0].Dial != "10.0.0.3:80" {
 		t.Fatalf("route not replaced: %+v %v %v", stored, ok, err)
 	}
-	if err := client.RemoveRoute(ctx, RouteID("api")); err != nil {
+	if err := client.RemoveRoute(ctx, RouteID("api"), nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := client.RemoveRoute(ctx, RouteID("api")); err != nil {
+	if _, present, _ := client.Route(ctx, RouteID("api")); present {
+		t.Fatal("the route was not removed")
+	}
+	writes := len(fake.requests)
+	if err := client.RemoveRoute(ctx, RouteID("api"), nil); err != nil {
 		t.Fatalf("removing a missing route failed: %v", err)
+	}
+	for _, request := range fake.requests[writes:] {
+		if !strings.HasPrefix(request, "GET ") {
+			t.Fatalf("removing a missing route wrote: %s", request)
+		}
 	}
 	for _, request := range fake.requests {
 		if strings.Contains(request, "/load") {
@@ -257,7 +345,7 @@ func TestUpdateRouteRewritesARouteUnderTheLock(t *testing.T) {
 
 func TestClientHidesCaddyErrors(t *testing.T) {
 	client, _ := admin(t)
-	err := client.do(context.Background(), http.MethodPost, "/unknown", map[string]string{}, nil)
+	err := client.do(context.Background(), http.MethodPost, "/unknown", map[string]string{})
 	if err == nil || strings.Contains(err.Error(), "private config detail") {
 		t.Fatalf("caddy text leaked: %v", err)
 	}
@@ -271,7 +359,7 @@ func TestClientKeepsABadRequestAnErrorOutsideBootstrap(t *testing.T) {
 	ctx := context.Background()
 	// The server does not exist yet: reading below it is Caddy's 400, which must not pass for
 	// "nothing to change" anywhere but in EnsureServer.
-	if err := client.SetPlainHosts(ctx, nil, []string{"a.example.com"}); err == nil {
+	if err := client.RemoveRoute(ctx, RouteID("a"), []string{"a.example.com"}); err == nil {
 		t.Fatal("a 400 from Caddy was read as an absent value")
 	}
 	if err := client.EnsureServer(ctx); err != nil {
@@ -463,31 +551,29 @@ func TestSecuringOldRoutesWaitsForNoUpsert(t *testing.T) {
 }
 
 func TestApplyRouteIsOneUnitForTheSecuring(t *testing.T) {
-	// Switching a route to TLS off writes the route, then adds its host to the skip list. The
-	// securing must not run in between: it would see the host under automatic HTTPS and limit
-	// the new route to HTTPS, leaving a skipped host behind an HTTPS-only route.
+	// Switching a route to TLS off changes the route and adds its host to the skip list. The
+	// securing must not run while the write is under way: it would see the host under automatic
+	// HTTPS and limit the new route to HTTPS, leaving a skipped host behind an HTTPS-only route.
 	client, fake := admin(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	fake.apps, fake.server = true, true
 	fake.routes[RouteID("app")] = json.RawMessage(`{"@id":"sk-route-app","match":[{"host":["app.example.com"],"protocol":"https"}],"handle":[],"terminal":true}`)
-	secured := make(chan error, 1)
-	client.betweenWrites = func() {
-		if client.routes.TryLock() {
-			client.routes.Unlock()
-			t.Error("ApplyRoute released the route lock between its writes")
-		}
-		// Exactly in the gap: a securing started now must wait for the whole change.
-		go func() { secured <- client.SecureRoutes(ctx) }()
-		select {
-		case err := <-secured:
-			t.Errorf("the securing ran in the middle of a route change: %v", err)
-			secured <- err
-		case <-time.After(100 * time.Millisecond):
-		}
-	}
+	reached, release := hold(t, fake, "PATCH "+serverPath)
 	plain := Route{ID: RouteID("app"), Match: []Match{{Host: []string{"app.example.com"}}}, Handle: []Handler{}, Terminal: true}
-	if err := client.ApplyRoute(ctx, plain, []string{"app.example.com"}, nil); err != nil {
+	applied := make(chan error, 1)
+	go func() { applied <- client.ApplyRoute(ctx, plain, []string{"app.example.com"}, nil) }()
+	<-reached
+	// Exactly during the write: a securing started now must wait for the whole change.
+	secured := make(chan error, 1)
+	go func() { secured <- client.SecureRoutes(ctx) }()
+	select {
+	case err := <-secured:
+		t.Fatalf("the securing ran in the middle of a route change: %v", err)
+	case <-time.After(100 * time.Millisecond):
+	}
+	release()
+	if err := within(t, applied, "the route change"); err != nil {
 		t.Fatal(err)
 	}
 	if err := within(t, secured, "the securing"); err != nil {
@@ -497,6 +583,80 @@ func TestApplyRouteIsOneUnitForTheSecuring(t *testing.T) {
 	defer fake.mu.Unlock()
 	if !slices.Contains(fake.skip, "app.example.com") || strings.Contains(string(fake.routes[RouteID("app")]), "protocol") {
 		t.Fatalf("TLS-off route secured anyway: skip %v, route %s", fake.skip, fake.routes[RouteID("app")])
+	}
+}
+
+// #438: each configuration load closes the idle connections of the previous one, so a route switch
+// is one write of the server, the route and the hosts without TLS together, and so is a removal.
+// The server's other fields are kept.
+func TestARouteSwitchIsOneWrite(t *testing.T) {
+	client, fake := admin(t)
+	ctx := context.Background()
+	fake.apps, fake.server, fake.skip = true, true, []string{"old.example.com"}
+	fake.fields = map[string]json.RawMessage{"listen": json.RawMessage(`[":80",":443"]`), "logs": json.RawMessage(`{"default_logger_name":"sk"}`)}
+	fake.routes[RouteID("app")] = json.RawMessage(`{"@id":"sk-route-app","match":[{"host":["old.example.com"]}],"handle":[{"handler":"reverse_proxy","upstreams":[{"dial":"10.0.0.2:80"}],"flush_interval":-1}],"terminal":true}`)
+	fake.routes[RouteID("other")] = json.RawMessage(`{"@id":"sk-route-other","match":[{"host":["other.example.com"],"protocol":"https"}],"handle":[],"terminal":true}`)
+	fake.order = []string{RouteID("app"), RouteID("other")}
+	writes := func(from int) []string {
+		fake.mu.Lock()
+		defer fake.mu.Unlock()
+		var out []string
+		for _, request := range fake.requests[from:] {
+			if !strings.HasPrefix(request, "GET ") {
+				out = append(out, request)
+			}
+		}
+		return out
+	}
+	before := len(fake.requests)
+	switched := Route{ID: RouteID("app"), Match: []Match{{Host: []string{"new.example.com"}}}, Handle: []Handler{{Handler: "reverse_proxy", Upstreams: []Upstream{{Dial: "10.0.0.3:80"}}}}, Terminal: true}
+	if err := client.ApplyRoute(ctx, switched, []string{"new.example.com"}, []string{"old.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := writes(before); !slices.Equal(got, []string{"PATCH " + serverPath}) {
+		t.Fatalf("a route switch wrote %v", got)
+	}
+	fake.mu.Lock()
+	if !slices.Equal(fake.skip, []string{"new.example.com"}) || !slices.Equal(fake.ordered(), []string{RouteID("app"), RouteID("other")}) ||
+		!strings.Contains(string(fake.routes[RouteID("app")]), "10.0.0.3:80") || string(fake.fields["logs"]) != `{"default_logger_name":"sk"}` {
+		t.Fatalf("after the switch: skip %v, order %v, route %s, fields %v", fake.skip, fake.ordered(), fake.routes[RouteID("app")], fake.fields)
+	}
+	fake.mu.Unlock()
+
+	before = len(fake.requests)
+	if err := client.RemoveRoute(ctx, RouteID("app"), []string{"new.example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := writes(before); !slices.Equal(got, []string{"PATCH " + serverPath}) {
+		t.Fatalf("a removal wrote %v", got)
+	}
+	fake.mu.Lock()
+	defer fake.mu.Unlock()
+	if len(fake.skip) != 0 || !slices.Equal(fake.ordered(), []string{RouteID("other")}) || string(fake.fields["listen"]) != `[":80",":443"]` {
+		t.Fatalf("after the removal: skip %v, order %v, fields %v", fake.skip, fake.ordered(), fake.fields)
+	}
+}
+
+// A write refused because the configuration changed after it was read (If-Match, 412) is made
+// again from a new read, a bounded number of times; nothing is half written.
+func TestAServerWriteIsMadeAgainAfterAChangeInBetween(t *testing.T) {
+	ctx := context.Background()
+	route := Route{ID: RouteID("app"), Match: []Match{{Host: []string{"app.example.com"}}}, Handle: []Handler{}, Terminal: true}
+	client, fake := admin(t)
+	fake.apps, fake.server, fake.stale = true, true, 1
+	if err := client.ApplyRoute(ctx, route, []string{"app.example.com"}, nil); err != nil {
+		t.Fatalf("after one change in between: %v", err)
+	}
+	if !slices.Equal(fake.skip, []string{"app.example.com"}) || fake.routes[RouteID("app")] == nil {
+		t.Fatalf("not written: skip %v, routes %v", fake.skip, fake.routes)
+	}
+	client, fake = admin(t)
+	fake.apps, fake.server, fake.stale = true, true, serverWrites
+	if err := client.ApplyRoute(ctx, route, []string{"app.example.com"}, nil); err == nil {
+		t.Fatal("a write refused every time reported success")
+	}
+	if fake.skip != nil || len(fake.routes) != 0 || fake.stale != 0 {
+		t.Fatalf("changed or tried more than %d times: skip %v, routes %v, refusals left %d", serverWrites, fake.skip, fake.routes, fake.stale)
 	}
 }
 
@@ -539,6 +699,10 @@ func TestAFailedApplyRouteLeavesItsHostsReachable(t *testing.T) {
 		}
 		if slices.Contains(fake.skip, "app.example.com") && stored.Match[0].Protocol != "" {
 			t.Fatalf("%s: skipped host behind an HTTPS-only route: skip %v, route %s", change.name, fake.skip, fake.routes[RouteID("app")])
+		}
+		// One write: a refused one leaves the previous configuration whole.
+		if !slices.Equal(fake.skip, change.skip) || string(fake.routes[RouteID("app")]) != change.before {
+			t.Fatalf("%s: a refused write changed the configuration: skip %v, route %s", change.name, fake.skip, fake.routes[RouteID("app")])
 		}
 	}
 }
