@@ -203,7 +203,8 @@ export class ProjectsPage {
     const body = {
       name: value.name.trim(),
       slug: value.slug.trim(),
-      gitWriteMode: 'commit' as const,
+      // ADR 0031: a change from the interface is a pull request unless the project says otherwise.
+      gitWriteMode: 'pull_request' as const,
     };
     const outcome = await this.runner.run(body, (key) =>
       this.api.createProject(this.organizationId(), body, key),

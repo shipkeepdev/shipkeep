@@ -153,6 +153,108 @@ export function validRepository(fullName: string, branch: string): boolean {
   return validFullName(fullName) && validBranch(branch);
 }
 
+/**
+ * A file of a repository at a branch or a commit (#214): its text, and the blob GitHub asks for to
+ * replace it, so that a write over a file someone changed meanwhile is refused.
+ */
+export interface RepositoryFile {
+  readonly blobSha: string;
+  readonly text: string;
+}
+
+/** A commit GitHub made, and its page. */
+export interface WrittenCommit {
+  readonly commitSha: string;
+  readonly url: string;
+}
+
+/** A pull request GitHub opened, and its page. */
+export interface OpenedPullRequest {
+  readonly number: number;
+  readonly url: string;
+}
+
+/**
+ * A file as the contents API describes it, or undefined when it is not a UTF-8 file of at most
+ * `maxBytes`. GitHub sends its bytes in base64, cut into lines.
+ */
+export function repositoryFileOf(raw: unknown, maxBytes: number): RepositoryFile | undefined {
+  const value = record(raw);
+  const sha = value?.['sha'];
+  const content = value?.['content'];
+  if (
+    value?.['type'] !== 'file' ||
+    value['encoding'] !== 'base64' ||
+    typeof sha !== 'string' ||
+    !SHA.test(sha) ||
+    typeof content !== 'string' ||
+    !/^[A-Za-z0-9+/=\n]*$/.test(content)
+  )
+    return undefined;
+  const bytes = Buffer.from(content.replaceAll('\n', ''), 'base64');
+  if (bytes.length > maxBytes) return undefined;
+  try {
+    return { blobSha: sha, text: new TextDecoder('utf-8', { fatal: true }).decode(bytes) };
+  } catch {
+    return undefined;
+  }
+}
+
+/** The commit a write through the contents API made, or undefined. */
+export function writtenCommitOf(raw: unknown): WrittenCommit | undefined {
+  const commit = record(record(raw)?.['commit']);
+  const sha = commit?.['sha'];
+  const url = githubPage(commit?.['html_url']);
+  return typeof sha === 'string' && SHA.test(sha) && url ? { commitSha: sha, url } : undefined;
+}
+
+/** The pull request GitHub opened, or undefined. */
+export function openedPullRequestOf(raw: unknown): OpenedPullRequest | undefined {
+  const value = record(raw);
+  const number = value?.['number'];
+  const url = githubPage(value?.['html_url']);
+  return typeof number === 'number' && Number.isSafeInteger(number) && number > 0 && url
+    ? { number, url }
+    : undefined;
+}
+
+/** The message of a commit, as the Git data API describes it; undefined when it has none. */
+export function commitMessageOf(raw: unknown): string | undefined {
+  const message = record(raw)?.['message'];
+  return typeof message === 'string' && message.length <= 65_536 ? message : undefined;
+}
+
+/**
+ * A commit message, or a pull request's title or text, as Shipkeep writes them: bounded, and
+ * without control characters other than line breaks in a text.
+ */
+export function validGitText(text: string, kind: 'title' | 'text'): boolean {
+  const limit = kind === 'title' ? 256 : 4096;
+  return (
+    text.trim().length > 0 &&
+    text.length <= limit &&
+    // eslint-disable-next-line no-control-regex -- control characters are what is refused
+    !(kind === 'title' ? /[\u0000-\u001f\u007f]/ : /[\u0000-\u0009\u000b-\u001f\u007f]/).test(text)
+  );
+}
+
+/** A page of github.com GitHub links to, and nothing else: never another host or a credential. */
+function githubPage(raw: unknown): string | undefined {
+  if (typeof raw !== 'string' || raw.length > 2048) return undefined;
+  try {
+    const url = new URL(raw);
+    return url.protocol === 'https:' &&
+      url.hostname === 'github.com' &&
+      url.port === '' &&
+      !url.username &&
+      !url.password
+      ? url.toString()
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 function record(value: unknown): Record<string, unknown> | undefined {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)

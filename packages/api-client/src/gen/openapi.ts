@@ -1172,6 +1172,54 @@ export type paths = {
         readonly patch?: never;
         readonly trace?: never;
     };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/repository-config": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get: operations["getRepositoryConfig"];
+        readonly put?: never;
+        readonly post?: never;
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/repository-config/changes": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["changeRepositoryConfig"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
+    readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/repository-config/preview": {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path?: never;
+            readonly cookie?: never;
+        };
+        readonly get?: never;
+        readonly put?: never;
+        readonly post: operations["previewRepositoryConfig"];
+        readonly delete?: never;
+        readonly options?: never;
+        readonly head?: never;
+        readonly patch?: never;
+        readonly trace?: never;
+    };
     readonly "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/stop": {
         readonly parameters: {
             readonly query?: never;
@@ -1899,6 +1947,14 @@ export type components = {
             /** @description True when the deployment requested more actions than listed. */
             readonly truncated: boolean;
         };
+        readonly DiffLineDto: {
+            /** @description Unchanged lines left out; skipped only. */
+            readonly count?: number;
+            /** @enum {string} */
+            readonly kind: "same" | "removed" | "added" | "skipped";
+            /** @description The line, without its line break; not for skipped. */
+            readonly text?: string;
+        };
         readonly DisplayNameDto: {
             /** @description The name to show; empty or null removes it. Trimmed, at most 64 characters. */
             readonly displayName: string | null;
@@ -2548,6 +2604,50 @@ export type components = {
         readonly ReplicaListDto: {
             readonly items: readonly components["schemas"]["ReplicaDto"][];
         };
+        readonly RepositoryConfigChangeDto: {
+            /** @description blobSha of the file the change was made against. Another one answers 409 config_file_changed. */
+            readonly blobSha: string;
+            /** @description The whole shipkeep.yml document as JSON (SPEC 2), validated against the schema, with the same name. The file keeps its comments and order where the document does not change it. */
+            readonly config: {
+                readonly [key: string]: unknown;
+            };
+        };
+        readonly RepositoryConfigDto: {
+            /** @description Whether the application's configuration is the file's. */
+            readonly applied: boolean;
+            /** @description The commit the application's configuration was last read from. */
+            readonly appliedCommitSha: string;
+            /** @description The file's blob: a change names it, so that it applies to this text only. */
+            readonly blobSha: string;
+            readonly branch: string;
+            /** @description The branch's head, where the file was read. */
+            readonly commitSha: string;
+            readonly configPath: string;
+            /** @description The repository's current owner/name. */
+            readonly fullName: string;
+            /** @description The file as the repository holds it. */
+            readonly text: string;
+            /** @description Whether the file is a valid configuration for this application. */
+            readonly valid: boolean;
+        };
+        readonly RepositoryConfigPreviewDto: {
+            readonly blobSha: string;
+            readonly branch: string;
+            /** @description The file with the change. */
+            readonly changedText: string;
+            readonly commitSha: string;
+            readonly configPath: string;
+            /** @description Its changed lines, with three around each. */
+            readonly diff: readonly components["schemas"]["DiffLineDto"][];
+            readonly fullName: string;
+            /** @description The file as the repository holds it. */
+            readonly text: string;
+            /**
+             * @description How writing it goes: the project's gitWriteMode.
+             * @enum {string}
+             */
+            readonly writeMode: "commit" | "pull_request";
+        };
         readonly RequestConfirmationDto: {
             /** @enum {string} */
             readonly action: "node.remove" | "node.container.remove" | "application.delete";
@@ -2675,6 +2775,21 @@ export type components = {
              */
             readonly password: string;
             readonly token: string;
+        };
+        readonly WrittenConfigChangeDto: {
+            /** @description The pull request's branch, with via pull_request. */
+            readonly branch?: string;
+            /** @description The commit that holds the change. */
+            readonly commitSha: string;
+            /** @description The pull request, with via pull_request. */
+            readonly number?: number;
+            /** @description The commit's or the pull request's page on GitHub. */
+            readonly url: string;
+            /**
+             * @description A commit on the application's branch, or a pull request into it.
+             * @enum {string}
+             */
+            readonly via: "commit" | "pull_request";
         };
     };
     responses: never;
@@ -4855,6 +4970,89 @@ export interface operations {
                 };
                 content: {
                     readonly "application/json": components["schemas"]["ReplicaListDto"];
+                };
+            };
+        };
+    };
+    readonly getRepositoryConfig: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody?: never;
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RepositoryConfigDto"];
+                };
+            };
+        };
+    };
+    readonly changeRepositoryConfig: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: {
+                /** @description Lowercase UUIDv4/v7. A retry with the same key and body is answered with the first answer, kept encrypted for five minutes, and writes nothing again. */
+                readonly "Idempotency-Key"?: string;
+            };
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RepositoryConfigChangeDto"];
+            };
+        };
+        readonly responses: {
+            readonly 201: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["WrittenConfigChangeDto"];
+                };
+            };
+        };
+    };
+    readonly previewRepositoryConfig: {
+        readonly parameters: {
+            readonly query?: never;
+            readonly header?: never;
+            readonly path: {
+                readonly applicationId: string;
+                readonly environmentId: string;
+                readonly organizationId: string;
+                readonly projectId: string;
+            };
+            readonly cookie?: never;
+        };
+        readonly requestBody: {
+            readonly content: {
+                readonly "application/json": components["schemas"]["RepositoryConfigChangeDto"];
+            };
+        };
+        readonly responses: {
+            readonly 200: {
+                headers: {
+                    readonly [name: string]: unknown;
+                };
+                content: {
+                    readonly "application/json": components["schemas"]["RepositoryConfigPreviewDto"];
                 };
             };
         };

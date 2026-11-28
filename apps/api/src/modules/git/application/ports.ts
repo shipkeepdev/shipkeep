@@ -1,6 +1,12 @@
 import type { Secret } from '@shipkeep/domain';
 
-import type { GithubRepository, TokenScope } from '../domain/github-api';
+import type {
+  GithubRepository,
+  OpenedPullRequest,
+  RepositoryFile,
+  TokenScope,
+  WrittenCommit,
+} from '../domain/github-api';
 import type { CreatedGithubApp, GithubAppMetadata } from '../domain/github-app';
 import type { DeliveryHeaders, InstallationChange, PushEvent } from '../domain/github-webhook';
 
@@ -104,6 +110,60 @@ export interface GithubApi {
    * name a file there. A larger file, or any other failure, is GitHub unavailable.
    */
   file(token: Secret, fullName: string, path: string, commit: string): Promise<string | undefined>;
+  /**
+   * The file at `ref`, a branch or a commit, with its blob (#214); undefined when there is none.
+   */
+  fileAt(
+    token: Secret,
+    fullName: string,
+    path: string,
+    ref: string,
+  ): Promise<RepositoryFile | undefined>;
+  /**
+   * Creates `branch` at `commit`; false when a branch of that name exists already, `refused` when
+   * GitHub refuses it otherwise, as a rule on branch names does.
+   */
+  createBranch(
+    token: Secret,
+    fullName: string,
+    branch: string,
+    commit: string,
+  ): Promise<boolean | 'refused'>;
+  /** The message of `commit`; undefined when the repository has no such commit. */
+  commitMessage(token: Secret, fullName: string, commit: string): Promise<string | undefined>;
+  /**
+   * Replaces the file on `branch`, whose blob is `blobSha`, in one commit. `refused` when GitHub
+   * does not take it: the file changed since, or a rule protects the branch.
+   */
+  writeFile(
+    token: Secret,
+    fullName: string,
+    change: {
+      readonly branch: string;
+      readonly path: string;
+      readonly text: string;
+      readonly blobSha: string;
+      readonly message: string;
+    },
+  ): Promise<WrittenCommit | 'refused'>;
+  /** Opens a pull request of `head` into `base`; `refused` when GitHub does not take it. */
+  openPullRequest(
+    token: Secret,
+    fullName: string,
+    request: {
+      readonly head: string;
+      readonly base: string;
+      readonly title: string;
+      readonly body: string;
+    },
+  ): Promise<OpenedPullRequest | 'refused'>;
+  /** The open pull request of `head` into `base`, if there is one. */
+  openPullRequestFrom(
+    token: Secret,
+    fullName: string,
+    head: string,
+    base: string,
+  ): Promise<OpenedPullRequest | undefined>;
   /**
    * Whether GitHub no longer honours the token: revoked now, or already invalid (expired or
    * revoked). False when GitHub could not be asked.

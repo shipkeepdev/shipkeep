@@ -16,7 +16,7 @@ Losing the control plane's server loses the organizations, applications, release
 **One archive.** It holds the database and the key-encryption key:
 
 - It is an age file (age-encryption.org/v1), the format SPEC 10 names for backups.
-- Its plaintext is a manifest line (JSON: format, version, creation time, the newest database migration of the image that made it, the key, and a tag), then a `pg_dump --format=custom` stream.
+- Its plaintext is a manifest line (JSON: format, version, creation time, the newest database migration of the image that made it, the key, the archive's name, and a tag), then a `pg_dump --format=custom` stream.
 - age authenticates each chunk and the end of the stream, so a changed or cut archive is refused, not restored in part.
 
 **Encrypted to a public key.** `backup keygen` makes an X25519 key pair:
@@ -31,9 +31,10 @@ Losing the control plane's server loses the organizations, applications, release
 - A restore derives that key from the identity it is given, and refuses an archive whose tag does not match before a byte of it reaches `pg_restore`.
 - age encrypts the whole archive under one file key, chunk by chunk, so whoever wrote the manifest wrote the rest.
 - Whoever holds the identity can still make an archive that a restore accepts. That is the operator, who can read every backup anyway.
+- The tag also covers the archive's name, the file or object name `backup.sh create` gave it (version 2, #439). A restore is told the name it was asked for and refuses an archive created under another one. Otherwise, someone who can write where archives are kept, in a bucket or a folder, could put an older valid archive of the same server in the requested one's place. The name tells archives apart, not their age: it protects only while names are not reused, which `create --s3` ensures with the time and a random part. `backup.sh restore` runs `verify NAME` first, which reads the whole archive, so a refusal comes before the control plane stops. A version 1 archive, made before names, has none: it is still restored, with a warning that it cannot show which archive it is. The version is one of the tagged fields, so a name cannot be taken off a newer manifest to pass it as version 1.
 - A signature was the other option. It would need a verification key kept with the identity; a key derived from the identity needs nothing more.
 
-**A program of the control plane image, apart from `main.js`** (`node backup.js keygen | create | restore-database | restore-key --replace-this-installation`):
+**A program of the control plane image, apart from `main.js`** (`node backup.js keygen | create NAME | verify NAME | restore-database NAME | restore-key --replace-this-installation NAME`):
 
 - It loads neither the application nor its settings, opens no database connection, and runs with no network.
 - The encryption is the `age-encryption` library (BSD-3-Clause), by the author of age, which streams.

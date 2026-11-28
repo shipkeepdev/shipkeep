@@ -18,10 +18,9 @@ import {
 import { Upload } from '@aws-sdk/lib-storage';
 import { Secret } from '@shipkeep/domain';
 
-import { BackupRefusal } from './instance-backup';
+import { ARCHIVE_NAME, BackupRefusal } from './instance-backup';
 
 /** An archive name in the bucket: what `backup.sh create --s3` names, or a name you chose. */
-export const ARCHIVE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,123}\.age$/;
 const BUCKET = /^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/;
 const PREFIX = /^([A-Za-z0-9._-]+\/){0,8}$/;
 const REGION = /^[a-z0-9-]{1,32}$/;

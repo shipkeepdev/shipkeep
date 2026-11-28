@@ -15,6 +15,8 @@ describe('acceptsLargeJson', () => {
       `${ENVIRONMENT}/secrets`,
       `${ENVIRONMENT}/applications`,
       `${ENVIRONMENT}/applications/${ID}/config`,
+      `${ENVIRONMENT}/applications/${ID}/repository-config/preview`,
+      `${ENVIRONMENT}/applications/${ID}/repository-config/changes`,
       `${ENVIRONMENT}/secrets?x=1`,
     ])
       expect(acceptsLargeJson(request(path))).toBe(true);
@@ -32,6 +34,8 @@ describe('acceptsLargeJson', () => {
       request(`${ENVIRONMENT}/secrets`, 'POST', 'application/jsonp'),
       request(`${ENVIRONMENT}/secrets/TOKEN/remove`),
       request(`${ENVIRONMENT}/settings`),
+      request(`${ENVIRONMENT}/applications/${ID}/repository-config`),
+      request(`${ENVIRONMENT}/applications/${ID}/repository-config/preview/x`),
       request('/api/v1/auth/register'),
       request(`${ENVIRONMENT}/secrets/../../../../auth/register`),
       request(`/api/v1/organizations/x/projects/${ID}/environments/${ID}/secrets`),

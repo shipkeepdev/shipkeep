@@ -7,6 +7,7 @@ import {
   type ApplicationStore,
   type DomainSync,
   type FollowerPage,
+  type GitWriteMode,
   MAX_FOLLOWERS,
   type RepositoryFollower,
   type RepositoryHead,
@@ -214,6 +215,15 @@ export class PrismaApplicationStore implements ApplicationStore {
       where: { ...target, id: applicationId },
     });
     return row ? application(row) : undefined;
+  }
+
+  async writeMode(target: ApplicationTarget): Promise<GitWriteMode> {
+    const project = await this.database.client.project.findFirst({
+      where: { organizationId: target.organizationId, id: target.projectId },
+      select: { gitWriteMode: true },
+    });
+    // Anything else than a commit is a pull request: the more reversible one (ADR 0031).
+    return project?.gitWriteMode === 'commit' ? 'commit' : 'pull_request';
   }
 
   async findById(organizationId: string, applicationId: string): Promise<Application | undefined> {

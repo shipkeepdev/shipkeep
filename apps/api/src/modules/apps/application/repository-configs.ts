@@ -1,0 +1,338 @@
+import { createHash } from 'node:crypto';
+
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { MAX_CONFIG_BYTES, parseShipkeepConfig } from '@shipkeep/config-schema';
+import {
+  ConflictError,
+  createEvent,
+  InvalidInputError,
+  NotFoundError,
+  type Permission,
+} from '@shipkeep/domain';
+
+import { DomainEventBus } from '../../../platform/events/domain-event-bus';
+import { AccountMutationAuthority } from '../../identity/application/account-mutation-authority';
+import {
+  resourceActor,
+  type ResourceSecurityContext as SecurityContext,
+} from '../../identity/application/resource-security-context';
+import { TenantAccess } from '../../organizations/application/tenant-access';
+import {
+  type Application,
+  type ApplicationRepository,
+  type ApplicationTarget,
+  applicationConfig,
+  assertDomainsAvailable,
+  assertSameName,
+  canonicalJson,
+} from '../domain/application';
+import {
+  configFileChanged,
+  ConfigWrittenUnrecordedError,
+  type DiffLine,
+  lineDiff,
+  rewriteConfigFile,
+} from '../domain/config-file';
+
+import {
+  APPLICATION_STORE,
+  APPLICATION_TRANSACTION,
+  type ApplicationStore,
+  type ApplicationTransaction,
+  type GitWriteMode,
+  CONTROL_PLANE_HOST,
+  REPOSITORY_SOURCE,
+  type RepositoryConfigFile,
+  type RepositorySource,
+  type WrittenConfigChange,
+} from './ports';
+
+/** A Git application's shipkeep.yml as its repository holds it now (#214). */
+export interface RepositoryConfigView extends RepositoryConfigFile {
+  readonly branch: string;
+  readonly configPath: string;
+  /** The commit the application's configuration was last read from. */
+  readonly appliedCommitSha: string;
+  /** Whether the file is a valid configuration for this application. */
+  readonly valid: boolean;
+  /** Whether the application's configuration is the file's: false is drift. */
+  readonly applied: boolean;
+}
+
+/** What a change would write, before it is written (#214). */
+export interface RepositoryConfigPreview extends RepositoryConfigFile {
+  readonly branch: string;
+  readonly configPath: string;
+  /** The file's text with the change. */
+  readonly changedText: string;
+  readonly diff: readonly DiffLine[];
+  /** How writing it goes: a pull request, or a commit on the branch (`gitWriteMode`). */
+  readonly writeMode: GitWriteMode;
+}
+
+/**
+ * The shipkeep.yml of a Git application, read in its repository and changed from the interface
+ * (#214, ADR 0031): the file is the source of truth, so a change is a pull request or a commit,
+ * never an edit of the stored configuration. Reading needs `environment.read`; a change needs
+ * `deploy.run`, like an image application's. GitHub is asked outside any transaction.
+ */
+@Injectable()
+export class RepositoryConfigs {
+  private readonly logger = new Logger(RepositoryConfigs.name);
+
+  constructor(
+    @Inject(APPLICATION_STORE) private readonly store: ApplicationStore,
+    @Inject(APPLICATION_TRANSACTION) private readonly transaction: ApplicationTransaction,
+    private readonly accounts: AccountMutationAuthority,
+    private readonly access: TenantAccess,
+    @Inject(CONTROL_PLANE_HOST) private readonly controlPlaneHost: string,
+    @Inject(REPOSITORY_SOURCE) private readonly repositories: RepositorySource,
+    private readonly events: DomainEventBus,
+  ) {}
+
+  /** The file at the branch's head, and whether the application runs what it holds. */
+  async view(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+  ): Promise<RepositoryConfigView> {
+    const application = await this.gitApplication(
+      context,
+      'environment.read',
+      target,
+      applicationId,
+    );
+    const { repository } = application;
+    const file = await this.repositories.readForChange(target.organizationId, location(repository));
+    let valid = false;
+    let applied = false;
+    const parsed = parseShipkeepConfig(file.text);
+    if (parsed.ok)
+      try {
+        const config = applicationConfig(parsed.config, 'git');
+        // What a change of it would be refused for makes it invalid here too.
+        assertDomainsAvailable(config.config, [this.controlPlaneHost]);
+        valid = config.name === application.name;
+        applied = valid && canonicalJson(config.config) === canonicalJson(application.config);
+      } catch {
+        valid = false;
+      }
+    return {
+      ...file,
+      branch: repository.branch,
+      configPath: repository.configPath,
+      appliedCommitSha: repository.commitSha,
+      valid,
+      applied,
+    };
+  }
+
+  /**
+   * What `document` would change in the file, read with `blobSha`: its text and its lines. A file
+   * changed since answers `config_file_changed`, and the change is reviewed again.
+   */
+  async preview(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+    document: Record<string, unknown>,
+    blobSha: string,
+  ): Promise<RepositoryConfigPreview> {
+    const config = applicationConfig(document, 'git');
+    assertDomainsAvailable(config.config, [this.controlPlaneHost]);
+    const application = await this.gitApplication(context, 'deploy.run', target, applicationId);
+    assertSameName(application, config);
+    const writeMode = await this.transaction.runTenant(target.organizationId, () =>
+      this.store.writeMode(target),
+    );
+    const { repository } = application;
+    const file = await this.repositories.readForChange(target.organizationId, location(repository));
+    if (file.blobSha !== blobSha) throw configFileChanged();
+    const changedText = writableText(file.text, document);
+    return {
+      writeMode,
+      ...file,
+      branch: repository.branch,
+      configPath: repository.configPath,
+      changedText,
+      diff: lineDiff(file.text, changedText),
+    };
+  }
+
+  /**
+   * Writes a change of the file (#214): a pull request, or a commit when the project says so
+   * (`gitWriteMode`); a commit a protected branch refuses becomes a pull request. Nothing changes
+   * in Shipkeep until the branch receives it: the push applies it, like any other. Audited as
+   * `application.config_written`, with where it went. A change that leaves the file as it is
+   * answers `config_unchanged`, one made against another text `config_file_changed`.
+   */
+  async change(
+    context: SecurityContext,
+    target: ApplicationTarget,
+    applicationId: string,
+    document: Record<string, unknown>,
+    blobSha: string,
+    now = new Date(),
+  ): Promise<WrittenConfigChange> {
+    const config = applicationConfig(document, 'git');
+    assertDomainsAvailable(config.config, [this.controlPlaneHost]);
+    const application = await this.gitApplication(context, 'deploy.run', target, applicationId);
+    assertSameName(application, config);
+    const mode = await this.transaction.runTenant(target.organizationId, () =>
+      this.store.writeMode(target),
+    );
+    const { repository } = application;
+    const where = location(repository);
+    const changeId = configChangeId(where, blobSha, document);
+    const file = await this.repositories.readForChange(target.organizationId, where);
+    let written: WrittenConfigChange;
+    let taken = false;
+    if (file.blobSha !== blobSha) {
+      // The branch moved on since the change was made: by this very change, when an earlier
+      // attempt wrote it and could not answer, or by anything else. Only the first goes on.
+      const earlier = await this.repositories.writtenChange(target.organizationId, where, changeId);
+      if (!earlier) throw configFileChanged();
+      written = earlier;
+      taken = true;
+    } else {
+      const text = writableText(file.text, document);
+      if (text === file.text)
+        throw new InvalidInputError('config_unchanged', 'This change leaves the file as it is.');
+      // No person in the commit or the pull request: the repository may be public. The audit
+      // log keeps who asked for it.
+      written = await this.repositories.writeConfig(target.organizationId, where, {
+        changeId,
+        blobSha,
+        text,
+        title: `Change the configuration of ${application.name}`,
+        body: `Made in Shipkeep, in ${repository.configPath}. Once on ${repository.branch}, it deploys like any other push, unless the environment is protected.`,
+        mode,
+      });
+    }
+    const event = createEvent({
+      type: 'application.config_written',
+      organizationId: application.organizationId,
+      actor: resourceActor(context),
+      target: { type: 'application', id: application.id },
+      payload: {
+        projectId: application.projectId,
+        environmentId: application.environmentId,
+        name: application.name,
+        repository: file.fullName,
+        branch: repository.branch,
+        configPath: repository.configPath,
+        // Taken up again, the change was made against a commit the branch has moved on from.
+        ...(taken ? {} : { fromCommit: file.commitSha }),
+        via: written.via,
+        commitSha: written.commitSha,
+        url: written.url,
+        ...(written.via === 'pull_request'
+          ? { pullRequest: written.number, pullRequestBranch: written.branch }
+          : {}),
+      },
+      occurredAt: now,
+    });
+    try {
+      await this.transaction.runTenant(target.organizationId, () => this.events.publish([event]));
+    } catch {
+      // GitHub has the change and cannot take it back. The command fails, as any whose audit
+      // fails: sent again, the change is found where it was written, not written twice, and
+      // recorded then. The log says what happened meanwhile, without the store's error, which
+      // may hold details.
+      this.logger.error(
+        {
+          action: event.type,
+          organizationId: event.organizationId,
+          applicationId: application.id,
+          actor: event.actor,
+          payload: event.payload,
+        },
+        'a configuration change written to its repository could not be audited',
+      );
+      throw new ConfigWrittenUnrecordedError();
+    }
+    return written;
+  }
+
+  /** A Git application, once the caller's access is checked. */
+  private gitApplication(
+    context: SecurityContext,
+    permission: Exclude<Permission, 'profile.read'>,
+    target: ApplicationTarget,
+    applicationId: string,
+  ): Promise<Application & { readonly repository: ApplicationRepository }> {
+    const scope = {
+      organizationId: target.organizationId,
+      projectId: target.projectId,
+      environmentId: target.environmentId,
+    };
+    return this.accounts.run(
+      context,
+      async () => {
+        await this.access.require(context.userId, permission, scope);
+        const found = await this.transaction.runTenant(target.organizationId, () =>
+          this.store.find(target, applicationId),
+        );
+        if (!found) throw new NotFoundError('application');
+        const { repository } = found;
+        if (!repository)
+          throw new ConflictError(
+            'application_not_from_repository',
+            'This application runs an image: its configuration is edited here, not in a repository.',
+          );
+        return { ...found, repository };
+      },
+      { permission, target: scope },
+    );
+  }
+}
+
+/**
+ * The file's text with the change, once it reads as a configuration within the size the file may
+ * have: comments kept around a longer value can take it over the limit.
+ */
+export function writableText(text: string, document: Record<string, unknown>): string {
+  const changed = rewriteConfigFile(text, document);
+  if (new TextEncoder().encode(changed).length > MAX_CONFIG_BYTES)
+    throw new InvalidInputError(
+      'config_file_too_large',
+      `With this change, the file would exceed ${String(MAX_CONFIG_BYTES / 1024)} KiB.`,
+    );
+  if (!parseShipkeepConfig(changed).ok)
+    throw new InvalidInputError(
+      'invalid_config_file',
+      'This change cannot be written into the file as it is: change it in the repository.',
+    );
+  return changed;
+}
+
+/**
+ * The change's own name (#214): the same document asked for against the same file, at the same
+ * place, has the same name, whoever sends it and however often.
+ */
+function configChangeId(
+  where: ReturnType<typeof location>,
+  blobSha: string,
+  document: Record<string, unknown>,
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        where.repositoryId,
+        where.branch,
+        where.configPath,
+        blobSha,
+        canonicalJson(document),
+      ]),
+    )
+    .digest('hex');
+}
+
+function location(repository: ApplicationRepository) {
+  return {
+    installationId: repository.installationId,
+    repositoryId: repository.repositoryId,
+    branch: repository.branch,
+    configPath: repository.configPath,
+  };
+}
