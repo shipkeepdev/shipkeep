@@ -230,3 +230,53 @@ vulnerabilities:
       krb5 client libraries in postgres:17 (Debian 13). The flaw is in the KDC or kadmind, which
       do not run there. Fixed in Debian, not yet in the official postgres image.
     expired_at: 2026-12-18
+  # The registry binary of registry:3.1.2 (CNCF Distribution v3.1.2, built with Go 1.26.8). No
+  # Distribution release fixes these yet; main has the go-jose fix since 2026-11-11 (#543). Each
+  # entry is scoped to the binary and says whether the registry reaches the flawed code.
+  - id: CVE-2026-116587
+    paths:
+      - 'bin/registry'
+    statement: >-
+      go-jose 4.1.4 parses a token's JWK before the token is checked, and a crafted RSA key can
+      cost much CPU. Reachable before authentication: Caddy refuses, before the registry, any
+      Authorization that is not one compact bearer JWS with a header of 512 characters at most,
+      on both the Compose Caddyfile and the agent's route (#543).
+    expired_at: 2026-12-18
+  - id: CVE-2026-63209
+    paths:
+      - 'bin/registry'
+    statement: >-
+      klauspost/compress s2 dictionaries. The registry stores and serves layers as uploaded and
+      builds no s2 dictionary from a request.
+    expired_at: 2026-12-18
+  - id: CVE-2026-78661
+    paths:
+      - 'bin/registry'
+    statement: golang.org/x/net/html in the registry binary, which parses no HTML.
+    expired_at: 2026-12-18
+  - id: CVE-2026-78669
+    paths:
+      - 'bin/registry'
+    statement: >-
+      HTTP/2 SETTINGS frames (x/net and the standard library). The registry receives only Caddy's
+      HTTP/1.1 requests on the private network, and makes no HTTP/2 request.
+    expired_at: 2026-12-18
+  - id: CVE-2026-111943
+    paths:
+      - 'bin/registry'
+    statement: >-
+      crypto/x509 denylist of distrusted intermediates. The registry verifies no certificate
+      chain: it trusts only the JWKS the control plane writes.
+    expired_at: 2026-12-18
+  - id: CVE-2026-78667
+    paths:
+      - 'bin/registry'
+    statement: >-
+      net/http Range header with many small ranges, when the registry serves a blob. Reached only
+      after the registry checked the request's token: a server holding a pull grant.
+    expired_at: 2026-12-18
+  - id: CVE-2026-97031
+    paths:
+      - 'bin/registry'
+    statement: crypto/tls ECH in the registry binary, which terminates no TLS (Caddy does).
+    expired_at: 2026-12-18

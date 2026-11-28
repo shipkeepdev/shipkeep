@@ -649,4 +649,29 @@ for options in '--single-machine maybe' "--single-machine yes --organization $(p
   if bash "$installer" $options </dev/null >"$work/output" 2>&1; then die "accepted $options"; fi
   grep -Eq 'single-machine|organization name' "$work/output" || die "refused $options for another reason: $(cat "$work/output")"
 done
+# The registry receives only nothing or one bounded bearer token (#543): the Caddyfile, run by the
+# Caddy that Compose pins. There is no registry or API behind it here, so what passes answers 502.
+caddy_test=shipkeep-caddyfile-test-$$
+docker run -d --rm --name "$caddy_test" -e SHIPKEEP_DOMAIN=http://localhost:8080 \
+  -v "$PWD/deploy/control-plane/Caddyfile:/etc/caddy/Caddyfile:ro" \
+  --entrypoint timeout "$probe" 120 caddy run --config /etc/caddy/Caddyfile --adapter caddyfile >/dev/null
+answer() {
+  local path=$1
+  shift
+  docker exec "$caddy_test" wget -q -S -O /dev/null "$@" "http://localhost:8080$path" 2>&1 |
+    sed -n 's/^ *HTTP\/[0-9.]* \([0-9]*\).*/\1/p' | head -1
+}
+for _ in $(seq 1 30); do [[ -n $(answer /v2/) ]] && break; sleep 1; done
+segment() { printf 'A%.0s' $(seq "$1"); }
+ours="Bearer $(segment 110).$(segment 470).$(segment 86)"
+[[ $(answer /v2/) == 502 ]] || die 'a request without a token did not reach the registry'
+[[ $(answer /v2/acme/app/manifests/1 --header "Authorization: $ours") == 502 ]] || die 'a token of ours did not reach the registry'
+[[ $(answer /v2/ --header "Authorization: bearer ${ours#Bearer }") == 502 ]] || die 'a token with a lowercase scheme did not reach the registry'
+[[ $(answer /v2/ --header "Authorization: Bearer $(segment 513).$(segment 470).$(segment 86)") == 401 ]] || die 'an oversized token header reached the registry'
+[[ $(answer /v2/ --header 'Authorization: Bearer {"protected":"x","payload":"x","signature":"x"}') == 401 ]] || die 'a JSON token reached the registry'
+[[ $(answer /v2/ --header 'Authorization: Basic dXNlcjpwYXNz') == 401 ]] || die 'basic credentials reached the registry'
+[[ $(answer /v2/ --header "Authorization: $ours" --header "Authorization: $ours") == 401 ]] || die 'two tokens reached the registry'
+[[ $(answer /api/v1/ready --header "Authorization: Bearer $(segment 600).x.y") == 502 ]] || die 'the filter reaches beyond the registry'
+docker rm -f "$caddy_test" >/dev/null 2>&1 || true
+
 printf 'Control plane installer checks passed.\n'
