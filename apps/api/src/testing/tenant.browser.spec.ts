@@ -12,7 +12,9 @@ import {
 } from './browser-identity';
 import { CONTROL_PLANE_VERSION } from '../modules/fleet/application/agent-upgrades';
 import { AGENT_RELEASES, type AgentReleases } from '../modules/fleet/application/ports';
-import { enrollTestNode } from './enroll-test-node';
+import { NodeReadoptions } from '../modules/fleet/application/readopt-node';
+import { X509CertificateAuthority } from '../modules/fleet/infrastructure/ca/x509-certificate-authority';
+import { agentCsr, enrollTestNode } from './enroll-test-node';
 
 const API = '/api/v1/organizations';
 const APPLICATION = `version: 1
@@ -520,6 +522,68 @@ describe('organizations and roles in Chromium', () => {
     await owner.waitForLoadState('networkidle');
     await accessible(owner);
     expect(await owner.locator('main').innerText()).toContain('Timeline');
+    expect(problems).toEqual([]);
+  });
+
+  // #545: the form names the certificate reviewed, and the command that prints it on the server.
+  // One presented in its place before the confirmation is not adopted, and the form closes. In
+  // the other organization, whose owner still has attempts left for a proof.
+  it('re-adopts only the certificate it shows, under the production CSP (#545)', async () => {
+    const session = (await (
+      await outsider.context().request.get('/api/v1/auth/session')
+    ).json()) as { userId: string };
+    const listed = (await (await outsider.context().request.get(API)).json()) as {
+      items: { id: string; slug: string }[];
+    };
+    const other = listed.items.find((item) => item.slug === 'other')?.id;
+    if (!other) throw new Error('The other organization is not listed.');
+    watchProblems(outsider);
+    const restored = await enrollTestNode(
+      { app: fixture.app, organizationId: other, actors: { owner: { id: session.userId } } },
+      {
+        name: 'edge-restored',
+        facts: { hostname: 'edge-restored.example.com', agent_version: '0.1.0' },
+        ready: false,
+      },
+    );
+    const identity = { organizationId: other, nodeId: restored };
+    const authority = fixture.app.get(X509CertificateAuthority);
+    const reviewed = await authority.issueNodeCertificate(await agentCsr(), identity);
+    const replacing = await authority.issueNodeCertificate(await agentCsr(), identity);
+    const readoptions = fixture.app.get(NodeReadoptions);
+    const present = (certificate: { serial: string; notBefore: Date; notAfter: Date }) =>
+      readoptions.notice(
+        { ...identity, serial: certificate.serial },
+        { notBefore: certificate.notBefore, notAfter: certificate.notAfter },
+      );
+    await present(reviewed);
+
+    await outsider.goto(`/orgs/${other}/servers`);
+    const card = outsider.locator('section[aria-labelledby="readoptions-title"]');
+    await card.getByText(`certificate ${reviewed.serial}`).waitFor();
+    await card.getByRole('button', { name: 'Re-adopt edge-restored', exact: true }).click();
+    await card.getByText(`this command prints serial=${reviewed.serial}.`).waitFor();
+    expect(await card.locator('pre.code-box').innerText()).toContain('openssl x509 -noout -serial');
+    await accessible(outsider);
+
+    await present(replacing);
+    await fillPrivate(card.locator('#readopt-password'), FIXTURE_PASSWORD);
+    const [refused] = await Promise.all([
+      outsider.waitForResponse(
+        (candidate) =>
+          new URL(candidate.url()).pathname === `${API}/${other}/nodes/${restored}/readopt` &&
+          candidate.request().method() === 'POST',
+      ),
+      card.getByRole('button', { name: 'Re-adopt edge-restored', exact: true }).click(),
+    ]);
+    expect(refused.status()).toBe(409);
+    expect(refused.request().postDataJSON()).toMatchObject({ certificateSerial: reviewed.serial });
+    await card
+      .getByText('The certificate waiting for edge-restored changed', { exact: false })
+      .waitFor();
+    await card.getByText(`certificate ${replacing.serial}`).waitFor();
+    expect(await card.locator('#readopt-password').count()).toBe(0);
+    await accessible(outsider);
     expect(problems).toEqual([]);
   });
 });

@@ -14,7 +14,7 @@ export const LARGE_JSON_LIMIT = '256kb';
 const ID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const ENVIRONMENT = `${API_PREFIX}/organizations/${ID}/projects/${ID}/environments/${ID}`;
 const LARGE_JSON_ROUTES = new RegExp(
-  `^${ENVIRONMENT}/(?:secrets|applications|applications/${ID}/config)$`,
+  `^${ENVIRONMENT}/(?:secrets|applications|applications/${ID}/(?:config|repository-config/(?:preview|changes)))$`,
 );
 const JSON_MEDIA_TYPE = /^application\/json\s*(?:;|$)/i;
 const WEBHOOK_ROUTES = new RegExp(`^${API_PREFIX}/webhooks/github/${ID}$`);

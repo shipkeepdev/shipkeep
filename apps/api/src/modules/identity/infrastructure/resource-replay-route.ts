@@ -26,6 +26,14 @@ export function resourceReplayRoute(route: string): boolean {
   if (project[0] !== 'environments' || !isTenantId(project[1])) return false;
   const environment = project.slice(2);
   if (environment[0] === 'bindings') return memberRoute(environment.slice(1), ['remove']);
+  // A change written to an application's repository (#214): a retry must not write it twice.
+  if (environment[0] === 'applications')
+    return (
+      environment.length === 4 &&
+      isTenantId(environment[1]) &&
+      environment[2] === 'repository-config' &&
+      environment[3] === 'changes'
+    );
   return environment.length === 1 && environment[0] === 'settings';
 }
 

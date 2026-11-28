@@ -173,3 +173,91 @@ export function applicationDto(application: Application): ApplicationDto {
     updatedAt: application.updatedAt.toISOString(),
   };
 }
+
+const BLOB = /^[0-9a-f]{40}$/;
+
+/** A Git application's shipkeep.yml in its repository, and whether it runs it (#214). */
+export class RepositoryConfigDto {
+  @ApiProperty({ description: "The repository's current owner/name." }) fullName!: string;
+  @ApiProperty() branch!: string;
+  @ApiProperty() configPath!: string;
+  @ApiProperty({ pattern: BLOB.source, description: "The branch's head, where the file was read." })
+  commitSha!: string;
+  @ApiProperty({
+    pattern: BLOB.source,
+    description: "The file's blob: a change names it, so that it applies to this text only.",
+  })
+  blobSha!: string;
+  @ApiProperty({ description: 'The file as the repository holds it.' }) text!: string;
+  @ApiProperty({
+    pattern: BLOB.source,
+    description: "The commit the application's configuration was last read from.",
+  })
+  appliedCommitSha!: string;
+  @ApiProperty({ description: 'Whether the file is a valid configuration for this application.' })
+  valid!: boolean;
+  @ApiProperty({ description: "Whether the application's configuration is the file's." })
+  applied!: boolean;
+}
+
+/** A change of a Git application's shipkeep.yml, to preview (#214). */
+export class RepositoryConfigChangeDto {
+  @ApiProperty({
+    type: 'object',
+    additionalProperties: true,
+    description:
+      'The whole shipkeep.yml document as JSON (SPEC 2), validated against the schema, with the same name. The file keeps its comments and order where the document does not change it.',
+  })
+  @IsObject()
+  config!: Record<string, unknown>;
+  @ApiProperty({
+    pattern: BLOB.source,
+    description:
+      'blobSha of the file the change was made against. Another one answers 409 config_file_changed.',
+  })
+  @Matches(BLOB)
+  blobSha!: string;
+}
+
+export class DiffLineDto {
+  @ApiProperty({ enum: ['same', 'removed', 'added', 'skipped'] }) kind!:
+    'same' | 'removed' | 'added' | 'skipped';
+  @ApiPropertyOptional({ description: 'The line, without its line break; not for skipped.' })
+  text?: string;
+  @ApiPropertyOptional({ description: 'Unchanged lines left out; skipped only.' })
+  count?: number;
+}
+
+/** Where a change of a Git application's shipkeep.yml went (#214). */
+export class WrittenConfigChangeDto {
+  @ApiProperty({
+    enum: ['commit', 'pull_request'],
+    description: "A commit on the application's branch, or a pull request into it.",
+  })
+  via!: 'commit' | 'pull_request';
+  @ApiProperty({ pattern: BLOB.source, description: 'The commit that holds the change.' })
+  commitSha!: string;
+  @ApiProperty({ description: "The commit's or the pull request's page on GitHub." }) url!: string;
+  @ApiPropertyOptional({ description: 'The pull request, with via pull_request.' })
+  number?: number;
+  @ApiPropertyOptional({ description: "The pull request's branch, with via pull_request." })
+  branch?: string;
+}
+
+/** What a change would write (#214). */
+export class RepositoryConfigPreviewDto {
+  @ApiProperty() fullName!: string;
+  @ApiProperty() branch!: string;
+  @ApiProperty() configPath!: string;
+  @ApiProperty({ pattern: BLOB.source }) commitSha!: string;
+  @ApiProperty({ pattern: BLOB.source }) blobSha!: string;
+  @ApiProperty({ description: 'The file as the repository holds it.' }) text!: string;
+  @ApiProperty({ description: 'The file with the change.' }) changedText!: string;
+  @ApiProperty({ type: [DiffLineDto], description: 'Its changed lines, with three around each.' })
+  diff!: DiffLineDto[];
+  @ApiProperty({
+    enum: ['commit', 'pull_request'],
+    description: "How writing it goes: the project's gitWriteMode.",
+  })
+  writeMode!: 'commit' | 'pull_request';
+}

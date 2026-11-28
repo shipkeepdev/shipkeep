@@ -11,6 +11,14 @@ import { routeInventory } from './testing/route-inventory';
  * PLAN M2.4c (CLAUDE.md rule 6): every state-changing route declares the audit events its
  * command publishes. A new mutating route fails here until its events are reviewed and listed.
  */
+/**
+ * POST routes that change nothing, so publish no event: they take a document in their body only to
+ * answer about it, as a preview does (#214).
+ */
+const READ_ONLY: readonly string[] = [
+  'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/repository-config/preview',
+];
+
 const AUDITED: Readonly<Record<string, readonly string[]>> = {
   'POST /api-tokens': ['identity.api_token_created'],
   'POST /api-tokens/:id/revoke': ['identity.api_token_revoked'],
@@ -86,6 +94,8 @@ const AUDITED: Readonly<Record<string, readonly string[]>> = {
     ['application.created'],
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/config':
     ['application.updated'],
+  'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/repository-config/changes':
+    ['application.config_written'],
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/exec-sessions':
     ['exec.session.opened'],
   'POST /organizations/:organizationId/projects/:projectId/environments/:environmentId/applications/:applicationId/deployments':
@@ -151,9 +161,12 @@ describe('audit coverage of state-changing routes', () => {
   });
 
   it('declares the audit events of every mutating route, and nothing stale', () => {
-    const mutating = routes
+    const posted = routes
       .filter((route) => route.method !== 'GET')
       .map((route) => `${route.method} ${route.path}`);
+    // A read-only POST that no longer exists, or that is also declared audited, is stale.
+    expect(READ_ONLY.filter((key) => !posted.includes(key) || key in AUDITED)).toEqual([]);
+    const mutating = posted.filter((key) => !READ_ONLY.includes(key));
     expect(mutating.length).toBeGreaterThan(20);
     for (const key of mutating) expect(AUDITED[key], `${key}: list its audit events`).toBeDefined();
     expect(Object.keys(AUDITED).filter((key) => !mutating.includes(key))).toEqual([]);

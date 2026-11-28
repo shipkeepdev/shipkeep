@@ -170,13 +170,14 @@ export class FleetAdministration {
 
   /**
    * Registers the certificate a node presented after a restore rolled its registered one back
-   * (#487): needs `node.manage`, the caller's password and second factor. Audited; the node's other
-   * certificates are revoked.
+   * (#487): needs `node.manage`, the caller's password and second factor, and the serial of the
+   * certificate the caller reviewed (#545). Audited; the node's other certificates are revoked.
    */
   readoptNode(
     context: SecurityContext,
     organizationId: string,
     nodeId: string,
+    serial: string,
     password: Secret,
     factor: MfaProofInput,
     now = new Date(),
@@ -188,7 +189,7 @@ export class FleetAdministration {
       async () => {
         await this.access.require(context.userId, 'node.manage', { organizationId });
         return this.readoptions.confirm(
-          { organizationId, nodeId, actor: resourceActor(context) },
+          { organizationId, nodeId, serial, actor: resourceActor(context) },
           now,
         );
       },

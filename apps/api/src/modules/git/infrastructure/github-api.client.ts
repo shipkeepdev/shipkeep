@@ -8,6 +8,7 @@ import { MAX_CONFIG_BYTES } from '@shipkeep/config-schema';
 import {
   appJwtClaims,
   branchHeadOf,
+  commitMessageOf,
   type GithubRepository,
   installationTokenOf,
   type OpenedPullRequest,
@@ -190,7 +191,7 @@ export class GithubApiClient implements GithubApi {
     fullName: string,
     branch: string,
     commit: string,
-  ): Promise<boolean> {
+  ): Promise<boolean | 'refused'> {
     if (!validRepository(fullName, branch) || !validCommit(commit)) throw githubUnavailable();
     // GitHub answers 422 when the reference exists already, among other refusals.
     const answer = await this.call(
@@ -202,10 +203,55 @@ export class GithubApiClient implements GithubApi {
       [422],
     );
     if (answer.status === 201) return true;
-    // 422 also answers a validation or abuse check: the name is taken only if the branch exists.
-    if (answer.status === 422 && (await this.branchHead(token, fullName, branch)) !== undefined)
-      return false;
+    // 422 also answers a validation or abuse check: the name is taken only if the branch exists,
+    // and GitHub refused the branch otherwise. Only a failure to ask is GitHub unavailable.
+    if (answer.status === 422)
+      return (await this.branchHead(token, fullName, branch)) !== undefined ? false : 'refused';
     throw githubUnavailable();
+  }
+
+  async commitMessage(
+    token: Secret,
+    fullName: string,
+    commit: string,
+  ): Promise<string | undefined> {
+    if (!validFullName(fullName) || !validCommit(commit)) throw githubUnavailable();
+    const answer = await this.call(
+      'GET',
+      `/repos/${repositoryPath(fullName)}/git/commits/${commit}`,
+      token,
+    );
+    if (answer.status === 404) return undefined;
+    const message = commitMessageOf(answer.body);
+    if (message === undefined) throw githubUnavailable();
+    return message;
+  }
+
+  async openPullRequestFrom(
+    token: Secret,
+    fullName: string,
+    head: string,
+    base: string,
+  ): Promise<OpenedPullRequest | undefined> {
+    if (!validRepository(fullName, head) || !validBranch(base)) throw githubUnavailable();
+    const owner = fullName.slice(0, fullName.indexOf('/'));
+    const query = new URLSearchParams({
+      state: 'open',
+      head: `${owner}:${head}`,
+      base,
+      per_page: '1',
+    });
+    const answer = await this.call(
+      'GET',
+      `/repos/${repositoryPath(fullName)}/pulls?${query.toString()}`,
+      token,
+    );
+    if (!Array.isArray(answer.body)) throw githubUnavailable();
+    const [first] = answer.body as unknown[];
+    if (first === undefined) return undefined;
+    const opened = openedPullRequestOf(first);
+    if (!opened) throw githubUnavailable();
+    return opened;
   }
 
   async writeFile(

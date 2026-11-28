@@ -1662,7 +1662,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/ReauthenticateMfaDto"
+                "$ref": "#/components/schemas/ReadoptNodeDto"
               }
             }
           }
@@ -2968,6 +2968,233 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/DomainListDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "applications"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/repository-config": {
+      "get": {
+        "operationId": "getRepositoryConfig",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryConfigDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "applications"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/repository-config/preview": {
+      "post": {
+        "operationId": "previewRepositoryConfig",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepositoryConfigChangeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RepositoryConfigPreviewDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "apiToken": []
+          },
+          {
+            "session": []
+          }
+        ],
+        "tags": [
+          "applications"
+        ]
+      }
+    },
+    "/api/v1/organizations/{organizationId}/projects/{projectId}/environments/{environmentId}/applications/{applicationId}/repository-config/changes": {
+      "post": {
+        "operationId": "changeRepositoryConfig",
+        "parameters": [
+          {
+            "name": "organizationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "projectId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "environmentId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "applicationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "format": "uuid",
+              "type": "string"
+            }
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "description": "Lowercase UUIDv4/v7. A retry with the same key and body is answered with the first answer, kept encrypted for five minutes, and writes nothing again.",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RepositoryConfigChangeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WrittenConfigChangeDto"
                 }
               }
             }
@@ -7479,6 +7706,37 @@
           "gatewayAddress"
         ]
       },
+      "ReadoptNodeDto": {
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": "string",
+            "minLength": 15,
+            "maxLength": 128,
+            "writeOnly": true,
+            "format": "password"
+          },
+          "totp": {
+            "type": "string",
+            "pattern": "^[0-9]{6}$",
+            "writeOnly": true
+          },
+          "recovery": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}$",
+            "writeOnly": true
+          },
+          "certificateSerial": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{32}$",
+            "description": "Serial of the certificate reviewed, as the list of servers to re-adopt gives it. When another certificate waits for this server, the answer is 409 `readoption_changed` and nothing is adopted."
+          }
+        },
+        "required": [
+          "password",
+          "certificateSerial"
+        ]
+      },
       "NodeReadoptedDto": {
         "type": "object",
         "properties": {
@@ -8334,6 +8592,194 @@
         },
         "required": [
           "items"
+        ]
+      },
+      "RepositoryConfigDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string",
+            "description": "The repository's current owner/name."
+          },
+          "branch": {
+            "type": "string"
+          },
+          "configPath": {
+            "type": "string"
+          },
+          "commitSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$",
+            "description": "The branch's head, where the file was read."
+          },
+          "blobSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$",
+            "description": "The file's blob: a change names it, so that it applies to this text only."
+          },
+          "text": {
+            "type": "string",
+            "description": "The file as the repository holds it."
+          },
+          "appliedCommitSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$",
+            "description": "The commit the application's configuration was last read from."
+          },
+          "valid": {
+            "type": "boolean",
+            "description": "Whether the file is a valid configuration for this application."
+          },
+          "applied": {
+            "type": "boolean",
+            "description": "Whether the application's configuration is the file's."
+          }
+        },
+        "required": [
+          "fullName",
+          "branch",
+          "configPath",
+          "commitSha",
+          "blobSha",
+          "text",
+          "appliedCommitSha",
+          "valid",
+          "applied"
+        ]
+      },
+      "RepositoryConfigChangeDto": {
+        "type": "object",
+        "properties": {
+          "config": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "The whole shipkeep.yml document as JSON (SPEC 2), validated against the schema, with the same name. The file keeps its comments and order where the document does not change it."
+          },
+          "blobSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$",
+            "description": "blobSha of the file the change was made against. Another one answers 409 config_file_changed."
+          }
+        },
+        "required": [
+          "config",
+          "blobSha"
+        ]
+      },
+      "DiffLineDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "same",
+              "removed",
+              "added",
+              "skipped"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "description": "The line, without its line break; not for skipped."
+          },
+          "count": {
+            "type": "number",
+            "description": "Unchanged lines left out; skipped only."
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "RepositoryConfigPreviewDto": {
+        "type": "object",
+        "properties": {
+          "fullName": {
+            "type": "string"
+          },
+          "branch": {
+            "type": "string"
+          },
+          "configPath": {
+            "type": "string"
+          },
+          "commitSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "blobSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$"
+          },
+          "text": {
+            "type": "string",
+            "description": "The file as the repository holds it."
+          },
+          "changedText": {
+            "type": "string",
+            "description": "The file with the change."
+          },
+          "diff": {
+            "description": "Its changed lines, with three around each.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DiffLineDto"
+            }
+          },
+          "writeMode": {
+            "type": "string",
+            "enum": [
+              "commit",
+              "pull_request"
+            ],
+            "description": "How writing it goes: the project's gitWriteMode."
+          }
+        },
+        "required": [
+          "fullName",
+          "branch",
+          "configPath",
+          "commitSha",
+          "blobSha",
+          "text",
+          "changedText",
+          "diff",
+          "writeMode"
+        ]
+      },
+      "WrittenConfigChangeDto": {
+        "type": "object",
+        "properties": {
+          "via": {
+            "type": "string",
+            "enum": [
+              "commit",
+              "pull_request"
+            ],
+            "description": "A commit on the application's branch, or a pull request into it."
+          },
+          "commitSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}$",
+            "description": "The commit that holds the change."
+          },
+          "url": {
+            "type": "string",
+            "description": "The commit's or the pull request's page on GitHub."
+          },
+          "number": {
+            "type": "number",
+            "description": "The pull request, with via pull_request."
+          },
+          "branch": {
+            "type": "string",
+            "description": "The pull request's branch, with via pull_request."
+          }
+        },
+        "required": [
+          "via",
+          "commitSha",
+          "url"
         ]
       },
       "UpdateApplicationConfigDto": {

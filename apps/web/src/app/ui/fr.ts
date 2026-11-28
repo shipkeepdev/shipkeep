@@ -729,6 +729,12 @@ export const FR: Readonly<Record<string, string>> = {
   'refused since {since} · certificate valid until {until}':
     "refusé depuis le {since} · certificat valable jusqu'au {until}",
   'Re-adopt': 'Réadopter',
+  certificate: 'certificat',
+  'Check first that {name} holds this certificate: on that server, this command prints serial={serial}.':
+    'Vérifiez d’abord que {name} détient ce certificat : sur ce serveur, cette commande affiche serial={serial}.',
+  'Command to read the serial': 'Commande pour lire le numéro de série',
+  'The certificate waiting for {name} changed before it was re-adopted, and nothing was re-adopted. Check the new serial on the server before you re-adopt it.':
+    'Le certificat en attente pour {name} a changé avant sa réadoption, et rien n’a été réadopté. Vérifiez le nouveau numéro de série sur le serveur avant de le réadopter.',
   'Re-adopt {name}': 'Réadopter {name}',
   'Re-adopting…': 'Réadoption…',
   'Your password is required: {name} gets back what this organization lets a server do.':
@@ -2095,8 +2101,44 @@ export const FR: Readonly<Record<string, string>> = {
     'Une autre application utilise déjà l’un de ses domaines.',
   'One of its domains is the control plane’s own address.':
     'L’un de ses domaines est l’adresse du control plane.',
-  'This configuration is the {path} of {repository}, on {branch}. Change it in the repository: a push to {branch} deploys it, unless the environment is protected.':
-    'Cette configuration est le {path} de {repository}, sur {branch}. Modifiez-la dans le dépôt : un push sur {branch} la déploie, sauf si l’environnement est protégé.',
+  'This configuration is the {path} of {repository}, on {branch}. A change made here goes to the repository, as a pull request or a commit as the project says; a push to {branch} then deploys it, unless the environment is protected.':
+    'Cette configuration est le {path} de {repository}, sur {branch}. Un changement fait ici part dans le dépôt, en pull request ou en commit selon le projet ; un push sur {branch} le déploie ensuite, sauf si l’environnement est protégé.',
+  'The file in the repository is not a valid configuration for this application: correct it below, or in the repository.':
+    'Le fichier du dépôt n’est pas une configuration valide pour cette application : corrigez-le ci-dessous, ou dans le dépôt.',
+  'The file changed in the repository: this application runs the one of commit {applied}, and {branch} is at {head}. A push to {branch} applies it, unless the environment is protected.':
+    'Le fichier a changé dans le dépôt : cette application exécute celui du commit {applied}, et {branch} est à {head}. Un push sur {branch} l’applique, sauf si l’environnement est protégé.',
+  'The application runs this file, at commit {head}.':
+    'L’application exécute ce fichier, au commit {head}.',
+  'The file could not be read from the repository.': 'Le fichier n’a pas pu être lu dans le dépôt.',
+  'The file changed in the repository since you opened it. Your draft has been kept.':
+    'Le fichier a changé dans le dépôt depuis son ouverture. Votre brouillon est conservé.',
+  'Load the latest file': 'Charger le dernier fichier',
+  'Pull request #{number} opened. Merging it into {branch} deploys the change, unless the environment is protected.':
+    'Pull request #{number} ouverte. La fusionner dans {branch} déploie le changement, sauf si l’environnement est protégé.',
+  'Committed to {branch}. Its push deploys the change, unless the environment is protected.':
+    'Commité sur {branch}. Son push déploie le changement, sauf si l’environnement est protégé.',
+  'Changes to write': 'Changements à écrire',
+  '− In the repository · + Written': '− Dans le dépôt · + Écrit',
+  '⋯ {count} unchanged lines': '⋯ {count} lignes inchangées',
+  'It is committed to {branch}. If {branch} is protected, a pull request is opened instead.':
+    'Il est commité sur {branch}. Si {branch} est protégée, une pull request est ouverte à la place.',
+  'It goes to a branch of its own, in a pull request into {branch}.':
+    'Il part sur une branche à lui, dans une pull request vers {branch}.',
+  'Writing…': 'Écriture…',
+  'Commit to {branch}': 'Commiter sur {branch}',
+  'Back to editing': 'Revenir à l’édition',
+  'This draft leaves the file as it is: there is nothing to write.':
+    'Ce brouillon laisse le fichier tel quel : il n’y a rien à écrire.',
+  'The latest file is loaded. Your draft is unchanged: review it again.':
+    'Le dernier fichier est chargé. Votre brouillon est inchangé : vérifiez-le de nouveau.',
   'The configuration of this application, read from its repository at each push.':
     'La configuration de cette application, lue dans son dépôt à chaque push.',
+  'Use from the CLI': 'Utiliser depuis le CLI',
+  'Create an API token for this environment': 'Créer un jeton d’API pour cet environnement',
+  'Copy organization ID': 'Copier l’identifiant de l’organisation',
+  'Copy project ID': 'Copier l’identifiant du projet',
+  'Copy environment ID': 'Copier l’identifiant de l’environnement',
+  'CLI environment variables': 'Variables d’environnement CLI',
+  'Copy export command': 'Copier la commande export',
+  'The linked environment is no longer available.': 'L’environnement lié n’est plus disponible.',
 };

@@ -173,6 +173,7 @@ describe('delivery screens', () => {
     await settle();
   }
 
+  // The editor's whole round trip: past the default 5 s on a busy CI runner (5.4 s on #567).
   it('validates and reviews YAML, invalidates the preview on edits, and saves without deploying', async () => {
     await openEditor();
     const draft = () =>
@@ -214,7 +215,7 @@ describe('delivery screens', () => {
     ]);
     expect(element().textContent).toContain('Configuration saved.');
     expect(element().textContent).toContain('bbbbbbbbbbbb');
-  });
+  }, 15_000);
 
   it('preserves a conflicting draft, retries reload failures and requires review against the new hash', async () => {
     await openEditor();

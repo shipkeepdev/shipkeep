@@ -36,6 +36,7 @@ import {
   NodeReadoptedDto,
   NodeReadoptionPageDto,
   nodeReadoptionDto,
+  ReadoptNodeDto,
   RemoveNodeDto,
   SetNodePublicAddressesDto,
   StartAgentUpgradeDto,
@@ -119,7 +120,8 @@ export class FleetAdministrationController {
 
   /**
    * Registers the certificate the node presented after a restore rolled its registered one back
-   * (#487, SPEC 3.1): the caller's password and second factor, like a join token. Session only.
+   * (#487, SPEC 3.1): the caller's password and second factor, like a join token, and the serial of
+   * the certificate they reviewed (#545). Session only.
    */
   @Post(':organizationId/nodes/:nodeId/readopt')
   @HttpCode(200)
@@ -131,12 +133,13 @@ export class FleetAdministrationController {
   async readoptNode(
     @Req() request: IdentityRequest,
     @Param() path: NodePathDto,
-    @Body() body: ReauthenticateMfaDto,
+    @Body() body: ReadoptNodeDto,
   ): Promise<NodeReadoptedDto> {
     const readopted = await this.fleet.readoptNode(
       resourceContext(request),
       path.organizationId,
       path.nodeId,
+      body.certificateSerial,
       new Secret(body.password),
       factorInput(body),
     );

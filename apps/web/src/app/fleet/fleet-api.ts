@@ -111,11 +111,11 @@ export class FleetApi extends WorkspaceApi {
       )
     ).items;
   }
-  /** Registers the server's waiting certificate: the caller's password and second factor (#487). */
+  /** Registers the server's waiting certificate the caller reviewed: password and second factor (#487, #545). */
   async readopt(
     organizationId: string,
     nodeId: string,
-    body: Schema<'ReauthenticateMfaDto'>,
+    body: Schema<'ReadoptNodeDto'>,
   ): Promise<void> {
     await this.required(() =>
       this.client.POST('/api/v1/organizations/{organizationId}/nodes/{nodeId}/readopt', {
