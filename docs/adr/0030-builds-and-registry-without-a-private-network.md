@@ -65,7 +65,7 @@ CNCF Distribution (Apache-2.0) runs as a service of the control plane's Compose 
 - **Images.**
   - Each application has its repository, `<control plane name>/<organization id>/<application id>`, tagged with its release number.
   - A release pins its image by digest, as any release does.
-  - An image is kept while a release that a rollback can reach names it: the current release of each environment and the 5 successful ones before it (ADR 0012). A build whose deployment failed does not count. Other manifests are deleted.
+  - An image is kept while a release that a rollback can reach names it: the current release of each environment and the 5 successful ones before it (ADR 0012). A build whose deployment failed does not count. Other tags are deleted, never a manifest directly: the registry's garbage collection removes the manifests no tag names.
   - Distribution's garbage collection only runs on a registry that does not write, so it runs at a quiet hour with the registry read-only. A push in that window fails, and the build is retried.
   - Rollback never depends on a registry outside the installation.
 - **Data.** Images live in a volume of the control plane. They are not in the instance backup (ADR 0026): an image can be built again from its commit, while the database cannot.
