@@ -260,6 +260,7 @@ function world(
     // Image applications only here: nothing is built (git-builds.integration.spec.ts builds).
     {
       read: () => Promise.reject(new Error('no repository')),
+      readForChange: () => Promise.reject(new Error('no repository')),
       buildAccess: () => Promise.reject(new Error('no repository')),
       revoke: () => Promise.reject(new Error('no repository')),
     },
