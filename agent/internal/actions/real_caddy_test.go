@@ -7,11 +7,14 @@ package actions
 // "Agent against Docker and Caddy" starts Caddy on the network sk-it, with its admin socket in a
 // shared directory, and passes:
 //   - SHIPKEEP_IT_CADDY_ADMIN: the admin socket path;
-//   - SHIPKEEP_IT_CADDY_ADDRESS: Caddy's address on sk-it, `ip:80`.
+//   - SHIPKEEP_IT_CADDY_ADDRESS: Caddy's address on sk-it, `ip:80`;
+//   - SHIPKEEP_IT_CADDY_CONTAINER: Caddy's container, whose log counts the configurations it
+//     loads (sk-it-caddy unless set).
 // Without them, the test is skipped.
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -27,6 +30,7 @@ import (
 	"google.golang.org/protobuf/types/known/durationpb"
 
 	"github.com/shipkeepdev/shipkeep/agent/internal/caddy"
+	"github.com/shipkeepdev/shipkeep/agent/internal/docker"
 	"github.com/shipkeepdev/shipkeep/agent/internal/reconcile"
 	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
 )
@@ -120,6 +124,30 @@ func whoamiName(body string) string {
 	return "?"
 }
 
+// caddyLoads counts the configurations Caddy loaded from since on: it logs "autosaved config" for
+// each one. Each load closes the previous one's idle connections, so a route change is one (#438).
+func caddyLoads(t *testing.T, engine *docker.Client, since time.Time) int {
+	t.Helper()
+	name := os.Getenv("SHIPKEEP_IT_CADDY_CONTAINER")
+	if name == "" {
+		name = "sk-it-caddy"
+	}
+	// Following the log until now and a little after, for a line Docker has not passed on yet.
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	loads := 0
+	err := engine.FollowLogs(ctx, name, since, func(line docker.LogLine) error {
+		if strings.Contains(line.Text, `"autosaved config`) {
+			loads++
+		}
+		return nil
+	})
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("read Caddy's log: %v", err)
+	}
+	return loads
+}
+
 func route(container string, drain time.Duration) *agentv1.ActionRequest {
 	return &agentv1.ActionRequest{Action: &agentv1.ActionRequest_UpsertRoute{UpsertRoute: &agentv1.UpsertRoute{Route: &agentv1.Route{
 		RouteId:      "it-web",
@@ -157,7 +185,12 @@ func TestRealCaddySwitchesUnderLoadWithoutAFailedRequest(t *testing.T) {
 	}
 
 	// v1 serves.
+	// A new route without TLS: the route and its host join Caddy's configuration in one load.
+	since := time.Now()
 	agent.must("route to v1", route(v1, 0), time.Minute)
+	if loads := caddyLoads(t, agent.engine, since); loads != 1 {
+		t.Errorf("the route to v1 made Caddy load %d configurations", loads)
+	}
 	traffic := &load{address: address}
 	client := &http.Client{Timeout: 10 * time.Second}
 	deadline := time.Now().Add(30 * time.Second)
@@ -177,7 +210,11 @@ func TestRealCaddySwitchesUnderLoadWithoutAFailedRequest(t *testing.T) {
 	ctx, stopLoad := context.WithCancel(context.Background())
 	clients := traffic.run(ctx, 8)
 	time.Sleep(2 * time.Second)
+	since = time.Now()
 	agent.must("switch to v2", route(v2, 3*time.Second), time.Minute)
+	if loads := caddyLoads(t, agent.engine, since); loads != 1 {
+		t.Errorf("the switch to v2 made Caddy load %d configurations", loads)
+	}
 	agent.must("stop v1", itStop(ids[v1]), time.Minute)
 	agent.must("remove v1", itRemove(ids[v1]), time.Minute)
 	time.Sleep(2 * time.Second)
@@ -204,6 +241,12 @@ func TestRealCaddySwitchesUnderLoadWithoutAFailedRequest(t *testing.T) {
 		t.Fatalf("answers by version: %v", seen)
 	}
 	t.Logf("%d requests, none failed: %v", traffic.total.Load(), seen)
+	// The removal takes the route and its host out together: one load as well.
+	since = time.Now()
+	agent.must("remove the route", &agentv1.ActionRequest{Action: &agentv1.ActionRequest_RemoveRoute{RemoveRoute: &agentv1.RemoveRoute{RouteId: "it-web", DrainTimeout: durationpb.New(0)}}}, time.Minute)
+	if loads := caddyLoads(t, agent.engine, since); loads != 1 {
+		t.Errorf("the removal made Caddy load %d configurations", loads)
+	}
 }
 
 // Acceptance of M1.6 (#18): with no control plane, a container that crashed is started again by

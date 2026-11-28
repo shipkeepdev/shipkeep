@@ -25,8 +25,7 @@ type Router interface {
 	EnsureServer(ctx context.Context) error
 	Route(ctx context.Context, id string) (caddy.Route, bool, error)
 	ApplyRoute(ctx context.Context, route caddy.Route, plainAdd, plainRemove []string) error
-	RemoveRoute(ctx context.Context, id string) error
-	SetPlainHosts(ctx context.Context, add, remove []string) error
+	RemoveRoute(ctx context.Context, id string, plainRemove []string) error
 }
 
 // Containers resolves container upstreams (ADR 0017); the Docker engine implements it.
@@ -157,7 +156,7 @@ func upsertRoute(router Router, containers Containers, book *RouteBook, sleep fu
 					}
 					recorded = true
 				}
-				// One unit, ordered so that a failed write leaves every host reachable (ApplyRoute).
+				// One write: the route and its hosts without TLS change together (ApplyRoute).
 				if err := router.ApplyRoute(ctx, desired, add, remove); err != nil {
 					// Caddy kept the route it had: the record describes that one again, so that it
 					// keeps following its containers. A crash before this point resumes the action.
@@ -215,8 +214,9 @@ func removeRoute(router Router, book *RouteBook, sleep func(context.Context, tim
 				if err != nil {
 					return journal.Outcome{}, fmt.Errorf("read route: %w", err)
 				}
+				// The route and its hosts without TLS go in one write (RemoveRoute).
 				if existed {
-					if err := router.RemoveRoute(ctx, id); err != nil {
+					if err := router.RemoveRoute(ctx, id, hostsOf(previous)); err != nil {
 						return journal.Outcome{}, fmt.Errorf("remove route: %w", err)
 					}
 				}
@@ -226,12 +226,6 @@ func removeRoute(router Router, book *RouteBook, sleep func(context.Context, tim
 					if err := book.Store.ClearRouteRecord(ctx, id); err != nil {
 						return journal.Outcome{}, fmt.Errorf("forget route record: %w", err)
 					}
-				}
-				if !existed {
-					return journal.Outcome{ResourceID: id}, nil
-				}
-				if err := router.SetPlainHosts(ctx, nil, hostsOf(previous)); err != nil {
-					return journal.Outcome{}, fmt.Errorf("set plain hosts: %w", err)
 				}
 				return journal.Outcome{ResourceID: id}, nil
 			},
