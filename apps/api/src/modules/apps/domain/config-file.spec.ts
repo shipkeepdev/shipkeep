@@ -67,6 +67,36 @@ describe('a shipkeep.yml changed from the interface (#214)', () => {
     for (const broken of ['version: 1\nname: [web\n', 'version: 1\nversion: 2\n', '- a\n- b\n'])
       expect(() => rewriteConfigFile(broken, config())).toThrow(InvalidInputError);
   });
+
+  it('refuses a file with an alias to an anchor it does not define, as an invalid file', () => {
+    expect(() => rewriteConfigFile('version: 1\nenv:\n  MODE: *missing\n', config())).toThrow(
+      expect.objectContaining({ code: 'invalid_config_file' }),
+    );
+  });
+
+  it('keeps the file as it is, spacing included, when nothing changes', () => {
+    const file = 'version:  1\nname:   web\n';
+    expect(rewriteConfigFile(file, { version: 1, name: 'web' })).toBe(file);
+  });
+
+  it('removes a key named like an inherited property', () => {
+    const file =
+      'version: 1\nscale:\n  placement:\n    labels:\n      constructor: blue\n      region: eu\n';
+    const next = { version: 1, scale: { placement: { labels: { region: 'eu' } } } };
+    const text = rewriteConfigFile(file, next);
+    expect(parse(text)).toEqual(next);
+    expect(text).not.toContain('constructor');
+  });
+
+  it('keeps an alias at its value when only its anchor changes, and keeps it an alias otherwise', () => {
+    const file = 'version: 1\nenv:\n  LOG_LEVEL: &level info\n  APP_MODE: *level\n';
+    const one = { version: 1, env: { LOG_LEVEL: 'debug', APP_MODE: 'info' } };
+    const text = rewriteConfigFile(file, one);
+    expect(parse(text)).toEqual(one);
+    expect(text).toContain('LOG_LEVEL: &level debug');
+    const both = { version: 1, env: { LOG_LEVEL: 'debug', APP_MODE: 'debug' } };
+    expect(rewriteConfigFile(file, both)).toBe(file.replace('&level info', '&level debug'));
+  });
 });
 
 describe('the lines of a change', () => {

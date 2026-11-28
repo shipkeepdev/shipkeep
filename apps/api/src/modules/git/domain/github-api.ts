@@ -218,6 +218,12 @@ export function openedPullRequestOf(raw: unknown): OpenedPullRequest | undefined
     : undefined;
 }
 
+/** The message of a commit, as the Git data API describes it; undefined when it has none. */
+export function commitMessageOf(raw: unknown): string | undefined {
+  const message = record(raw)?.['message'];
+  return typeof message === 'string' && message.length <= 65_536 ? message : undefined;
+}
+
 /**
  * A commit message, or a pull request's title or text, as Shipkeep writes them: bounded, and
  * without control characters other than line breaks in a text.

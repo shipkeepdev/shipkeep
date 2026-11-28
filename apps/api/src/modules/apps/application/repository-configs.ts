@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { MAX_CONFIG_BYTES, parseShipkeepConfig } from '@shipkeep/config-schema';
 import {
@@ -26,6 +28,7 @@ import {
 } from '../domain/application';
 import {
   configFileChanged,
+  ConfigWrittenUnrecordedError,
   type DiffLine,
   lineDiff,
   rewriteConfigFile,
@@ -179,24 +182,33 @@ export class RepositoryConfigs {
       this.store.writeMode(target),
     );
     const { repository } = application;
-    const file = await this.repositories.readForChange(target.organizationId, location(repository));
-    if (file.blobSha !== blobSha) throw configFileChanged();
-    const text = writableText(file.text, document);
-    if (text === file.text)
-      throw new InvalidInputError('config_unchanged', 'This change leaves the file as it is.');
-    // No person in the commit or the pull request: the repository may be public. The audit log
-    // keeps who asked for it.
-    const written = await this.repositories.writeConfig(
-      target.organizationId,
-      location(repository),
-      {
+    const where = location(repository);
+    const changeId = configChangeId(where, blobSha, document);
+    const file = await this.repositories.readForChange(target.organizationId, where);
+    let written: WrittenConfigChange;
+    let taken = false;
+    if (file.blobSha !== blobSha) {
+      // The branch moved on since the change was made: by this very change, when an earlier
+      // attempt wrote it and could not answer, or by anything else. Only the first goes on.
+      const earlier = await this.repositories.writtenChange(target.organizationId, where, changeId);
+      if (!earlier) throw configFileChanged();
+      written = earlier;
+      taken = true;
+    } else {
+      const text = writableText(file.text, document);
+      if (text === file.text)
+        throw new InvalidInputError('config_unchanged', 'This change leaves the file as it is.');
+      // No person in the commit or the pull request: the repository may be public. The audit
+      // log keeps who asked for it.
+      written = await this.repositories.writeConfig(target.organizationId, where, {
+        changeId,
         blobSha,
         text,
         title: `Change the configuration of ${application.name}`,
         body: `Made in Shipkeep, in ${repository.configPath}. Once on ${repository.branch}, it deploys like any other push, unless the environment is protected.`,
         mode,
-      },
-    );
+      });
+    }
     const event = createEvent({
       type: 'application.config_written',
       organizationId: application.organizationId,
@@ -209,7 +221,8 @@ export class RepositoryConfigs {
         repository: file.fullName,
         branch: repository.branch,
         configPath: repository.configPath,
-        fromCommit: file.commitSha,
+        // Taken up again, the change was made against a commit the branch has moved on from.
+        ...(taken ? {} : { fromCommit: file.commitSha }),
         via: written.via,
         commitSha: written.commitSha,
         url: written.url,
@@ -222,9 +235,10 @@ export class RepositoryConfigs {
     try {
       await this.transaction.runTenant(target.organizationId, () => this.events.publish([event]));
     } catch {
-      // GitHub has the change and cannot take it back. Failing now would only make the caller
-      // write it again: the answer stays the change written, and the log keeps what the audit
-      // could not, without the store's error, which may hold details.
+      // GitHub has the change and cannot take it back. The command fails, as any whose audit
+      // fails: sent again, the change is found where it was written, not written twice, and
+      // recorded then. The log says what happened meanwhile, without the store's error, which
+      // may hold details.
       this.logger.error(
         {
           action: event.type,
@@ -235,6 +249,7 @@ export class RepositoryConfigs {
         },
         'a configuration change written to its repository could not be audited',
       );
+      throw new ConfigWrittenUnrecordedError();
     }
     return written;
   }
@@ -289,6 +304,28 @@ export function writableText(text: string, document: Record<string, unknown>): s
       'This change cannot be written into the file as it is: change it in the repository.',
     );
   return changed;
+}
+
+/**
+ * The change's own name (#214): the same document asked for against the same file, at the same
+ * place, has the same name, whoever sends it and however often.
+ */
+function configChangeId(
+  where: ReturnType<typeof location>,
+  blobSha: string,
+  document: Record<string, unknown>,
+): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify([
+        where.repositoryId,
+        where.branch,
+        where.configPath,
+        blobSha,
+        canonicalJson(document),
+      ]),
+    )
+    .digest('hex');
 }
 
 function location(repository: ApplicationRepository) {

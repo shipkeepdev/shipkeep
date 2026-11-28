@@ -57,6 +57,12 @@ docker:
 caddy:
   admin_socket: /run/shipkeep/caddy-admin.sock
 
+build:
+  socket: /run/shipkeep-build/buildkitd.sock # the builder's rootless BuildKit (ADR 0030)
+  # The repository and plan of a Railpack build, for that build's time. The installer makes it on
+  # the builds' own filesystem (/var/lib/shipkeep-build.img): the agent empties it, never makes it.
+  work_dir: /var/lib/shipkeep-build/exports
+
 log:
   level: info # debug | info | warn | error
   format: json # json | text
