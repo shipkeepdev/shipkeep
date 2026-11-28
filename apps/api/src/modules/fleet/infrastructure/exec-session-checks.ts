@@ -2,7 +2,6 @@ import { Inject, Injectable, Logger, type OnModuleInit } from '@nestjs/common';
 import { isTenantId } from '@shipkeep/domain';
 import { fromPrisma } from 'pg-boss';
 
-import { DomainEventBus } from '../../../platform/events/domain-event-bus';
 import { JobQueue } from '../../../platform/jobs/job-queue';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import { ExecSessionRegistry, execSessionInterrupted } from '../application/exec-relay';
@@ -40,7 +39,6 @@ export class ExecSessionChecks implements ExecSessionCheckScheduler, OnModuleIni
     private readonly jobs: JobQueue,
     private readonly database: PrismaUnitOfWork,
     private readonly registry: ExecSessionRegistry,
-    private readonly events: DomainEventBus,
     @Inject(FLEET_TRANSACTION) private readonly transaction: FleetTransaction,
   ) {}
 
@@ -120,17 +118,17 @@ export class ExecSessionChecks implements ExecSessionCheckScheduler, OnModuleIni
     const { organizationId, sessionId, userId } = fields;
     if (!isTenantId(organizationId) || !isTenantId(sessionId) || typeof userId !== 'string')
       return 'ignored';
-    if (this.registry.pending(sessionId)) {
-      // Past the time it must have ended: looked at again later, never left without a check.
+    if (this.registry.pending(sessionId) || this.registry.ending(sessionId)) {
+      // Past the time it must have ended, or its end is still being written: looked at again
+      // later, never left without a check.
       await this.schedule({ id: sessionId, organizationId, userId, endsAt: new Date() });
       return 'live';
     }
-    return this.transaction.runTenant(organizationId, async () => {
-      if (await this.registry.closed({ id: sessionId, organizationId })) return 'closed';
-      await this.events.publish([
-        execSessionInterrupted({ id: sessionId, organizationId, userId }),
-      ]);
-      return 'interrupted';
-    });
+    const session = { id: sessionId, organizationId };
+    return this.transaction.runTenant(organizationId, async () =>
+      (await this.registry.closeOnce(session, execSessionInterrupted({ ...session, userId })))
+        ? 'interrupted'
+        : 'closed',
+    );
   }
 }

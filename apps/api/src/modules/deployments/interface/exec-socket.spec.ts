@@ -63,6 +63,7 @@ async function world(
       publish: (batch: DomainEvent[]) => (published.push(...batch), Promise.resolve()),
     } as unknown as DomainEventBus,
     { page: () => Promise.resolve([]) } as unknown as AuditEventReader,
+    { lock: () => Promise.resolve() },
   );
   const now = new Date();
   for (const id of [SESSION, SECOND])

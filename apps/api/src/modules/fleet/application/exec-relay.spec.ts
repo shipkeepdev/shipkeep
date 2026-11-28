@@ -9,6 +9,7 @@ import {
   type BrowserFrame,
   type ExecSession,
   ExecSessionRegistry,
+  execSessionInterrupted,
   MAX_WAITING_FRAMES,
 } from './exec-relay';
 import type { FleetTransaction } from './ports';
@@ -44,6 +45,7 @@ function world() {
       publish: (batch: DomainEvent[]) => (published.push(...batch), Promise.resolve()),
     } as unknown as DomainEventBus,
     { page: () => Promise.resolve([]) } as unknown as AuditEventReader,
+    { lock: () => Promise.resolve() },
   );
   const received: AgentFrame[] = [];
   let closed = false;
@@ -91,7 +93,7 @@ describe('the exec relay (SPEC 3.1)', () => {
     expect(w.closed()).toBe(true);
     // After an exit the command is gone: nothing more to stop.
     expect((await toAgent?.next())?.done).toBe(true);
-    await Promise.resolve();
+    await w.registry.settle(1000);
     expect(w.published).toHaveLength(1);
     expect(w.published[0]).toMatchObject({
       type: 'exec.session.ended',
@@ -140,7 +142,7 @@ describe('the exec relay (SPEC 3.1)', () => {
     expect(await joined).toBe(false);
     expect(w.registry.pending(s.id)).toBeUndefined();
     expect(w.registry.joinBrowser(s.id, USER, w.port)).toBeUndefined();
-    await Promise.resolve();
+    await w.registry.settle(1000);
     expect(w.published[0]?.payload).toMatchObject({
       reason: 'not_joined',
       exitCode: null,
@@ -158,7 +160,7 @@ describe('the exec relay (SPEC 3.1)', () => {
     relay?.browserLeft();
     // What the browser typed before it left is not sent: the command is stopped at once.
     expect(relay ? await collect(relay.toAgent()) : []).toEqual([{ kind: 'close', kill: true }]);
-    await Promise.resolve();
+    await w.registry.settle(1000);
     expect(w.published[0]?.payload).toMatchObject({ reason: 'browser_left' });
   });
 
@@ -183,7 +185,7 @@ describe('the exec relay (SPEC 3.1)', () => {
       // Refused once ended, as before.
       relay.fromBrowser({ kind: 'stdin', data: new Uint8Array([1]) });
       expect(await collect(relay.toAgent()), reason).toEqual([{ kind: 'close', kill: true }]);
-      await Promise.resolve();
+      await w.registry.settle(1000);
       expect(w.published, reason).toHaveLength(1);
       expect(w.published[0]?.payload, reason).toMatchObject({ reason });
     }
@@ -231,7 +233,7 @@ describe('the exec relay (SPEC 3.1)', () => {
       w.registry.add(s, NOW);
       w.registry.joinBrowser(s.id, USER, w.port);
       await w.registry.joinAgent(s.id, node)?.fromAgent({ kind: 'error', message });
-      await Promise.resolve();
+      await w.registry.settle(1000);
       expect(w.published[0]?.payload).toMatchObject({ reason });
     }
   });
@@ -244,7 +246,7 @@ describe('the exec relay (SPEC 3.1)', () => {
     for (let i = 0; i <= MAX_WAITING_FRAMES; i++)
       relay?.fromBrowser({ kind: 'resize', cols: 1, rows: 1 });
     expect(relay?.over).toBe(true);
-    await Promise.resolve();
+    await w.registry.settle(1000);
     expect(w.published[0]?.payload).toMatchObject({ reason: 'flooded' });
   });
 
@@ -253,6 +255,7 @@ describe('the exec relay (SPEC 3.1)', () => {
       { runTenant: () => Promise.reject(new Error('down')) } as unknown as FleetTransaction,
       { publish: () => Promise.resolve() } as unknown as DomainEventBus,
       { page: () => Promise.resolve([]) } as unknown as AuditEventReader,
+      { lock: () => Promise.resolve() },
     );
     const s = session();
     registry.add(s, NOW);
@@ -289,6 +292,7 @@ describe('the exec relay (SPEC 3.1)', () => {
         {
           page: () => Promise.resolve(recorded.map((event) => ({ action: event.type }))),
         } as unknown as AuditEventReader,
+        { lock: () => Promise.resolve() },
       );
       const s = session();
       registry.add(s, NOW);
@@ -361,5 +365,67 @@ describe('the control plane side of the time limit', () => {
     release();
     release();
     expect(w.registry.count({ userId: USER })).toBe(0);
+  });
+});
+
+// Issue #489: the closing is decided under the session's lock, so concurrent checks, retries and
+// processes record one closing between them.
+describe('the closing of an exec session', () => {
+  function closing(recorded: string[] = []) {
+    const steps: string[] = [];
+    const registry = new ExecSessionRegistry(
+      {
+        runTenant: (_org: string, work: () => Promise<unknown>) => work(),
+      } as unknown as FleetTransaction,
+      {
+        publish: (batch: DomainEvent[]) => {
+          steps.push('publish');
+          recorded.push(...batch.map((event) => event.type));
+          return Promise.resolve();
+        },
+      } as unknown as DomainEventBus,
+      {
+        page: () => {
+          steps.push('read');
+          return Promise.resolve(recorded.map((action) => ({ action })));
+        },
+      } as unknown as AuditEventReader,
+      {
+        lock: (id: string) => {
+          steps.push(`lock ${id}`);
+          return Promise.resolve();
+        },
+      },
+    );
+    return { registry, steps, recorded };
+  }
+
+  it('takes the session lock before it reads the closings and records one', async () => {
+    const c = closing();
+    const s = session();
+    expect(await c.registry.closeOnce(s, execSessionInterrupted(s))).toBe(true);
+    expect(c.steps).toEqual([`lock ${s.id}`, 'read', 'publish']);
+    expect(c.recorded).toEqual(['exec.session.interrupted']);
+  });
+
+  it('records nothing when the session is closed already', async () => {
+    const c = closing(['exec.session.ended']);
+    const s = session();
+    expect(await c.registry.closeOnce(s, execSessionInterrupted(s))).toBe(false);
+    expect(c.steps).toEqual([`lock ${s.id}`, 'read']);
+    expect(c.recorded).toEqual(['exec.session.ended']);
+  });
+
+  it('records the end under the lock too, and says it is ending until it is written', async () => {
+    const c = closing();
+    const s = session();
+    c.registry.add(s, NOW);
+    c.registry.joinAgent(s.id, node)?.agentLeft();
+    expect(c.registry.pending(s.id)).toBeUndefined();
+    expect(c.registry.ending(s.id)).toBe(true);
+    await c.registry.settle(1000);
+    expect(c.registry.ending(s.id)).toBe(false);
+    expect(c.steps).toEqual([`lock ${s.id}`, 'read', 'publish']);
+    expect(c.recorded).toEqual(['exec.session.ended']);
   });
 });
