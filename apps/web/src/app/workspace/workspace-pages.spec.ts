@@ -259,6 +259,11 @@ describe('workspace pages', () => {
     expect(text).toContain(ENV);
     const expectedExport = `export SHIPKEEP_ORG=${ORG} SHIPKEEP_PROJECT=${PROJECT} SHIPKEEP_ENV=${ENV}`;
     expect(text).toContain(expectedExport);
+    expect(
+      element()
+        .querySelector('pre[aria-label="CLI environment variables"]')
+        ?.getAttribute('tabindex'),
+    ).toBe('0');
 
     element()
       .querySelector<HTMLButtonElement>('button[aria-label="Copy organization ID"]')

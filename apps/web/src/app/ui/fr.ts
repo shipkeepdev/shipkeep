@@ -2106,4 +2106,5 @@ export const FR: Readonly<Record<string, string>> = {
   'Copy environment ID': 'Copier l’identifiant de l’environnement',
   'CLI environment variables': 'Variables d’environnement CLI',
   'Copy export command': 'Copier la commande export',
+  'The linked environment is no longer available.': 'L’environnement lié n’est plus disponible.',
 };

@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 
-import { IdentityApi, type IdentitySchema } from './identity-api';
+import { IDENTITY_FETCH, IdentityApi, type IdentitySchema } from './identity-api';
 import { MutationRunner } from './mutation-runner';
 import { PRIVATE_CLIPBOARD } from './private-clipboard';
 import { SessionStore } from './session-store';
@@ -91,5 +92,86 @@ describe('API-token screen', () => {
       element.querySelector<HTMLButtonElement>('button[aria-label="Revoke token Profile reader"]')
         ?.disabled,
     ).toBe(true);
+  });
+
+  it('opens token creation from query params only after tokens load, and skips stale or failed refreshes', async () => {
+    const profile = {
+      userId: 'fixture',
+      email: 'person@example.com',
+      displayName: null,
+      expiresAt: '2030-01-01T00:00:00Z',
+    };
+    const nextProfile = { ...profile, userId: 'fixture-2' };
+    const pending: Array<
+      (value: { items: IdentitySchema<'ApiTokenDto'>[]; nextCursor: null }) => void
+    > = [];
+    const api = {
+      listTokens: vi.fn<IdentityApi['listTokens']>(
+        () =>
+          new Promise((resolve) => {
+            pending.push(resolve);
+          }),
+      ),
+      mfaStatus: vi.fn<IdentityApi['mfaStatus']>().mockResolvedValue({
+        enabled: false,
+        pendingExpiresAt: null,
+        recoveryCodesRemaining: 0,
+      }),
+      createToken: vi.fn<IdentityApi['createToken']>(),
+    };
+    const emptyFetch = () =>
+      new Response(JSON.stringify({ items: [], nextCursor: null }), {
+        headers: { 'content-type': 'application/json' },
+      });
+
+    // 1) Fails to load: store is unavailable, so beginCreate() is not called.
+    api.listTokens.mockRejectedValueOnce(new Error('network down'));
+    TestBed.configureTestingModule({
+      imports: [TokenPanel],
+      providers: [
+        MutationRunner,
+        { provide: IdentityApi, useValue: api },
+        { provide: IDENTITY_FETCH, useValue: emptyFetch },
+        { provide: PRIVATE_CLIPBOARD, useValue: vi.fn() },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: {
+              queryParamMap: convertToParamMap({
+                section: 'tokens',
+                organizationId: '0190f5a8-7b1c-7e2d-8f3a-0000000000aa',
+              }),
+            },
+          },
+        },
+      ],
+    });
+    const session = TestBed.inject(SessionStore);
+    session.accept(profile);
+    const fixture = TestBed.createComponent(TokenPanel);
+    await fixture.whenStable();
+    const store = fixture.debugElement.injector.get(TokenFormStore);
+    expect(store.state()).toBe('unavailable');
+    expect(store.mode()).toBe('idle');
+
+    // 2) Stale first session settles after session rotation: ignored; newer session settles and opens create.
+    session.accept(profile);
+    fixture.detectChanges();
+    session.accept(nextProfile);
+    fixture.detectChanges();
+    expect(pending).toHaveLength(2);
+
+    pending[0]?.({ items: [], nextCursor: null });
+    await Promise.resolve();
+    await Promise.resolve();
+    fixture.detectChanges();
+    expect(store.mode()).toBe('idle');
+
+    pending[1]?.({ items: [], nextCursor: null });
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(store.state()).toBe('ready');
+    expect(store.mode()).toBe('create');
+    expect((fixture.nativeElement as HTMLElement).querySelector('#token-name')).not.toBeNull();
   });
 });

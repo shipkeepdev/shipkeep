@@ -48,17 +48,35 @@ export class TokenPanel {
   private readonly firstField = viewChild<ElementRef<HTMLInputElement>>('firstField');
   private readonly feedback = viewChild<ElementRef<HTMLElement>>('feedback');
   private readonly tokenList = viewChild<ElementRef<HTMLElement>>('tokenList');
+  private sessionEpoch = 0;
+  private autoCreateConsumed = false;
   constructor() {
     effect(() => {
       const profile = this.session.profile();
       untracked(() => {
+        const epoch = ++this.sessionEpoch;
         this.store.resetForSession();
         if (profile) {
-          this.pendingTasks.run(() => this.store.refresh());
           const query = this.route?.snapshot.queryParamMap;
-          if (query?.get('section') === 'tokens' && query.get('organizationId')) {
-            this.store.beginCreate();
-          }
+          const openFromRoute =
+            !this.autoCreateConsumed &&
+            query?.get('section') === 'tokens' &&
+            Boolean(query.get('organizationId'));
+          this.pendingTasks.run(async () => {
+            await this.store.refresh();
+            if (
+              this.destroyRef.destroyed ||
+              epoch !== this.sessionEpoch ||
+              this.session.profile() !== profile ||
+              this.store.state() !== 'ready'
+            ) {
+              return;
+            }
+            if (openFromRoute) {
+              this.autoCreateConsumed = true;
+              if (this.store.beginCreate()) this.focusAfterRender('firstField');
+            }
+          });
         }
       });
     });

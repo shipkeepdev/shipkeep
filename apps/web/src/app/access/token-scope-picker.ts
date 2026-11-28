@@ -109,6 +109,11 @@ const selected = (event: Event): string => (event.target as HTMLSelectElement).v
           </select>
         </div>
       }
+      @if (unavailableEnvironment()) {
+        <p class="field-error" role="status">
+          {{ 'The linked environment is no longer available.' | t }}
+        </p>
+      }
       <fieldset class="min-w-0">
         <legend>{{ 'Permissions' | t }}</legend>
         <p class="hint">
@@ -163,6 +168,8 @@ export class TokenScopePicker {
   protected readonly environmentId = signal('');
   protected readonly ticked = signal<ReadonlySet<Permission>>(new Set());
   protected readonly bound = signal(false);
+  protected readonly unavailableEnvironment = signal(false);
+  private selectionGeneration = 0;
   protected readonly organizations = new Collection<Organization>(() => this.api.organizations());
   protected readonly projects = new Collection<Project>(() =>
     this.api.projects(this.organizationId()),
@@ -206,29 +213,56 @@ export class TokenScopePicker {
       this.organizationId.set(organizationId);
       if (projectId) {
         this.projectId.set(projectId);
-        if (environmentId) this.environmentId.set(environmentId);
       }
     }
     void this.organizations.refresh();
     if (this.organizationId()) void this.projects.refresh();
-    if (this.organizationId() && this.projectId()) void this.environments.refresh();
+    if (this.organizationId() && this.projectId()) {
+      const generation = this.selectionGeneration;
+      void this.environments.refresh().then((loaded) => {
+        if (
+          !environmentId ||
+          generation !== this.selectionGeneration ||
+          this.organizationId() !== organizationId ||
+          this.projectId() !== projectId
+        ) {
+          return;
+        }
+        if (loaded && this.environments.items().some((env) => env.id === environmentId)) {
+          this.environmentId.set(environmentId);
+          this.ticked.set(new Set());
+          this.unavailableEnvironment.set(false);
+        } else {
+          this.environmentId.set('');
+          this.ticked.set(new Set());
+          this.unavailableEnvironment.set(true);
+        }
+      });
+    }
     effect(() => {
       this.grantChange.emit(this.grant());
     });
   }
 
   protected chooseOrganization(event: Event): void {
+    ++this.selectionGeneration;
+    this.unavailableEnvironment.set(false);
     this.organizationId.set(selected(event));
     this.clearProject();
     this.ticked.set(new Set());
     if (this.organizationId()) void this.projects.refresh();
   }
   protected chooseProject(event: Event): void {
+    ++this.selectionGeneration;
+    this.unavailableEnvironment.set(false);
     this.clearProject();
+    this.ticked.set(new Set());
     this.projectId.set(selected(event));
     if (this.projectId()) void this.environments.refresh();
   }
   protected chooseEnvironment(event: Event): void {
+    ++this.selectionGeneration;
+    this.unavailableEnvironment.set(false);
     this.environmentId.set(selected(event));
   }
   protected toggle(permission: Permission): void {

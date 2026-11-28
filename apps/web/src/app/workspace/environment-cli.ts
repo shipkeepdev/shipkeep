@@ -56,9 +56,12 @@ type CopyTarget = 'organization' | 'project' | 'environment' | 'export';
         }
       </div>
       <div class="grid gap-2">
-        <pre class="code-box" [attr.aria-label]="'CLI environment variables' | t">{{
-          exportLine()
-        }}</pre>
+        <pre
+          class="code-box"
+          role="region"
+          tabindex="0"
+          [attr.aria-label]="'CLI environment variables' | t"
+          >{{ exportLine() }}</pre>
         <div class="flex flex-wrap items-center gap-3">
           <button type="button" class="btn btn-sm" (click)="copy('export', exportLine())">
             <sk-icon name="copy" />{{ 'Copy export command' | t }}
