@@ -253,6 +253,8 @@ Environment=XDG_RUNTIME_DIR=/run/shipkeep-build PATH=/usr/local/libexec/shipkeep
 RuntimeDirectory=shipkeep-build
 RuntimeDirectoryMode=0750
 ExecStartPre=+/usr/sbin/nft --file /etc/shipkeep-egress.nft
+# RequiresMountsFor orders the mount; this refuses to start on the bare directory under it.
+ExecStartPre=/usr/bin/mountpoint -q /var/lib/shipkeep-build
 ExecStart=/usr/bin/rootlesskit --net=slirp4netns --disable-host-loopback --copy-up=/etc --state-dir=/run/shipkeep-build/rootlesskit /usr/local/libexec/shipkeep-build/buildkitd --config /etc/shipkeep-build/buildkitd.toml
 Restart=always
 RestartSec=5
@@ -659,6 +661,8 @@ UNIT
 prepare_build_disk() {
   local unit size='' available own=''
   unit=$(systemd-escape --path --suffix=mount "$build_disk_mount")
+  # An image an interrupted run allocated is never in use: it goes first, so that its space counts.
+  rm -f -- "$build_disk_image.new"
   # Refused before anything stops: the builder goes on as it was.
   if [[ ! -e $build_disk_image && ! -e /etc/systemd/system/$unit ]] && mountpoint -q "$build_disk_mount"; then
     own=yes
@@ -675,7 +679,6 @@ prepare_build_disk() {
   systemctl stop shipkeep-build 2>/dev/null || true
   if [[ -n $size ]]; then
     if ! mountpoint -q "$build_disk_mount"; then rm -rf -- "$build_disk_mount/buildkit"; fi
-    rm -f -- "$build_disk_image.new"
     # Its blocks are taken on /var/lib now, and stay taken: a discard at formatting, or the
     # zeroing of inode tables after the first mount, would punch holes in the image, and a build
     # would then take the server's disk as it writes. The tables are zeroed at formatting instead.

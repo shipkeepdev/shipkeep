@@ -346,6 +346,15 @@ func (c Config) Validate() error {
 			add("%s: %v", name, err)
 		}
 	}
+	// Each build empties its work directory: never the agent's own state, or what holds it.
+	for _, owned := range []struct{ name, path string }{
+		{"paths.state_dir", c.Paths.StateDir},
+		{"paths.run_dir", c.Paths.RunDir},
+	} {
+		if within(owned.path, c.Build.WorkDir) {
+			add("build.work_dir must not be %s or a directory that holds it", owned.name)
+		}
+	}
 
 	if err := validateDockerHost(c.Docker.Host); err != nil {
 		add("docker.host: %v", err)
@@ -403,6 +412,17 @@ var nodeNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{1,38}[a-z0-9]$`)
 
 func validNodeName(name string) bool {
 	return nodeNameRe.MatchString(name)
+}
+
+// within reports whether path is dir itself or lies under it; `/` holds every path.
+func within(path, dir string) bool {
+	switch dir {
+	case "":
+		return false
+	case "/":
+		return true
+	}
+	return path == dir || strings.HasPrefix(path, dir+"/")
 }
 
 func validatePath(p string) error {

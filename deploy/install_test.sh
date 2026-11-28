@@ -128,6 +128,9 @@ done
 # The builder starts only on its own filesystem (#548), which the installer owns: systemd neither
 # makes its state directory nor changes its owner.
 grep -qxF 'RequiresMountsFor=/var/lib/shipkeep-build' <<<"$unit" || die 'the builder starts without its filesystem'
+# Ordering is not enough: BuildKit starts only when the directory is a mount point, after the guard.
+grep -qxF 'ExecStartPre=/usr/bin/mountpoint -q /var/lib/shipkeep-build' <<<"$unit" || die 'the builder starts on the bare directory'
+[[ ${unit%%ExecStart=*} == *'mountpoint -q /var/lib/shipkeep-build'* ]] || die 'BuildKit starts before the mount is checked'
 ! grep -q '^StateDirectory' <<<"$unit" || die 'systemd manages the builder state directory'
 # shellcheck disable=SC2154 # build_disk_image and build_disk_mount are set by deploy/install.sh, sourced above.
 [[ $build_disk_image == /var/lib/shipkeep-build.img && $build_disk_mount == /var/lib/shipkeep-build ]] || die 'the builds filesystem moved'
