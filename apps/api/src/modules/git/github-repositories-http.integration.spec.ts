@@ -11,6 +11,7 @@ import {
   type GithubManifests,
 } from './application/ports';
 import type { TokenScope } from './domain/github-api';
+import { noGithubWrites } from '../../testing/github-writes';
 
 /** A key-shaped value that is no key, put together here so that no scanner reads the source as one. */
 function fakePem(body: string): string {
@@ -78,6 +79,7 @@ describe('GitHub repositories over HTTP', () => {
     branchHead: () => Promise.resolve(undefined),
     repository: () => Promise.resolve(undefined),
     file: () => Promise.resolve(undefined),
+    ...noGithubWrites,
     revoke: (token) => {
       revoked.push(token.expose());
       return Promise.resolve(true);

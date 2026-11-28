@@ -16,6 +16,7 @@ import type { PushEvent } from '../git/domain/github-webhook';
 
 import { PushDeployments } from './application/push-deployments';
 import { PushWorker } from './infrastructure/push-worker';
+import { noGithubWrites } from '../../testing/github-writes';
 
 /** A key-shaped value that is no key, put together here so that no scanner reads the source as one. */
 function fakePem(body: string): string {
@@ -79,6 +80,7 @@ describe('deployments from GitHub pushes', () => {
       await duringRead?.();
       return files.get(at);
     },
+    ...noGithubWrites,
     revoke: () => Promise.resolve(true),
   };
   const push = (at: string, pusher: string | null = 'octocat'): PushEvent => ({

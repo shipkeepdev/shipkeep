@@ -108,6 +108,8 @@ services:
       VICTORIALOGS_URL: http://victorialogs:9428
       # The public key of the registry's tokens, written at start for the registry (ADR 0030).
       REGISTRY_JWKS_FILE: /var/lib/shipkeep-registry/jwks.json
+      # The registry's API on the Compose network, for image retention (ADR 0030).
+      REGISTRY_URL: http://registry:5000
     volumes:
       - keys:/var/lib/shipkeep:ro
       - registry-auth:/var/lib/shipkeep-registry

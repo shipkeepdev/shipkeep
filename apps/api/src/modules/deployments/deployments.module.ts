@@ -20,6 +20,7 @@ import { ExecSessions } from './application/exec-sessions';
 import {
   ACTION_HISTORY,
   BUILD_TOKENS,
+  RETENTION_STORE,
   ACTION_QUEUE,
   DEPLOYMENT_STEPS,
   DEPLOYMENT_STORE,
@@ -31,6 +32,9 @@ import {
 } from './application/ports';
 import { DeploymentQueue } from './infrastructure/deployment-queue';
 import { DeploymentWorker } from './infrastructure/deployment-worker';
+import { ImageRetention } from './application/image-retention';
+import { ImageRetentionWorker } from './infrastructure/image-retention-worker';
+import { PrismaRetentionStore } from './infrastructure/prisma-retention.store';
 import { PushWorker } from './infrastructure/push-worker';
 import { PrismaDeploymentStore } from './infrastructure/prisma-deployment.store';
 import { PrismaDeploymentSteps } from './infrastructure/prisma-deployment-steps.store';
@@ -79,7 +83,10 @@ import { NodeReplicasController } from './interface/node-replicas.controller';
     DeploymentWorker,
     PushDeployments,
     PushWorker,
+    ImageRetention,
+    ImageRetentionWorker,
+    { provide: RETENTION_STORE, useClass: PrismaRetentionStore },
   ],
-  exports: [DEPLOYMENT_STORE, IMAGE_RESOLVER, DeploymentWorker, PushWorker],
+  exports: [DEPLOYMENT_STORE, IMAGE_RESOLVER, DeploymentWorker, PushWorker, ImageRetentionWorker],
 })
 export class DeploymentsModule {}
