@@ -157,6 +157,10 @@ type Build struct {
 	// Socket is the Unix socket of the rootless BuildKit daemon the installer runs as
 	// shipkeep-build. A server without it answers each build that its builder does not answer.
 	Socket string `yaml:"socket"`
+	// WorkDir holds the repository and the plan of a Railpack build for that build's time. The
+	// installer makes it on the builds' own filesystem (#548), so that a build fills that one and
+	// never the server's disk; the agent empties it and never makes it there.
+	WorkDir string `yaml:"work_dir"`
 }
 
 // Log configures structured logging.
@@ -183,7 +187,7 @@ func Default() Config {
 		},
 		Docker: Docker{Host: "unix:///var/run/docker.sock"},
 		Caddy:  Caddy{AdminSocket: "/run/shipkeep/caddy-admin.sock"},
-		Build:  Build{Socket: "/run/shipkeep-build/buildkitd.sock"},
+		Build:  Build{Socket: "/run/shipkeep-build/buildkitd.sock", WorkDir: "/var/lib/shipkeep-build/exports"},
 		Log:    Log{Level: "info", Format: "json"},
 		Intervals: Intervals{
 			Heartbeat: 5 * time.Second,
@@ -202,6 +206,7 @@ func DevDefault(baseDir string) Config {
 	cfg.Paths.RunDir = filepath.Join(baseDir, "run")
 	cfg.Caddy.AdminSocket = filepath.Join(baseDir, "run", "caddy-admin.sock")
 	cfg.Build.Socket = filepath.Join(baseDir, "run", "buildkitd.sock")
+	cfg.Build.WorkDir = filepath.Join(baseDir, "builds")
 	cfg.Log.Level = "debug"
 	cfg.Log.Format = "text"
 	return cfg
@@ -335,9 +340,19 @@ func (c Config) Validate() error {
 		"paths.run_dir":      c.Paths.RunDir,
 		"caddy.admin_socket": c.Caddy.AdminSocket,
 		"build.socket":       c.Build.Socket,
+		"build.work_dir":     c.Build.WorkDir,
 	} {
 		if err := validatePath(p); err != nil {
 			add("%s: %v", name, err)
+		}
+	}
+	// Each build empties its work directory: never the agent's own state, or what holds it.
+	for _, owned := range []struct{ name, path string }{
+		{"paths.state_dir", c.Paths.StateDir},
+		{"paths.run_dir", c.Paths.RunDir},
+	} {
+		if within(owned.path, c.Build.WorkDir) {
+			add("build.work_dir must not be %s or a directory that holds it", owned.name)
 		}
 	}
 
@@ -397,6 +412,17 @@ var nodeNameRe = regexp.MustCompile(`^[a-z][a-z0-9-]{1,38}[a-z0-9]$`)
 
 func validNodeName(name string) bool {
 	return nodeNameRe.MatchString(name)
+}
+
+// within reports whether path is dir itself or lies under it; `/` holds every path.
+func within(path, dir string) bool {
+	switch dir {
+	case "":
+		return false
+	case "/":
+		return true
+	}
+	return path == dir || strings.HasPrefix(path, dir+"/")
 }
 
 func validatePath(p string) error {

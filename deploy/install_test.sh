@@ -127,6 +127,44 @@ for line in 'User=shipkeep-build' 'Group=shipkeep-build' 'Delegate=yes' 'Require
   grep -qxF "$line" <<<"$unit" || die "the builder unit misses $line"
 done
 ! grep -qi docker <<<"$unit" || die 'the builder unit names Docker'
+# The builder starts only on its own filesystem (#548), which the installer owns: systemd neither
+# makes its state directory nor changes its owner.
+grep -qxF 'RequiresMountsFor=/var/lib/shipkeep-build' <<<"$unit" || die 'the builder starts without its filesystem'
+# Ordering is not enough: BuildKit starts only when the directory is a mount point, after the guard.
+grep -qxF 'ExecStartPre=/usr/bin/mountpoint -q /var/lib/shipkeep-build' <<<"$unit" || die 'the builder starts on the bare directory'
+[[ ${unit%%ExecStart=*} == *'mountpoint -q /var/lib/shipkeep-build'* ]] || die 'BuildKit starts before the mount is checked'
+! grep -q '^StateDirectory' <<<"$unit" || die 'systemd manages the builder state directory'
+# shellcheck disable=SC2154 # build_disk_image and build_disk_mount are set by deploy/install.sh, sourced above.
+[[ $build_disk_image == /var/lib/shipkeep-build.img && $build_disk_mount == /var/lib/shipkeep-build ]] || die 'the builds filesystem moved'
+mount=$(build_disk_unit)
+for line in '[Mount]' 'What=/var/lib/shipkeep-build.img' 'Where=/var/lib/shipkeep-build' 'Type=ext4' 'Options=loop,nodev,noatime,nodiscard' 'WantedBy=local-fs.target'; do
+  grep -qxF -- "$line" <<<"$mount" || die "the builds filesystem unit misses $line"
+done
+# Formatting does not discard the blocks fallocate took: the image stays reserved, not sparse.
+grep -qF 'mkfs.ext4 -q -F -m 0 -E nodiscard,lazy_itable_init=0,lazy_journal_init=0 ' deploy/install.sh || die 'the builds filesystem punches holes in its image'
+if command -v systemd-escape >/dev/null; then
+  [[ $(systemd-escape --path --suffix=mount "$build_disk_mount") == 'var-lib-shipkeep\x2dbuild.mount' ]] || die 'the mount unit is misnamed'
+fi
+# BuildKit's root is on that filesystem, and its collection thresholds are relative to it.
+config=$(buildkitd_config)
+grep -qxF "root = \"$build_disk_mount/buildkit\"" <<<"$config" || die "BuildKit keeps its state outside the builds filesystem"
+for line in '  maxUsedSpace = "70%"' '  minFreeSpace = "20%"'; do
+  grep -qxF -- "$line" <<<"$config" || die "BuildKit collects without $line"
+done
+# The agent writes Railpack's copies there, and nowhere else on it.
+grep -qxF "ReadWritePaths=/etc/shipkeep /var/lib/shipkeep /run/shipkeep -$build_disk_mount/exports" <<<"$(agent_unit)" || die 'the agent cannot write the builds directory'
+grep -qF "WorkDir: \"$build_disk_mount/exports\"" agent/internal/config/config.go || die 'the agent works elsewhere than the installer makes room'
+# Its size: a fifth of /var/lib, from 10 to 100 GiB, or what --build-disk says, from 5 to 4096.
+gib=1073741824
+[[ $(build_disk_gib $((1000 * gib)) '') == 100 ]] || die 'a large disk gets more than 100 GiB of builds'
+[[ $(build_disk_gib $((100 * gib)) '') == 20 ]] || die 'a 100 GiB disk does not get a fifth'
+[[ $(build_disk_gib $((20 * gib)) '') == 10 ]] || die 'a small disk gets less than 10 GiB of builds'
+[[ $(build_disk_gib $((20 * gib)) 5) == 5 && $(build_disk_gib 0 4096) == 4096 ]] || die 'the given size was not kept'
+# shellcheck disable=SC2016
+for size in 0 4 4097 05 10G -1 1e3 ' 10' $'10\n' '$(id)' 99999; do
+  refused build_disk_gib $((500 * gib)) "$size" || die "accepted the build disk size $size"
+done
+refused build_disk_gib 'lots' '' || die 'accepted a disk size that is not a number'
 grep -qF -- '--disable-host-loopback' <<<"$unit" || die "the builder reaches the host's loopback"
 # shellcheck disable=SC2154 # the BuildKit pins are set by deploy/install.sh, sourced above.
 [[ $buildkit_amd64_sha256 =~ ^[0-9a-f]{64}$ && $buildkit_arm64_sha256 =~ ^[0-9a-f]{64}$ && $buildkit_version =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || die 'BuildKit is not pinned'
@@ -229,14 +267,20 @@ for options in "--control-plane-only no --agent-file $work/agent" '--control-pla
   grep -Eq 'control-plane-only|control plane machine' "$work/output" || die "refused $options for another reason: $(cat "$work/output")"
 done
 # --migrate (#490) recognizes the agent unit of 0.1.0-alpha.1 to 0.1.0-alpha.3: today's unit
-# without the five lines the upgrade guard brought (ADR 0028), and nothing else.
+# without the five lines the upgrade guard brought (ADR 0028) and the builds' directory (#548),
+# and nothing else.
 guard_lines=$'Type=notify\nNotifyAccess=main\nStartLimitIntervalSec=0\nExecStartPre=/usr/local/libexec/shipkeep-egress upgrade-guard --config /etc/shipkeep/agent.yaml\nTimeoutStartSec=360'
-[[ $(grep -vxF -- "$guard_lines" <<<"$unit") == "$(legacy_agent_unit)" ]] || die 'the legacy unit is not the current one without the guard'
+[[ $(grep -vxF -- "$guard_lines" <<<"$unit" | sed 's| -/var/lib/shipkeep-build/exports$||') == "$(legacy_agent_unit)" ]] ||
+  die 'the legacy unit is not the current one without the guard'
 [[ $(legacy_agent_unit | sha256sum) == '77e93a552bd905e07030fc50a5ed95d0f838551cc3baac7da910b13bf1d36f23  -' ]] || die 'the legacy unit is not the one 0.1.0-alpha.1 to alpha.3 wrote'
 legacy_agent_unit >"$work/legacy.service"
 agent_unit >"$work/current.service"
 [[ $(agent_unit_layout "$work/legacy.service") == legacy ]] || die 'the legacy unit was not recognized'
 [[ $(agent_unit_layout "$work/current.service") == current ]] || die 'the current unit was not recognized'
+# The unit of before the builds' filesystem (#548) is rewritten like the current one.
+sed 's| -/var/lib/shipkeep-build/exports$||' "$work/current.service" >"$work/before-548.service"
+! cmp -s "$work/current.service" "$work/before-548.service" || die 'the agent unit does not name the builds directory'
+[[ $(agent_unit_layout "$work/before-548.service") == current ]] || die 'the unit of before #548 was not recognized'
 { legacy_agent_unit; printf 'Environment=EXTRA=1\n'; } >"$work/edited.service"
 sed 's/^RestartSec=5$/RestartSec=1/' "$work/current.service" >"$work/changed.service"
 sed 's/^# No capabilities.*/# edited/' "$work/legacy.service" >"$work/comment.service"
