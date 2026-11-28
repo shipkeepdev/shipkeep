@@ -12,21 +12,28 @@ import {
 import { FormControl, FormGroup, ReactiveFormsModule } from '@angular/forms';
 
 import { MutationRunner } from '../identity/mutation-runner';
+import { PrivateClipboard } from '../identity/private-clipboard';
 import { LocalDate, T } from '../ui/i18n';
 import { required } from '../workspace/validators';
 
 import { FleetApi, type FleetNode, type NodeReadoption } from './fleet-api';
 
+/** What the server prints for its own certificate: the serial the list shows, `serial=…`. */
+const SERIAL_COMMAND =
+  'sudo python3 -c \'import json; print(json.load(open("/var/lib/shipkeep/credentials.json"))["certificate"])\' | openssl x509 -noout -serial | tr A-F a-f';
+
 /**
  * Servers waiting to be re-adopted (#487, SPEC 3.1). After a restore from a backup older than a
  * server's last certificate renewal, its agent presents a certificate this installation never
- * registered, and is refused. An administrator who recognizes the server confirms with their
- * password: that same server comes back, with its applications. Hidden while nothing waits.
+ * registered, and is refused. An administrator who recognizes the server checks the certificate's
+ * serial on it and confirms with their password: that same server comes back, with its
+ * applications. The confirmation names the certificate reviewed (#545): if another one replaced
+ * it meanwhile, nothing is adopted and the form closes. Hidden while nothing waits.
  */
 @Component({
   selector: 'sk-node-readoptions',
   imports: [LocalDate, ReactiveFormsModule, T],
-  providers: [MutationRunner],
+  providers: [MutationRunner, PrivateClipboard],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (rows().length || readopted() || unread()) {
@@ -47,6 +54,14 @@ import { FleetApi, type FleetNode, type NodeReadoption } from './fleet-api';
           </p>
         </div>
 
+        @if (replaced(); as name) {
+          <p class="alert" role="alert">
+            {{
+              'The certificate waiting for {name} changed before it was re-adopted, and nothing was re-adopted. Check the new serial on the server before you re-adopt it.'
+                | t: { name }
+            }}
+          </p>
+        }
         @if (readopted(); as name) {
           <p class="alert alert-ok" role="status">
             {{
@@ -91,79 +106,109 @@ import { FleetApi, type FleetNode, type NodeReadoption } from './fleet-api';
                               }
                       }}
                     </div>
+                    <div class="mt-0.5 text-[11px] break-all text-dim">
+                      {{ 'certificate' | t }}
+                      <span class="font-mono text-fg3">{{ r.certificateSerial }}</span>
+                    </div>
                   </div>
-                  @if (open() !== r.nodeId) {
+                  @if (open()?.nodeId !== r.nodeId) {
                     <button
                       type="button"
                       class="btn btn-sm"
                       [disabled]="runner.busy()"
                       [attr.aria-label]="'Re-adopt {name}' | t: { name: r.name }"
-                      (click)="choose(r.nodeId)"
+                      (click)="choose(r)"
                     >
                       {{ 'Re-adopt' | t }}
                     </button>
                   }
                 </div>
-                @if (open() === r.nodeId) {
-                  <form [formGroup]="proof" (ngSubmit)="readopt(r)" class="flex flex-col gap-3">
-                    <p class="text-[12.5px] leading-[1.55] text-mute">
-                      {{
-                        'Your password is required: {name} gets back what this organization lets a server do.'
-                          | t: { name: r.name }
-                      }}
-                    </p>
-                    <div class="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2.5">
+                @if (open(); as reviewed) {
+                  @if (reviewed.nodeId === r.nodeId) {
+                    <form [formGroup]="proof" (ngSubmit)="readopt(r)" class="flex flex-col gap-3">
                       <div class="flex flex-col gap-1.5">
-                        <label for="readopt-password" class="text-[12px] text-fg3">{{
-                          'Password' | t
-                        }}</label>
-                        <input
-                          id="readopt-password"
-                          class="input"
-                          type="password"
-                          formControlName="password"
-                          autocomplete="current-password"
-                        />
+                        <p class="text-[12.5px] leading-[1.55] text-mute">
+                          {{
+                            'Check first that {name} holds this certificate: on that server, this command prints serial={serial}.'
+                              | t: { name: r.name, serial: reviewed.certificateSerial }
+                          }}
+                        </p>
+                        <pre
+                          class="code-box"
+                          tabindex="0"
+                          [attr.aria-label]="'Command to read the serial' | t"
+                          >{{ serialCommand }}</pre>
+                        <div class="flex flex-wrap items-center gap-2.5">
+                          <button class="btn btn-sm" type="button" (click)="copyCommand()">
+                            {{ 'Copy the command' | t }}
+                          </button>
+                          @if (clipboard.message(); as message) {
+                            <span class="text-[12px] text-mute" role="status">{{
+                              (message.startsWith('Copied') ? 'Command copied.' : message) | t
+                            }}</span>
+                          }
+                        </div>
                       </div>
-                      <div class="flex flex-col gap-1.5">
-                        <label for="readopt-totp" class="text-[12px] text-fg3">{{
-                          'Authentication code' | t
-                        }}</label>
-                        <input
-                          id="readopt-totp"
-                          class="input font-mono"
-                          formControlName="totp"
-                          inputmode="numeric"
-                          autocomplete="one-time-code"
-                          [placeholder]="'if enabled' | t"
-                        />
-                      </div>
-                    </div>
-                    <div class="flex flex-wrap gap-2">
-                      <button
-                        class="btn btn-primary btn-sm"
-                        type="submit"
-                        [disabled]="
-                          runner.busy() ||
-                          !!runner.cooldown() ||
-                          runner.restartRequired() ||
-                          proof.invalid
-                        "
-                      >
+                      <p class="text-[12.5px] leading-[1.55] text-mute">
                         {{
-                          (runner.busy() ? 'Re-adopting…' : 'Re-adopt {name}') | t: { name: r.name }
+                          'Your password is required: {name} gets back what this organization lets a server do.'
+                            | t: { name: r.name }
                         }}
-                      </button>
-                      <button
-                        class="btn btn-sm"
-                        type="button"
-                        [disabled]="runner.busy()"
-                        (click)="close()"
-                      >
-                        {{ 'Cancel' | t }}
-                      </button>
-                    </div>
-                  </form>
+                      </p>
+                      <div class="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-2.5">
+                        <div class="flex flex-col gap-1.5">
+                          <label for="readopt-password" class="text-[12px] text-fg3">{{
+                            'Password' | t
+                          }}</label>
+                          <input
+                            id="readopt-password"
+                            class="input"
+                            type="password"
+                            formControlName="password"
+                            autocomplete="current-password"
+                          />
+                        </div>
+                        <div class="flex flex-col gap-1.5">
+                          <label for="readopt-totp" class="text-[12px] text-fg3">{{
+                            'Authentication code' | t
+                          }}</label>
+                          <input
+                            id="readopt-totp"
+                            class="input font-mono"
+                            formControlName="totp"
+                            inputmode="numeric"
+                            autocomplete="one-time-code"
+                            [placeholder]="'if enabled' | t"
+                          />
+                        </div>
+                      </div>
+                      <div class="flex flex-wrap gap-2">
+                        <button
+                          class="btn btn-primary btn-sm"
+                          type="submit"
+                          [disabled]="
+                            runner.busy() ||
+                            !!runner.cooldown() ||
+                            runner.restartRequired() ||
+                            proof.invalid
+                          "
+                        >
+                          {{
+                            (runner.busy() ? 'Re-adopting…' : 'Re-adopt {name}')
+                              | t: { name: r.name }
+                          }}
+                        </button>
+                        <button
+                          class="btn btn-sm"
+                          type="button"
+                          [disabled]="runner.busy()"
+                          (click)="close()"
+                        >
+                          {{ 'Cancel' | t }}
+                        </button>
+                      </div>
+                    </form>
+                  }
                 }
               </li>
             }
@@ -176,6 +221,7 @@ import { FleetApi, type FleetNode, type NodeReadoption } from './fleet-api';
 export class NodeReadoptions {
   private readonly api = inject(FleetApi);
   protected readonly runner = inject(MutationRunner);
+  protected readonly clipboard = inject(PrivateClipboard);
 
   readonly organizationId = input.required<string>();
   /** The organization's servers, for their names. */
@@ -184,8 +230,14 @@ export class NodeReadoptions {
   readonly changed = output();
 
   private readonly pending = signal<readonly NodeReadoption[]>([]);
-  /** The server whose proof form is open. */
-  protected readonly open = signal<string | null>(null);
+  /** The server whose proof form is open, with the certificate shown when it was opened. */
+  protected readonly open = signal<{
+    readonly nodeId: string;
+    readonly certificateSerial: string;
+  } | null>(null);
+  /** The name of the server whose waiting certificate changed while its form was open (#545). */
+  protected readonly replaced = signal<string | null>(null);
+  protected readonly serialCommand = SERIAL_COMMAND;
   /** The name of the server re-adopted last, until another one is chosen. */
   protected readonly readopted = signal<string | null>(null);
   /** The last read failed: what was read before stays, with a way to read again. */
@@ -214,6 +266,7 @@ export class NodeReadoptions {
         this.unread.set(false);
         this.close();
         this.readopted.set(null);
+        this.replaced.set(null);
         this.runner.reset();
         void this.load();
       });
@@ -227,9 +280,18 @@ export class NodeReadoptions {
     try {
       const pending = await this.api.readoptions(organizationId);
       if (revision !== this.revision) return;
-      // A server no longer waiting takes its open form with it: no password stays behind.
+      // A server no longer waiting takes its open form with it: no password stays behind. One
+      // whose certificate changed does too, and says so: the new one needs a review of its own.
       const open = this.open();
-      if (open && !pending.some((request) => request.nodeId === open)) this.close();
+      const waiting = open && pending.find((request) => request.nodeId === open.nodeId);
+      if (open && !waiting) this.close();
+      if (open && waiting && waiting.certificateSerial !== open.certificateSerial) {
+        this.close();
+        this.runner.reset();
+        this.replaced.set(
+          this.rows().find((row) => row.nodeId === open.nodeId)?.name ?? open.nodeId,
+        );
+      }
       this.pending.set(pending);
       this.unread.set(false);
     } catch {
@@ -238,12 +300,13 @@ export class NodeReadoptions {
     }
   }
 
-  protected choose(nodeId: string): void {
+  protected choose(request: NodeReadoption): void {
     if (this.runner.busy()) return;
     this.proof.reset();
     this.runner.reset();
     this.readopted.set(null);
-    this.open.set(nodeId);
+    this.replaced.set(null);
+    this.open.set({ nodeId: request.nodeId, certificateSerial: request.certificateSerial });
   }
 
   /** After a refusal that needs a fresh attempt: the form is emptied, and can be sent again. */
@@ -254,21 +317,38 @@ export class NodeReadoptions {
 
   protected close(): void {
     this.proof.reset();
+    this.clipboard.reset();
     this.open.set(null);
   }
 
+  protected async copyCommand(): Promise<void> {
+    await this.clipboard.copy(SERIAL_COMMAND);
+  }
+
   protected async readopt(row: { readonly nodeId: string; readonly name: string }): Promise<void> {
+    // The certificate the form was opened for, never one the list shows since.
+    const reviewed = this.open();
+    if (reviewed?.nodeId !== row.nodeId) return;
     const { password, totp } = this.proof.getRawValue();
     const code = totp.trim();
     const organizationId = this.organizationId();
-    const outcome = await this.runner.run({ readopt: row.nodeId }, () =>
-      this.api.readopt(organizationId, row.nodeId, { password, ...(code ? { totp: code } : {}) }),
+    const outcome = await this.runner.run(
+      { readopt: row.nodeId, certificateSerial: reviewed.certificateSerial },
+      () =>
+        this.api.readopt(organizationId, row.nodeId, {
+          password,
+          certificateSerial: reviewed.certificateSerial,
+          ...(code ? { totp: code } : {}),
+        }),
     );
     // The page changed organization meanwhile: what is typed there now is left alone.
     if (organizationId !== this.organizationId()) return;
-    this.proof.reset();
+    // A newer review may have taken the form meanwhile, as when the list showed another
+    // certificate: the password typed there and its form are its own.
+    const owned = this.open() === reviewed;
+    if (owned) this.proof.reset();
     if (outcome.ok) {
-      this.open.set(null);
+      if (owned) this.open.set(null);
       this.readopted.set(row.name);
       this.changed.emit();
     }

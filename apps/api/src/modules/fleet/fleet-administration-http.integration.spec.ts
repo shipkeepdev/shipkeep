@@ -9,7 +9,14 @@ import { tenantHttpFixture } from '../../testing/tenant-http';
 import { AuthenticateNode } from './application/authenticate-node';
 import { EnrollNode } from './application/enroll-node';
 import { NodeLiveness } from './application/node-liveness';
-import { NODE_STORE, type NodeStore } from './application/ports';
+import {
+  FLEET_TRANSACTION,
+  type FleetTransaction,
+  NODE_READOPTION_STORE,
+  NODE_STORE,
+  type NodeReadoptionStore,
+  type NodeStore,
+} from './application/ports';
 import { NodeReadoptions } from './application/readopt-node';
 import { NodeAuthenticationError } from './domain/node-identity';
 import {
@@ -379,9 +386,16 @@ describe('fleet administration over HTTP', () => {
       await fixture.get(`${fixture.root}/node-readoptions`, actor).expect(404);
 
     const path = `${fixture.root}/nodes/${enrolled.nodeId}/readopt`;
-    const proof = { password: fixture.password.expose() };
+    // The serial of the certificate the administrator reviewed goes with the proof (#545).
+    const proof = { password: fixture.password.expose(), certificateSerial: lost.serial };
     await resetLimits();
-    await fixture.post(path, 'admin', { password: 'incorrect fixture password' }).expect(401);
+    await fixture
+      .post(path, 'admin', { ...proof, password: 'incorrect fixture password' })
+      .expect(401);
+    for (const certificateSerial of [undefined, '', lost.serial.toUpperCase(), `${lost.serial}0`]) {
+      await resetLimits();
+      await fixture.post(path, 'admin', { ...proof, certificateSerial }).expect(400);
+    }
     for (const actor of ['member', 'projectAdmin', 'outsider'] as const) {
       await resetLimits();
       await fixture.post(path, actor, proof).expect(404);
@@ -420,5 +434,91 @@ describe('fleet administration over HTTP', () => {
     await fixture.post(path, 'admin', proof).expect(409);
     const after = await fixture.get(`${fixture.root}/node-readoptions`, 'admin').expect(200);
     expect(after.body).toEqual({ items: [] });
+  });
+  // #545: the administrator reviewed one certificate; another one, which may be a stolen one
+  // presented again, replaced it before they confirmed. Nothing is adopted, and the request
+  // that waits is the new one, to review again.
+  it('adopts only the certificate the administrator reviewed', async () => {
+    await resetLimits();
+    const issued = await fixture
+      .post(`${fixture.root}/join-tokens`, 'owner', { password: fixture.password.expose() })
+      .expect(201);
+    const enrolled = await fixture.app.get(EnrollNode).execute({
+      joinToken: new Secret((issued.body as { token: string }).token),
+      csrPem: await agentCsr(),
+      facts: { hostname: 'edge-reviewed.example.com' },
+      agentVersion: '0.1.0',
+    });
+    const authority = fixture.app.get(X509CertificateAuthority);
+    const identity = { organizationId: fixture.organizationId, nodeId: enrolled.nodeId };
+    const reviewed = await authority.issueNodeCertificate(await agentCsr(), identity);
+    const replacing = await authority.issueNodeCertificate(await agentCsr(), identity);
+    const readoptions = fixture.app.get(NodeReadoptions);
+    const validity = (certificate: { notBefore: Date; notAfter: Date }) => ({
+      notBefore: certificate.notBefore,
+      notAfter: certificate.notAfter,
+    });
+    await readoptions.notice({ ...identity, serial: reviewed.serial }, validity(reviewed));
+    const listed = await fixture.get(`${fixture.root}/node-readoptions`, 'admin').expect(200);
+    expect((listed.body as { items: { certificateSerial: string }[] }).items).toEqual([
+      expect.objectContaining({ certificateSerial: reviewed.serial }),
+    ]);
+    await readoptions.notice({ ...identity, serial: replacing.serial }, validity(replacing));
+
+    const path = `${fixture.root}/nodes/${enrolled.nodeId}/readopt`;
+    const proof = { password: fixture.password.expose(), certificateSerial: reviewed.serial };
+    await resetLimits();
+    const refused = await fixture.post(path, 'admin', proof).expect(409);
+    expect(refused.body).toMatchObject({ code: 'readoption_changed' });
+    const authenticate = fixture.app.get(AuthenticateNode);
+    for (const serial of [reviewed.serial, replacing.serial])
+      await expect(authenticate.execute({ ...identity, serial })).rejects.toBeInstanceOf(
+        NodeAuthenticationError,
+      );
+    const waiting = await fixture.get(`${fixture.root}/node-readoptions`, 'admin').expect(200);
+    expect(
+      (waiting.body as { items: { nodeId: string; certificateSerial: string }[] }).items.filter(
+        (item) => item.nodeId === enrolled.nodeId,
+      ),
+    ).toEqual([expect.objectContaining({ certificateSerial: replacing.serial })]);
+    expect(
+      await auditLog().count({
+        where: { action: 'fleet.node.readopted', targetId: enrolled.nodeId },
+      }),
+    ).toBe(0);
+
+    // Between the read and the adoption, the store adopts only the request it read: one replaced
+    // meanwhile is refused there too, with nothing registered.
+    const store = fixture.app.get<NodeReadoptionStore>(NODE_READOPTION_STORE);
+    const transaction = fixture.app.get<FleetTransaction>(FLEET_TRANSACTION);
+    const stale = await transaction.runTenant(fixture.organizationId, () =>
+      store.find(fixture.organizationId, enrolled.nodeId),
+    );
+    if (!stale) throw new Error('no request waits');
+    expect(stale.serial).toBe(replacing.serial);
+    await readoptions.notice({ ...identity, serial: reviewed.serial }, validity(reviewed));
+    await expect(
+      transaction.runTenant(fixture.organizationId, () =>
+        store.adopt(stale, '0192f0c0-0000-7000-8000-0000000005a5', new Date()),
+      ),
+    ).rejects.toMatchObject({ code: 'readoption_changed' });
+    for (const serial of [reviewed.serial, replacing.serial])
+      await expect(authenticate.execute({ ...identity, serial })).rejects.toBeInstanceOf(
+        NodeAuthenticationError,
+      );
+
+    // The certificate reviewed again, unchanged, is adopted, and the audit names it.
+    await resetLimits();
+    const adopted = await fixture.post(path, 'admin', proof).expect(200);
+    expect(adopted.body).toMatchObject({ certificateSerial: reviewed.serial });
+    await expect(
+      authenticate.execute({ ...identity, serial: reviewed.serial }),
+    ).resolves.toMatchObject({ nodeId: enrolled.nodeId });
+    const events = await auditLog().findMany({
+      where: { action: 'fleet.node.readopted', targetId: enrolled.nodeId },
+    });
+    expect(events.map((event) => event.metadata)).toEqual([
+      expect.objectContaining({ certificateSerial: reviewed.serial }),
+    ]);
   });
 });

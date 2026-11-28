@@ -2486,6 +2486,14 @@ export type components = {
             /** @enum {string} */
             readonly status: "ok";
         };
+        readonly ReadoptNodeDto: {
+            /** @description Serial of the certificate reviewed, as the list of servers to re-adopt gives it. When another certificate waits for this server, the answer is 409 `readoption_changed` and nothing is adopted. */
+            readonly certificateSerial: string;
+            /** Format: password */
+            readonly password: string;
+            readonly recovery?: string;
+            readonly totp?: string;
+        };
         readonly ReauthenticateMfaDto: {
             /** Format: password */
             readonly password: string;
@@ -3998,7 +4006,7 @@ export interface operations {
         };
         readonly requestBody: {
             readonly content: {
-                readonly "application/json": components["schemas"]["ReauthenticateMfaDto"];
+                readonly "application/json": components["schemas"]["ReadoptNodeDto"];
             };
         };
         readonly responses: {

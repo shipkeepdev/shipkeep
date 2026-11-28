@@ -4,7 +4,7 @@ import { ConflictError } from '@shipkeep/domain';
 import { Prisma } from '../../../platform/prisma/generated/client';
 import { PrismaUnitOfWork } from '../../../platform/prisma/prisma-unit-of-work';
 import type { NodeReadoptionStore } from '../application/ports';
-import type { ReadoptionRequest } from '../domain/node-readoption';
+import { ReadoptionChangedError, type ReadoptionRequest } from '../domain/node-readoption';
 
 type Row = {
   organizationId: string;
@@ -57,6 +57,13 @@ export class PrismaNodeReadoptionStore implements NodeReadoptionStore {
 
   async adopt(value: ReadoptionRequest, certificateId: string, now: Date): Promise<string[]> {
     const { organizationId, nodeId } = value;
+    // The request goes first, and only if it still names the certificate read (#545). The delete
+    // holds its row until commit: a presentation of another certificate that came meanwhile is
+    // either seen here, and nothing is adopted, or waits and records itself again afterwards.
+    const claimed = await this.database.client.nodeReadoption.deleteMany({
+      where: { organizationId, nodeId, serial: value.serial },
+    });
+    if (claimed.count !== 1) throw new ReadoptionChangedError();
     const current = await this.database.client.nodeCertificate.findMany({
       where: { organizationId, nodeId, revokedAt: null },
       select: { serial: true },
@@ -83,9 +90,6 @@ export class PrismaNodeReadoptionStore implements NodeReadoptionStore {
         throw new ConflictError('readoption_conflict', 'this certificate is registered already');
       throw error;
     }
-    await this.database.client.nodeReadoption.delete({
-      where: { organizationId_nodeId: { organizationId, nodeId } },
-    });
     return current.map((row) => row.serial);
   }
 }

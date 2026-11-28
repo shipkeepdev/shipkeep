@@ -36,7 +36,7 @@ type CopyTarget = 'organization' | 'project' | 'environment' | 'export';
       <div class="grid gap-2.5 sm:grid-cols-3">
         @for (item of identifiers(); track item.key) {
           <div
-            class="flex items-center justify-between gap-2 rounded-lg border border-line px-3 py-2"
+            class="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-line px-3 py-2"
           >
             <div class="min-w-0">
               <div class="text-[11px] uppercase tracking-wider text-mute">
@@ -57,7 +57,7 @@ type CopyTarget = 'organization' | 'project' | 'environment' | 'export';
       </div>
       <div class="grid gap-2">
         <pre
-          class="code-box"
+          class="code-box min-w-0"
           role="region"
           tabindex="0"
           [attr.aria-label]="'CLI environment variables' | t"

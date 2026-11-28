@@ -64,6 +64,20 @@ export class ReadoptionNotPendingError extends ConflictError {
   }
 }
 
+/**
+ * The waiting certificate is not the one the administrator reviewed (#545): another one replaced it
+ * meanwhile, which may be a stolen certificate presented again. Nothing is adopted; the
+ * administrator reviews the request again.
+ */
+export class ReadoptionChangedError extends ConflictError {
+  constructor() {
+    super(
+      'readoption_changed',
+      'the certificate waiting for this server is not the one reviewed: review it again',
+    );
+  }
+}
+
 export class ReadoptionExpiredError extends ConflictError {
   constructor() {
     super(
@@ -73,14 +87,19 @@ export class ReadoptionExpiredError extends ConflictError {
   }
 }
 
-/** The request an administrator confirms: still there, still current, for a node not removed. */
+/**
+ * The request an administrator confirms: still there, for the certificate they reviewed
+ * (`reviewedSerial`), still current, for a node not removed.
+ */
 export function readoptable(
   request: ReadoptionRequest | undefined,
   node: { readonly status: NodeStatus } | undefined,
   now: Date,
+  reviewedSerial: string,
 ): ReadoptionRequest {
   if (!node) throw new NotFoundError('node');
   if (!request || node.status === 'removed') throw new ReadoptionNotPendingError();
+  if (request.serial !== reviewedSerial) throw new ReadoptionChangedError();
   if (request.notAfter <= now || request.notBefore > now) throw new ReadoptionExpiredError();
   return request;
 }
