@@ -163,7 +163,8 @@ func (c Client) railpack(ctx context.Context, daemon *client.Client, request Req
 	if c.WorkDir == "" {
 		return nil, errors.New("railpack builds need a work directory")
 	}
-	// Build emptied WorkDir already: what an interrupted build left is gone.
+	// Build emptied WorkDir already: what an interrupted build left is gone. On a server the
+	// installer made it; in development the agent does.
 	if err := os.MkdirAll(c.WorkDir, 0o700); err != nil {
 		return nil, fmt.Errorf("build directory: %w", err)
 	}

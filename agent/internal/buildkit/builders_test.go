@@ -5,8 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
-	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -247,11 +245,27 @@ func TestNixpacksReplacesTheRepositorysNixpacksDirectory(t *testing.T) {
 }
 
 // Before anything reaches BuildKit: a build without the agent's key is refused, and whatever an
-// interrupted build left on disk is removed.
+// interrupted build left on disk is removed. The directory itself stays: on a server, the
+// installer made it on the builds' filesystem, where the agent cannot make it again (#548).
 func TestABuildStartsFromAnEmptyWorkDirectory(t *testing.T) {
-	work := filepath.Join(t.TempDir(), "builds")
+	root := t.TempDir()
+	work := filepath.Join(root, "builds")
 	left := filepath.Join(work, "railpack-123", "src")
 	if err := os.MkdirAll(left, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	// A link an interrupted build left goes, and what it names stays.
+	outside := filepath.Join(root, "outside")
+	if err := os.MkdirAll(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outside, "kept"), []byte("kept"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(work, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(work, ".hidden"), []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -263,8 +277,19 @@ func TestABuildStartsFromAnEmptyWorkDirectory(t *testing.T) {
 	if _, err := keyed.Build(ctx, testRequest(Dockerfile), func(string) {}); err == nil {
 		t.Fatal("a build without a daemon succeeded")
 	}
-	if _, err := os.Stat(work); !errors.Is(err, fs.ErrNotExist) {
-		t.Fatalf("the interrupted build's files are still there: %v", err)
+	entries, err := os.ReadDir(work)
+	if err != nil {
+		t.Fatalf("the work directory is gone: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Fatalf("the interrupted build's files are still there: %v", entries)
+	}
+	if _, err := os.Stat(filepath.Join(outside, "kept")); err != nil {
+		t.Fatalf("emptying the work directory followed a link: %v", err)
+	}
+	// A missing directory is an empty one: the build goes on and Railpack's step makes it.
+	if _, err := (Client{Address: "unix:///nonexistent/buildkitd.sock", WorkDir: filepath.Join(root, "missing"), CacheSecret: []byte(strings.Repeat("k", 32))}).Build(ctx, testRequest(Dockerfile), func(string) {}); err == nil || strings.Contains(err.Error(), "build directory") {
+		t.Fatalf("a missing work directory: %v", err)
 	}
 }
 
