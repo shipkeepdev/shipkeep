@@ -219,6 +219,14 @@ root = "/var/lib/shipkeep-build/buildkit"
   minFreeSpace = "20%"
 [worker.containerd]
   enabled = false
+# Frontends a build may run (#544): BuildKit's own Dockerfile frontend, the official one a
+# Dockerfile may name with `# syntax=docker/dockerfile:…`, and Railpack's, which the agent pins.
+# Any other `# syntax=` refuses the build.
+[frontend."dockerfile.v0"]
+  enabled = true
+[frontend."gateway.v0"]
+  enabled = true
+  allowedRepositories = ["docker.io/docker/dockerfile", "ghcr.io/railwayapp/railpack-frontend"]
 CONFIG
 }
 # The builds' slice: half the memory at most, a lower CPU weight than the applications.

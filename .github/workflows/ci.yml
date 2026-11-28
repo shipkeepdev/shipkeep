@@ -153,7 +153,11 @@ jobs:
           REPOSITORY: ${{ github.repository }}
         run: |
           mkdir -p "$RUNNER_TEMP/buildkit"
-          printf '[registry."sk-it-registry:5000"]\n  http = true\n' > "$RUNNER_TEMP/buildkit/buildkitd.toml"
+          # The frontends deploy/install.sh allows (#544), so that the builds below run under them.
+          {
+            printf '[registry."sk-it-registry:5000"]\n  http = true\n'
+            sed -n '/^\[frontend\./,/^CONFIG$/p' deploy/install.sh | grep -v '^CONFIG$' | grep -v '^#'
+          } > "$RUNNER_TEMP/buildkit/buildkitd.toml"
           registry=$(sed -n 's/^ *image: \(registry:[^ ]*\)$/\1/p' deploy/control-plane/compose.yml)
           test -n "$registry"
           docker run -d --name sk-it-registry --network sk-it -p 127.0.0.1:5000:5000 "$registry"
