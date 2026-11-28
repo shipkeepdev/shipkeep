@@ -39,6 +39,7 @@ import {
   APPLICATION_TRANSACTION,
   type ApplicationStore,
   type ApplicationTransaction,
+  type GitWriteMode,
   CONTROL_PLANE_HOST,
   REPOSITORY_SOURCE,
   type RepositoryConfigFile,
@@ -65,6 +66,8 @@ export interface RepositoryConfigPreview extends RepositoryConfigFile {
   /** The file's text with the change. */
   readonly changedText: string;
   readonly diff: readonly DiffLine[];
+  /** How writing it goes: a pull request, or a commit on the branch (`gitWriteMode`). */
+  readonly writeMode: GitWriteMode;
 }
 
 /**
@@ -139,11 +142,15 @@ export class RepositoryConfigs {
     assertDomainsAvailable(config.config, [this.controlPlaneHost]);
     const application = await this.gitApplication(context, 'deploy.run', target, applicationId);
     assertSameName(application, config);
+    const writeMode = await this.transaction.runTenant(target.organizationId, () =>
+      this.store.writeMode(target),
+    );
     const { repository } = application;
     const file = await this.repositories.readForChange(target.organizationId, location(repository));
     if (file.blobSha !== blobSha) throw configFileChanged();
     const changedText = writableText(file.text, document);
     return {
+      writeMode,
       ...file,
       branch: repository.branch,
       configPath: repository.configPath,

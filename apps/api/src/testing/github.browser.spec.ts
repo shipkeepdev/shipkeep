@@ -1,4 +1,4 @@
-import { createHmac, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 
 import { Secret } from '@shipkeep/domain';
 import type { Page } from 'playwright';
@@ -26,6 +26,9 @@ const API = '/api/v1/organizations';
 const WEBHOOK = 'whsec_test_fake_webhook_secret';
 const APP_ID = 929292;
 const HEAD = 'a'.repeat(40);
+/** The repository's shipkeep.yml, comments included (#214). */
+const CONFIG =
+  '# Billing, built from its Dockerfile.\nversion: 1\nname: billing\nbuild:\n  type: dockerfile\nrun:\n  port: 3000 # the API\n';
 /** What rootless BuildKit writes for a small Node service, as the agent sends it (ADR 0032). */
 const BUILD_OUTPUT = [
   '#0 building with "default" instance using rootless buildkitd',
@@ -122,6 +125,9 @@ describe('GitHub in Chromium', () => {
           : {},
       ),
   };
+  /** What GitHub received from the configuration editor (#214). */
+  const written: { branch: string; text: string }[] = [];
+  const pulls: { head: string; base: string; title: string }[] = [];
   const github: GithubApi = {
     appJwt: (appId) => new Secret(`jwt-for-${String(appId)}`),
     installationToken: () =>
@@ -151,11 +157,25 @@ describe('GitHub in Chromium', () => {
         private: true,
       }),
     branchHead: () => Promise.resolve(HEAD),
-    file: () =>
-      Promise.resolve(
-        'version: 1\nname: billing\nbuild:\n  type: dockerfile\nrun:\n  port: 3000\n',
-      ),
+    file: () => Promise.resolve(CONFIG),
     ...noGithubWrites,
+    fileAt: () =>
+      Promise.resolve({ blobSha: createHash('sha1').update(CONFIG).digest('hex'), text: CONFIG }),
+    createBranch: () => Promise.resolve(true),
+    // A new branch holds no earlier attempt of the change, and has no pull request open yet.
+    commitMessage: () => Promise.resolve(undefined),
+    openPullRequestFrom: () => Promise.resolve(undefined),
+    writeFile: (_token, _fullName, change) => {
+      written.push({ branch: change.branch, text: change.text });
+      return Promise.resolve({
+        commitSha: 'c'.repeat(40),
+        url: `https://github.com/acme-corp/billing/commit/${'c'.repeat(40)}`,
+      });
+    },
+    openPullRequest: (_token, _fullName, request) => {
+      pulls.push({ head: request.head, base: request.base, title: request.title });
+      return Promise.resolve({ number: 12, url: 'https://github.com/acme-corp/billing/pull/12' });
+    },
     revoke: () => Promise.resolve(true),
   };
 
@@ -308,6 +328,51 @@ describe('GitHub in Chromium', () => {
       new URL(candidate.url()).pathname.endsWith('/build-output'),
     );
     expect(await output.getByText('#7 DONE 9.8s').count()).toBe(1);
+    await accessible(owner);
+    expect(problems).toEqual([]);
+  });
+  // #214's acceptance: editing replicas in the interface opens a pull request with the exact YAML
+  // change, under the production CSP.
+  it('opens a pull request with the exact change of replicas made in the editor (#214)', async () => {
+    await owner.goto(`${application}?tab=config&section=yml`);
+    const editor = owner.locator('#configuration-draft');
+    await editor.waitFor();
+    expect(await editor.inputValue()).toBe(CONFIG);
+    await owner.getByText('The application runs this file, at commit aaaaaaa.').waitFor();
+    await editor.fill(`${CONFIG}scale:\n  replicas: 3\n`);
+    await owner.getByRole('button', { name: 'Review changes', exact: true }).click();
+    const changes = owner.locator('pre[aria-label="Changes to write"]');
+    await changes.getByText('+   replicas: 3').waitFor();
+    await accessible(owner);
+    const [response] = await Promise.all([
+      owner.waitForResponse(
+        (candidate) =>
+          new URL(candidate.url()).pathname.endsWith('/repository-config/changes') &&
+          candidate.request().method() === 'POST',
+      ),
+      owner.getByRole('button', { name: 'Open a pull request', exact: true }).click(),
+    ]);
+    expect(response.status()).toBe(201);
+    await owner
+      .getByText(
+        'Pull request #12 opened. Merging it into main deploys the change, unless the environment is protected.',
+      )
+      .waitFor();
+    // Only the lines added: the comments and the rest of the file are as the repository has them.
+    expect(written).toEqual([
+      {
+        branch: expect.stringMatching(/^shipkeep\/config-[0-9a-f]{16}$/) as string,
+        text: `${CONFIG}scale:\n  replicas: 3\n`,
+      },
+    ]);
+    expect(pulls).toEqual([
+      { head: written[0]?.branch, base: 'main', title: 'Change the configuration of billing' },
+    ]);
+    expect(
+      await owner.getByRole('link', { name: 'Open on GitHub', exact: true }).getAttribute('href'),
+    ).toBe('https://github.com/acme-corp/billing/pull/12');
+    // The change is in the pull request: the editor holds the branch's file again.
+    await expect.poll(() => editor.inputValue()).toBe(CONFIG);
     await accessible(owner);
     expect(problems).toEqual([]);
   });

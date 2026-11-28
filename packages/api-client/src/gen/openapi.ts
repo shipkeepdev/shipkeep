@@ -2634,6 +2634,11 @@ export type components = {
             readonly fullName: string;
             /** @description The file as the repository holds it. */
             readonly text: string;
+            /**
+             * @description How writing it goes: the project's gitWriteMode.
+             * @enum {string}
+             */
+            readonly writeMode: "commit" | "pull_request";
         };
         readonly RequestConfirmationDto: {
             /** @enum {string} */

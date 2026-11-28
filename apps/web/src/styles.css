@@ -271,6 +271,15 @@
   .note-ours {
     border-color: rgb(255 92 92 / 35%);
   }
+  /* Lines of a change, as the shipkeep.yml mockup draws them: added on green, removed on red. */
+  .diff-added {
+    background-color: oklch(0.78 0.13 155 / 0.1);
+    color: var(--color-fg);
+  }
+  .diff-removed {
+    background-color: oklch(0.68 0.17 25 / 0.1);
+    color: var(--color-mute2);
+  }
   .grid-table {
     @apply grid items-center gap-3;
   }
