@@ -12,6 +12,7 @@ import { AuditModule } from '../audit/audit.module';
 
 import { ExecSessionRegistry } from './application/exec-relay';
 import { ExecSessionChecks } from './infrastructure/exec-session-checks';
+import { PrismaExecSessionClosingLock } from './infrastructure/prisma-exec-session-closing-lock';
 import { FleetAdministration } from './application/fleet-administration';
 import { NodeConfirmationTarget } from './application/node-confirmation-target';
 import { FleetAdministrationController } from './interface/fleet-administration.controller';
@@ -44,6 +45,7 @@ import {
   NODE_READOPTION_STORE,
   FLEET_TRANSACTION,
   EXEC_SESSION_CHECKS,
+  EXEC_SESSION_CLOSING_LOCK,
 } from './application/ports';
 import { PrismaJoinTokenStore, PrismaNodeStore } from './infrastructure/prisma-fleet.stores';
 import { AgentUpgradeQueue } from './infrastructure/agent-upgrade-queue';
@@ -85,6 +87,7 @@ import { StateReports } from './application/state-reports';
     ExecSessionRegistry,
     ExecSessionChecks,
     { provide: EXEC_SESSION_CHECKS, useExisting: ExecSessionChecks },
+    { provide: EXEC_SESSION_CLOSING_LOCK, useClass: PrismaExecSessionClosingLock },
     AuthenticateNode,
     RenewNodeCertificate,
     { provide: FLEET_TRANSACTION, useExisting: PrismaUnitOfWork },

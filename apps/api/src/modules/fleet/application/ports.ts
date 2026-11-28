@@ -41,7 +41,17 @@ export interface NodeReadoptionStore {
   adopt(request: ReadoptionRequest, certificateId: string, now: Date): Promise<string[]>;
 }
 
+/**
+ * Serializes the closing decision of one exec session (issue #489). Called inside `runTenant`, it
+ * waits for the session's lock and holds it until that transaction ends, so two checks, or a check
+ * and the end's retry, read the recorded closing one after the other and record at most one.
+ */
+export interface ExecSessionClosingLock {
+  lock(sessionId: string): Promise<void>;
+}
+
 export const NODE_CREDENTIAL_STORE = Symbol('NodeCredentialStore');
+export const EXEC_SESSION_CLOSING_LOCK = Symbol('ExecSessionClosingLock');
 export const NODE_READOPTION_STORE = Symbol('NodeReadoptionStore');
 export const FLEET_TRANSACTION = Symbol('FleetTransaction');
 

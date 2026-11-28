@@ -26,6 +26,7 @@ function registry(): ExecSessionRegistry {
     } as unknown as FleetTransaction,
     { publish: () => Promise.resolve() } as unknown as DomainEventBus,
     { page: () => Promise.resolve([]) } as unknown as AuditEventReader,
+    { lock: () => Promise.resolve() },
   );
   value.add(
     {

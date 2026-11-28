@@ -7,7 +7,12 @@ import {
   type AuditEventReader,
 } from '../../audit/application/audit-event-reader';
 
-import { FLEET_TRANSACTION, type FleetTransaction } from './ports';
+import {
+  EXEC_SESSION_CLOSING_LOCK,
+  type ExecSessionClosingLock,
+  FLEET_TRANSACTION,
+  type FleetTransaction,
+} from './ports';
 
 /** A session waiting for the browser and the agent to join it, then relayed between them. */
 export interface ExecSession {
@@ -244,13 +249,15 @@ export const EXEC_SESSION_CLOSINGS: ReadonlySet<string> = new Set([
 export class ExecSessionRegistry {
   private readonly logger = new Logger(ExecSessionRegistry.name);
   private readonly relays = new Map<string, ExecRelay>();
-  private readonly writes = new Set<Promise<void>>();
+  /** The closing audit writes in progress, by session. */
+  private readonly writes = new Map<string, Promise<void>>();
   private readonly reserved: { userId: string; organizationId: string }[] = [];
 
   constructor(
     @Inject(FLEET_TRANSACTION) private readonly transaction: FleetTransaction,
     private readonly events: DomainEventBus,
     @Inject(AUDIT_EVENT_READER) private readonly audit: AuditEventReader,
+    @Inject(EXEC_SESSION_CLOSING_LOCK) private readonly closingLock: ExecSessionClosingLock,
   ) {}
 
   /** Whether the session's closing is recorded already, as an end or an interruption. */
@@ -262,6 +269,26 @@ export class ExecSessionRegistry {
       10,
     );
     return records.some((record) => EXEC_SESSION_CLOSINGS.has(record.action));
+  }
+
+  /**
+   * Records the session's closing in the caller's tenant transaction, unless one is recorded
+   * already: false then. The session's lock, held until that transaction ends, makes this decision
+   * one at a time across checks, retries and processes, so exactly one closing is recorded (#489).
+   */
+  async closeOnce(
+    session: { id: string; organizationId: string },
+    closing: DomainEvent,
+  ): Promise<boolean> {
+    await this.closingLock.lock(session.id);
+    if (await this.closed(session)) return false;
+    await this.events.publish([closing]);
+    return true;
+  }
+
+  /** Whether this process is still writing the session's end. */
+  ending(id: string): boolean {
+    return this.writes.has(id);
   }
 
   add(session: ExecSession, now = new Date()): void {
@@ -338,7 +365,7 @@ export class ExecSessionRegistry {
   /** Waits for the audit writes of the sessions that ended, at most `ms`. */
   async settle(ms: number): Promise<void> {
     await Promise.race([
-      Promise.allSettled([...this.writes]),
+      Promise.allSettled([...this.writes.values()]),
       new Promise((resolve) => setTimeout(resolve, ms).unref()),
     ]);
   }
@@ -354,22 +381,23 @@ export class ExecSessionRegistry {
     // The connections are released at once, whatever the audit store does.
     this.relays.delete(relay.session.id);
     const event = execSessionEnded(relay.session, reason, exitCode, ms);
-    const write = this.record(relay.session, event).finally(() => this.writes.delete(write));
-    this.writes.add(write);
+    const id = relay.session.id;
+    const write = this.record(relay.session, event).finally(() => this.writes.delete(id));
+    this.writes.set(id, write);
   }
 
   /**
-   * Records a session's end, trying again while the audit store fails (issue #489). A retry first
-   * looks for the event: a write whose answer was lost may have committed, and the end is
+   * Records a session's end, trying again while the audit store fails (issue #489). Each attempt
+   * looks for a closing first, under the session's lock: a write whose answer was lost may have
+   * committed, or another process's check recorded the session interrupted, and the closing is
    * recorded once. Past the last attempt, the session's check records it interrupted.
    */
   private async record(session: ExecSession, event: DomainEvent): Promise<void> {
     for (let attempt = 0; attempt < CLOSE_ATTEMPTS; attempt++) {
       try {
-        await this.transaction.runTenant(session.organizationId, async () => {
-          if (attempt > 0 && (await this.closed(session))) return;
-          await this.events.publish([event]);
-        });
+        await this.transaction.runTenant(session.organizationId, () =>
+          this.closeOnce(session, event),
+        );
         return;
       } catch (error: unknown) {
         // The end comes from a connection, not a request: nothing waits to fail. Logged with
