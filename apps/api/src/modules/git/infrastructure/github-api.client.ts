@@ -10,13 +10,21 @@ import {
   branchHeadOf,
   type GithubRepository,
   installationTokenOf,
+  type OpenedPullRequest,
+  openedPullRequestOf,
+  type RepositoryFile,
+  repositoryFileOf,
   repositoryOf,
   repositoryPageOf,
   type TokenScope,
+  validBranch,
   validCommit,
   validConfigPath,
   validFullName,
+  validGitText,
   validRepository,
+  type WrittenCommit,
+  writtenCommitOf,
 } from '../domain/github-api';
 
 import { discardGithubAnswer, githubUnavailable, readGithubAnswer } from './github-http';
@@ -32,8 +40,10 @@ export type GithubFetch = (url: string, init: RequestInit) => Promise<Response>;
 
 /**
  * GitHub's REST API for an organization's App (ADR 0031): the App's JWT, installation tokens
- * scoped to what a call needs, the repositories an installation reaches, and a branch's head.
- * Only `api.github.com`, no redirect, bounded answers, and GitHub's text never repeated.
+ * scoped to what a call needs, the repositories an installation reaches, a branch's head, a file,
+ * and the writes of a configuration change (#214): a branch, a commit of one file, a pull request.
+ * Only `api.github.com`, no redirect, bounded answers, and GitHub's text never repeated. Every
+ * name is checked before it goes into a URL or a body.
  */
 export class GithubApiClient implements GithubApi {
   constructor(private readonly send: GithubFetch = (url, init) => fetch(url, init)) {}
@@ -151,9 +161,141 @@ export class GithubApiClient implements GithubApi {
     return answer.body;
   }
 
-  async revoke(token: Secret): Promise<void> {
-    // Best effort: a token that is not revoked still expires within the hour.
-    await this.call('DELETE', '/installation/token', token).catch(() => undefined);
+  async fileAt(
+    token: Secret,
+    fullName: string,
+    path: string,
+    ref: string,
+  ): Promise<RepositoryFile | undefined> {
+    if (
+      !validFullName(fullName) ||
+      !validConfigPath(path) ||
+      !(validCommit(ref) || validBranch(ref))
+    )
+      return undefined;
+    const answer = await this.call(
+      'GET',
+      `/repos/${contentsPath(fullName, path)}?ref=${encodeURIComponent(ref)}`,
+      token,
+    );
+    if (answer.status === 404) return undefined;
+    const file =
+      answer.status === 200 ? repositoryFileOf(answer.body, MAX_CONFIG_BYTES) : undefined;
+    if (!file) throw githubUnavailable();
+    return file;
+  }
+
+  async createBranch(
+    token: Secret,
+    fullName: string,
+    branch: string,
+    commit: string,
+  ): Promise<boolean> {
+    if (!validRepository(fullName, branch) || !validCommit(commit)) throw githubUnavailable();
+    // GitHub answers 422 when the reference exists already, among other refusals.
+    const answer = await this.call(
+      'POST',
+      `/repos/${repositoryPath(fullName)}/git/refs`,
+      token,
+      { ref: `refs/heads/${branch}`, sha: commit },
+      'json',
+      [422],
+    );
+    if (answer.status === 201) return true;
+    // 422 also answers a validation or abuse check: the name is taken only if the branch exists.
+    if (answer.status === 422 && (await this.branchHead(token, fullName, branch)) !== undefined)
+      return false;
+    throw githubUnavailable();
+  }
+
+  async writeFile(
+    token: Secret,
+    fullName: string,
+    change: {
+      readonly branch: string;
+      readonly path: string;
+      readonly text: string;
+      readonly blobSha: string;
+      readonly message: string;
+    },
+  ): Promise<WrittenCommit | 'refused'> {
+    if (
+      !validRepository(fullName, change.branch) ||
+      !validConfigPath(change.path) ||
+      !validCommit(change.blobSha) ||
+      !validGitText(change.message, 'text') ||
+      new TextEncoder().encode(change.text).length > MAX_CONFIG_BYTES
+    )
+      throw githubUnavailable();
+    // 409: the blob is no longer the file's, or a rule refuses the push; 422: GitHub refused the
+    // change itself, as a protected branch does.
+    const answer = await this.call(
+      'PUT',
+      `/repos/${contentsPath(fullName, change.path)}`,
+      token,
+      {
+        message: change.message,
+        content: Buffer.from(change.text, 'utf8').toString('base64'),
+        sha: change.blobSha,
+        branch: change.branch,
+      },
+      'json',
+      [409, 422],
+    );
+    if (answer.status === 409 || answer.status === 422) return 'refused';
+    const written = answer.status === 200 ? writtenCommitOf(answer.body) : undefined;
+    if (!written) throw githubUnavailable();
+    return written;
+  }
+
+  async openPullRequest(
+    token: Secret,
+    fullName: string,
+    request: {
+      readonly head: string;
+      readonly base: string;
+      readonly title: string;
+      readonly body: string;
+    },
+  ): Promise<OpenedPullRequest | 'refused'> {
+    if (
+      !validRepository(fullName, request.head) ||
+      !validBranch(request.base) ||
+      !validGitText(request.title, 'title') ||
+      !validGitText(request.body, 'text')
+    )
+      throw githubUnavailable();
+    // 422: GitHub refused it, as when a pull request of that branch is open already.
+    const answer = await this.call(
+      'POST',
+      `/repos/${repositoryPath(fullName)}/pulls`,
+      token,
+      { title: request.title, head: request.head, base: request.base, body: request.body },
+      'json',
+      [422],
+    );
+    if (answer.status === 422) return 'refused';
+    const opened = answer.status === 201 ? openedPullRequestOf(answer.body) : undefined;
+    if (!opened) throw githubUnavailable();
+    return opened;
+  }
+
+  async revoke(token: Secret): Promise<boolean> {
+    // 401: the token is no longer valid, which is what was asked. A token not revoked still
+    // expires within the hour; the caller decides whether to ask again.
+    try {
+      const { status } = await this.call(
+        'DELETE',
+        '/installation/token',
+        token,
+        undefined,
+        'json',
+        [401],
+      );
+      return status === 204 || status === 401 || status === 404;
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -161,7 +303,7 @@ export class GithubApiClient implements GithubApi {
    * any other is JSON, read up to `MAX_ANSWER`.
    */
   private async call(
-    method: 'GET' | 'POST' | 'DELETE',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     path: string,
     credential: Secret,
     body?: object,
@@ -204,6 +346,16 @@ export class GithubApiClient implements GithubApi {
       throw githubUnavailable();
     }
   }
+}
+
+/** `owner/name`, each part a URL path segment. */
+function repositoryPath(fullName: string): string {
+  return fullName.split('/').map(encodeURIComponent).join('/');
+}
+
+/** `owner/name/contents/path`, each part a URL path segment. */
+function contentsPath(fullName: string, path: string): string {
+  return [...fullName.split('/'), 'contents', ...path.split('/')].map(encodeURIComponent).join('/');
 }
 
 function base64url(value: object): string {

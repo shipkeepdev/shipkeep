@@ -29,6 +29,15 @@ import { type ContainerPlan, READ_ONLY_TMP_BYTES } from '../domain/container-pla
 import { credentialServer, parseImageReference, pulledRegistry } from '../domain/image-reference';
 import type { PipelineStep } from '../domain/pipeline';
 
+/** The agent's build type for each builder of a build step (ADR 0030). */
+const BUILD_TYPES: Readonly<
+  Record<Extract<PipelineStep, { kind: 'build_image' }>['builder'], BuildType>
+> = {
+  dockerfile: BuildType.DOCKERFILE,
+  railpack: BuildType.RAILPACK,
+  nixpacks: BuildType.NIXPACKS,
+};
+
 /** Decrypted secret values of the environment, by name (SECRET_STORE.values). */
 export type SecretValues = ReadonlyMap<
   string,
@@ -81,7 +90,7 @@ export function agentAction(
           repoUrl: build.repositoryUrl,
           commitSha: step.commit,
           gitToken: build.token.expose(),
-          buildType: BuildType.DOCKERFILE,
+          buildType: BUILD_TYPES[step.builder],
           context: step.context,
           dockerfile: step.dockerfile,
           args: { ...step.args },

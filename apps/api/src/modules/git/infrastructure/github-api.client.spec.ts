@@ -138,9 +138,15 @@ describe('GitHub REST API as the App', () => {
       expect(error).toBeInstanceOf(ServiceUnavailableException);
       expect((error as Error).message).not.toMatch(/internal detail|evil|network/);
     }
-    await expect(
-      github(() => Promise.reject(new TypeError('down'))).client.revoke(token),
-    ).resolves.toBeUndefined();
+    // A revocation says whether GitHub no longer honours the token: revoked now, or no longer
+    // valid; never when GitHub could not be asked.
+    for (const [make, done] of [
+      [() => new Response(null, { status: 204 }), true],
+      [() => new Response(null, { status: 401 }), true],
+      [() => new Response('internal detail', { status: 500 }), false],
+      [() => Promise.reject(new TypeError('down')), false],
+    ] as const)
+      expect(await github(make).client.revoke(token)).toBe(done);
     // An entry GitHub could not have sent is left out, not the page.
     const page = await github(() =>
       json(200, { total_count: 2, repositories: [repository(0), repository(7)] }),
@@ -200,5 +206,202 @@ describe('GitHub REST API as the App', () => {
     ] as const)
       expect(await client.file(token, name, path, ref)).toBeUndefined();
     expect(calls).toHaveLength(before);
+  });
+});
+
+describe('the writes of a configuration change (#214)', () => {
+  const commit = 'c'.repeat(40);
+  /** The JSON body a call sent. */
+  const sent = (call: { init: RequestInit } | undefined): unknown => {
+    const body = call?.init.body;
+    if (typeof body !== 'string') throw new Error('The call sent no text body.');
+    return JSON.parse(body) as unknown;
+  };
+  const blob = 'b'.repeat(40);
+  const encoded = (text: string) =>
+    // GitHub cuts the base64 into lines of 60 characters.
+    (
+      Buffer.from(text, 'utf8')
+        .toString('base64')
+        .match(/.{1,60}/g) ?? []
+    ).join('\n');
+
+  it('reads a file at a branch with its blob, and only a UTF-8 file of a bounded size', async () => {
+    const text = 'version: 1\nname: web # the storefront\n';
+    const { client, calls } = github(() =>
+      json(200, { type: 'file', encoding: 'base64', sha: blob, content: encoded(text) }),
+    );
+    expect(
+      await client.fileAt(token, 'acme-corp/web', 'deploy/shipkeep.yml', 'release/2.x'),
+    ).toEqual({ blobSha: blob, text });
+    expect(calls[0]?.url).toBe(
+      'https://api.github.com/repos/acme-corp/web/contents/deploy/shipkeep.yml?ref=release%2F2.x',
+    );
+    expect(new Headers(calls[0]?.init.headers).get('accept')).toBe('application/vnd.github+json');
+    expect(
+      await github(() => new Response(null, { status: 404 })).client.fileAt(
+        token,
+        'acme-corp/web',
+        'shipkeep.yml',
+        commit,
+      ),
+    ).toBeUndefined();
+    for (const answer of [
+      { type: 'dir', encoding: 'base64', sha: blob, content: '' },
+      { type: 'file', encoding: 'none', sha: blob, content: '' },
+      { type: 'file', encoding: 'base64', sha: 'short', content: encoded(text) },
+      {
+        type: 'file',
+        encoding: 'base64',
+        sha: blob,
+        content: Buffer.from([0xff, 0xfe]).toString('base64'),
+      },
+      { type: 'file', encoding: 'base64', sha: blob, content: encoded('x'.repeat(256 * 1024 + 1)) },
+    ])
+      await expect(
+        github(() => json(200, answer)).client.fileAt(
+          token,
+          'acme-corp/web',
+          'shipkeep.yml',
+          'main',
+        ),
+      ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('creates a branch at a commit, and says when the name is taken', async () => {
+    const { client, calls } = github(() => json(201, { ref: 'refs/heads/shipkeep/config-1' }));
+    expect(await client.createBranch(token, 'acme-corp/web', 'shipkeep/config-1', commit)).toBe(
+      true,
+    );
+    expect(calls[0]?.url).toBe('https://api.github.com/repos/acme-corp/web/git/refs');
+    expect(calls[0]?.init.method).toBe('POST');
+    expect(sent(calls[0])).toEqual({
+      ref: 'refs/heads/shipkeep/config-1',
+      sha: commit,
+    });
+    // 422 means a taken name only when the branch is there.
+    const taken = github((url) =>
+      url.endsWith('/git/refs')
+        ? json(422, { message: 'Reference already exists' })
+        : json(200, { commit: { sha: commit } }),
+    );
+    expect(
+      await taken.client.createBranch(token, 'acme-corp/web', 'shipkeep/config-1', commit),
+    ).toBe(false);
+    expect(taken.calls[1]?.url).toBe(
+      'https://api.github.com/repos/acme-corp/web/branches/shipkeep%2Fconfig-1',
+    );
+    const refused = github((url) =>
+      url.endsWith('/git/refs')
+        ? json(422, { message: 'Validation Failed' })
+        : new Response(null, { status: 404 }),
+    );
+    await expect(
+      refused.client.createBranch(token, 'acme-corp/web', 'shipkeep/config-1', commit),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('commits one file over the blob it read, and says when GitHub refuses it', async () => {
+    const text = 'version: 1\nname: web\n';
+    const { client, calls } = github(() =>
+      json(200, {
+        content: { sha: 'e'.repeat(40) },
+        commit: { sha: commit, html_url: `https://github.com/acme-corp/web/commit/${commit}` },
+      }),
+    );
+    const change = {
+      branch: 'main',
+      path: 'shipkeep.yml',
+      text,
+      blobSha: blob,
+      message: 'Set replicas to 3 in shipkeep.yml\n\nProposed in Shipkeep.',
+    };
+    expect(await client.writeFile(token, 'acme-corp/web', change)).toEqual({
+      commitSha: commit,
+      url: `https://github.com/acme-corp/web/commit/${commit}`,
+    });
+    expect(calls[0]?.url).toBe('https://api.github.com/repos/acme-corp/web/contents/shipkeep.yml');
+    expect(calls[0]?.init.method).toBe('PUT');
+    expect(sent(calls[0])).toEqual({
+      message: change.message,
+      content: Buffer.from(text).toString('base64'),
+      sha: blob,
+      branch: 'main',
+    });
+    for (const status of [409, 422])
+      expect(
+        await github(() => json(status, { message: 'protected' })).client.writeFile(
+          token,
+          'acme-corp/web',
+          change,
+        ),
+      ).toBe('refused');
+    // A page GitHub would not link to is not a commit of this write.
+    await expect(
+      github(() =>
+        json(200, { commit: { sha: commit, html_url: 'https://evil.example/commit' } }),
+      ).client.writeFile(token, 'acme-corp/web', change),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it('opens a pull request, and says when GitHub refuses it', async () => {
+    const { client, calls } = github(() =>
+      json(201, { number: 42, html_url: 'https://github.com/acme-corp/web/pull/42' }),
+    );
+    const request = {
+      head: 'shipkeep/config-1',
+      base: 'main',
+      title: 'Set replicas to 3 in shipkeep.yml',
+      body: 'Proposed in Shipkeep.\n\nMerging it deploys the change.',
+    };
+    expect(await client.openPullRequest(token, 'acme-corp/web', request)).toEqual({
+      number: 42,
+      url: 'https://github.com/acme-corp/web/pull/42',
+    });
+    expect(calls[0]?.url).toBe('https://api.github.com/repos/acme-corp/web/pulls');
+    expect(sent(calls[0])).toEqual(request);
+    expect(
+      await github(() =>
+        json(422, { message: 'A pull request already exists' }),
+      ).client.openPullRequest(token, 'acme-corp/web', request),
+    ).toBe('refused');
+  });
+
+  it('sends no request for a name, a path, a ref or a text it could not have meant', async () => {
+    const { client, calls } = github(() => json(200, {}));
+    const write = {
+      branch: 'main',
+      path: 'shipkeep.yml',
+      text: 'version: 1\n',
+      blobSha: blob,
+      message: 'Update shipkeep.yml',
+    };
+    const pull = { head: 'shipkeep/config-1', base: 'main', title: 'Update', body: 'Text' };
+    for (const ref of ['a..b', 'main?x=1', '', 'refs/../x', '.hidden'])
+      expect(await client.fileAt(token, 'acme-corp/web', 'shipkeep.yml', ref)).toBeUndefined();
+    expect(await client.fileAt(token, '../etc', 'shipkeep.yml', 'main')).toBeUndefined();
+    expect(
+      await client.fileAt(token, 'acme-corp/web', '../../etc/passwd.yml', 'main'),
+    ).toBeUndefined();
+    for (const attempt of [
+      () => client.createBranch(token, 'acme-corp/web', 'a..b', commit),
+      () => client.createBranch(token, 'acme-corp/web', 'shipkeep/x', 'HEAD'),
+      () => client.createBranch(token, 'acme/web/extra', 'shipkeep/x', commit),
+      () => client.writeFile(token, 'acme-corp/web', { ...write, path: 'a/../shipkeep.yml' }),
+      () => client.writeFile(token, 'acme-corp/web', { ...write, path: 'shipkeep.json' }),
+      () => client.writeFile(token, 'acme-corp/web', { ...write, branch: 'main~1' }),
+      () => client.writeFile(token, 'acme-corp/web', { ...write, blobSha: 'HEAD' }),
+      () => client.writeFile(token, 'acme-corp/web', { ...write, message: '' }),
+      () => client.writeFile(token, 'acme-corp/web', { ...write, message: 'a\u0000b' }),
+      () =>
+        client.writeFile(token, 'acme-corp/web', { ...write, text: 'x'.repeat(256 * 1024 + 1) }),
+      () => client.openPullRequest(token, 'acme-corp/web', { ...pull, title: 'two\nlines' }),
+      () => client.openPullRequest(token, 'acme-corp/web', { ...pull, title: 'x'.repeat(257) }),
+      () => client.openPullRequest(token, 'acme-corp/web', { ...pull, head: 'a b' }),
+      () => client.openPullRequest(token, 'acme-corp/web', { ...pull, base: '@' }),
+      () => client.openPullRequest(token, 'acme-corp/web', { ...pull, body: 'x'.repeat(4097) }),
+    ])
+      await expect(attempt()).rejects.toBeInstanceOf(ServiceUnavailableException);
+    expect(calls).toEqual([]);
   });
 });

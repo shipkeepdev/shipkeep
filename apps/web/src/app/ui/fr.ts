@@ -1887,8 +1887,15 @@ export const FR: Readonly<Record<string, string>> = {
   'No step recorded for this deployment.': 'Aucune étape enregistrée pour ce déploiement.',
   'Only the first 200 agent actions are listed.':
     'Seules les 200 premières actions des agents sont listées.',
-  'Build output and the output of the release command will appear here with builds and log collection.':
-    'La sortie du build et celle de la commande de release apparaîtront ici avec les builds et la collecte des logs.',
+  'Build output': 'Sortie du build',
+  'The build output could not be loaded.': 'La sortie du build n’a pas pu être chargée.',
+  'reading the build output…': 'lecture de la sortie du build…',
+  'Only the last 8192 lines of the build are shown.':
+    'Seules les 8192 dernières lignes du build sont affichées.',
+  'The build has written nothing yet.': 'Le build n’a encore rien écrit.',
+  'No build output was kept.': 'Aucune sortie de build n’a été conservée.',
+  'The output of the release command will appear here once it is collected.':
+    'La sortie de la commande de release apparaîtra ici une fois collectée.',
   'by {name}': 'par {name}',
   'Stop queued': 'Arrêt mis en file',
   'Deployment queued': 'Déploiement mis en file',

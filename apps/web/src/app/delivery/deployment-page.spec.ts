@@ -66,9 +66,12 @@ describe('deployment page (#265)', () => {
   let harness: RouterTestingHarness;
   let routes: Partial<Record<string, () => Response | Promise<Response>>>;
   let reads: string[];
+  /** The build output's reads, with their query. */
+  let outputs: URLSearchParams[];
 
   beforeEach(async () => {
     reads = [];
+    outputs = [];
     routes = {
       [`GET ${BASE}`]: () =>
         json({
@@ -125,8 +128,10 @@ describe('deployment page (#265)', () => {
         {
           provide: IDENTITY_FETCH,
           useValue: (request: Request) => {
-            const path = new URL(request.url).pathname;
+            const url = new URL(request.url);
+            const path = url.pathname;
             reads.push(path);
+            if (path.endsWith('/build-output')) outputs.push(url.searchParams);
             const handler = routes[`${request.method} ${path}`];
             return Promise.resolve(handler ? handler() : json({}, 404));
           },
@@ -174,8 +179,10 @@ describe('deployment page (#265)', () => {
     expect(text).toContain('38 s');
     expect(text).toContain('PullImage → edge-1 · failed · image not found');
     expect(text).toContain('failed · The image could not be pulled.');
-    // Said, never faked: build and release output come later.
-    expect(text).toContain('Build output and the output of the release command will appear here');
+    // An image is not built, and this release runs no release command: no output to promise.
+    expect(text).not.toContain('Build output');
+    expect(text).not.toContain('release command');
+    expect(outputs).toEqual([]);
     const back = [...element().querySelectorAll('a')].find(
       (a) => a.textContent.trim() === 'Application',
     );
@@ -361,6 +368,89 @@ describe('deployment page (#265)', () => {
     expect(text).toContain('Maintenance queued');
     expect(text).toContain('in maintenance');
     expect(text).not.toContain('Build output');
+  });
+
+  it("shows a built deployment's output as it comes, then stops reading it", async () => {
+    let running = true;
+    const line = (second: number, text: string) => ({
+      time: `2026-11-22T10:00:${String(second).padStart(2, '0')}.000000000Z`,
+      line: text,
+      truncated: false,
+    });
+    let lines = [line(4, '#1 [internal] load build definition from Dockerfile')];
+    routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}`] = () =>
+      json({
+        ...deployment,
+        build: true,
+        state: running ? 'building' : 'failed',
+        error: running ? null : 'The build failed.',
+        finishedAt: running ? null : at(40),
+      });
+    routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}/build-output`] = () =>
+      json({ kept: true, lines });
+    await open(`${PAGE}/deployments/${DEPLOYMENT}`);
+    const text = () => element().textContent.replace(/\s+/g, ' ');
+    expect(text()).toContain('Build output');
+    expect(text()).toContain('#1 [internal] load build definition from Dockerfile');
+    expect(text()).toContain('now · reading the build output…');
+    // The first read starts with the deployment.
+    expect(outputs[0]?.get('from')).toBeNull();
+    // The next one from a little before the last line; the line read again shows once.
+    lines = [
+      ...lines,
+      line(6, '#5 [2/3] RUN npm ci'),
+      line(7, 'ERROR: process "npm ci" did not complete successfully'),
+    ];
+    await new Promise((resolve) => setTimeout(resolve, 3200));
+    await settle();
+    expect(outputs[1]?.get('from')).toBe('2026-11-22T10:00:01.000Z');
+    expect(text().match(/load build definition/g)).toHaveLength(1);
+    expect(text()).toContain('#5 [2/3] RUN npm ci');
+    expect(text()).toContain('did not complete successfully');
+    // Finished: a few more reads for the lines still on their way, then none.
+    running = false;
+    await new Promise((resolve) => setTimeout(resolve, 3200));
+    await settle();
+    expect(text()).not.toContain('reading the build output');
+    const finished = outputs.length;
+    await new Promise((resolve) => setTimeout(resolve, 6500));
+    expect(outputs.length - finished).toBeLessThanOrEqual(2);
+    const settled = outputs.length;
+    await new Promise((resolve) => setTimeout(resolve, 3500));
+    expect(outputs).toHaveLength(settled);
+  }, 25_000);
+
+  it('says the installation keeps no logs, and promises the release command output', async () => {
+    routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}`] = () =>
+      json({ ...deployment, build: true, release: true });
+    routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}/build-output`] = () =>
+      json({ kept: false, lines: [] });
+    await open(`${PAGE}/deployments/${DEPLOYMENT}`);
+    const text = element().textContent.replace(/\s+/g, ' ');
+    expect(text).toContain('This installation keeps no logs');
+    expect(text).toContain(
+      'The output of the release command will appear here once it is collected.',
+    );
+  });
+
+  it('says when the build output could not be read, and reads it again on request', async () => {
+    let fail = true;
+    routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}`] = () =>
+      json({ ...deployment, build: true });
+    routes[`GET ${APP_PATH}/deployments/${DEPLOYMENT}/build-output`] = () =>
+      fail
+        ? json({ status: 503 }, 503)
+        : json({ kept: true, lines: [{ time: at(5), line: 'Step done', truncated: false }] });
+    await open(`${PAGE}/deployments/${DEPLOYMENT}`);
+    expect(element().textContent).toContain('The build output could not be loaded.');
+    fail = false;
+    const retry = [...element().querySelectorAll('button')].find(
+      (button) => button.textContent.trim() === 'Retry',
+    );
+    retry?.click();
+    await settle();
+    expect(element().textContent).not.toContain('could not be loaded');
+    expect(element().textContent).toContain('Step done');
   });
 
   it('says when the deployment is not there', async () => {

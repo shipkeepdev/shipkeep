@@ -41,12 +41,17 @@ export interface RepositorySource {
   /**
    * What a build fetches the repository with (ADR 0030): its HTTPS URL, under its current name,
    * and a token that reads that repository's contents and nothing else, until it expires. The
-   * build carries the token; it is not revoked here.
+   * build carries the token; `revoke` ends it once the build has.
    */
   buildAccess(
     organizationId: string,
     location: Pick<RepositoryLocation, 'installationId' | 'repositoryId'>,
   ): Promise<{ url: string; token: Secret; expiresAt: Date }>;
+  /**
+   * Revokes a token `buildAccess` minted: true once GitHub no longer honours it, false when GitHub
+   * could not be asked. A token not revoked still expires within the hour.
+   */
+  revoke(token: Secret): Promise<boolean>;
 }
 
 /** A Git application a push may deploy, and whether a push may deploy it by itself (SPEC 7). */

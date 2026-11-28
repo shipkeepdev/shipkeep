@@ -92,10 +92,13 @@ export type PipelineStep = { readonly key: string; readonly nodeId: string } & (
   | { readonly kind: 'pull_image'; readonly image: string }
   | {
       readonly kind: 'build_image';
+      /** What builds the image (ADR 0030). */
+      readonly builder: 'dockerfile' | 'railpack' | 'nixpacks';
       /** The tag the build pushes; its repository is the application's in the registry. */
       readonly target: string;
       readonly commit: string;
       readonly context: string;
+      /** The Dockerfile's path, for a Dockerfile build; empty for Railpack and Nixpacks. */
       readonly dockerfile: string;
       readonly args: Readonly<Record<string, string>>;
     }
@@ -274,14 +277,18 @@ function build(context: PipelineContext): Progress | PipelineDecision {
   const commit = context.release.commitSha;
   if (!commit) return { status: 'failed', reason: 'The release names no commit to build.' };
   const config = context.release.config.build;
+  const builder =
+    config?.type === 'railpack' || config?.type === 'nixpacks' ? config.type : 'dockerfile';
   const step: PipelineStep = {
     kind: 'build_image',
     key: key(context, 'build'),
     nodeId: first.nodeId,
+    builder,
     target: context.release.image,
     commit,
     context: repositoryPath(config?.context),
-    dockerfile: repositoryPath(config?.dockerfile) || 'Dockerfile',
+    // Railpack and Nixpacks write their own build: they take no Dockerfile.
+    dockerfile: builder === 'dockerfile' ? repositoryPath(config?.dockerfile) || 'Dockerfile' : '',
     args: Object.fromEntries(
       Object.entries(config?.args ?? {}).filter(
         (entry): entry is [string, string] => typeof entry[1] === 'string',

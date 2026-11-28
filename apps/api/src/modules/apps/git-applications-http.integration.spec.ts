@@ -10,6 +10,7 @@ import {
   type GithubManifests,
 } from '../git/application/ports';
 import type { TokenScope } from '../git/domain/github-api';
+import { noGithubWrites } from '../../testing/github-writes';
 
 /** A key-shaped value that is no key, put together here so that no scanner reads the source as one. */
 function fakePem(body: string): string {
@@ -47,7 +48,6 @@ describe('applications from a GitHub repository over HTTP', () => {
   };
   const files: Record<string, string> = {
     'shipkeep.yml': config(`{ type: image, image: "${IMAGE}" }`),
-    'deploy/build.yaml': config('{ type: railpack }'),
     'bad.yml': 'version: 1\nname: [unclosed\n',
   };
   const github: GithubApi = {
@@ -81,9 +81,10 @@ describe('applications from a GitHub repository over HTTP', () => {
       read.push(`${fullName}:${path}@${commit}`);
       return Promise.resolve(files[path]);
     },
+    ...noGithubWrites,
     revoke: (token) => {
       revoked.push(token.expose());
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
   };
   const create = (body: Record<string, unknown>, actor: 'owner' | 'outsider' = 'owner') =>
@@ -149,7 +150,6 @@ describe('applications from a GitHub repository over HTTP', () => {
     await refused({ configPath: 'missing.yml' }, 400, 'github_config_not_found');
     const invalid = await refused({ configPath: 'bad.yml' }, 400, 'invalid_application_config');
     expect(invalid).toMatchObject({ details: { commit: HEAD } });
-    await refused({ configPath: 'deploy/build.yaml' }, 400, 'unsupported_build_type');
     expect(revoked).toHaveLength(scopes.length);
 
     const created = await create({}).expect(201);
