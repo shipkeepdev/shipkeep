@@ -15,6 +15,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 
 import { TokenScopePicker } from '../access/token-scope-picker';
 import { I18n, LocalDate, T } from '../ui/i18n';
@@ -42,6 +43,7 @@ export class TokenPanel {
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
   private readonly pendingTasks = inject(PendingTasks);
+  private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly heading = viewChild<ElementRef<HTMLElement>>('heading');
   private readonly firstField = viewChild<ElementRef<HTMLInputElement>>('firstField');
   private readonly feedback = viewChild<ElementRef<HTMLElement>>('feedback');
@@ -51,7 +53,13 @@ export class TokenPanel {
       const profile = this.session.profile();
       untracked(() => {
         this.store.resetForSession();
-        if (profile) this.pendingTasks.run(() => this.store.refresh());
+        if (profile) {
+          this.pendingTasks.run(() => this.store.refresh());
+          const query = this.route?.snapshot.queryParamMap;
+          if (query?.get('section') === 'tokens' && query.get('organizationId')) {
+            this.store.beginCreate();
+          }
+        }
       });
     });
     effect(() => {

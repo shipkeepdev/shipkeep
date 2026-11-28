@@ -2099,4 +2099,11 @@ export const FR: Readonly<Record<string, string>> = {
     'Cette configuration est le {path} de {repository}, sur {branch}. Modifiez-la dans le dépôt : un push sur {branch} la déploie, sauf si l’environnement est protégé.',
   'The configuration of this application, read from its repository at each push.':
     'La configuration de cette application, lue dans son dépôt à chaque push.',
+  'Use from the CLI': 'Utiliser depuis le CLI',
+  'Create an API token for this environment': 'Créer un jeton d’API pour cet environnement',
+  'Copy organization ID': 'Copier l’identifiant de l’organisation',
+  'Copy project ID': 'Copier l’identifiant du projet',
+  'Copy environment ID': 'Copier l’identifiant de l’environnement',
+  'CLI environment variables': 'Variables d’environnement CLI',
+  'Copy export command': 'Copier la commande export',
 };

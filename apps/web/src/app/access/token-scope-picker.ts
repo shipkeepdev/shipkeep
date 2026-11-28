@@ -7,6 +7,7 @@ import {
   output,
   signal,
 } from '@angular/core';
+import { ActivatedRoute } from '@angular/router';
 import { type components } from '@shipkeep/api-client';
 import { BEARER_GRANTS, type BearerPermission } from '@shipkeep/domain';
 
@@ -61,10 +62,16 @@ const selected = (event: Event): string => (event.target as HTMLSelectElement).v
   template: `
     <div>
       <label for="token-organization">{{ 'Access' | t }}</label>
-      <select id="token-organization" (change)="chooseOrganization($event)">
+      <select
+        id="token-organization"
+        [value]="organizationId()"
+        (change)="chooseOrganization($event)"
+      >
         <option value="">{{ 'Only my account profile' | t }}</option>
         @for (organization of organizations.items(); track organization.id) {
-          <option [value]="organization.id">{{ organization.name }}</option>
+          <option [value]="organization.id" [selected]="organization.id === organizationId()">
+            {{ organization.name }}
+          </option>
         }
       </select>
       @if (organizations.problem(); as problem) {
@@ -75,10 +82,12 @@ const selected = (event: Event): string => (event.target as HTMLSelectElement).v
       @if (projects.state() === 'ready') {
         <div>
           <label for="token-project">{{ 'Project' | t }}</label>
-          <select id="token-project" (change)="chooseProject($event)">
+          <select id="token-project" [value]="projectId()" (change)="chooseProject($event)">
             <option value="">{{ 'All projects' | t }}</option>
             @for (project of projects.items(); track project.id) {
-              <option [value]="project.id">{{ project.name }}</option>
+              <option [value]="project.id" [selected]="project.id === projectId()">
+                {{ project.name }}
+              </option>
             }
           </select>
         </div>
@@ -86,10 +95,16 @@ const selected = (event: Event): string => (event.target as HTMLSelectElement).v
       @if (projectId() && environments.state() === 'ready') {
         <div>
           <label for="token-environment">{{ 'Environment' | t }}</label>
-          <select id="token-environment" (change)="chooseEnvironment($event)">
+          <select
+            id="token-environment"
+            [value]="environmentId()"
+            (change)="chooseEnvironment($event)"
+          >
             <option value="">{{ 'All environments' | t }}</option>
             @for (environment of environments.items(); track environment.id) {
-              <option [value]="environment.id">{{ environment.name }}</option>
+              <option [value]="environment.id" [selected]="environment.id === environmentId()">
+                {{ environment.name }}
+              </option>
             }
           </select>
         </div>
@@ -141,6 +156,7 @@ const selected = (event: Event): string => (event.target as HTMLSelectElement).v
 })
 export class TokenScopePicker {
   private readonly api = inject(WorkspaceApi);
+  private readonly route = inject(ActivatedRoute, { optional: true });
   readonly grantChange = output<TokenGrant>();
   protected readonly organizationId = signal('');
   protected readonly projectId = signal('');
@@ -182,7 +198,20 @@ export class TokenScopePicker {
   });
 
   constructor() {
+    const query = this.route?.snapshot.queryParamMap;
+    const organizationId = query?.get('organizationId') ?? '';
+    const projectId = query?.get('projectId') ?? '';
+    const environmentId = query?.get('environmentId') ?? '';
+    if (organizationId) {
+      this.organizationId.set(organizationId);
+      if (projectId) {
+        this.projectId.set(projectId);
+        if (environmentId) this.environmentId.set(environmentId);
+      }
+    }
     void this.organizations.refresh();
+    if (this.organizationId()) void this.projects.refresh();
+    if (this.organizationId() && this.projectId()) void this.environments.refresh();
     effect(() => {
       this.grantChange.emit(this.grant());
     });

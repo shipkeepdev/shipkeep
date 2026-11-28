@@ -1,4 +1,5 @@
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 
 import { IDENTITY_FETCH } from '../identity/identity-api';
 
@@ -19,9 +20,17 @@ describe('token scope picker', () => {
   let grants: TokenGrant[];
   let refuseOrganizations: boolean;
 
-  async function create(): Promise<void> {
+  async function create(queryParams?: Record<string, string>): Promise<void> {
     TestBed.configureTestingModule({
       providers: [
+        ...(queryParams
+          ? [
+              {
+                provide: ActivatedRoute,
+                useValue: { snapshot: { queryParamMap: convertToParamMap(queryParams) } },
+              },
+            ]
+          : []),
         {
           provide: IDENTITY_FETCH,
           useValue: (request: Request) => {
@@ -162,5 +171,18 @@ describe('token scope picker', () => {
     await create();
     expect(element().querySelector('[role="alert"]')).not.toBeNull();
     expect(grant()).toEqual(PROFILE_ONLY);
+  });
+
+  it('preselects organization, project and environment from query parameters', async () => {
+    await create({ organizationId: ORG, projectId: PROJECT, environmentId: ENV });
+    expect(element().querySelector<HTMLSelectElement>('#token-organization')?.value).toBe(ORG);
+    expect(element().querySelector<HTMLSelectElement>('#token-project')?.value).toBe(PROJECT);
+    expect(element().querySelector<HTMLSelectElement>('#token-environment')?.value).toBe(ENV);
+    await tick('token-permission-deploy.run');
+    expect(grant()).toEqual({
+      scopes: [
+        { permission: 'deploy.run', organizationId: ORG, projectId: PROJECT, environmentId: ENV },
+      ],
+    });
   });
 });
