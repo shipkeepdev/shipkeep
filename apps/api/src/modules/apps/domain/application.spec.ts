@@ -72,6 +72,21 @@ describe('applicationConfig', () => {
       expect(rejection(bad).code).toBe('invalid_application_config');
   });
 
+  it('refuses build arguments that BuildKit reads as its own settings', () => {
+    for (const name of ['BUILDKIT_SYNTAX', 'BUILDKIT_CACHE_MOUNT_NS']) {
+      const built = image({
+        build: { type: 'dockerfile', args: { NODE_ENV: 'production', [name]: 'x' } },
+      });
+      expect(() => applicationConfig(built, 'git')).toThrow(
+        expect.objectContaining({ code: 'reserved_build_arg' }),
+      );
+    }
+    expect(
+      applicationConfig(image({ build: { type: 'dockerfile', args: { BUILD_KIT: 'x' } } }), 'git')
+        .config.build?.args,
+    ).toEqual({ BUILD_KIT: 'x' });
+  });
+
   it('accepts only image sources for now', () => {
     for (const unsupported of [
       image({ build: { type: 'dockerfile' } }),

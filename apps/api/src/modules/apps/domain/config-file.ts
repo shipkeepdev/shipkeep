@@ -1,5 +1,5 @@
 import { ConflictError, InvalidInputError } from '@shipkeep/domain';
-import { type Document, isMap, isScalar, parseDocument } from 'yaml';
+import { type Document, isAlias, isMap, isPair, isScalar, isSeq, parseDocument, visit } from 'yaml';
 
 import { canonicalJson } from './application';
 
@@ -29,12 +29,22 @@ const MAX_ALIGNED_CELLS = 250_000;
  */
 export function rewriteConfigFile(original: string, document: object): string {
   const file = parseDocument(original, { uniqueKeys: true, prettyErrors: false });
-  if (file.errors.length > 0 || !isMap(file.contents))
-    throw new InvalidInputError(
+  const refused = () =>
+    new InvalidInputError(
       'invalid_config_file',
       'The file in the repository is not a YAML map: fix it in the repository first.',
     );
-  patch(file, [], file.toJS() as unknown, document);
+  if (file.errors.length > 0 || !isMap(file.contents)) throw refused();
+  let current: unknown;
+  try {
+    current = file.toJS();
+  } catch {
+    // An alias to an anchor the file does not define fails only here.
+    throw refused();
+  }
+  // Nothing changes: the file stays as it is, spacing included.
+  if (canonicalJson(current) === canonicalJson(document)) return original;
+  patch({ file, after: document, aliases: aliasPaths(file) }, [], current, document);
   // No folding: a long value stays on its line, as the file has it. Its line breaks stay too:
   // CRLF when it has them, and no final one when it has none.
   let text = file.toString({ lineWidth: 0 });
@@ -49,22 +59,80 @@ export function rewriteConfigFile(original: string, document: object): string {
   return text;
 }
 
-function patch(file: Document, path: readonly string[], before: unknown, after: unknown): void {
+interface Patching {
+  readonly file: Document;
+  /** The whole document asked for. */
+  readonly after: object;
+  /** The key paths of the aliases in maps, by the anchor they name. */
+  readonly aliases: ReadonlyMap<string, readonly (readonly string[])[]>;
+}
+
+function patch(at: Patching, path: readonly string[], before: unknown, after: unknown): void {
   if (!plain(before) || !plain(after)) return;
-  for (const key of Object.keys(before)) if (!(key in after)) file.deleteIn([...path, key]);
+  // Own keys only: a key such as `constructor` is not one an object inherits.
+  for (const key of Object.keys(before)) if (!own(after, key)) at.file.deleteIn([...path, key]);
   for (const [key, value] of Object.entries(after)) {
-    const at = [...path, key];
+    const keyPath = [...path, key];
     const old = before[key];
-    if (key in before && canonicalJson(old) === canonicalJson(value)) continue;
+    if (own(before, key) && canonicalJson(old) === canonicalJson(value)) continue;
     if (plain(old) && plain(value)) {
-      patch(file, at, old, value);
+      patch(at, keyPath, old, value);
       continue;
     }
-    const node = file.getIn(at, true);
+    const node = at.file.getIn(keyPath, true);
+    // An alias whose anchor now holds the value asked for stays an alias.
+    if (isAlias(node)) {
+      const target = node.resolve(at.file);
+      if (isScalar(target) && canonicalJson(target.value) === canonicalJson(value)) continue;
+    }
     // A scalar keeps its node, with the comment on its line.
-    if (isScalar(node) && value !== null && typeof value !== 'object') node.value = value;
-    else file.setIn(at, value);
+    if (isScalar(node) && value !== null && typeof value !== 'object') {
+      if (node.anchor) detach(at, node.anchor, value);
+      node.value = value;
+    } else at.file.setIn(keyPath, value);
   }
+}
+
+/**
+ * Before an anchored scalar takes `value`, each alias of it asked to hold something else is written
+ * as that value instead: otherwise it would follow the anchor. An alias asked to hold `value` too
+ * stays an alias. An anchored list or map that changes is left to the check that the text reads
+ * back as the document.
+ */
+function detach(at: Patching, anchor: string, value: unknown): void {
+  for (const path of at.aliases.get(anchor) ?? []) {
+    const wanted = valueAt(at.after, path);
+    if (wanted !== undefined && canonicalJson(wanted) !== canonicalJson(value))
+      at.file.setIn(path, wanted);
+  }
+}
+
+/** The key paths of the file's aliases that sit in maps only, by anchor. */
+function aliasPaths(file: Document): Map<string, string[][]> {
+  const found = new Map<string, string[][]>();
+  visit(file, {
+    Alias(_key, node, ancestors) {
+      if (ancestors.some((ancestor) => isSeq(ancestor))) return;
+      const path: string[] = [];
+      for (const ancestor of ancestors)
+        if (isPair(ancestor) && isScalar(ancestor.key)) path.push(String(ancestor.key.value));
+      found.set(node.source, [...(found.get(node.source) ?? []), path]);
+    },
+  });
+  return found;
+}
+
+function valueAt(value: unknown, path: readonly string[]): unknown {
+  let at = value;
+  for (const key of path) {
+    if (!plain(at) || !own(at, key)) return undefined;
+    at = at[key];
+  }
+  return at;
+}
+
+function own(object: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(object, key);
 }
 
 function plain(value: unknown): value is Record<string, unknown> {
