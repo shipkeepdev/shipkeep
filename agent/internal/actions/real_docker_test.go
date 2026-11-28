@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net"
 	"net/http"
 	"net/url"
@@ -51,6 +52,9 @@ type realAgent struct {
 	store      *journal.Store
 	dispatcher *Dispatcher
 	count      int
+	// recording is the engine the handlers use; names are the containers the test creates.
+	recording *recordingEngine
+	names     []string
 }
 
 func newRealAgent(t *testing.T, extra map[string]Handler) *realAgent {
@@ -65,11 +69,12 @@ func newRealAgent(t *testing.T, extra map[string]Handler) *realAgent {
 	}
 	store := open(t)
 	// No egress proxy in front of this daemon: the egress check has its own tests (#351).
-	handlers := DockerHandlers(engine, acceptAll{}, store, WithoutEgressCheck())
+	recording := &recordingEngine{Engine: engine}
+	handlers := DockerHandlers(recording, acceptAll{}, store, WithoutEgressCheck())
 	for kind, handler := range extra {
 		handlers[kind] = handler
 	}
-	return &realAgent{t: t, socket: socket, engine: engine, store: store, dispatcher: &Dispatcher{Journal: store, Handlers: handlers, Epoch: func() uint64 { return 1 }}}
+	return &realAgent{t: t, socket: socket, engine: engine, store: store, recording: recording, dispatcher: &Dispatcher{Journal: store, Handlers: handlers, Epoch: func() uint64 { return 1 }}}
 }
 
 func (a *realAgent) send(req *agentv1.ActionRequest, timeout time.Duration) *agentv1.ActionUpdate {
@@ -95,18 +100,20 @@ func fourDigits(n int) string {
 	return string(digits)
 }
 
-// must sends an action that has to succeed, and fails the test with Docker's answer otherwise.
+// must sends an action that has to succeed, and fails the test otherwise with what Docker
+// answered the agent and its state of the test's containers.
 func (a *realAgent) must(name string, req *agentv1.ActionRequest, timeout time.Duration) *agentv1.ActionUpdate {
 	a.t.Helper()
 	update := a.send(req, timeout)
 	if !succeeded(update) {
-		a.t.Fatalf("%s: %v", name, update)
+		a.t.Fatalf("%s: %v\n%s", name, update, a.explain())
 	}
 	return update
 }
 
 // forget removes what a test left in Docker, whatever state it is in.
 func (a *realAgent) forget(containers []string, volumes []string) {
+	a.names = append(a.names, containers...)
 	a.t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 		defer cancel()
@@ -125,6 +132,12 @@ func (a *realAgent) forget(containers []string, volumes []string) {
 // dockerView is what Docker reports of a container, read here without the agent's client, which
 // only reads what the agent itself needs.
 type dockerView struct {
+	State struct {
+		Status    string `json:"Status"`
+		ExitCode  int    `json:"ExitCode"`
+		OOMKilled bool   `json:"OOMKilled"`
+		Error     string `json:"Error"`
+	} `json:"State"`
 	Config struct {
 		User string `json:"User"`
 	} `json:"Config"`
@@ -149,23 +162,35 @@ type dockerView struct {
 
 func (a *realAgent) inspect(id string) dockerView {
 	a.t.Helper()
-	client := http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
-		return (&net.Dialer{}).DialContext(ctx, "unix", a.socket)
-	}}}
-	request, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "http://docker/containers/"+url.PathEscape(id)+"/json", nil)
+	view, err := a.view(context.Background(), id)
 	if err != nil {
-		a.t.Fatal(err)
-	}
-	response, err := client.Do(request)
-	if err != nil {
-		a.t.Fatal(err)
-	}
-	defer response.Body.Close() //nolint:errcheck // read-only body
-	var view dockerView
-	if err := json.NewDecoder(response.Body).Decode(&view); err != nil {
 		a.t.Fatal(err)
 	}
 	return view
+}
+
+// view reads Docker's inspection of a container, by id or name.
+func (a *realAgent) view(ctx context.Context, id string) (dockerView, error) {
+	client := http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return (&net.Dialer{}).DialContext(ctx, "unix", a.socket)
+	}}}
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://docker/containers/"+url.PathEscape(id)+"/json", nil)
+	if err != nil {
+		return dockerView{}, err
+	}
+	response, err := client.Do(request)
+	if err != nil {
+		return dockerView{}, err
+	}
+	defer response.Body.Close() //nolint:errcheck // read-only body
+	if response.StatusCode != http.StatusOK {
+		return dockerView{}, fmt.Errorf("docker answered %d", response.StatusCode)
+	}
+	var view dockerView
+	if err := json.NewDecoder(response.Body).Decode(&view); err != nil {
+		return dockerView{}, err
+	}
+	return view, nil
 }
 
 func whoamiSpec(name, version string) *agentv1.ContainerSpec {
