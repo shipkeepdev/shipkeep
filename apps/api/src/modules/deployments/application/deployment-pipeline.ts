@@ -57,6 +57,8 @@ import {
 import {
   ACTION_QUEUE,
   type ActionQueue,
+  BUILD_TOKENS,
+  type BuildTokens,
   DEPLOYMENT_STORE,
   DEPLOYMENT_TRANSACTION,
   type DeploymentStore,
@@ -69,6 +71,26 @@ import {
 } from './ports';
 
 /** Agent actions get an hour: release tasks and health probes are bounded well below it. */
+/** The states of a build action that has ended: its token is no longer needed. */
+const BUILD_ENDED: ReadonlySet<string> = new Set([
+  'succeeded',
+  'failed',
+  'cancelled',
+  'compensated',
+  'expired',
+]);
+
+/**
+ * How long a build's Git token may still be valid after its action was queued: GitHub's hour,
+ * and a margin for the time between minting and queueing.
+ */
+const BUILD_TOKEN_LIFETIME_MS = 70 * 60_000;
+
+/** The key of a deployment's build action (ADR 0030). */
+function buildKey(deploymentId: string): string {
+  return `d:${deploymentId}:build`;
+}
+
 const ACTION_LIFETIME_MS = 3600_000;
 /** Decisions applied in one run before yielding; each one moves the deployment forward. */
 const MAX_DECISIONS = 20;
@@ -100,19 +122,44 @@ export class DeploymentPipeline {
     @Inject(REPOSITORY_SOURCE) private readonly repositories: RepositorySource,
     private readonly grants: RegistryGrants,
     @Inject(REGISTRY_SERVICE) private readonly registryHost: string,
+    @Inject(BUILD_TOKENS) private readonly buildTokens: BuildTokens,
   ) {}
 
-  /** `wait` when agents still work for it, `done` when it finished or no longer exists. */
+  /**
+   * `wait` when agents still work for it, or when its build's Git token could not be revoked yet;
+   * `done` when it finished or no longer exists.
+   */
   async run(
     organizationId: string,
     deploymentId: string,
     clock = () => new Date(),
+  ): Promise<'wait' | 'done'> {
+    const revocation = { tried: false, pending: false };
+    const outcome = await this.rounds(organizationId, deploymentId, clock, revocation);
+    // A token GitHub could not revoke is asked again on the next run, which `wait` schedules.
+    return revocation.pending ? 'wait' : outcome;
+  }
+
+  private async rounds(
+    organizationId: string,
+    deploymentId: string,
+    clock: () => Date,
+    revocation: { tried: boolean; pending: boolean },
   ): Promise<'wait' | 'done'> {
     for (let round = 0; round < MAX_DECISIONS; round++) {
       const loaded = await this.transaction.runTenant(organizationId, () =>
         this.load(deploymentId),
       );
       if (!loaded) return 'done';
+      // Once its build has ended, whatever the deployment does next, its Git token is revoked
+      // (ADR 0030). A later run finds it cleared already.
+      if (
+        !revocation.tried &&
+        BUILD_ENDED.has(loaded.context.steps.get(buildKey(deploymentId))?.state ?? '')
+      ) {
+        revocation.tried = true;
+        revocation.pending = !(await this.revokeBuildToken(loaded, clock()));
+      }
       let decision: PipelineDecision;
       try {
         decision = plan(loaded.context);
@@ -230,8 +277,12 @@ export class DeploymentPipeline {
               (await this.deployments.lockState(context.deployment.id)) !== context.deployment.state
             )
               return { stale: true } as const;
-            return { failure: await this.enqueue(loaded, decision.steps, now, source) };
+            return await this.enqueue(loaded, decision.steps, now, source);
           });
+          // A token minted for a build that was not queued here (the deployment moved on, a step
+          // failed, or another run queued the build first) is revoked at once: nothing holds it.
+          if (source && !('queued' in outcome && outcome.queued))
+            await this.repositories.revoke(source.token);
           if ('stale' in outcome) return 'continue';
           if (outcome.failure) return this.fail(loaded, outcome.failure, now);
         }
@@ -372,7 +423,7 @@ export class DeploymentPipeline {
     steps: readonly PipelineStep[],
     now: Date,
     source?: { url: string; token: Secret; expiresAt: Date },
-  ): Promise<string | undefined> {
+  ): Promise<{ failure?: string; queued: boolean }> {
     const values = await this.secretValues(loaded, steps);
     const deadline = new Date(now.getTime() + ACTION_LIFETIME_MS);
     const application = {
@@ -422,16 +473,19 @@ export class DeploymentPipeline {
       };
     } catch (error: unknown) {
       if (!isDomainError(error)) throw error;
-      return error.message;
+      return { failure: error.message, queued: false };
     }
+    // Whether this call queued the build, with the token it carries: one already queued keeps its
+    // own token.
+    let queued = false;
     for (const step of steps) {
       let action: ReturnType<typeof agentAction>;
       try {
         action = agentAction(step, values, registries, build);
       } catch (error: unknown) {
-        return reason(error, 'A step could not be prepared.');
+        return { failure: reason(error, 'A step could not be prepared.'), queued };
       }
-      await this.actions.enqueue({
+      const { created } = await this.actions.enqueue({
         organizationId: loaded.application.organizationId,
         nodeId: step.nodeId,
         idempotencyKey: step.key,
@@ -443,8 +497,9 @@ export class DeploymentPipeline {
           deploymentId: loaded.context.deployment.id,
         },
       });
+      if (step.kind === 'build_image') queued = created;
     }
-    return undefined;
+    return { queued };
   }
 
   /** What the organization stored for the registries of the images these steps pull (ADR 0019). */
@@ -587,6 +642,37 @@ export class DeploymentPipeline {
         await this.pipeline.stop(loaded.application.id, [loaded.context.release.id], now);
       await this.releaseDomains(loaded.application, now);
     }
+  }
+
+  /**
+   * Revokes the Git token the build's action still holds, outside any transaction, then clears it
+   * from the action and audits it in one transaction (ADR 0030, 0031). False when GitHub could
+   * not be asked and the token may still be valid: it stays in the action for the next run. Once
+   * the token has expired, it is cleared without GitHub.
+   */
+  private async revokeBuildToken(loaded: Loaded, now: Date): Promise<boolean> {
+    const { application, context } = loaded;
+    const held = await this.tenant(application, () =>
+      this.buildTokens.buildToken(application.organizationId, context.deployment.id),
+    );
+    if (!held) return true;
+    const revoked = await this.repositories.revoke(held.token);
+    if (!revoked && now.getTime() - held.queuedAt.getTime() < BUILD_TOKEN_LIFETIME_MS) return false;
+    await this.tenant(application, async () => {
+      if (await this.buildTokens.clearBuildToken(application.organizationId, context.deployment.id))
+        await this.events.publish([
+          this.event(
+            'deployment.build_token_revoked',
+            application,
+            'deployment',
+            context.deployment.id,
+            now,
+            // `expiry`: GitHub could not be asked before the token expired by itself.
+            { ended: revoked ? 'github' : 'expiry' },
+          ),
+        ]);
+    });
+    return true;
   }
 
   /** Frees what nothing serves any more and audits each domain freed (#302). */

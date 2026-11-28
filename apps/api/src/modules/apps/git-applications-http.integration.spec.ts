@@ -10,6 +10,7 @@ import {
   type GithubManifests,
 } from '../git/application/ports';
 import type { TokenScope } from '../git/domain/github-api';
+import { noGithubWrites } from '../../testing/github-writes';
 
 /** A key-shaped value that is no key, put together here so that no scanner reads the source as one. */
 function fakePem(body: string): string {
@@ -80,9 +81,10 @@ describe('applications from a GitHub repository over HTTP', () => {
       read.push(`${fullName}:${path}@${commit}`);
       return Promise.resolve(files[path]);
     },
+    ...noGithubWrites,
     revoke: (token) => {
       revoked.push(token.expose());
-      return Promise.resolve();
+      return Promise.resolve(true);
     },
   };
   const create = (body: Record<string, unknown>, actor: 'owner' | 'outsider' = 'owner') =>

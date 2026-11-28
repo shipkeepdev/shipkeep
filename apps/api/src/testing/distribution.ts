@@ -1,5 +1,10 @@
 import { GenericContainer, type StartedTestContainer, Wait } from 'testcontainers';
 
+import type { RegistryTokenKeyProvider } from '../modules/fleet/application/ports';
+import type { RegistryStorage } from '../modules/registries/application/ports';
+import { DistributionStorage } from '../modules/registries/infrastructure/distribution-storage';
+import type { AppConfig } from '../platform/config/app-config';
+
 /** CNCF Distribution, the image deploy/dev/compose.yml pins (ADR 0030). */
 export const DISTRIBUTION_TEST_IMAGE =
   'registry:3.1.2@sha256:82f6ff4a7f982960c8aa51617fea3aabc485df6e55cce80d22deb1de36f1bc3c';
@@ -17,6 +22,8 @@ export async function distribution(
     'storage:',
     '  filesystem:',
     '    rootdirectory: /var/lib/registry',
+    '  delete:',
+    '    enabled: true',
     'http:',
     '  addr: :5000',
     'auth:',
@@ -39,4 +46,13 @@ export async function distribution(
       await container.stop();
     },
   };
+}
+
+/** The registry at `url` as image retention reads it, with the control plane's own tokens. */
+export function registryStorage(
+  url: string,
+  keys: RegistryTokenKeyProvider,
+  service: string,
+): RegistryStorage {
+  return new DistributionStorage({ get: () => url } as unknown as AppConfig, keys, service);
 }
