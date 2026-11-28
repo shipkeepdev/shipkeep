@@ -141,10 +141,17 @@ func (a *Agent) runGateway(ctx context.Context, store *journal.Store, engine *do
 	// Builds with the server's rootless BuildKit (ADR 0030), in their own lane (ADR 0032). Their
 	// output goes on the log stream, never to the agent's own log.
 	buildOutput := logship.NewBuildOutput()
+	// The key of the applications' build cache namespaces, the agent's own. Without it, builds
+	// fail and say so; everything else runs.
+	cacheSecret, err := buildkit.LoadCacheSecret(filepath.Join(a.cfg.Paths.StateDir, "build-cache.key"))
+	if err != nil {
+		a.logger.Error("builds disabled: no build cache key", "error", err)
+	}
 	options = append(options, actions.WithBuilds(buildkit.Client{
 		Address: "unix://" + a.cfg.Build.Socket,
 		// Railpack reads the repository from this server's disk, for the build's time (ADR 0030).
-		WorkDir: filepath.Join(a.cfg.Paths.StateDir, "builds"),
+		WorkDir:     filepath.Join(a.cfg.Paths.StateDir, "builds"),
+		CacheSecret: cacheSecret,
 	}, buildOutput))
 	// Node, container and route metrics, sent on the stream when the control plane accepts them.
 	sampler := &metrics.Sampler{Containers: engine, Proc: "/proc", Sys: "/sys", Logger: a.logger}

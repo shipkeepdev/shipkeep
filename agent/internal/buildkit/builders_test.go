@@ -1,10 +1,18 @@
 package buildkit
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/moby/buildkit/client/llb"
 	"github.com/moby/buildkit/solver/pb"
@@ -20,6 +28,8 @@ func testRequest(kind Kind) Request {
 		Context:    "services/api",
 		Args:       map[string]string{"NODE_ENV": "production", "FLAG": "--out=/etc"},
 		Target:     testTarget,
+		// Client.Build sets it from the agent's key.
+		CacheNamespace: "sk-test",
 	}
 }
 
@@ -98,7 +108,7 @@ func TestNixpacksRunsThePinnedReleaseWithoutNetwork(t *testing.T) {
 		if len(run) != 1 {
 			t.Fatalf("%s: %d runs", arch, len(run))
 		}
-		want := []string{"/nixpacks", "build", "/src", "--out", "/out", "--cache-key", cacheKey(testTarget),
+		want := []string{"/nixpacks", "build", "/src", "--out", "/out", "--cache-key", "sk-test",
 			"--env", "FLAG=--out=/etc", "--env", "NODE_ENV=production"}
 		if !slices.Equal(run[0].GetMeta().GetArgs(), want) {
 			t.Fatalf("%s: args = %q", arch, run[0].GetMeta().GetArgs())
@@ -147,7 +157,7 @@ func TestRailpackBuildsWithItsPinnedFrontend(t *testing.T) {
 	if options.Frontend != "gateway.v0" || options.FrontendAttrs["source"] != RailpackFrontend {
 		t.Fatalf("options = %+v", options)
 	}
-	if options.FrontendAttrs["build-arg:cache-key"] != cacheKey(testTarget) || len(options.Exports) != 1 ||
+	if options.FrontendAttrs["build-arg:cache-key"] != "sk-test" || len(options.Exports) != 1 ||
 		options.Exports[0].Attrs["name"] != testTarget || options.Exports[0].Attrs["push"] != "true" {
 		t.Fatalf("options = %+v", options)
 	}
@@ -167,13 +177,94 @@ func TestRailpackBuildsWithItsPinnedFrontend(t *testing.T) {
 	}
 }
 
-func TestCacheKeysAreOneApplicationsOwn(t *testing.T) {
+// A cache namespace is the application's own, and only this agent's key names it: a build that
+// knows another application's identifiers cannot name its caches.
+func TestCacheNamespacesAreOneApplicationsOwn(t *testing.T) {
+	key := []byte(strings.Repeat("k", 32))
 	other := strings.Replace(testTarget, "0000000000ab", "0000000000ac", 1)
-	if cacheKey(testTarget) != cacheKey(strings.TrimSuffix(testTarget, ":7")+":8") {
+	if CacheNamespace(key, testTarget) != CacheNamespace(key, strings.TrimSuffix(testTarget, ":7")+":8") {
 		t.Fatal("two releases of one application have different caches")
 	}
-	if cacheKey(testTarget) == cacheKey(other) || cacheKey("cp.example.com:5000/a/b:1") == cacheKey("cp.example.com:5000/a/c:1") {
+	if CacheNamespace(key, testTarget) == CacheNamespace(key, other) ||
+		CacheNamespace(key, "cp.example.com:5000/a/b:1") == CacheNamespace(key, "cp.example.com:5000/a/c:1") {
 		t.Fatal("two applications share a cache")
+	}
+	if CacheNamespace(key, testTarget) == CacheNamespace([]byte(strings.Repeat("o", 32)), testTarget) {
+		t.Fatal("the namespace does not depend on the agent's key")
+	}
+	unkeyed := sha256.Sum256([]byte(strings.TrimSuffix(testTarget, ":7")))
+	if strings.Contains(CacheNamespace(key, testTarget), hex.EncodeToString(unkeyed[:8])) {
+		t.Fatal("the namespace is the repository's plain hash")
+	}
+}
+
+// The key is made once, readable by the agent alone, and kept across restarts; a damaged one is
+// replaced.
+func TestTheCacheKeyIsTheAgentsOwn(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "build-cache.key")
+	first, err := LoadCacheSecret(path)
+	if err != nil || len(first) != 32 {
+		t.Fatalf("key = %d bytes, %v", len(first), err)
+	}
+	info, err := os.Stat(path)
+	if err != nil || info.Mode().Perm() != 0o600 {
+		t.Fatalf("key file = %v, %v", info, err)
+	}
+	again, err := LoadCacheSecret(path)
+	if err != nil || !bytes.Equal(first, again) {
+		t.Fatal("the key changed across loads")
+	}
+	if err := os.WriteFile(path, []byte("short"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	replaced, err := LoadCacheSecret(path)
+	if err != nil || len(replaced) != 32 || bytes.Equal(replaced, first) {
+		t.Fatalf("a damaged key was kept: %d bytes, %v", len(replaced), err)
+	}
+}
+
+// Every build type keeps its cache mounts in the application's namespace.
+func TestDockerfileCachesAreNamespaced(t *testing.T) {
+	options := SolveOptions(testRequest(Dockerfile), "token", "header")
+	if options.FrontendAttrs["build-arg:BUILDKIT_CACHE_MOUNT_NS"] != "sk-test" {
+		t.Fatalf("attrs = %v", options.FrontendAttrs)
+	}
+}
+
+// What the repository keeps under `.nixpacks` is removed before Nixpacks' files go on top.
+func TestNixpacksReplacesTheRepositorysNixpacksDirectory(t *testing.T) {
+	removed := false
+	for _, op := range ops(t, NixpacksContext(llb.Scratch().File(llb.Mkdir("/app", 0o755)), llb.Scratch())) {
+		for _, action := range op.GetFile().GetActions() {
+			if rm := action.GetRm(); rm != nil && rm.GetPath() == "/.nixpacks" && rm.GetAllowNotFound() {
+				removed = true
+			}
+		}
+	}
+	if !removed {
+		t.Fatal("the repository's .nixpacks is kept")
+	}
+}
+
+// Before anything reaches BuildKit: a build without the agent's key is refused, and whatever an
+// interrupted build left on disk is removed.
+func TestABuildStartsFromAnEmptyWorkDirectory(t *testing.T) {
+	work := filepath.Join(t.TempDir(), "builds")
+	left := filepath.Join(work, "railpack-123", "src")
+	if err := os.MkdirAll(left, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := (Client{Address: "unix:///nonexistent/buildkitd.sock", WorkDir: work}).Build(ctx, testRequest(Dockerfile), func(string) {}); err == nil {
+		t.Fatal("a build without a cache key ran")
+	}
+	keyed := Client{Address: "unix:///nonexistent/buildkitd.sock", WorkDir: work, CacheSecret: []byte(strings.Repeat("k", 32))}
+	if _, err := keyed.Build(ctx, testRequest(Dockerfile), func(string) {}); err == nil {
+		t.Fatal("a build without a daemon succeeded")
+	}
+	if _, err := os.Stat(work); !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("the interrupted build's files are still there: %v", err)
 	}
 }
 
