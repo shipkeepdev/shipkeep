@@ -20,6 +20,18 @@ x-app-url: &app-url postgresql://shipkeep_app:${POSTGRES_APP_PASSWORD:?set POSTG
 services:
   postgres:
     image: postgres:17@sha256:87c8b42f423b45d5247e6aa8fdb2e7762fec164c68a50fe3eb07e7bfcaf4dbcf
+    # TCP keepalives end a half-open session within two minutes (#429). `up -d` with a new image
+    # recreates `net` before it stops the old control plane, whose connections then never close:
+    # without them, PostgreSQL keeps those sessions about two hours, holding connection slots and
+    # the database a restore renames.
+    command:
+      - postgres
+      - -c
+      - tcp_keepalives_idle=60
+      - -c
+      - tcp_keepalives_interval=10
+      - -c
+      - tcp_keepalives_count=6
     environment:
       POSTGRES_USER: shipkeep_admin
       POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?set POSTGRES_ADMIN_PASSWORD in .env}
