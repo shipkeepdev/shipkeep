@@ -11,6 +11,11 @@
 // on the server. An archive is restored only when its tag matches the identity it is opened with,
 // before a byte of it reaches pg_restore. age binds every chunk to the same file key, so whoever
 // wrote the manifest wrote the rest.
+//
+// The tag also covers the archive's name (version 2, #439): a valid archive of the same server put
+// under another one's name, in a bucket or a folder someone else can write, is refused, not
+// restored in its place. Archives of version 1 have no name: they are still restored, with a
+// warning.
 
 import { createHmac, hkdfSync, timingSafeEqual } from 'node:crypto';
 import { link, open, readdir, readFile, rename, rm } from 'node:fs/promises';
@@ -20,7 +25,7 @@ import { Decrypter, Encrypter, generateX25519Identity, identityToRecipient } fro
 import { z } from 'zod';
 
 export const BACKUP_FORMAT = 'shipkeep-instance-backup';
-const BACKUP_VERSION = 1;
+const BACKUP_VERSION = 2;
 const KEK_BYTES = 32;
 /** What `pg_dump --format=custom` starts with. */
 const DUMP_MAGIC = new TextEncoder().encode('PGDMP');
@@ -35,6 +40,8 @@ export const RECIPIENT = /^age1[02-9ac-hj-np-z]{58}$/;
 const IDENTITY = /^AGE-SECRET-KEY-1[02-9AC-HJ-NP-Z]{58}$/;
 const AUTHENTICATION_BYTES = 32;
 const AUTHENTICATION_INFO = 'shipkeep-instance-backup/1 authentication';
+/** An archive's name: what `backup.sh` names a file or an object, and what its manifest binds. */
+export const ARCHIVE_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,123}\.age$/;
 
 /** A refusal, in words meant for the person who runs the command. It never holds a secret. */
 export class BackupRefusal extends Error {
@@ -44,17 +51,25 @@ export class BackupRefusal extends Error {
   }
 }
 
-const manifestSchema = z
-  .object({
-    format: z.literal(BACKUP_FORMAT),
-    version: z.literal(BACKUP_VERSION),
-    createdAt: z.iso.datetime(),
-    migration: z.string().regex(MIGRATION),
-    kek: z.base64(),
-    /** HMAC-SHA256 of the fields above under the backup key: who wrote the archive. */
-    authentication: z.base64(),
-  })
-  .strict();
+const manifestFields = {
+  format: z.literal(BACKUP_FORMAT),
+  createdAt: z.iso.datetime(),
+  migration: z.string().regex(MIGRATION),
+  kek: z.base64(),
+  /** HMAC-SHA256 of the other fields under the backup key: who wrote the archive. */
+  authentication: z.base64(),
+};
+const manifestSchema = z.discriminatedUnion('version', [
+  z.object({ ...manifestFields, version: z.literal(1) }).strict(),
+  z
+    .object({
+      ...manifestFields,
+      version: z.literal(BACKUP_VERSION),
+      /** The name it was created under. */
+      name: z.string().regex(ARCHIVE_NAME),
+    })
+    .strict(),
+]);
 
 /** What the archive says about itself; the key-encryption key is in it. */
 export type BackupManifest = z.infer<typeof manifestSchema>;
@@ -147,6 +162,8 @@ export async function createArchive(input: {
   readonly kek: Uint8Array;
   readonly migration: string;
   readonly now: Date;
+  /** The name the archive is written under, which its manifest binds. */
+  readonly name: string;
   readonly dump: ReadableStream<Uint8Array>;
 }): Promise<ReadableStream<Uint8Array>> {
   if (
@@ -158,12 +175,17 @@ export async function createArchive(input: {
     );
   if (input.kek.length !== KEK_BYTES || !MIGRATION.test(input.migration))
     throw new BackupRefusal('The backup cannot be described: key or migration missing.');
+  if (!ARCHIVE_NAME.test(input.name))
+    throw new BackupRefusal(
+      'Name the archive with letters, digits, dots, dashes and underscores, ending in .age.',
+    );
   const fields = {
     format: BACKUP_FORMAT,
     version: BACKUP_VERSION,
     createdAt: input.now.toISOString(),
     migration: input.migration,
     kek: Buffer.from(input.kek).toString('base64'),
+    name: input.name,
   } as const;
   const manifest: BackupManifest = {
     ...fields,
@@ -176,15 +198,16 @@ export async function createArchive(input: {
 }
 
 /**
- * Opens an archive with `identity`. The manifest is checked before anything else is read: its
- * format, its tag, which only the server that holds this identity's backup key can write, and a
- * migration this image carries, since a backup is restored by the same version of Shipkeep or a
- * later one. `dump` is the rest, authenticated chunk by chunk as it is read: a changed or cut
- * archive makes it fail.
+ * Opens the archive asked for as `name` with `identity`. The manifest is checked before anything
+ * else is read: its format, its tag, which only the server that holds this identity's backup key
+ * can write, the name it was created under, and a migration this image carries, since a backup is
+ * restored by the same version of Shipkeep or a later one. `dump` is the rest, authenticated chunk
+ * by chunk as it is read: a changed or cut archive makes it fail.
  */
 export async function openArchive(input: {
   readonly identity: string;
   readonly archive: ReadableStream<Uint8Array>;
+  readonly name: string;
   readonly migrations: readonly string[];
 }): Promise<{ manifest: BackupManifest; kek: Uint8Array; dump: ReadableStream<Uint8Array> }> {
   const key = await backupKeyFor(input.identity);
@@ -213,6 +236,11 @@ export async function openArchive(input: {
   if (expected.length !== found.length || !timingSafeEqual(expected, found))
     throw new BackupRefusal(
       'This archive was not made by a server that backs up to this identity: it is not restored.',
+    );
+  // Another archive of this server, put under the name asked for, is not restored in its place.
+  if (manifest.version === BACKUP_VERSION && manifest.name !== input.name)
+    throw new BackupRefusal(
+      `This archive was created as ${manifest.name}, not ${input.name}: it is not restored. Restore it under its own name, if it is the one you meant.`,
     );
   if (!input.migrations.includes(manifest.migration))
     throw new BackupRefusal(
@@ -305,18 +333,32 @@ export async function replaceKek(path: string, kek: Uint8Array, now: Date): Prom
   await syncDirectory(path);
 }
 
-/** The manifest's tag: an HMAC of its fields, one per line, in a fixed order. */
+/**
+ * The manifest's tag: an HMAC of its fields, one per line, in a fixed order. The version is one of
+ * them, so a name cannot be taken off a version 2 manifest to pass it as version 1.
+ */
 function tag(
   key: Uint8Array,
-  fields: Pick<BackupManifest, 'format' | 'version' | 'createdAt' | 'migration' | 'kek'>,
+  fields:
+    | { format: string; version: 1; createdAt: string; migration: string; kek: string }
+    | {
+        format: string;
+        version: typeof BACKUP_VERSION;
+        createdAt: string;
+        migration: string;
+        kek: string;
+        name: string;
+      },
 ): string {
-  return createHmac('sha256', key)
-    .update(
-      [fields.format, String(fields.version), fields.createdAt, fields.migration, fields.kek].join(
-        '\n',
-      ),
-    )
-    .digest('base64');
+  const lines = [
+    fields.format,
+    String(fields.version),
+    fields.createdAt,
+    fields.migration,
+    fields.kek,
+  ];
+  if (fields.version === BACKUP_VERSION) lines.push(fields.name);
+  return createHmac('sha256', key).update(lines.join('\n')).digest('base64');
 }
 
 /** Writes `bytes` read-only for its owner under `path`, replacing it only once they are on disk. */

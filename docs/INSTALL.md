@@ -243,7 +243,7 @@ It asks you to type `replace`, then:
 3. replaces the key-encryption key, keeping the previous one beside it, and keeps backing up to the identity you restored with;
 4. starts everything again, which applies the migrations of this version.
 
-The restore prints the time the backup was made: check that it is the one you meant. Someone who can write to where archives are kept cannot forge one, but could put an older backup in its place.
+Restore an archive under the name it was created with. The archive records that name, and the restore refuses one created under another, before anything changes: someone who can write where archives are kept can neither forge one nor put an older one in its place. An archive renamed since is refused too: give it back its name. Archives made before this check (`v0.1.0-alpha.7` and earlier) have no name: the restore warns that it cannot tell, and prints the time the backup was made. Check that it is the one you meant.
 
 Point the domain to the new machine: the servers reconnect on their own, with the identity they already have. A server whose certificate was renewed after the backup was made (every 20 days) presents one the restored installation does not know, and is refused. **Servers** then lists it under _Servers to re-adopt_. An administrator who recognizes it chooses **Re-adopt** and gives their password, and the same server comes back with its applications, which kept running meanwhile. An agent of `v0.1.0-alpha.7` or earlier connects once it is restarted on that server (`sudo systemctl restart shipkeep-agent`); later ones connect within 5 minutes. Everyone signs in again: the restore ends every session.
 

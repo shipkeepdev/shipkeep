@@ -1,7 +1,10 @@
+import { createHmac } from 'node:crypto';
 import { mkdir, mkdtemp, open, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
+
+import { Encrypter } from 'age-encryption';
 
 import { BackupUsageError, parseBackupCommand, runBackup } from './backup-commands';
 import {
@@ -19,6 +22,8 @@ import {
 
 const MIGRATION = '20261123090000_deployment_maintenance';
 const NOW = new Date('2026-11-23T10:00:00Z');
+/** The name `backup.sh create --s3` would give it. */
+const NAME = 'shipkeep-20261123-100000-3f9a1c2e.age';
 const kek = new Uint8Array(32).map((_, index) => index + 1);
 
 /** A custom-format pg_dump starts with PGDMP; 200 KiB spans several age chunks of 64 KiB. */
@@ -48,10 +53,18 @@ async function collect(input: ReadableStream<Uint8Array>): Promise<Uint8Array> {
   return new Uint8Array(Buffer.concat(parts));
 }
 
-async function archive(key: BackupKey, data = dump()): Promise<Uint8Array> {
+async function archive(key: BackupKey, data = dump(), name = NAME): Promise<Uint8Array> {
   return collect(
-    await createArchive({ key, kek, migration: MIGRATION, now: NOW, dump: stream(data) }),
+    await createArchive({ key, kek, migration: MIGRATION, now: NOW, name, dump: stream(data) }),
   );
+}
+
+/** An archive with this manifest, made by hand: what a server of another version would write. */
+async function sealed(recipient: string, manifest: Record<string, unknown>): Promise<Uint8Array> {
+  const encrypter = new Encrypter();
+  encrypter.addRecipient(recipient);
+  const head = new TextEncoder().encode(`${JSON.stringify(manifest)}\n`);
+  return collect(await encrypter.encrypt(stream(new Uint8Array(Buffer.concat([head, dump()])))));
 }
 
 /** An identity, and the backup key `keygen` leaves on the server for it. */
@@ -73,20 +86,27 @@ describe('instance backup archive (ADR 0026)', () => {
     const opened = await openArchive({
       identity,
       archive: stream(sealed),
+      name: NAME,
       migrations: [MIGRATION],
     });
     expect(opened.manifest).toMatchObject({
       format: 'shipkeep-instance-backup',
-      version: 1,
+      version: 2,
       createdAt: NOW.toISOString(),
       migration: MIGRATION,
+      name: NAME,
     });
     expect(opened.kek).toEqual(kek);
     expect(await collect(opened.dump)).toEqual(data);
 
     const other = await newIdentity();
     await expect(
-      openArchive({ identity: other.identity, archive: stream(sealed), migrations: [MIGRATION] }),
+      openArchive({
+        identity: other.identity,
+        archive: stream(sealed),
+        name: NAME,
+        migrations: [MIGRATION],
+      }),
     ).rejects.toThrow(BackupRefusal);
   });
 
@@ -100,11 +120,16 @@ describe('instance backup archive (ADR 0026)', () => {
     });
     // Refused when the manifest is read, before the dump is handed to anything.
     await expect(
-      openArchive({ identity, archive: stream(forged), migrations: [MIGRATION] }),
+      openArchive({ identity, archive: stream(forged), name: NAME, migrations: [MIGRATION] }),
     ).rejects.toThrow('was not made by a server that backs up to this identity');
     // The genuine archive opens: the tag is what differs.
     await expect(
-      openArchive({ identity, archive: stream(await archive(key)), migrations: [MIGRATION] }),
+      openArchive({
+        identity,
+        archive: stream(await archive(key)),
+        name: NAME,
+        migrations: [MIGRATION],
+      }),
     ).resolves.toMatchObject({ manifest: { migration: MIGRATION } });
   });
 
@@ -118,6 +143,7 @@ describe('instance backup archive (ADR 0026)', () => {
       const opened = await openArchive({
         identity,
         archive: stream(broken),
+        name: NAME,
         migrations: [MIGRATION],
       });
       await expect(collect(opened.dump)).rejects.toThrow('The archive is damaged or was changed');
@@ -131,9 +157,68 @@ describe('instance backup archive (ADR 0026)', () => {
       openArchive({
         identity,
         archive: stream(sealed),
+        name: NAME,
         migrations: ['20261121130000_user_display_name'],
       }),
     ).rejects.toThrow('newer version of Shipkeep');
+  });
+
+  // #439: whoever can write where archives are kept cannot pass an older archive of the same
+  // server for the one asked for.
+  it('refuses another archive of the same server put under the name asked for', async () => {
+    const { identity, key } = await pair();
+    const older = await archive(key, dump(), 'shipkeep-20261101-100000-0badc0de.age');
+    await expect(
+      openArchive({ identity, archive: stream(older), name: NAME, migrations: [MIGRATION] }),
+    ).rejects.toThrow(
+      'This archive was created as shipkeep-20261101-100000-0badc0de.age, not shipkeep-20261123-100000-3f9a1c2e.age: it is not restored.',
+    );
+    await expect(
+      createArchive({
+        key,
+        kek,
+        migration: MIGRATION,
+        now: NOW,
+        name: '../kek.age',
+        dump: stream(dump()),
+      }),
+    ).rejects.toThrow('ending in .age');
+  });
+
+  it('still opens an archive made before names, and never a name taken off a newer one', async () => {
+    const { identity, key } = await pair();
+    const fields = {
+      format: 'shipkeep-instance-backup',
+      version: 1,
+      createdAt: NOW.toISOString(),
+      migration: MIGRATION,
+      kek: Buffer.from(kek).toString('base64'),
+    };
+    // The tag of version 1: its fields, one per line, without a name.
+    const v1 = createHmac('sha256', key.authentication)
+      .update([fields.format, '1', fields.createdAt, fields.migration, fields.kek].join('\n'))
+      .digest('base64');
+    const opened = await openArchive({
+      identity,
+      archive: stream(await sealed(key.recipient, { ...fields, authentication: v1 })),
+      name: NAME,
+      migrations: [MIGRATION],
+    });
+    expect(opened.manifest).toMatchObject({ version: 1, createdAt: NOW.toISOString() });
+    expect(await collect(opened.dump)).toEqual(dump());
+
+    // A version 2 manifest without its name, passed as version 1, keeps a tag that covers the name.
+    const v2 = createHmac('sha256', key.authentication)
+      .update([fields.format, '2', fields.createdAt, fields.migration, fields.kek, NAME].join('\n'))
+      .digest('base64');
+    await expect(
+      openArchive({
+        identity,
+        archive: stream(await sealed(key.recipient, { ...fields, authentication: v2 })),
+        name: NAME,
+        migrations: [MIGRATION],
+      }),
+    ).rejects.toThrow('was not made by a server that backs up to this identity');
   });
 
   it('takes a backup key, and a custom-format dump only', async () => {
@@ -143,7 +228,14 @@ describe('instance backup archive (ADR 0026)', () => {
       { recipient: key.recipient, authentication: new Uint8Array(16) },
     ])
       await expect(
-        createArchive({ key: broken, kek, migration: MIGRATION, now: NOW, dump: stream(dump()) }),
+        createArchive({
+          key: broken,
+          kek,
+          migration: MIGRATION,
+          now: NOW,
+          name: NAME,
+          dump: stream(dump()),
+        }),
       ).rejects.toThrow('./backup.sh keygen');
     const plain = new TextEncoder().encode('-- PostgreSQL database dump\nCREATE TABLE x();\n');
     await expect(archive(key, plain)).rejects.toThrow('not a pg_dump archive in custom format');
@@ -200,13 +292,28 @@ describe('instance backup archive (ADR 0026)', () => {
 describe('backup commands', () => {
   it('reads a closed list, and restores a key only when told so in full', () => {
     expect(parseBackupCommand(['keygen'])).toEqual({ action: 'backup-keygen' });
-    expect(parseBackupCommand(['create'])).toEqual({ action: 'backup-create' });
-    expect(parseBackupCommand(['restore-database'])).toEqual({ action: 'backup-restore-database' });
-    expect(parseBackupCommand(['restore-key', '--replace-this-installation'])).toEqual({
+    expect(parseBackupCommand(['create', NAME])).toEqual({ action: 'backup-create', name: NAME });
+    expect(parseBackupCommand(['restore-database', NAME])).toEqual({
+      action: 'backup-restore-database',
+      name: NAME,
+    });
+    expect(parseBackupCommand(['restore-key', '--replace-this-installation', NAME])).toEqual({
       action: 'backup-restore-key',
+      name: NAME,
     });
     for (const argv of [
       [],
+      ['create'],
+      ['restore-database'],
+      ['restore-key', '--replace-this-installation'],
+      ['restore-key', NAME],
+      ['restore-key', '--yes', NAME],
+      ['create', '../kek.age'],
+      ['create', '/var/lib/shipkeep/kek.age'],
+      ['create', 'shipkeep.tar'],
+      ['restore-database', `${NAME}\n`],
+      ['restore-database', '-x.age'],
+      ['create', NAME, 'extra'],
       ['restore-key'],
       ['restore-key', '--yes'],
       ['create', '--to', '/tmp/x'],
@@ -221,6 +328,7 @@ describe('backup commands', () => {
     action: 'backup-keygen' | 'backup-create' | 'backup-restore-database' | 'backup-restore-key',
     input: Uint8Array,
     env: Record<string, string>,
+    name = NAME,
   ) {
     const stdin = new PassThrough();
     const stdout = new PassThrough();
@@ -230,16 +338,13 @@ describe('backup commands', () => {
     stdout.on('data', (chunk: Buffer) => out.push(chunk));
     stderr.on('data', (chunk: Buffer) => err.push(chunk));
     stdin.end(Buffer.from(input));
-    await runBackup(
-      { action },
-      {
-        stdin,
-        stdout,
-        stderr,
-        env,
-        now: NOW,
-      },
-    );
+    await runBackup(action === 'backup-keygen' ? { action } : { action, name }, {
+      stdin,
+      stdout,
+      stderr,
+      env,
+      now: NOW,
+    });
     return { out: new Uint8Array(Buffer.concat(out)), err: Buffer.concat(err).toString() };
   }
 
@@ -342,6 +447,25 @@ describe('backup commands', () => {
     expect(await readFile(at.kekFile)).toEqual(Buffer.alloc(32, 7));
   });
 
+  // #439's acceptance: restoring s3:A while the storage serves archive B under that name is
+  // refused before anything changes.
+  it('restores nothing from an archive of this server served under another name', async () => {
+    const at = await server();
+    const identityFile = (await run('backup-keygen', new Uint8Array(0), at.env)).out;
+    const older = 'shipkeep-20261101-100000-0badc0de.age';
+    const served = (await run('backup-create', dump(), at.env, older)).out;
+    await reinstall(at);
+    const input = new Uint8Array(Buffer.concat([identityFile, served]));
+    for (const action of ['backup-restore-database', 'backup-restore-key'] as const)
+      await expect(run(action, input, at.env, NAME)).rejects.toThrow(
+        `This archive was created as ${older}, not ${NAME}: it is not restored.`,
+      );
+    expect(await readFile(at.kekFile)).toEqual(Buffer.alloc(32, 7));
+    expect(await readdir(at.directory)).not.toContain('backup-key');
+    // Under its own name, it is the archive it says it is.
+    expect((await run('backup-restore-database', input, at.env, older)).out).toEqual(dump());
+  });
+
   it('never writes an identity or an archive to a terminal, nor reads a dump from one', async () => {
     const terminal = Object.assign(new PassThrough(), { isTTY: true });
     const pipe = new PassThrough();
@@ -353,7 +477,7 @@ describe('backup commands', () => {
     ).rejects.toThrow('Write the identity to a file');
     await expect(
       runBackup(
-        { action: 'backup-create' },
+        { action: 'backup-create', name: NAME },
         { stdin: terminal, stdout: pipe, stderr: pipe, env: {}, now: NOW },
       ),
     ).rejects.toThrow('Standard input is the database dump');

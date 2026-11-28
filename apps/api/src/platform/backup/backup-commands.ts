@@ -7,6 +7,7 @@ import { Readable, type Writable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 
 import {
+  ARCHIVE_NAME,
   BackupRefusal,
   backupKeyFor,
   createArchive,
@@ -20,14 +21,14 @@ import {
   splitIdentity,
   writeBackupKey,
 } from './instance-backup';
-import { ARCHIVE_NAME, check, discard, download, list, s3Settings, upload } from './s3-transfer';
+import { check, discard, download, list, s3Settings, upload } from './s3-transfer';
 
 export const BACKUP_USAGE = [
   'Usage, through deploy/control-plane/backup.sh, which pipes the database through these commands:',
   '  node backup.js keygen',
-  '  node backup.js create',
-  '  node backup.js restore-database',
-  '  node backup.js restore-key --replace-this-installation',
+  '  node backup.js create NAME',
+  '  node backup.js restore-database NAME',
+  '  node backup.js restore-key --replace-this-installation NAME',
   'and, in the container that reaches the S3 storage and never sees the key:',
   '  node backup.js upload NAME | download NAME | discard NAME | list | check',
 ].join('\n');
@@ -45,16 +46,24 @@ export function parseBackupCommand(argv: readonly string[]): BackupCommand {
   const [action, ...rest] = argv;
   if (rest.length === 0) {
     if (action === 'keygen') return { action: 'backup-keygen' };
-    if (action === 'create') return { action: 'backup-create' };
-    if (action === 'restore-database') return { action: 'backup-restore-database' };
+    if (action === 'list') return { action: 'backup-list' };
+    if (action === 'check') return { action: 'backup-check' };
   }
   // Replacing the key-encryption key is destructive: it is said in full (CLAUDE.md rule 7).
-  if (action === 'restore-key' && rest.length === 1 && rest[0] === '--replace-this-installation')
-    return { action: 'backup-restore-key' };
-  if (rest.length === 0 && action === 'list') return { action: 'backup-list' };
-  if (rest.length === 0 && action === 'check') return { action: 'backup-check' };
+  const [flag, archive] = rest;
+  if (
+    action === 'restore-key' &&
+    rest.length === 2 &&
+    flag === '--replace-this-installation' &&
+    archive &&
+    ARCHIVE_NAME.test(archive)
+  )
+    return { action: 'backup-restore-key', name: archive };
   const [name] = rest;
   if (rest.length === 1 && name && ARCHIVE_NAME.test(name)) {
+    // The archive's name: what create binds into it, and what a restore asks for (#439).
+    if (action === 'create') return { action: 'backup-create', name };
+    if (action === 'restore-database') return { action: 'backup-restore-database', name };
     if (action === 'upload') return { action: 'backup-upload', name };
     if (action === 'download') return { action: 'backup-download', name };
     if (action === 'discard') return { action: 'backup-discard', name };
@@ -64,11 +73,14 @@ export function parseBackupCommand(argv: readonly string[]): BackupCommand {
 
 export type BackupCommand =
   | { readonly action: 'backup-keygen' }
-  | { readonly action: 'backup-create' }
-  | { readonly action: 'backup-restore-database' }
-  | { readonly action: 'backup-restore-key' }
   | {
-      readonly action: 'backup-upload' | 'backup-download' | 'backup-discard';
+      readonly action:
+        | 'backup-create'
+        | 'backup-restore-database'
+        | 'backup-restore-key'
+        | 'backup-upload'
+        | 'backup-download'
+        | 'backup-discard';
       readonly name: string;
     }
   | { readonly action: 'backup-list' }
@@ -111,6 +123,7 @@ export async function runBackup(command: BackupCommand, io: BackupIo): Promise<v
         kek: await readKek(kekFile(io)),
         migration: (await migrations(io.env['SHIPKEEP_MIGRATIONS_DIR'] ?? MIGRATIONS)).at(-1) ?? '',
         now: io.now,
+        name: command.name,
         dump: Readable.toWeb(io.stdin) as ReadableStream<Uint8Array>,
       });
       await pipeline(
@@ -128,7 +141,7 @@ export async function runBackup(command: BackupCommand, io: BackupIo): Promise<v
         io,
         'Standard output is the database dump for pg_restore: backup.sh restore reads it.',
       );
-      const opened = await open(io);
+      const opened = await open(io, command.name);
       await pipeline(
         Readable.fromWeb(opened.dump as Parameters<typeof Readable.fromWeb>[0]),
         io.stdout,
@@ -172,7 +185,7 @@ export async function runBackup(command: BackupCommand, io: BackupIo): Promise<v
         io,
         'Standard input is the identity file, then the archive: backup.sh restore sends them.',
       );
-      const opened = await open(io);
+      const opened = await open(io, command.name);
       // The key changes only for an archive age has authenticated to its end.
       await drain(opened.dump);
       // The restored installation backs up to the identity it was restored with.
@@ -187,15 +200,22 @@ export async function runBackup(command: BackupCommand, io: BackupIo): Promise<v
   }
 }
 
-async function open(io: BackupIo) {
+async function open(io: BackupIo, name: string) {
   const { identity, archive } = await splitIdentity(
     Readable.toWeb(io.stdin) as ReadableStream<Uint8Array>,
   );
   const opened = await openArchive({
     identity,
     archive,
+    name,
     migrations: await migrations(io.env['SHIPKEEP_MIGRATIONS_DIR'] ?? MIGRATIONS),
   });
+  // An archive made before archive names cannot say that it is the one asked for (#439).
+  if (opened.manifest.version === 1)
+    await write(
+      io.stderr,
+      `This archive was made before backups recorded their name, so it cannot show that it is ${name}. It was created at ${opened.manifest.createdAt}: check that this is the backup you meant.\n`,
+    );
   return { ...opened, identity };
 }
 
