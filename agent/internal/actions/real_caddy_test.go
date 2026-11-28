@@ -185,7 +185,11 @@ func TestRealCaddySwitchesUnderLoadWithoutAFailedRequest(t *testing.T) {
 	}
 
 	// v1 serves.
-	// A new route without TLS: the route and its host join Caddy's configuration in one load.
+	// A new route without TLS: the route and its host join Caddy's configuration in one load. The
+	// Shipkeep server is created first, as the agent does at start: that is a load of its own, once.
+	if err := router.EnsureServer(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	since := time.Now()
 	agent.must("route to v1", route(v1, 0), time.Minute)
 	if loads := caddyLoads(t, agent.engine, since); loads != 1 {
