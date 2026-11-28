@@ -666,6 +666,7 @@ segment() { printf 'A%.0s' $(seq "$1"); }
 ours="Bearer $(segment 110).$(segment 470).$(segment 86)"
 [[ $(answer /v2/) == 502 ]] || die 'a request without a token did not reach the registry'
 [[ $(answer /v2/acme/app/manifests/1 --header "Authorization: $ours") == 502 ]] || die 'a token of ours did not reach the registry'
+[[ $(answer /v2/ --header "Authorization: bearer ${ours#Bearer }") == 502 ]] || die 'a token with a lowercase scheme did not reach the registry'
 [[ $(answer /v2/ --header "Authorization: Bearer $(segment 513).$(segment 470).$(segment 86)") == 401 ]] || die 'an oversized token header reached the registry'
 [[ $(answer /v2/ --header 'Authorization: Bearer {"protected":"x","payload":"x","signature":"x"}') == 401 ]] || die 'a JSON token reached the registry'
 [[ $(answer /v2/ --header 'Authorization: Basic dXNlcjpwYXNz') == 401 ]] || die 'basic credentials reached the registry'

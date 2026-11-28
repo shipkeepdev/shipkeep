@@ -252,7 +252,10 @@ func TestTheRegistryReceivesOnlyBoundedBearerTokens(t *testing.T) {
 	segment := func(n int) string { return strings.Repeat("A", n) }
 	// The size of a token the control plane signs: a header of about 110, claims of about 470.
 	ours := "Bearer " + segment(110) + "." + segment(470) + "." + segment(86)
-	for _, value := range []string{"", ours, "Bearer " + segment(512) + "." + segment(1000) + "." + segment(512)} {
+	// The scheme's name is case-insensitive in HTTP, as Distribution reads it (strings.EqualFold).
+	lower := "bearer " + strings.TrimPrefix(ours, "Bearer ")
+	upper := "BEARER " + strings.TrimPrefix(ours, "Bearer ")
+	for _, value := range []string{"", ours, lower, upper, "Bearer " + segment(512) + "." + segment(1000) + "." + segment(512)} {
 		if !allowed.MatchString(value) {
 			t.Fatalf("refused: %.60s", value)
 		}

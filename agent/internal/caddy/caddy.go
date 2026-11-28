@@ -90,7 +90,7 @@ type NotMatch struct {
 // parsing can be made slow (#543); Shipkeep's tokens have a header of about 110 characters and
 // claims of about 470. Go's regexp allows repeat counts up to 1000. deploy/control-plane/Caddyfile
 // refuses the same.
-const RegistryAuthorization = `^(?:|Bearer [A-Za-z0-9_-]{1,512}\.[A-Za-z0-9_-]{1,1000}\.[A-Za-z0-9_-]{1,512})$`
+const RegistryAuthorization = `^(?:|(?i:Bearer) [A-Za-z0-9_-]{1,512}\.[A-Za-z0-9_-]{1,1000}\.[A-Za-z0-9_-]{1,512})$`
 
 // authorizationHeader is the request's Authorization values, joined with commas: two headers never
 // pass for one.

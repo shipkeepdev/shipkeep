@@ -10,7 +10,7 @@
 	# refuses the same (agent/internal/caddy RegistryAuthorization).
 	@refusedToken {
 		path /v2 /v2/*
-		not vars_regexp {http.request.header.Authorization} `^(?:|Bearer [A-Za-z0-9_-]{1,512}\.[A-Za-z0-9_-]{1,1000}\.[A-Za-z0-9_-]{1,512})$`
+		not vars_regexp {http.request.header.Authorization} `^(?:|(?i:Bearer) [A-Za-z0-9_-]{1,512}\.[A-Za-z0-9_-]{1,1000}\.[A-Za-z0-9_-]{1,512})$`
 	}
 	handle @refusedToken {
 		respond 401
