@@ -124,15 +124,19 @@ func whoamiName(body string) string {
 	return "?"
 }
 
+// errEnoughLoads stops following Caddy's log once the loads waited for are in it.
+var errEnoughLoads = errors.New("enough loads")
+
 // caddyLoads counts the configurations Caddy loaded from since on: it logs "autosaved config" for
 // each one. Each load closes the previous one's idle connections, so a route change is one (#438).
-func caddyLoads(t *testing.T, engine *docker.Client, since time.Time) int {
+// It follows the log for 2 seconds, for a line Docker has not passed on yet, or until it has seen
+// stopAt loads when stopAt is not 0.
+func caddyLoads(t *testing.T, engine *docker.Client, since time.Time, stopAt int) int {
 	t.Helper()
 	name := os.Getenv("SHIPKEEP_IT_CADDY_CONTAINER")
 	if name == "" {
 		name = "sk-it-caddy"
 	}
-	// Following the log until now and a little after, for a line Docker has not passed on yet.
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	loads := 0
@@ -140,9 +144,12 @@ func caddyLoads(t *testing.T, engine *docker.Client, since time.Time) int {
 		if strings.Contains(line.Text, `"autosaved config`) {
 			loads++
 		}
+		if stopAt != 0 && loads >= stopAt {
+			return errEnoughLoads
+		}
 		return nil
 	})
-	if err != nil && !errors.Is(err, context.DeadlineExceeded) {
+	if err != nil && !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, errEnoughLoads) {
 		t.Fatalf("read Caddy's log: %v", err)
 	}
 	return loads
@@ -186,13 +193,16 @@ func TestRealCaddySwitchesUnderLoadWithoutAFailedRequest(t *testing.T) {
 
 	// v1 serves.
 	// A new route without TLS: the route and its host join Caddy's configuration in one load. The
-	// Shipkeep server is created first, as the agent does at start: that is a load of its own, once.
+	// Shipkeep server is created first, as the agent does at start: a load of its own, once. Docker
+	// stamps a log line when it reads it, so the count starts only once that load is in the log.
+	since := time.Now()
 	if err := router.EnsureServer(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	since := time.Now()
+	caddyLoads(t, agent.engine, since, 1)
+	since = time.Now()
 	agent.must("route to v1", route(v1, 0), time.Minute)
-	if loads := caddyLoads(t, agent.engine, since); loads != 1 {
+	if loads := caddyLoads(t, agent.engine, since, 0); loads != 1 {
 		t.Errorf("the route to v1 made Caddy load %d configurations", loads)
 	}
 	traffic := &load{address: address}
@@ -216,7 +226,7 @@ func TestRealCaddySwitchesUnderLoadWithoutAFailedRequest(t *testing.T) {
 	time.Sleep(2 * time.Second)
 	since = time.Now()
 	agent.must("switch to v2", route(v2, 3*time.Second), time.Minute)
-	if loads := caddyLoads(t, agent.engine, since); loads != 1 {
+	if loads := caddyLoads(t, agent.engine, since, 0); loads != 1 {
 		t.Errorf("the switch to v2 made Caddy load %d configurations", loads)
 	}
 	agent.must("stop v1", itStop(ids[v1]), time.Minute)
@@ -248,7 +258,7 @@ func TestRealCaddySwitchesUnderLoadWithoutAFailedRequest(t *testing.T) {
 	// The removal takes the route and its host out together: one load as well.
 	since = time.Now()
 	agent.must("remove the route", &agentv1.ActionRequest{Action: &agentv1.ActionRequest_RemoveRoute{RemoveRoute: &agentv1.RemoveRoute{RouteId: "it-web", DrainTimeout: durationpb.New(0)}}}, time.Minute)
-	if loads := caddyLoads(t, agent.engine, since); loads != 1 {
+	if loads := caddyLoads(t, agent.engine, since, 0); loads != 1 {
 		t.Errorf("the removal made Caddy load %d configurations", loads)
 	}
 }
