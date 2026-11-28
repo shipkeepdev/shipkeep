@@ -22,6 +22,11 @@ export interface RepositoryConfig {
   readonly text: string;
 }
 
+/** The file a change from the interface replaces (#214), with the blob a write must name. */
+export interface RepositoryConfigFile extends RepositoryConfig {
+  readonly blobSha: string;
+}
+
 /** Where a Git application's configuration is read, without its name, which GitHub gives. */
 export type RepositoryLocation = Omit<ApplicationRepository, 'fullName' | 'commitSha'>;
 
@@ -38,6 +43,14 @@ export interface RepositorySource {
     location: RepositoryLocation,
     commit?: string,
   ): Promise<RepositoryConfig>;
+  /**
+   * The file at the branch's head, with its blob (#214): what a change from the interface is made
+   * against. Read with a token that reads that repository's contents only.
+   */
+  readForChange(
+    organizationId: string,
+    location: RepositoryLocation,
+  ): Promise<RepositoryConfigFile>;
   /**
    * What a build fetches the repository with (ADR 0030): its HTTPS URL, under its current name,
    * and a token that reads that repository's contents and nothing else, until it expires. The

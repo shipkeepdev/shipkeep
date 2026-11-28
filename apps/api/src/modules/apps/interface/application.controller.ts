@@ -12,6 +12,7 @@ import { IdentityAttemptLimit } from '../../identity/interface/identity-rate.gua
 import { RequireTenant } from '../../identity/interface/route-access';
 import { type IdentityRequest, resourceContext } from '../../identity/interface/session-http';
 import { ApplicationCommands } from '../application/application-commands';
+import { RepositoryConfigs } from '../application/repository-configs';
 import { EnvironmentClone } from '../application/environment-clone';
 import type { ApplicationTarget } from '../domain/application';
 
@@ -26,6 +27,9 @@ import {
   CreateApplicationDto,
   CreateGithubApplicationDto,
   DomainListDto,
+  RepositoryConfigChangeDto,
+  RepositoryConfigDto,
+  RepositoryConfigPreviewDto,
   UpdateApplicationConfigDto,
 } from './application.dto';
 
@@ -41,6 +45,7 @@ export class ApplicationController {
   constructor(
     private readonly applications: ApplicationCommands,
     private readonly environments: EnvironmentClone,
+    private readonly repositoryConfigs: RepositoryConfigs,
   ) {}
   /**
    * A new environment with the same settings and a copy of each application's configuration, not
@@ -154,6 +159,39 @@ export class ApplicationController {
           : null,
       })),
     };
+  }
+
+  /** The shipkeep.yml of a Git application in its repository, and whether it runs it (#214). */
+  @Get(`${APPLICATIONS}/:applicationId/repository-config`)
+  @RequireTenant('environment.read', 'environment')
+  @AllowApiToken('environment.read')
+  @ApiOkResponse({ type: RepositoryConfigDto })
+  async getRepositoryConfig(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+  ): Promise<RepositoryConfigDto> {
+    return this.repositoryConfigs.view(resourceContext(request), target(path), path.applicationId);
+  }
+
+  /** What a change of that file would write, before anything is written (#214). */
+  @Post(`${APPLICATIONS}/:applicationId/repository-config/preview`)
+  @HttpCode(200)
+  @RequireTenant('deploy.run', 'environment')
+  @AllowApiToken('deploy.run')
+  @ApiOkResponse({ type: RepositoryConfigPreviewDto })
+  async previewRepositoryConfig(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+    @Body() body: RepositoryConfigChangeDto,
+  ): Promise<RepositoryConfigPreviewDto> {
+    const preview = await this.repositoryConfigs.preview(
+      resourceContext(request),
+      target(path),
+      path.applicationId,
+      body.config,
+      body.blobSha,
+    );
+    return { ...preview, diff: preview.diff.map((line) => ({ ...line })) };
   }
 
   @Post(`${APPLICATIONS}/:applicationId/config`)

@@ -3,6 +3,7 @@ import { ConflictError, InvalidInputError, type Secret } from '@shipkeep/domain'
 
 import type {
   RepositoryConfig,
+  RepositoryConfigFile,
   RepositoryLocation,
   RepositorySource,
 } from '../../apps/application/ports';
@@ -70,6 +71,49 @@ export class GithubSources implements RepositorySource {
           { configPath: location.configPath, commit: head },
         );
       return { fullName: repository.fullName, commitSha: head, text };
+    } finally {
+      await this.github.revoke(token);
+    }
+  }
+
+  async readForChange(
+    organizationId: string,
+    location: RepositoryLocation,
+  ): Promise<RepositoryConfigFile> {
+    if (!validBranch(location.branch) || !validConfigPath(location.configPath))
+      throw new InvalidInputError(
+        'invalid_repository_location',
+        'This application names a branch or a path Git does not allow.',
+      );
+    const { token } = await this.mint(organizationId, location);
+    try {
+      const repository = await this.github.repository(
+        token,
+        location.installationId,
+        location.repositoryId,
+      );
+      if (!repository) throw unreachable();
+      const head = await this.github.branchHead(token, repository.fullName, location.branch);
+      if (!head)
+        throw new InvalidInputError(
+          'github_branch_not_found',
+          'This branch does not exist in the repository.',
+          { branch: location.branch },
+        );
+      // At the head's commit, not the branch: the file and the commit are read together.
+      const file = await this.github.fileAt(token, repository.fullName, location.configPath, head);
+      if (!file)
+        throw new InvalidInputError(
+          'github_config_not_found',
+          'The repository has no file at this path on that commit.',
+          { configPath: location.configPath, commit: head },
+        );
+      return {
+        fullName: repository.fullName,
+        commitSha: head,
+        text: file.text,
+        blobSha: file.blobSha,
+      };
     } finally {
       await this.github.revoke(token);
     }
