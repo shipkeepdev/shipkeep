@@ -2127,4 +2127,12 @@ export const FR: Readonly<Record<string, string>> = {
     'Le dernier fichier est chargé. Votre brouillon est inchangé : vérifiez-le de nouveau.',
   'The configuration of this application, read from its repository at each push.':
     'La configuration de cette application, lue dans son dépôt à chaque push.',
+  'Use from the CLI': 'Utiliser depuis le CLI',
+  'Create an API token for this environment': 'Créer un jeton d’API pour cet environnement',
+  'Copy organization ID': 'Copier l’identifiant de l’organisation',
+  'Copy project ID': 'Copier l’identifiant du projet',
+  'Copy environment ID': 'Copier l’identifiant de l’environnement',
+  'CLI environment variables': 'Variables d’environnement CLI',
+  'Copy export command': 'Copier la commande export',
+  'The linked environment is no longer available.': 'L’environnement lié n’est plus disponible.',
 };

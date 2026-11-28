@@ -19,6 +19,7 @@ import { ShellContext } from '../shell/shell-context';
 import { T } from '../ui/i18n';
 import { type Tab, Tabs } from '../shell/tabs';
 
+import { EnvironmentCli } from './environment-cli';
 import { EnvironmentClone } from './environment-clone';
 import { EnvironmentSettings } from './environment-settings';
 import { type Environment, WorkspaceApi } from './workspace-api';
@@ -29,6 +30,7 @@ import { type Environment, WorkspaceApi } from './workspace-api';
   imports: [
     ApplicationsPanel,
     BindingsPanel,
+    EnvironmentCli,
     EnvironmentClone,
     EnvironmentSettings,
     Icon,
@@ -127,6 +129,7 @@ import { type Environment, WorkspaceApi } from './workspace-api';
         >
           <sk-environment-settings [current]="current" (updated)="environment.set($event)" />
         </div>
+        <sk-environment-cli [environment]="ref()" />
       }
     </div>
   `,

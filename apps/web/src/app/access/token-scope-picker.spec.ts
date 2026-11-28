@@ -1,4 +1,5 @@
 import { type ComponentFixture, TestBed } from '@angular/core/testing';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 
 import { IDENTITY_FETCH } from '../identity/identity-api';
 
@@ -18,13 +19,23 @@ describe('token scope picker', () => {
   let fixture: ComponentFixture<TokenScopePicker>;
   let grants: TokenGrant[];
   let refuseOrganizations: boolean;
+  let customFetch: ((request: Request) => Response | Promise<Response>) | null;
 
-  async function create(): Promise<void> {
+  async function create(queryParams?: Record<string, string>): Promise<void> {
     TestBed.configureTestingModule({
       providers: [
+        ...(queryParams
+          ? [
+              {
+                provide: ActivatedRoute,
+                useValue: { snapshot: { queryParamMap: convertToParamMap(queryParams) } },
+              },
+            ]
+          : []),
         {
           provide: IDENTITY_FETCH,
           useValue: (request: Request) => {
+            if (customFetch) return customFetch(request);
             const path = new URL(request.url).pathname;
             if (path === '/api/v1/organizations')
               return refuseOrganizations
@@ -76,6 +87,7 @@ describe('token scope picker', () => {
 
   beforeEach(() => {
     refuseOrganizations = false;
+    customFetch = null;
   });
 
   it('starts with the account profile only', async () => {
@@ -162,5 +174,57 @@ describe('token scope picker', () => {
     await create();
     expect(element().querySelector('[role="alert"]')).not.toBeNull();
     expect(grant()).toEqual(PROFILE_ONLY);
+  });
+
+  it('preselects organization, project and environment from query parameters', async () => {
+    await create({ organizationId: ORG, projectId: PROJECT, environmentId: ENV });
+    expect(element().querySelector<HTMLSelectElement>('#token-organization')?.value).toBe(ORG);
+    expect(element().querySelector<HTMLSelectElement>('#token-project')?.value).toBe(PROJECT);
+    expect(element().querySelector<HTMLSelectElement>('#token-environment')?.value).toBe(ENV);
+    await tick('token-permission-deploy.run');
+    expect(grant()).toEqual({
+      scopes: [
+        { permission: 'deploy.run', organizationId: ORG, projectId: PROJECT, environmentId: ENV },
+      ],
+    });
+  });
+
+  it('clears a missing query environment, keeps permissions unticked and shows a notice', async () => {
+    const missing = '0190f5a8-7b1c-7e2d-8f3a-0000000000dd';
+    await create({ organizationId: ORG, projectId: PROJECT, environmentId: missing });
+    expect(element().querySelector<HTMLSelectElement>('#token-environment')?.value).toBe('');
+    expect(element().textContent).toContain('The linked environment is no longer available.');
+    expect(offered()).toEqual(['project.read', 'project.update', 'environment.create']);
+    await tick('token-permission-project.read');
+    expect(grant()).toEqual({
+      scopes: [{ permission: 'project.read', organizationId: ORG, projectId: PROJECT }],
+    });
+  });
+
+  it('applies a query environment only after the loaded environments confirm it', async () => {
+    let resolveEnvs!: (value: Response) => void;
+    const pendingEnvs = new Promise<Response>((resolve) => {
+      resolveEnvs = resolve;
+    });
+    customFetch = (request) => {
+      const path = new URL(request.url).pathname;
+      if (path === '/api/v1/organizations')
+        return page([{ id: ORG, name: 'Acme', slug: 'acme', ...stamp }]);
+      if (path.endsWith('/projects'))
+        return page([{ id: PROJECT, organizationId: ORG, name: 'Billing', slug: 'billing' }]);
+      return pendingEnvs;
+    };
+    await create({ organizationId: ORG, projectId: PROJECT, environmentId: ENV });
+    expect(element().querySelector('#token-environment')).toBeNull();
+    expect(grant()).toEqual({ scopes: [] });
+    resolveEnvs(page([{ id: ENV, organizationId: ORG, projectId: PROJECT, name: 'production' }]));
+    await settle();
+    expect(element().querySelector<HTMLSelectElement>('#token-environment')?.value).toBe(ENV);
+    expect(offered()).toEqual([
+      'environment.read',
+      'environment.update',
+      'deploy.run',
+      'secret.write',
+    ]);
   });
 });

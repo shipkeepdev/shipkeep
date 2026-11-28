@@ -15,6 +15,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { ReactiveFormsModule } from '@angular/forms';
+import { ActivatedRoute } from '@angular/router';
 
 import { TokenScopePicker } from '../access/token-scope-picker';
 import { I18n, LocalDate, T } from '../ui/i18n';
@@ -42,16 +43,41 @@ export class TokenPanel {
   private readonly injector = inject(Injector);
   private readonly destroyRef = inject(DestroyRef);
   private readonly pendingTasks = inject(PendingTasks);
+  private readonly route = inject(ActivatedRoute, { optional: true });
   private readonly heading = viewChild<ElementRef<HTMLElement>>('heading');
   private readonly firstField = viewChild<ElementRef<HTMLInputElement>>('firstField');
   private readonly feedback = viewChild<ElementRef<HTMLElement>>('feedback');
   private readonly tokenList = viewChild<ElementRef<HTMLElement>>('tokenList');
+  private sessionEpoch = 0;
+  private autoCreateConsumed = false;
   constructor() {
     effect(() => {
       const profile = this.session.profile();
       untracked(() => {
+        const epoch = ++this.sessionEpoch;
         this.store.resetForSession();
-        if (profile) this.pendingTasks.run(() => this.store.refresh());
+        if (profile) {
+          const query = this.route?.snapshot.queryParamMap;
+          const openFromRoute =
+            !this.autoCreateConsumed &&
+            query?.get('section') === 'tokens' &&
+            Boolean(query.get('organizationId'));
+          this.pendingTasks.run(async () => {
+            await this.store.refresh();
+            if (
+              this.destroyRef.destroyed ||
+              epoch !== this.sessionEpoch ||
+              this.session.profile() !== profile ||
+              this.store.state() !== 'ready'
+            ) {
+              return;
+            }
+            if (openFromRoute) {
+              this.autoCreateConsumed = true;
+              if (this.store.beginCreate()) this.focusAfterRender('firstField');
+            }
+          });
+        }
       });
     });
     effect(() => {
