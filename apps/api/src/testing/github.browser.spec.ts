@@ -20,6 +20,7 @@ import {
   submit,
 } from './browser-identity';
 import { enrollTestNode } from './enroll-test-node';
+import { noGithubWrites } from './github-writes';
 
 const API = '/api/v1/organizations';
 const WEBHOOK = 'whsec_test_fake_webhook_secret';
@@ -154,6 +155,7 @@ describe('GitHub in Chromium', () => {
       Promise.resolve(
         'version: 1\nname: billing\nbuild:\n  type: dockerfile\nrun:\n  port: 3000\n',
       ),
+    ...noGithubWrites,
     revoke: () => Promise.resolve(true),
   };
 

@@ -17,6 +17,7 @@ import {
 } from '../git/application/ports';
 
 import { DeploymentPipeline } from './application/deployment-pipeline';
+import { noGithubWrites } from '../../testing/github-writes';
 
 /** A key-shaped value that is no key, put together here so that no scanner reads the source as one. */
 function fakePem(body: string): string {
@@ -92,6 +93,7 @@ describe('deployments built from a repository', () => {
       }),
     branchHead: () => Promise.resolve(HEAD),
     file: () => Promise.resolve(served),
+    ...noGithubWrites,
     revoke: (token) => {
       if (!revocations) return Promise.resolve(false);
       revoked.push(token.expose());
