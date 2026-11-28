@@ -361,7 +361,8 @@ if systemctl is-active --quiet nftables; then systemctl restart nftables; fi
 dir=/opt/shipkeep
 (cd "$dir" && docker compose -f compose.yml -f compose.single-machine.yml down --volumes)
 # ... the server part above (on a separate machine: -f compose.yml only, then the agent part) ...
-rm -f /etc/systemd/system/shipkeep-controlplane.slice
+systemctl disable --now shipkeep-registry-gc.timer 2>/dev/null || true
+rm -f /etc/systemd/system/shipkeep-controlplane.slice /etc/systemd/system/shipkeep-registry-gc.service /etc/systemd/system/shipkeep-registry-gc.timer
 systemctl daemon-reload
 rm -rf -- "$dir"
 ```
