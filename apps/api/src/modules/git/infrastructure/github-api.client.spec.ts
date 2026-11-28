@@ -268,7 +268,7 @@ describe('the writes of a configuration change (#214)', () => {
       ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 
-  it('creates a branch at a commit, and says when the name is taken', async () => {
+  it('creates a branch at a commit, and says when the name is taken or GitHub refuses it', async () => {
     const { client, calls } = github(() => json(201, { ref: 'refs/heads/shipkeep/config-1' }));
     expect(await client.createBranch(token, 'acme-corp/web', 'shipkeep/config-1', commit)).toBe(
       true,
@@ -291,13 +291,67 @@ describe('the writes of a configuration change (#214)', () => {
     expect(taken.calls[1]?.url).toBe(
       'https://api.github.com/repos/acme-corp/web/branches/shipkeep%2Fconfig-1',
     );
+    // A 422 with no branch there is GitHub refusing the branch, as a rule on names does: a
+    // refused change, not GitHub unavailable.
     const refused = github((url) =>
       url.endsWith('/git/refs')
         ? json(422, { message: 'Validation Failed' })
         : new Response(null, { status: 404 }),
     );
+    expect(
+      await refused.client.createBranch(token, 'acme-corp/web', 'shipkeep/config-1', commit),
+    ).toBe('refused');
+    // A failure to ask stays GitHub unavailable.
     await expect(
-      refused.client.createBranch(token, 'acme-corp/web', 'shipkeep/config-1', commit),
+      github(() => json(500, {})).client.createBranch(
+        token,
+        'acme-corp/web',
+        'shipkeep/config-1',
+        commit,
+      ),
+    ).rejects.toBeInstanceOf(ServiceUnavailableException);
+  });
+
+  it("reads a commit's message, and finds the open pull request of a branch", async () => {
+    const { client, calls } = github((url) =>
+      url.includes('/git/commits/')
+        ? json(200, { sha: commit, message: 'Change it\n\nShipkeep-Change: abc' })
+        : json(200, [{ number: 7, html_url: 'https://github.com/acme-corp/web/pull/7' }]),
+    );
+    expect(await client.commitMessage(token, 'acme-corp/web', commit)).toBe(
+      'Change it\n\nShipkeep-Change: abc',
+    );
+    expect(calls[0]?.url).toBe(`https://api.github.com/repos/acme-corp/web/git/commits/${commit}`);
+    expect(
+      await client.openPullRequestFrom(token, 'acme-corp/web', 'shipkeep/config-1', 'main'),
+    ).toEqual({ number: 7, url: 'https://github.com/acme-corp/web/pull/7' });
+    expect(calls[1]?.url).toBe(
+      'https://api.github.com/repos/acme-corp/web/pulls?state=open&head=acme-corp%3Ashipkeep%2Fconfig-1&base=main&per_page=1',
+    );
+    // None open, or no such commit.
+    expect(
+      await github(() => json(200, [])).client.openPullRequestFrom(
+        token,
+        'acme-corp/web',
+        'shipkeep/config-1',
+        'main',
+      ),
+    ).toBeUndefined();
+    expect(
+      await github(() => new Response(null, { status: 404 })).client.commitMessage(
+        token,
+        'acme-corp/web',
+        commit,
+      ),
+    ).toBeUndefined();
+    // An answer that is not what was asked is GitHub unavailable.
+    await expect(
+      github(() => json(200, { number: 7 })).client.openPullRequestFrom(
+        token,
+        'acme-corp/web',
+        'shipkeep/config-1',
+        'main',
+      ),
     ).rejects.toBeInstanceOf(ServiceUnavailableException);
   });
 

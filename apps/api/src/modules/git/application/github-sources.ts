@@ -3,11 +3,14 @@ import { ConflictError, InvalidInputError, type Secret } from '@shipkeep/domain'
 
 import type {
   RepositoryConfig,
+  RepositoryConfigChange,
   RepositoryConfigFile,
   RepositoryLocation,
   RepositorySource,
+  WrittenConfigChange,
 } from '../../apps/application/ports';
-import { validBranch, validCommit, validConfigPath } from '../domain/github-api';
+import { configFileChanged } from '../../apps/domain/config-file';
+import { type TokenScope, validBranch, validCommit, validConfigPath } from '../domain/github-api';
 
 import {
   GIT_TRANSACTION,
@@ -119,6 +122,117 @@ export class GithubSources implements RepositorySource {
     }
   }
 
+  async writeConfig(
+    organizationId: string,
+    location: RepositoryLocation,
+    change: RepositoryConfigChange,
+  ): Promise<WrittenConfigChange> {
+    if (!validBranch(location.branch) || !validConfigPath(location.configPath))
+      throw new InvalidInputError(
+        'invalid_repository_location',
+        'This application names a branch or a path Git does not allow.',
+      );
+    // Made by RepositoryConfigs: anything else is a programming error, not a request's.
+    if (!CHANGE_ID.test(change.changeId)) throw new Error('a configuration change has no name');
+    const { token } = await this.mint(organizationId, location, WRITE);
+    try {
+      const repository = await this.github.repository(
+        token,
+        location.installationId,
+        location.repositoryId,
+      );
+      if (!repository) throw unreachable();
+      const { fullName } = repository;
+      const head = await this.github.branchHead(token, fullName, location.branch);
+      if (!head)
+        throw new InvalidInputError(
+          'github_branch_not_found',
+          'This branch does not exist in the repository.',
+          { branch: location.branch },
+        );
+      const current = await this.github.fileAt(token, fullName, location.configPath, head);
+      if (current?.blobSha !== change.blobSha) throw configFileChanged();
+      // Every commit of the change carries its name (#214): an attempt that repeats an earlier one
+      // finds what that one wrote.
+      const marker = changeMarker(change.changeId);
+      const message = `${change.title}\n\n${change.body}\n\n${marker}`;
+      const file = {
+        path: location.configPath,
+        text: change.text,
+        blobSha: change.blobSha,
+        message,
+      };
+      if (change.mode === 'commit') {
+        const written = await this.github.writeFile(token, fullName, {
+          ...file,
+          branch: location.branch,
+        });
+        if (written !== 'refused') return { via: 'commit', ...written };
+        // Refused: the file changed meanwhile, or a rule protects the branch. On an unchanged
+        // file the change becomes a pull request, the more reversible (ADR 0031).
+        const now = await this.github.fileAt(token, fullName, location.configPath, location.branch);
+        if (now?.blobSha !== change.blobSha) throw configFileChanged();
+      }
+      // The pull request's branch is named after the change, so a repeated attempt finds it.
+      const branch = `shipkeep/config-${change.changeId.slice(0, 16)}`;
+      const created = await this.github.createBranch(token, fullName, branch, head);
+      if (created === 'refused') throw refusedChange();
+      let commitSha: string;
+      const at = created ? head : await this.github.branchHead(token, fullName, branch);
+      if (at === head) {
+        // A new branch, or one an earlier attempt made but did not write to yet.
+        const written = await this.github.writeFile(token, fullName, { ...file, branch });
+        if (written === 'refused') throw refusedChange();
+        commitSha = written.commitSha;
+      } else if (at && (await this.github.commitMessage(token, fullName, at))?.includes(marker)) {
+        commitSha = at;
+      } else {
+        // A branch of that name holds something else: nothing is written over it.
+        throw refusedChange();
+      }
+      const opened =
+        (await this.github.openPullRequestFrom(token, fullName, branch, location.branch)) ??
+        (await this.github.openPullRequest(token, fullName, {
+          head: branch,
+          base: location.branch,
+          title: change.title,
+          body: change.body,
+        }));
+      if (opened === 'refused') throw refusedChange();
+      return { via: 'pull_request', commitSha, branch, ...opened };
+    } finally {
+      await this.github.revoke(token);
+    }
+  }
+
+  async writtenChange(
+    organizationId: string,
+    location: RepositoryLocation,
+    changeId: string,
+  ): Promise<WrittenConfigChange | undefined> {
+    if (!validBranch(location.branch) || !CHANGE_ID.test(changeId)) return undefined;
+    const { token } = await this.mint(organizationId, location);
+    try {
+      const repository = await this.github.repository(
+        token,
+        location.installationId,
+        location.repositoryId,
+      );
+      if (!repository) throw unreachable();
+      const head = await this.github.branchHead(token, repository.fullName, location.branch);
+      if (!head) return undefined;
+      const message = await this.github.commitMessage(token, repository.fullName, head);
+      if (!message?.includes(changeMarker(changeId))) return undefined;
+      return {
+        via: 'commit',
+        commitSha: head,
+        url: `https://github.com/${repository.fullName}/commit/${head}`,
+      };
+    } finally {
+      await this.github.revoke(token);
+    }
+  }
+
   async buildAccess(
     organizationId: string,
     location: { installationId: number; repositoryId: number },
@@ -151,6 +265,7 @@ export class GithubSources implements RepositorySource {
   private async mint(
     organizationId: string,
     location: { installationId: number; repositoryId: number },
+    permissions: TokenScope['permissions'] = READ,
   ): Promise<{ token: Secret; expiresAt: Date }> {
     const found = await this.transaction.runTenant(organizationId, async () => ({
       app: await this.store.credentials(organizationId),
@@ -169,12 +284,36 @@ export class GithubSources implements RepositorySource {
     const jwt = this.github.appJwt(found.app.appId, found.app.privateKey, new Date());
     const minted = await this.github.installationToken(jwt, location.installationId, {
       repositoryIds: [location.repositoryId],
-      permissions: { contents: 'read', metadata: 'read' },
+      permissions,
     });
     // GitHub refuses a token for a repository the installation does not include.
     if (!minted) throw unreachable();
     return minted;
   }
+}
+
+/** A change's name, as `RepositoryConfigs` makes it: a SHA-256 in hex. */
+const CHANGE_ID = /^[0-9a-f]{64}$/;
+
+/** The line every commit of a change carries, at the end of its message. */
+function changeMarker(changeId: string): string {
+  return `Shipkeep-Change: ${changeId}`;
+}
+
+/** What reading a repository's file needs, and what writing a change of it needs (ADR 0031). */
+const READ: TokenScope['permissions'] = { contents: 'read', metadata: 'read' };
+const WRITE: TokenScope['permissions'] = {
+  contents: 'write',
+  pull_requests: 'write',
+  metadata: 'read',
+};
+
+/** GitHub took the branch but not the change: a rule of the repository refuses it. */
+function refusedChange(): ConflictError {
+  return new ConflictError(
+    'repository_refused_change',
+    'GitHub refused the change: a rule of the repository may forbid it. Change the file in the repository.',
+  );
 }
 
 function unreachable(): InvalidInputError {

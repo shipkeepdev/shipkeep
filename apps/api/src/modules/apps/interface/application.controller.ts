@@ -1,8 +1,9 @@
-import { Body, Controller, Get, HttpCode, Param, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Req, UseInterceptors } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiCookieAuth,
   ApiCreatedResponse,
+  ApiHeader,
   ApiOkResponse,
   ApiTags,
 } from '@nestjs/swagger';
@@ -12,6 +13,7 @@ import { IdentityAttemptLimit } from '../../identity/interface/identity-rate.gua
 import { RequireTenant } from '../../identity/interface/route-access';
 import { type IdentityRequest, resourceContext } from '../../identity/interface/session-http';
 import { ApplicationCommands } from '../application/application-commands';
+import { ApplicationReplayInterceptor } from './application-replay.interceptor';
 import { RepositoryConfigs } from '../application/repository-configs';
 import { EnvironmentClone } from '../application/environment-clone';
 import type { ApplicationTarget } from '../domain/application';
@@ -31,6 +33,7 @@ import {
   RepositoryConfigDto,
   RepositoryConfigPreviewDto,
   UpdateApplicationConfigDto,
+  WrittenConfigChangeDto,
 } from './application.dto';
 
 const APPLICATIONS = ':organizationId/projects/:projectId/environments/:environmentId/applications';
@@ -192,6 +195,35 @@ export class ApplicationController {
       body.blobSha,
     );
     return { ...preview, diff: preview.diff.map((line) => ({ ...line })) };
+  }
+
+  /**
+   * Writes a change of that file to the repository, as a pull request or a commit (#214). A
+   * browser session only: it writes to GitHub with the organization's App.
+   */
+  @Post(`${APPLICATIONS}/:applicationId/repository-config/changes`)
+  @HttpCode(201)
+  @RequireTenant('deploy.run', 'environment')
+  @UseInterceptors(ApplicationReplayInterceptor)
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description:
+      'Lowercase UUIDv4/v7. A retry with the same key and body is answered with the first answer, kept encrypted for five minutes, and writes nothing again.',
+  })
+  @ApiCreatedResponse({ type: WrittenConfigChangeDto })
+  async changeRepositoryConfig(
+    @Req() request: IdentityRequest,
+    @Param() path: ApplicationPathDto,
+    @Body() body: RepositoryConfigChangeDto,
+  ): Promise<WrittenConfigChangeDto> {
+    return this.repositoryConfigs.change(
+      resourceContext(request),
+      target(path),
+      path.applicationId,
+      body.config,
+      body.blobSha,
+    );
   }
 
   @Post(`${APPLICATIONS}/:applicationId/config`)

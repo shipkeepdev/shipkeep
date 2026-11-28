@@ -228,6 +228,22 @@ export class DiffLineDto {
   count?: number;
 }
 
+/** Where a change of a Git application's shipkeep.yml went (#214). */
+export class WrittenConfigChangeDto {
+  @ApiProperty({
+    enum: ['commit', 'pull_request'],
+    description: "A commit on the application's branch, or a pull request into it.",
+  })
+  via!: 'commit' | 'pull_request';
+  @ApiProperty({ pattern: BLOB.source, description: 'The commit that holds the change.' })
+  commitSha!: string;
+  @ApiProperty({ description: "The commit's or the pull request's page on GitHub." }) url!: string;
+  @ApiPropertyOptional({ description: 'The pull request, with via pull_request.' })
+  number?: number;
+  @ApiPropertyOptional({ description: "The pull request's branch, with via pull_request." })
+  branch?: string;
+}
+
 /** What a change would write (#214). */
 export class RepositoryConfigPreviewDto {
   @ApiProperty() fullName!: string;

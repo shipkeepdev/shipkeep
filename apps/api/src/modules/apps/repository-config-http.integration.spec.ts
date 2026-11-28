@@ -3,8 +3,10 @@ import { createHash } from 'node:crypto';
 import { Secret } from '@shipkeep/domain';
 import { MAX_CONFIG_BYTES } from '@shipkeep/config-schema';
 import { Client } from 'pg';
+import { v7 as uuidv7 } from 'uuid';
 import { parse } from 'yaml';
 
+import { auditLog } from '../../testing/audit-log';
 import { AppConfig } from '../../platform/config/app-config';
 import { noGithubWrites } from '../../testing/github-writes';
 import { tenantHttpFixture } from '../../testing/tenant-http';
@@ -48,6 +50,13 @@ describe("a Git application's shipkeep.yml over HTTP", () => {
   const scopes: TokenScope[] = [];
   const revoked: string[] = [];
   let file = FILE;
+  /** Branches GitHub refuses a commit on, as a protected branch does. */
+  const protectedBranches = new Set<string>();
+  // The branch's head and each commit's message: a commit on main moves it on, as GitHub would.
+  let mainHead = HEAD;
+  const messages = new Map<string, string>([[HEAD, 'Add shipkeep.yml']]);
+  const written: { branch: string; text: string }[] = [];
+  const pulls: { head: string; base: string; title: string; body: string }[] = [];
   const manifests: GithubManifests = {
     convert: () =>
       Promise.resolve({
@@ -80,13 +89,38 @@ describe("a Git application's shipkeep.yml over HTTP", () => {
         private: true,
       }),
     branchHead: (_token, _fullName, branch) =>
-      Promise.resolve(branch === 'main' ? HEAD : undefined),
+      Promise.resolve(branch === 'main' ? mainHead : undefined),
     file: () => Promise.resolve(file),
     ...noGithubWrites,
     fileAt: (_token, _fullName, path, ref) =>
       Promise.resolve(
-        path === 'shipkeep.yml' && ref === HEAD ? { blobSha: blobOf(file), text: file } : undefined,
+        path === 'shipkeep.yml' && (ref === mainHead || ref === 'main')
+          ? { blobSha: blobOf(file), text: file }
+          : undefined,
       ),
+    createBranch: () => Promise.resolve(true),
+    commitMessage: (_token, _fullName, commit) => Promise.resolve(messages.get(commit)),
+    openPullRequestFrom: () => Promise.resolve(undefined),
+    writeFile: (_token, _fullName, change) => {
+      if (protectedBranches.has(change.branch)) return Promise.resolve('refused');
+      written.push({ branch: change.branch, text: change.text });
+      messages.set('e'.repeat(40), change.message);
+      if (change.branch === 'main') {
+        file = change.text;
+        mainHead = 'e'.repeat(40);
+      }
+      return Promise.resolve({
+        commitSha: 'e'.repeat(40),
+        url: `https://github.com/acme-corp/storefront/commit/${'e'.repeat(40)}`,
+      });
+    },
+    openPullRequest: (_token, _fullName, request) => {
+      pulls.push({ ...request });
+      return Promise.resolve({
+        number: 7,
+        url: 'https://github.com/acme-corp/storefront/pull/7',
+      });
+    },
     revoke: (token) => {
       revoked.push(token.expose());
       return Promise.resolve(true);
@@ -240,5 +274,139 @@ describe("a Git application's shipkeep.yml over HTTP", () => {
     expect((await fixture.get(imagePath, 'owner').expect(409)).body).toMatchObject({
       code: 'application_not_from_repository',
     });
+  });
+  it('writes a change as a pull request by default, audited, and leaves the application alone', async () => {
+    const next = document();
+    next.scale['replicas'] = 3;
+    const before = (
+      await fixture.get(`${fixture.environment}/applications/${applicationId}`, 'owner').expect(200)
+    ).body as { configSha: string };
+    const answer = await fixture
+      .post(`${path()}/changes`, 'owner', { config: next, blobSha: blobOf(FILE) })
+      .expect(201);
+    expect(answer.body).toMatchObject({
+      via: 'pull_request',
+      number: 7,
+      url: 'https://github.com/acme-corp/storefront/pull/7',
+      commitSha: 'e'.repeat(40),
+    });
+    const branch = (answer.body as { branch: string }).branch;
+    expect(branch).toMatch(/^shipkeep\/config-[0-9a-f]{16}$/);
+    expect(written.at(-1)).toEqual({
+      branch,
+      text: FILE.replace('replicas: 1 #', 'replicas: 3 #'),
+    });
+    expect(pulls.at(-1)).toMatchObject({
+      head: branch,
+      base: 'main',
+      title: 'Change the configuration of storefront',
+    });
+    // No person goes to GitHub: the audit log keeps who asked.
+    expect(JSON.stringify(pulls.at(-1))).not.toContain('@');
+    expect(scopes.at(-1)).toEqual({
+      repositoryIds: [601],
+      permissions: { contents: 'write', pull_requests: 'write', metadata: 'read' },
+    });
+    expect(revoked).toHaveLength(scopes.length);
+    const events = await auditLog().findMany({
+      where: { action: 'application.config_written', targetId: applicationId },
+    });
+    expect(events.map((event) => [event.actorId, event.metadata])).toEqual([
+      [
+        fixture.actors.owner.id,
+        expect.objectContaining({
+          via: 'pull_request',
+          pullRequest: 7,
+          pullRequestBranch: branch,
+          fromCommit: HEAD,
+          url: 'https://github.com/acme-corp/storefront/pull/7',
+        }),
+      ],
+    ]);
+    // The repository's push applies it, like any other: nothing changed in Shipkeep yet.
+    const after = (
+      await fixture.get(`${fixture.environment}/applications/${applicationId}`, 'owner').expect(200)
+    ).body as { configSha: string };
+    expect(after.configSha).toBe(before.configSha);
+  });
+
+  it('commits when the project says so, and makes a pull request of what a protected branch refuses', async () => {
+    await admin.query(`UPDATE projects SET git_write_mode = 'commit' WHERE id = $1`, [
+      fixture.projectId,
+    ]);
+    const next = document();
+    next.scale['replicas'] = 2;
+    const committed = await fixture
+      .post(`${path()}/changes`, 'owner', { config: next, blobSha: blobOf(FILE) })
+      .expect(201);
+    expect(committed.body).toMatchObject({ via: 'commit', commitSha: 'e'.repeat(40) });
+    expect(written.at(-1)).toMatchObject({ branch: 'main' });
+    // Sent again, as after an answer that never arrived: the branch moved on by this very change,
+    // which is answered with its commit, not written twice.
+    const count = written.length;
+    const again = await fixture
+      .post(`${path()}/changes`, 'owner', { config: next, blobSha: blobOf(FILE) })
+      .expect(201);
+    expect(again.body).toEqual(committed.body);
+    expect(written).toHaveLength(count);
+    // On the file as it is now, a protected branch makes a pull request of another change.
+    protectedBranches.add('main');
+    const later = document();
+    later.scale['replicas'] = 6;
+    const pulled = await fixture
+      .post(`${path()}/changes`, 'owner', { config: later, blobSha: blobOf(file) })
+      .expect(201);
+    expect(pulled.body).toMatchObject({ via: 'pull_request', number: 7 });
+    protectedBranches.clear();
+    file = FILE;
+    mainHead = HEAD;
+    await admin.query(`UPDATE projects SET git_write_mode = 'pull_request' WHERE id = $1`, [
+      fixture.projectId,
+    ]);
+  });
+
+  it('answers a retry with the same key once more, and writes nothing again', async () => {
+    const next = document();
+    next.scale['replicas'] = 4;
+    // A large configuration too: its retry is matched by the body's digest.
+    next['env'] = Object.fromEntries(
+      Array.from({ length: 200 }, (_, index) => [`SETTING_${String(index)}`, 'x'.repeat(250)]),
+    );
+    const key = uuidv7();
+    const count = written.length;
+    const first = await fixture
+      .post(`${path()}/changes`, 'owner', { config: next, blobSha: blobOf(FILE) })
+      .set('Idempotency-Key', key)
+      .expect(201);
+    const again = await fixture
+      .post(`${path()}/changes`, 'owner', { config: next, blobSha: blobOf(FILE) })
+      .set('Idempotency-Key', key)
+      .expect(201);
+    expect(again.body).toEqual(first.body);
+    expect(written).toHaveLength(count + 1);
+  });
+
+  it('writes nothing for a change that changes nothing, or made against another text', async () => {
+    const count = written.length;
+    expect(
+      (
+        await fixture
+          .post(`${path()}/changes`, 'owner', { config: document(), blobSha: blobOf(FILE) })
+          .expect(400)
+      ).body,
+    ).toMatchObject({ code: 'config_unchanged' });
+    const next = document();
+    next.scale['replicas'] = 5;
+    expect(
+      (
+        await fixture
+          .post(`${path()}/changes`, 'owner', { config: next, blobSha: 'f'.repeat(40) })
+          .expect(409)
+      ).body,
+    ).toMatchObject({ code: 'config_file_changed' });
+    await fixture
+      .post(`${path()}/changes`, 'outsider', { config: next, blobSha: blobOf(FILE) })
+      .expect(404);
+    expect(written).toHaveLength(count);
   });
 });
