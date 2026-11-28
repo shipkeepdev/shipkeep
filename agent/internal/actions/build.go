@@ -138,7 +138,8 @@ func buildRequest(action *agentv1.BuildImage) (buildkit.Request, time.Duration, 
 		return buildkit.Request{}, 0, errInput
 	}
 	token := action.GetGitToken()
-	if len(token) > 4096 || (token != "" && !printable(token, 4096)) {
+	// A credential shorter than the redactor hides could reach the build's output: refused.
+	if len(token) > 4096 || (token != "" && (len(token) < minHiddenSecret || !printable(token, 4096))) {
 		return buildkit.Request{}, 0, errInput
 	}
 	context, ok := buildPath(action.GetContext(), true)
@@ -174,7 +175,7 @@ func buildRequest(action *agentv1.BuildImage) (buildkit.Request, time.Duration, 
 		return buildkit.Request{}, 0, errInput
 	}
 	registry, err := registryAuth(action.GetPushCredentials(), target[1])
-	if err != nil || registry == nil {
+	if err != nil || registry == nil || len(registry.Password.Expose()) < minHiddenSecret {
 		return buildkit.Request{}, 0, errInput
 	}
 	timeout, ok := buildTimeout(action.GetLimits())
@@ -241,11 +242,15 @@ func buildTimeout(limits *agentv1.BuildImage_Limits) (time.Duration, bool) {
 	return timeout, true
 }
 
+// minHiddenSecret is the shortest secret the redactor hides: shorter ones would hide common
+// text, so a build refuses credentials shorter than this instead of printing them.
+const minHiddenSecret = 4
+
 // redactor hides the build's own secrets from its output, whatever printed them.
 func redactor(values ...secret.String) func(string) string {
 	var hidden []string
 	for _, value := range values {
-		if text := value.Expose(); len(text) >= 4 {
+		if text := value.Expose(); len(text) >= minHiddenSecret {
 			hidden = append(hidden, text)
 		}
 	}
