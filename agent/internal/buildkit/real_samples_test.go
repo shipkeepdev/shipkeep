@@ -78,6 +78,7 @@ func TestRealBuildKitKeepsADockerfileOffTheHost(t *testing.T) {
 			if err == nil || !strings.Contains(err.Error(), c.refusal) || strings.Contains(output, "reached the host") {
 				t.Fatalf("error: %v\noutput:\n%s", err, output)
 			}
+			t.Logf("refused: %v", err)
 		})
 	}
 }
