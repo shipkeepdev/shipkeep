@@ -293,7 +293,8 @@ const IDLE_POLL_MS = 60_000;
               }
             </div>
             @if (section() === 'yml') {
-              <div class="legacy-form">
+              <!-- A Git application's editor is drawn in the design's own card, not the older form. -->
+              <div [class.legacy-form]="!current.repository">
                 <sk-configuration-editor [application]="current" [environment]="environment()" />
               </div>
             } @else if (section() === 'rollback') {

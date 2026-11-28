@@ -255,4 +255,9 @@ export class RepositoryConfigPreviewDto {
   @ApiProperty({ description: 'The file with the change.' }) changedText!: string;
   @ApiProperty({ type: [DiffLineDto], description: 'Its changed lines, with three around each.' })
   diff!: DiffLineDto[];
+  @ApiProperty({
+    enum: ['commit', 'pull_request'],
+    description: "How writing it goes: the project's gitWriteMode.",
+  })
+  writeMode!: 'commit' | 'pull_request';
 }

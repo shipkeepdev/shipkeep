@@ -213,8 +213,14 @@ describe("a Git application's shipkeep.yml over HTTP", () => {
     const preview = await fixture
       .post(`${path()}/preview`, 'owner', { config: next, blobSha: blobOf(FILE) })
       .expect(200);
-    const body = preview.body as { changedText: string; diff: unknown[]; blobSha: string };
+    const body = preview.body as {
+      changedText: string;
+      diff: unknown[];
+      blobSha: string;
+      writeMode: string;
+    };
     expect(body.blobSha).toBe(blobOf(FILE));
+    expect(body.writeMode).toBe('pull_request');
     expect(body.changedText).toBe(FILE.replace('replicas: 1 #', 'replicas: 3 #'));
     expect(body.diff).toEqual([
       { kind: 'skipped', count: 6 },

@@ -175,7 +175,7 @@ describe('workspace pages', () => {
     await submit();
     expect(requests.find((r) => r.method === 'POST')).toMatchObject({
       path: `/api/v1/organizations/${ORG}/projects`,
-      body: { name: 'Web', slug: 'web', gitWriteMode: 'commit' },
+      body: { name: 'Web', slug: 'web', gitWriteMode: 'pull_request' },
     });
     expect(element().querySelector('main')?.textContent).toContain('Web');
   });
