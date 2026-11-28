@@ -108,7 +108,8 @@ case ${1:-} in
       fi
       printf 'Backup stored as %s.\n' "$name" >&2
     else
-      name=$(basename -- "$2")
+      # Without a command substitution, which would drop a trailing line break from the name.
+      name=${2##*/}
       archive_name "$name" 'The archive is restored under the name it is created with.'
       fresh "$2"
       if ! dump | compose run --rm -T backup create "$name" >"$partial"; then
@@ -130,7 +131,7 @@ case ${1:-} in
     [[ -f $identity && -r $identity ]] || fail "Cannot read the identity file $identity."
     read_compose_files
     # The archive must be the one asked for: its manifest names the archive it was created as.
-    if [[ $archive == s3:* ]]; then name=${archive#s3:}; else name=$(basename -- "$archive"); fi
+    if [[ $archive == s3:* ]]; then name=${archive#s3:}; else name=${archive##*/}; fi
     archive_name "$name" "Restore the archive under the name it was created with."
     if [[ $archive == s3:* ]]; then
       # Fetched into a private directory: it is encrypted, and removed when this ends.
@@ -140,6 +141,9 @@ case ${1:-} in
       archive=$work/archive.age
     fi
     [[ -f $archive && -r $archive ]] || fail "Cannot read the archive $archive."
+    # The whole archive is checked before anything changes: who made it, its name, every chunk.
+    cat -- "$identity" "$archive" | compose run --rm -T backup verify "$name" ||
+      fail 'The archive was not restored; nothing was changed.'
     if [[ ${4:-} != --replace-this-installation ]]; then
       [[ -z ${4:-} ]] || usage
       printf 'This replaces the database and the key-encryption key of this installation with the backup. Type replace to continue: ' >&2

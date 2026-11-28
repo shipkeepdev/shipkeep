@@ -27,6 +27,7 @@ export const BACKUP_USAGE = [
   'Usage, through deploy/control-plane/backup.sh, which pipes the database through these commands:',
   '  node backup.js keygen',
   '  node backup.js create NAME',
+  '  node backup.js verify NAME',
   '  node backup.js restore-database NAME',
   '  node backup.js restore-key --replace-this-installation NAME',
   'and, in the container that reaches the S3 storage and never sees the key:',
@@ -63,6 +64,7 @@ export function parseBackupCommand(argv: readonly string[]): BackupCommand {
   if (rest.length === 1 && name && ARCHIVE_NAME.test(name)) {
     // The archive's name: what create binds into it, and what a restore asks for (#439).
     if (action === 'create') return { action: 'backup-create', name };
+    if (action === 'verify') return { action: 'backup-verify', name };
     if (action === 'restore-database') return { action: 'backup-restore-database', name };
     if (action === 'upload') return { action: 'backup-upload', name };
     if (action === 'download') return { action: 'backup-download', name };
@@ -76,6 +78,7 @@ export type BackupCommand =
   | {
       readonly action:
         | 'backup-create'
+        | 'backup-verify'
         | 'backup-restore-database'
         | 'backup-restore-key'
         | 'backup-upload'
@@ -130,6 +133,23 @@ export async function runBackup(command: BackupCommand, io: BackupIo): Promise<v
         Readable.fromWeb(archive as Parameters<typeof Readable.fromWeb>[0]),
         io.stdout,
       );
+      return;
+    }
+    case 'backup-verify': {
+      binaryIn(
+        io,
+        'Standard input is the identity file, then the archive: backup.sh restore sends them.',
+      );
+      // The whole archive: its manifest and name, then every chunk to its end. backup.sh restore
+      // runs this before it changes anything, so that a refused archive leaves everything running.
+      const opened = await open(io, command.name);
+      await drain(opened.dump);
+      // A version 1 archive cannot show its name: open() said so, with its creation time.
+      if (opened.manifest.version !== 1)
+        await write(
+          io.stderr,
+          `The archive is ${command.name}, created at ${opened.manifest.createdAt}.\n`,
+        );
       return;
     }
     case 'backup-restore-database': {

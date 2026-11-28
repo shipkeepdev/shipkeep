@@ -293,6 +293,7 @@ describe('backup commands', () => {
   it('reads a closed list, and restores a key only when told so in full', () => {
     expect(parseBackupCommand(['keygen'])).toEqual({ action: 'backup-keygen' });
     expect(parseBackupCommand(['create', NAME])).toEqual({ action: 'backup-create', name: NAME });
+    expect(parseBackupCommand(['verify', NAME])).toEqual({ action: 'backup-verify', name: NAME });
     expect(parseBackupCommand(['restore-database', NAME])).toEqual({
       action: 'backup-restore-database',
       name: NAME,
@@ -304,6 +305,8 @@ describe('backup commands', () => {
     for (const argv of [
       [],
       ['create'],
+      ['verify'],
+      ['verify', '../kek.age'],
       ['restore-database'],
       ['restore-key', '--replace-this-installation'],
       ['restore-key', NAME],
@@ -325,7 +328,12 @@ describe('backup commands', () => {
   });
 
   async function run(
-    action: 'backup-keygen' | 'backup-create' | 'backup-restore-database' | 'backup-restore-key',
+    action:
+      | 'backup-keygen'
+      | 'backup-create'
+      | 'backup-verify'
+      | 'backup-restore-database'
+      | 'backup-restore-key',
     input: Uint8Array,
     env: Record<string, string>,
     name = NAME,
@@ -398,6 +406,10 @@ describe('backup commands', () => {
     const data = dump();
     const created = await run('backup-create', data, at.env);
     const input = new Uint8Array(Buffer.concat([identityFile, created.out]));
+    // What backup.sh restore checks first: the whole archive, which writes nothing.
+    const verified = await run('backup-verify', input, at.env);
+    expect(verified.out).toHaveLength(0);
+    expect(verified.err).toBe(`The archive is ${NAME}, created at 2026-11-23T10:00:00.000Z.\n`);
     const restored = await run('backup-restore-database', input, at.env);
     expect(restored.out).toEqual(data);
 
@@ -419,9 +431,10 @@ describe('backup commands', () => {
     const changed = sealed.slice();
     changed[changed.length - 10] = (changed[changed.length - 10] ?? 0) ^ 1;
     await reinstall(at);
-    await expect(
-      run('backup-restore-key', new Uint8Array(Buffer.concat([identityFile, changed])), at.env),
-    ).rejects.toThrow('The archive is damaged or was changed');
+    for (const action of ['backup-verify', 'backup-restore-key'] as const)
+      await expect(
+        run(action, new Uint8Array(Buffer.concat([identityFile, changed])), at.env),
+      ).rejects.toThrow('The archive is damaged or was changed');
     expect(await readFile(at.kekFile)).toEqual(Buffer.alloc(32, 7));
     const names = await readdir(at.directory);
     expect(names.filter((name) => name.startsWith('kek.'))).toEqual([]);
@@ -456,7 +469,11 @@ describe('backup commands', () => {
     const served = (await run('backup-create', dump(), at.env, older)).out;
     await reinstall(at);
     const input = new Uint8Array(Buffer.concat([identityFile, served]));
-    for (const action of ['backup-restore-database', 'backup-restore-key'] as const)
+    for (const action of [
+      'backup-verify',
+      'backup-restore-database',
+      'backup-restore-key',
+    ] as const)
       await expect(run(action, input, at.env, NAME)).rejects.toThrow(
         `This archive was created as ${older}, not ${NAME}: it is not restored.`,
       );
