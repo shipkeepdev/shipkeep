@@ -11,6 +11,9 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io/fs"
+	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -49,6 +52,8 @@ const (
 type Request struct {
 	// Kind is the builder: a Dockerfile, Railpack or Nixpacks.
 	Kind Kind
+	// CacheNamespace keeps the application's cache mounts its own; Client.Build sets it.
+	CacheNamespace string
 	// Repository is an HTTPS Git URL, without credentials.
 	Repository string
 	// Commit is the full commit hash fetched.
@@ -81,13 +86,25 @@ type Client struct {
 	Address string
 	// WorkDir holds the copy of the repository and the plan a Railpack build reads from this
 	// server's disk, for that build only. A server runs one build at a time (ADR 0032), so each
-	// Railpack build empties it first, of whatever an interrupted build left.
+	// build empties it first, of whatever an interrupted build left.
 	WorkDir string
+	// CacheSecret keys the applications' cache namespaces (LoadCacheSecret).
+	CacheSecret []byte
 }
 
 // Build runs the build and pushes the image, sending each line of its output to line, and answers
 // the pushed manifest's digest.
 func (c Client) Build(ctx context.Context, request Request, line func(string)) (string, error) {
+	if len(c.CacheSecret) == 0 {
+		return "", errors.New("the agent has no build cache key")
+	}
+	request.CacheNamespace = CacheNamespace(c.CacheSecret, request.Target)
+	// One build at a time (ADR 0032): what is here was left by a build an agent restart cut.
+	if c.WorkDir != "" {
+		if err := emptyDir(c.WorkDir); err != nil {
+			return "", fmt.Errorf("clear the build directory: %w", err)
+		}
+	}
 	daemon, err := client.New(ctx, c.Address)
 	if err != nil {
 		return "", fmt.Errorf("%w: %w", ErrUnavailable, err)
@@ -185,6 +202,8 @@ func SolveOptions(request Request, tokenName, headerName string) client.SolveOpt
 	for name, value := range request.Args {
 		attrs["build-arg:"+name] = value
 	}
+	// The Dockerfile's cache mounts are the application's own (BuildKit's namespace for them).
+	attrs["build-arg:BUILDKIT_CACHE_MOUNT_NS"] = request.CacheNamespace
 	return client.SolveOpt{
 		Frontend:       "dockerfile.v0",
 		FrontendAttrs:  attrs,
@@ -227,4 +246,23 @@ func (a *registryAuth) Credentials(_ context.Context, request *auth.CredentialsR
 		return &auth.CredentialsResponse{}, nil
 	}
 	return &auth.CredentialsResponse{Username: a.credentials.Username, Secret: a.credentials.Password.Expose()}, nil
+}
+
+// emptyDir removes what dir holds and keeps dir itself: on a server, the installer made it on the
+// builds' filesystem, whose root the agent cannot write (#548). A missing dir is empty.
+func emptyDir(dir string) error {
+	entries, err := os.ReadDir(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("read %s: %w", dir, err)
+	}
+	for _, entry := range entries {
+		// RemoveAll removes a link, never what it points to.
+		if err := os.RemoveAll(filepath.Join(dir, entry.Name())); err != nil {
+			return fmt.Errorf("remove %s: %w", entry.Name(), err)
+		}
+	}
+	return nil
 }

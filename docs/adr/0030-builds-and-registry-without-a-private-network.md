@@ -4,6 +4,7 @@
 - Date: 2026-11-24
 - Amends: ADR 0012
 - Amended: 2026-11-27, Railpack reads a copy of the repository (issue #215)
+- Amended: 2026-11-27, builds have a filesystem of their own (issue #548)
 
 ## Context
 
@@ -27,7 +28,8 @@ ADR 0012 holds for BuildKit:
 - rootless `buildkitd` runs as `shipkeep-build`, which is not in the `docker` group and cannot reach the Docker socket;
 - the agent drives it through its gRPC socket, with typed requests and never a shell;
 - limits apply per build;
-- the installer sets up cgroup delegation, subordinate ID ranges and the AppArmor profile.
+- the installer sets up cgroup delegation, subordinate ID ranges and the AppArmor profile;
+- BuildKit's state and Railpack's copy of the repository live on a filesystem of their own, a fixed share of the server's disk reserved at installation (issue #548): a build that fills it fails, and the disk of the applications and the control plane is not touched.
 
 What changes is the network. ADR 0023's kernel rule only keeps loopback away, and its proxy only sees what goes through it, which `RUN` steps need not do. So `shipkeep-build`'s traffic gets a rule of its own, in the same nftables table, matched on its user:
 
@@ -40,10 +42,10 @@ What changes is the network. ADR 0023's kernel rule only keeps loopback away, an
 The three of ADR 0012:
 
 - **`dockerfile`**: BuildKit's own frontend.
-- **`railpack`**: Railpack (MIT) writes its plan in a container, and BuildKit builds it with Railpack's frontend image. That frontend reads the repository and the plan only from directories the build's client serves, never from a source BuildKit fetched. So BuildKit fetches the repository and writes it, with the plan, to a directory of the agent's on the server (mode 0700, under its state directory); the agent serves both to the frontend through the build's session, without the Git token, and deletes them after the build. One build runs at a time on a server (ADR 0032), so a Railpack build first deletes whatever an interrupted one left. The build arguments are build secrets, as Railpack reads them: they are not in the image.
+- **`railpack`**: Railpack (MIT) writes its plan in a container, and BuildKit builds it with Railpack's frontend image. That frontend reads the repository and the plan only from directories the build's client serves, never from a source BuildKit fetched. So BuildKit fetches the repository and writes it, with the plan, to a directory of the agent's on the server (mode 0700, under its state directory); the agent serves both to the frontend through the build's session, without the Git token, and deletes them after the build. One build runs at a time on a server (ADR 0032), so a Railpack build first deletes whatever an interrupted one left. The build arguments reach it as build secrets, Railpack's way of passing them: they are not in the image. They are not secret values (`shipkeep.yml` says so), and may show in the build output, as any build argument.
 - **`nixpacks`**: Nixpacks (MIT) writes its Dockerfile in a container, without network, and BuildKit builds it over the repository with the Dockerfile frontend. Nixpacks writes no plan file: the build arguments it would pass to `docker build` are read from the script it writes beside its Dockerfile, keeping only environment variable names and never BuildKit's own (`BUILDKIT_…`). It declares the application's arguments in its Dockerfile, which also sets them in the image's environment.
 
-Railpack's image and Nixpacks' release archive are pinned in the agent, by digest and by SHA-256, never on the host, so the agent still executes nothing on the host (CLAUDE.md rule 3). Their cache mounts are each application's own: a key derived from the application's repository in the registry.
+Railpack's image and Nixpacks' release archive are pinned in the agent, by digest and by SHA-256, never on the host, so the agent still executes nothing on the host (CLAUDE.md rule 3). The images their builds start from (Railpack's builder and runtime, Nixpacks' base) are the ones those pinned versions name, by tag. Each application's cache mounts are its own, for the three build types: their namespace is an HMAC of the application's repository in the registry under a key only the agent holds, in its state directory, so a build that knows another application's identifiers still cannot name its caches. An application's build arguments never start with `BUILDKIT_`: BuildKit reads those as its own settings.
 
 ### The source
 
@@ -74,11 +76,11 @@ The build's output goes through the log stream of ADR 0029, under the deployment
 
 ## Consequences
 
-- Builds use the application server's CPU, memory and disk, within the build limits.
+- Builds use the application server's CPU, memory and disk, within the build limits. Their disk is taken from the server once, at installation: a fifth of it, between 10 and 100 GiB, unless the operator gives another size or a disk of their own.
 - The control plane's name must resolve to a public address that reaches its own machine from every server, so on one machine it must reach itself through that address. Behind a NAT that does not loop back, Git deployments do not work in this version: the egress proxy and the build rule refuse private addresses, and an exception would open the private network to every pull. `docs/INSTALL.md` will say so.
 - The registry holds every built image a rollback can reach. Its volume grows with the applications, about six images each.
 - A server that cannot reach the control plane cannot pull a new image. Running workloads keep running, as they do with any other registry (CLAUDE.md rule 10).
-- A Railpack build uses the server's disk for a copy of the repository while it runs, outside BuildKit's own bounds.
+- A Railpack build keeps a copy of the repository while it runs, outside BuildKit's own cache bounds but on the builds' filesystem.
 - `actions.proto` is unchanged: `BuildImage` already has `push_credentials`, `git_token`, `build_type` and limits, and `PullImage` has its credentials.
 - The control plane publishes one more endpoint, the registry's token endpoint, which takes only action credentials.
 
