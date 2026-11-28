@@ -343,9 +343,12 @@ export class NodeReadoptions {
     );
     // The page changed organization meanwhile: what is typed there now is left alone.
     if (organizationId !== this.organizationId()) return;
-    this.proof.reset();
+    // A newer review may have taken the form meanwhile, as when the list showed another
+    // certificate: the password typed there and its form are its own.
+    const owned = this.open() === reviewed;
+    if (owned) this.proof.reset();
     if (outcome.ok) {
-      this.open.set(null);
+      if (owned) this.open.set(null);
       this.readopted.set(row.name);
       this.changed.emit();
     }

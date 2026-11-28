@@ -299,6 +299,41 @@ describe('servers to re-adopt on the Servers page', () => {
     expect(state.proof.getRawValue().password).toBe('');
   });
 
+  it('leaves a newer review alone when an earlier confirmation answers', async () => {
+    const page = setup([waiting]);
+    let answer: () => void = () => undefined;
+    page.api.readopt.mockImplementationOnce(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          answer = () => {
+            reject(new Error('the certificate changed'));
+          };
+        }),
+    );
+    await page.settle();
+    page.button('Re-adopt')?.click();
+    await page.settle();
+    page.type('readopt-password', 'a fixture password, long enough');
+    await page.settle();
+    page.button('Re-adopt edge-a')?.click();
+    await page.settle();
+    // While it is on its way, the list shows another certificate, and the new one is reviewed.
+    page.set([{ ...waiting, certificateSerial: '7f0e'.repeat(8) }]);
+    await page.fixture.componentInstance.load();
+    await page.settle();
+    page.button('Re-adopt')?.click();
+    await page.settle();
+    page.type('readopt-password', 'typed for the new certificate');
+    await page.settle();
+    answer();
+    await page.settle();
+    const field = (page.fixture.nativeElement as HTMLElement).querySelector<HTMLInputElement>(
+      '#readopt-password',
+    );
+    expect(field?.value).toBe('typed for the new certificate');
+    expect(page.button('Re-adopt edge-a')).toBeDefined();
+  });
+
   it('forgets the typed password when its server no longer waits', async () => {
     const page = setup([waiting]);
     await page.settle();
