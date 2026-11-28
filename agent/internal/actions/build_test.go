@@ -15,6 +15,7 @@ import (
 	"github.com/shipkeepdev/shipkeep/agent/internal/buildkit"
 	"github.com/shipkeepdev/shipkeep/agent/internal/journal"
 	agentv1 "github.com/shipkeepdev/shipkeep/lib/gen/shipkeep/agent/v1"
+	"github.com/shipkeepdev/shipkeep/lib/secret"
 )
 
 const (
@@ -177,6 +178,8 @@ func TestBuildImageRefusesMaliciousInput(t *testing.T) {
 		"oversized arg":        func(b *agentv1.BuildImage) { b.Args = map[string]string{"A": strings.Repeat("x", 4097)} },
 		"invalid UTF-8 arg":    func(b *agentv1.BuildImage) { b.Args = map[string]string{"A": "\xff"} },
 		"too many args":        func(b *agentv1.BuildImage) { b.Args = manyArgs(101) },
+		"BuildKit's own arg":   func(b *agentv1.BuildImage) { b.Args = map[string]string{"BUILDKIT_CACHE_MOUNT_NS": "other"} },
+		"BuildKit frontend":    func(b *agentv1.BuildImage) { b.Args = map[string]string{"BUILDKIT_SYNTAX": "evil/frontend"} },
 		"target on Docker Hub": func(b *agentv1.BuildImage) { b.TargetRef = "acme/billing:7" },
 		"target elsewhere":     func(b *agentv1.BuildImage) { b.TargetRef = "evil.example/acme/billing:7" },
 		"target by digest":     func(b *agentv1.BuildImage) { b.TargetRef = buildTarget + "@sha256:" + strings.Repeat("a", 64) },
@@ -187,10 +190,15 @@ func TestBuildImageRefusesMaliciousInput(t *testing.T) {
 			b.PushCredentials.ExpiresAt = timestamppb.New(time.Now().Add(-time.Minute))
 		},
 		"credentials elsewhere": func(b *agentv1.BuildImage) { b.PushCredentials.Server = "evil.example" },
-		"timeout too short":     func(b *agentv1.BuildImage) { b.Limits.Timeout = durationpb.New(time.Second) },
-		"timeout too long":      func(b *agentv1.BuildImage) { b.Limits.Timeout = durationpb.New(3 * time.Hour) },
-		"negative timeout":      func(b *agentv1.BuildImage) { b.Limits.Timeout = durationpb.New(-time.Minute) },
-		"oversized memory":      func(b *agentv1.BuildImage) { b.Limits.MemoryBytes = 1 << 50 },
+		// Too short for the redactor to hide in the build's output.
+		"short git token":        func(b *agentv1.BuildImage) { b.GitToken = "abc" },
+		"short push password":    func(b *agentv1.BuildImage) { b.PushCredentials.Password = "abc" },
+		"broken push password":   func(b *agentv1.BuildImage) { b.PushCredentials.Password = "first-half\nsecond-half" },
+		"git token with a break": func(b *agentv1.BuildImage) { b.GitToken = "ghs_first\nghs_second" },
+		"timeout too short":      func(b *agentv1.BuildImage) { b.Limits.Timeout = durationpb.New(time.Second) },
+		"timeout too long":       func(b *agentv1.BuildImage) { b.Limits.Timeout = durationpb.New(3 * time.Hour) },
+		"negative timeout":       func(b *agentv1.BuildImage) { b.Limits.Timeout = durationpb.New(-time.Minute) },
+		"oversized memory":       func(b *agentv1.BuildImage) { b.Limits.MemoryBytes = 1 << 50 },
 	} {
 		action := validBuild()
 		change(action)
@@ -249,7 +257,7 @@ func TestBuildImageFailuresHaveFixedTexts(t *testing.T) {
 		builder *fakeBuilder
 		text    string
 	}{
-		{"failed", &fakeBuilder{err: errors.New("process \"/bin/sh -c npm ci\" did not complete: secret ghs_x")}, "the build failed: its output says why"},
+		{"failed", &fakeBuilder{err: errors.New("nixpacks has no release for riscv64\nwith " + buildToken)}, "the build failed: its output says why"},
 		{"unavailable", &fakeBuilder{err: fmt.Errorf("%w: dial unix", buildkit.ErrUnavailable)}, "the server's builder does not answer"},
 		{"timeout", &fakeBuilder{wait: true}, "the build did not finish in time"},
 	} {
@@ -269,8 +277,15 @@ func TestBuildImageFailuresHaveFixedTexts(t *testing.T) {
 		if update.GetState() != agentv1.OperationState_OPERATION_STATE_COMPENSATED || update.GetError() != c.text {
 			t.Errorf("%s: %v %q", c.name, update.GetState(), update.GetError())
 		}
-		if c.name == "timeout" && !strings.Contains(strings.Join(lines.lines, "\n"), "the build did not finish in time") {
+		output := strings.Join(lines.lines, "\n")
+		if c.name == "timeout" && !strings.Contains(output, "the build did not finish in time") {
 			t.Errorf("the timeout is not in the output: %q", lines.lines)
+		}
+		// Why a build failed is in its output, each line of it, never the token: the action's
+		// error stays a fixed text.
+		if c.name == "failed" && (!strings.Contains(output, "the build failed: nixpacks has no release for riscv64") ||
+			!strings.Contains(output, "the build failed: with "+secret.Redacted) || strings.Contains(output, buildToken)) {
+			t.Errorf("the failure is not in the output: %q", lines.lines)
 		}
 	}
 }

@@ -70,7 +70,7 @@ func TestRealBuildKitBuildsAndPushesARepositoryAtItsCommit(t *testing.T) {
 	defer cancel()
 	target := build.registry + "/it/app:" + build.commit[:12]
 	var lines []string
-	digest, err := Client{Address: build.address}.Build(ctx, Request{
+	digest, err := Client{Address: build.address, CacheSecret: []byte("shipkeep real build test key 32b")}.Build(ctx, Request{
 		Repository: build.repository,
 		Commit:     build.commit,
 		Context:    "agent/internal/buildkit/testdata/app",
@@ -109,7 +109,8 @@ func TestRealBuildKitBuildsWithRailpackAndNixpacks(t *testing.T) {
 			repository := "it/" + kind.name
 			var lines []string
 			started := time.Now()
-			digest, err := Client{Address: build.address, WorkDir: filepath.Join(work, "builds")}.Build(ctx, Request{
+			client := Client{Address: build.address, WorkDir: filepath.Join(work, "builds"), CacheSecret: []byte("shipkeep real build test key 32b")}
+			digest, err := client.Build(ctx, Request{
 				Kind:       kind.kind,
 				Repository: build.repository,
 				Commit:     build.commit,

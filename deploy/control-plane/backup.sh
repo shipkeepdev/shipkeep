@@ -57,6 +57,13 @@ compose() {
   docker compose "${files[@]}" "$@"
 }
 
+# An archive's name, which its manifest binds (#439): what create names it, and what restore asks
+# for. The same rule as backup.js's.
+archive_name() {
+  [[ $1 =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,123}\.age$ ]] ||
+    fail "$2 Name it with letters, digits, dots, dashes and underscores, ending in .age."
+}
+
 # Writes to a new file next to the target, then renames it: never a part of one under the name.
 fresh() {
   [[ -n $1 ]] || usage
@@ -86,7 +93,7 @@ case ${1:-} in
       # two installations that share a bucket from ever choosing the same name.
       name=shipkeep-$(date -u +%Y%m%d-%H%M%S)-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n').age
       set +e
-      dump | compose run --rm -T backup create | compose run --rm -T backup-transfer upload "$name"
+      dump | compose run --rm -T backup create "$name" | compose run --rm -T backup-transfer upload "$name"
       status=("${PIPESTATUS[@]}")
       set -e
       if [[ ${status[*]} != '0 0 0' ]]; then
@@ -101,8 +108,11 @@ case ${1:-} in
       fi
       printf 'Backup stored as %s.\n' "$name" >&2
     else
+      # Without a command substitution, which would drop a trailing line break from the name.
+      name=${2##*/}
+      archive_name "$name" 'The archive is restored under the name it is created with.'
       fresh "$2"
-      if ! dump | compose run --rm -T backup create >"$partial"; then
+      if ! dump | compose run --rm -T backup create "$name" >"$partial"; then
         fail 'The backup was not created; nothing was written.'
       fi
       mv -- "$partial" "$2"
@@ -120,6 +130,9 @@ case ${1:-} in
     archive=$2 identity=$3
     [[ -f $identity && -r $identity ]] || fail "Cannot read the identity file $identity."
     read_compose_files
+    # The archive must be the one asked for: its manifest names the archive it was created as.
+    if [[ $archive == s3:* ]]; then name=${archive#s3:}; else name=${archive##*/}; fi
+    archive_name "$name" "Restore the archive under the name it was created with."
     if [[ $archive == s3:* ]]; then
       # Fetched into a private directory: it is encrypted, and removed when this ends.
       work=$(mktemp -d)
@@ -128,6 +141,9 @@ case ${1:-} in
       archive=$work/archive.age
     fi
     [[ -f $archive && -r $archive ]] || fail "Cannot read the archive $archive."
+    # The whole archive is checked before anything changes: who made it, its name, every chunk.
+    cat -- "$identity" "$archive" | compose run --rm -T backup verify "$name" ||
+      fail 'The archive was not restored; nothing was changed.'
     if [[ ${4:-} != --replace-this-installation ]]; then
       [[ -z ${4:-} ]] || usage
       printf 'This replaces the database and the key-encryption key of this installation with the backup. Type replace to continue: ' >&2
@@ -147,7 +163,7 @@ case ${1:-} in
     # (pg_restore --clean cannot drop what the job queue's partitioned tables inherit.)
     psql postgres --command='DROP DATABASE IF EXISTS shipkeep_restore' --command='CREATE DATABASE shipkeep_restore OWNER shipkeep_admin' ||
       fail 'Cannot prepare the database to restore into. The control plane is stopped: start it with docker compose up -d.'
-    if ! cat -- "$identity" "$archive" | compose run --rm -T backup restore-database |
+    if ! cat -- "$identity" "$archive" | compose run --rm -T backup restore-database "$name" |
       compose exec -T postgres pg_restore --username=shipkeep_admin --dbname=shipkeep_restore \
         --single-transaction --exit-on-error; then
       # What was restored, if anything, goes: nothing of a refused archive is kept.
@@ -173,7 +189,7 @@ case ${1:-} in
       --command="ALTER DATABASE shipkeep RENAME TO $previous" --command='ALTER DATABASE shipkeep_restore RENAME TO shipkeep' >/dev/null ||
       fail 'The restored database could not take the place of the current one, which was left as it was. The control plane is stopped: run this again, or start it with docker compose up -d.'
     # Then the key, which the restored secrets are encrypted with. The one it replaces is kept.
-    if ! cat -- "$identity" "$archive" | compose run --rm -T backup restore-key --replace-this-installation; then
+    if ! cat -- "$identity" "$archive" | compose run --rm -T backup restore-key --replace-this-installation "$name"; then
       fail "The database is restored, but the key-encryption key may not be: the key file holds this installation's key or the restored one. The control plane is stopped: run this again before starting it. The previous database is kept as $previous."
     fi
     # Migrations bring an older backup to this version; the database login gets its grants again.
